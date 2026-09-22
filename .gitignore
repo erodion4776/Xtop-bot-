@@ -1,0 +1,35 @@
+# .gitignore
+
+# ── Environment / Secrets ────────────────────────────
+.env
+.env.local
+.env.*.local
+supabase/.env
+supabase/.branches/
+
+# ── Supabase ─────────────────────────────────────────
+supabase/.temp/
+
+# ── Deno ─────────────────────────────────────────────
+deno.lock
+
+# ── Node (if any tooling uses it) ────────────────────
+node_modules/
+npm-debug.log*
+
+# ── IDE ──────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── OS ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Logs ─────────────────────────────────────────────
+*.log
+logs/
