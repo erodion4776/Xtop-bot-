@@ -14,7 +14,6 @@ env:
   SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
 
 jobs:
-  # ── Deploy Edge Functions ─────────────────────────
   deploy-functions:
     name: Deploy Edge Functions
     runs-on: ubuntu-latest
@@ -36,48 +35,12 @@ jobs:
           supabase functions deploy whatsapp-webhook \
             --project-ref "$SUPABASE_PROJECT_ID" \
             --no-verify-jwt
-          echo "✅ Edge Function deployed successfully"
+          echo "✅ Edge Function deployed successfully!"
 
-  # ── Deploy Secrets ────────────────────────────────
-  deploy-secrets:
-    name: Deploy Secrets
-    runs-on: ubuntu-latest
-    needs: deploy-functions
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
-      - name: Link project
-        run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
-
-      - name: Set Edge Function secrets
-        env:
-          WA_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
-          WA_PHONE_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
-          WA_VERIFY: ${{ secrets.WHATSAPP_VERIFY_TOKEN }}
-          AI_KEY: ${{ secrets.AI_API_KEY }}
-          AI_MOD: ${{ secrets.AI_MODEL || 'gpt-4o-mini' }}
-        run: |
-          echo "🔐 Setting Edge Function secrets..."
-          supabase secrets set \
-            WHATSAPP_ACCESS_TOKEN="$WA_TOKEN" \
-            WHATSAPP_PHONE_NUMBER_ID="$WA_PHONE_ID" \
-            WHATSAPP_VERIFY_TOKEN="$WA_VERIFY" \
-            AI_API_KEY="$AI_KEY" \
-            AI_MODEL="$AI_MOD" \
-            --project-ref "$SUPABASE_PROJECT_ID"
-          echo "✅ Secrets configured successfully"
-
-  # ── Verify ────────────────────────────────────────
   verify:
     name: Verify Deployment
     runs-on: ubuntu-latest
-    needs: [deploy-functions, deploy-secrets]
+    needs: deploy-functions
     steps:
       - name: Check Webhook Status
         run: |
