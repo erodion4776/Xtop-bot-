@@ -1,23 +1,3 @@
-# .github/workflows/deploy-production.yml
-#
-# Deploys database migrations, Edge Functions, and secrets
-# to the PRODUCTION Supabase project.
-#
-# Triggers:
-#   - Push to main branch
-#   - Manual dispatch
-#
-# Required GitHub Secrets:
-#   SUPABASE_ACCESS_TOKEN       — Personal access token from supabase.com/dashboard/account/tokens
-#   SUPABASE_PROJECT_ID         — Production project reference ID
-#   SUPABASE_DB_PASSWORD        — Production database password
-#   WHATSAPP_ACCESS_TOKEN       — Meta WhatsApp Cloud API token
-#   WHATSAPP_PHONE_NUMBER_ID    — WhatsApp Business phone number ID
-#   WHATSAPP_VERIFY_TOKEN       — Custom webhook verification token
-#   AI_API_KEY                  — LLM provider API key
-#   AI_MODEL                    — LLM model name (e.g. gpt-4o-mini)
-#   AI_BASE_URL                 — (Optional) LLM API base URL
-
 name: Deploy to Production
 
 on:
@@ -28,107 +8,16 @@ on:
       - "supabase/**"
       - ".github/workflows/deploy-production.yml"
   workflow_dispatch:
-    inputs:
-      deploy_migrations:
-        description: "Deploy database migrations"
-        required: false
-        default: "true"
-        type: choice
-        options:
-          - "true"
-          - "false"
-      deploy_functions:
-        description: "Deploy Edge Functions"
-        required: false
-        default: "true"
-        type: choice
-        options:
-          - "true"
-          - "false"
-      deploy_secrets:
-        description: "Deploy secrets"
-        required: false
-        default: "true"
-        type: choice
-        options:
-          - "true"
-          - "false"
 
 env:
   SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
   SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
 
 jobs:
-  # ── Validate ──────────────────────────────────────
-  validate:
-    name: Validate Configuration
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
-      - name: Verify Supabase project link
-        run: |
-          supabase link --project-ref $SUPABASE_PROJECT_ID
-          echo "✅ Successfully linked to Supabase project"
-
-      - name: Validate migrations
-        run: |
-          if [ -d "supabase/migrations" ] && [ "$(ls -A supabase/migrations)" ]; then
-            echo "✅ Migration files found"
-            ls -la supabase/migrations/
-          else
-            echo "⚠️ No migration files found"
-          fi
-
-      - name: Validate Edge Functions
-        run: |
-          if [ -d "supabase/functions" ] && [ "$(ls -A supabase/functions)" ]; then
-            echo "✅ Edge Functions found"
-            ls -la supabase/functions/
-          else
-            echo "⚠️ No Edge Functions found"
-          fi
-
-  # ── Database Migrations ───────────────────────────
-  deploy-migrations:
-    name: Deploy Database Migrations
-    runs-on: ubuntu-latest
-    needs: validate
-    if: >
-      github.event_name == 'push' ||
-      github.event.inputs.deploy_migrations == 'true'
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
-      - name: Link project
-        run: supabase link --project-ref $SUPABASE_PROJECT_ID
-
-      - name: Push database migrations
-        run: |
-          echo "🚀 Pushing database migrations to production..."
-          supabase db push --password ${{ secrets.SUPABASE_DB_PASSWORD }}
-          echo "✅ Migrations deployed successfully"
-
-  # ── Edge Functions ────────────────────────────────
+  # ── Deploy Edge Functions ─────────────────────────
   deploy-functions:
     name: Deploy Edge Functions
     runs-on: ubuntu-latest
-    needs: validate
-    if: >
-      github.event_name == 'push' ||
-      github.event.inputs.deploy_functions == 'true'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -138,37 +27,22 @@ jobs:
         with:
           version: latest
 
-      - name: Setup Deno
-        uses: denoland/setup-deno@v1
-        with:
-          deno-version: v1.x
-
       - name: Link project
-        run: supabase link --project-ref $SUPABASE_PROJECT_ID
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
 
       - name: Deploy whatsapp-webhook function
         run: |
           echo "🚀 Deploying whatsapp-webhook Edge Function..."
           supabase functions deploy whatsapp-webhook \
-            --project-ref $SUPABASE_PROJECT_ID \
+            --project-ref "$SUPABASE_PROJECT_ID" \
             --no-verify-jwt
           echo "✅ Edge Function deployed successfully"
 
-      # Add more functions here as you create them:
-      # - name: Deploy another-function
-      #   run: |
-      #     supabase functions deploy another-function \
-      #       --project-ref $SUPABASE_PROJECT_ID \
-      #       --no-verify-jwt
-
-  # ── Secrets ───────────────────────────────────────
+  # ── Deploy Secrets ────────────────────────────────
   deploy-secrets:
     name: Deploy Secrets
     runs-on: ubuntu-latest
-    needs: validate
-    if: >
-      github.event_name == 'push' ||
-      github.event.inputs.deploy_secrets == 'true'
+    needs: deploy-functions
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -179,62 +53,36 @@ jobs:
           version: latest
 
       - name: Link project
-        run: supabase link --project-ref $SUPABASE_PROJECT_ID
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
 
       - name: Set Edge Function secrets
+        env:
+          WA_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+          WA_PHONE_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          WA_VERIFY: ${{ secrets.WHATSAPP_VERIFY_TOKEN }}
+          AI_KEY: ${{ secrets.AI_API_KEY }}
+          AI_MOD: ${{ secrets.AI_MODEL || 'gpt-4o-mini' }}
         run: |
           echo "🔐 Setting Edge Function secrets..."
           supabase secrets set \
-            WHATSAPP_ACCESS_TOKEN=${{ secrets.WHATSAPP_ACCESS_TOKEN }} \
-            WHATSAPP_PHONE_NUMBER_ID=${{ secrets.WHATSAPP_PHONE_NUMBER_ID }} \
-            WHATSAPP_VERIFY_TOKEN=${{ secrets.WHATSAPP_VERIFY_TOKEN }} \
-            AI_API_KEY=${{ secrets.AI_API_KEY }} \
-            AI_MODEL=${{ secrets.AI_MODEL || 'gpt-4o-mini' }} \
-            --project-ref $SUPABASE_PROJECT_ID
+            WHATSAPP_ACCESS_TOKEN="$WA_TOKEN" \
+            WHATSAPP_PHONE_NUMBER_ID="$WA_PHONE_ID" \
+            WHATSAPP_VERIFY_TOKEN="$WA_VERIFY" \
+            AI_API_KEY="$AI_KEY" \
+            AI_MODEL="$AI_MOD" \
+            --project-ref "$SUPABASE_PROJECT_ID"
+          echo "✅ Secrets configured successfully"
 
-          # Set optional secrets only if they exist
-          if [ -n "${{ secrets.AI_BASE_URL }}" ]; then
-            supabase secrets set \
-              AI_BASE_URL=${{ secrets.AI_BASE_URL }} \
-              --project-ref $SUPABASE_PROJECT_ID
-          fi
-
-          echo "✅ Secrets deployed successfully"
-
-  # ── Post-Deploy Verification ──────────────────────
+  # ── Verify ────────────────────────────────────────
   verify:
     name: Verify Deployment
     runs-on: ubuntu-latest
-    needs: [deploy-migrations, deploy-functions, deploy-secrets]
-    if: always() && !failure() && !cancelled()
+    needs: [deploy-functions, deploy-secrets]
     steps:
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
-      - name: Verify Edge Function is live
+      - name: Check Webhook Status
         run: |
-          echo "🔍 Verifying whatsapp-webhook is accessible..."
           WEBHOOK_URL="https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/whatsapp-webhook"
-
-          # Test GET endpoint (should return 403 without correct verify token)
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$WEBHOOK_URL" || true)
-
-          if [ "$HTTP_STATUS" = "403" ] || [ "$HTTP_STATUS" = "200" ]; then
-            echo "✅ Edge Function is live and responding (HTTP $HTTP_STATUS)"
-          else
-            echo "⚠️ Edge Function returned HTTP $HTTP_STATUS — check logs"
-          fi
-
-      - name: Deployment summary
-        run: |
+          echo "Webhook response status: $HTTP_STATUS"
           echo "## 🚀 Deployment Complete" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Database Migrations | ✅ Deployed |" >> $GITHUB_STEP_SUMMARY
-          echo "| Edge Functions | ✅ Deployed |" >> $GITHUB_STEP_SUMMARY
-          echo "| Secrets | ✅ Deployed |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Webhook URL:** \`https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/whatsapp-webhook\`" >> $GITHUB_STEP_SUMMARY
+          echo "Edge Function URL: \`$WEBHOOK_URL\`" >> $GITHUB_STEP_SUMMARY
