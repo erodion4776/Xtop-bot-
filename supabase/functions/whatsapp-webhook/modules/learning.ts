@@ -1,6 +1,4 @@
 // supabase/functions/whatsapp-webhook/modules/learning.ts
-// Phase 4 — Engr. Ero Learning Centre Academic Portal
-// Registration/Attendance gate added BEFORE course-code authentication.
 
 import {
   Contact, Conversation, updateConversation,
@@ -20,7 +18,7 @@ import { handleRegistration } from "./attendance.ts";
 // CONTEXT
 // ═══════════════════════════════════════════════════════
 
-interface LearningCtx {
+export interface LearningCtx {
   step: string;
   courseCode?: string;
   courseId?: string;
@@ -38,6 +36,7 @@ function getCtx(conv: Conversation): LearningCtx {
 
 async function saveCtx(convId: string, ctx: LearningCtx, state?: string): Promise<void> {
   await updateConversation(convId, {
+    current_module: "LEARNING",
     ...(state ? { current_state: state } : {}),
     context_json: ctx as unknown as Record<string, unknown>,
   });
@@ -65,7 +64,7 @@ export async function handleLearning(
     return;
   }
 
-  // REGISTRATION STATES — delegate to attendance module
+  // Registration states -> delegate to attendance module
   if (["ENTRY", "WAITING_STUDENT_NAME", "WAITING_MATRIC_NUMBER", "WAITING_DEPARTMENT", "WAITING_LEVEL"].includes(state)) {
     await handleRegistration(phone, text, contact, conv);
     return;
@@ -95,14 +94,13 @@ export async function handleLearning(
       await processLessonCompleteAction(phone, text, conv, ctx);
       break;
     default:
-      // First entry — go through registration
       await handleRegistration(phone, text, contact, conv);
       break;
   }
 }
 
 // ═══════════════════════════════════════════════════════
-// COURSE CODE AUTHENTICATION (unchanged)
+// 1. COURSE CODE AUTHENTICATION
 // ═══════════════════════════════════════════════════════
 
 export async function promptCourseCode(phone: string, conversationId: string): Promise<void> {
@@ -169,10 +167,12 @@ async function processCourseCodeAuth(
 }
 
 // ═══════════════════════════════════════════════════════
-// COURSE MENU (unchanged)
+// 2. EXPORTED COURSE MENU
 // ═══════════════════════════════════════════════════════
 
-async function showCourseMenu(phone: string, conversationId: string, ctx: LearningCtx): Promise<void> {
+export async function showCourseMenu(
+  phone: string, conversationId: string, ctx: LearningCtx
+): Promise<void> {
   await saveCtx(conversationId, { ...ctx, step: "COURSE_MENU" }, "COURSE_MENU");
   await sendListMessage(phone,
     `🎓 *${ctx.courseCode} — ${ctx.courseName?.toUpperCase()}*\n_${ctx.term}_\n\nSelect an option:`,
@@ -216,7 +216,7 @@ async function processCourseMenuSelection(
 }
 
 // ═══════════════════════════════════════════════════════
-// LESSON DELIVERY (unchanged)
+// 3. LESSON DELIVERY
 // ═══════════════════════════════════════════════════════
 
 async function deliverLesson(
@@ -232,7 +232,6 @@ async function deliverLesson(
   const currentLesson = lessons.find((l) => l.lesson_order === lessonOrder) || lessons[0];
   const currentOrder = currentLesson.lesson_order;
   const isFirst = currentOrder <= 1;
-  const isLast = currentOrder >= lessons.length;
 
   ctx.step = "VIEWING_LESSON";
   ctx.currentLessonOrder = currentOrder;
@@ -300,7 +299,7 @@ async function processLessonCompleteAction(
 }
 
 // ═══════════════════════════════════════════════════════
-// MATERIALS / PROGRESS / RESULTS (unchanged)
+// 4. MATERIALS / PROGRESS / RESULTS
 // ═══════════════════════════════════════════════════════
 
 async function showCourseMaterials(phone: string, conversationId: string, ctx: LearningCtx): Promise<void> {
