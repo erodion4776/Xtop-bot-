@@ -10,6 +10,7 @@
 // #5 All states (VIEWING_LESSON, VIEWING_MATERIALS, etc.) set consistently
 // #6 PDFs delivered via sendDocumentMessage, not raw URLs
 // #7 Exam attempts numbered chronologically (oldest = Attempt 1)
+// #8 Static import of exams.ts to prevent Deno bundler caching issues
 
 import {
   Contact, Conversation, updateConversation,
@@ -22,6 +23,7 @@ import {
 } from "../whatsapp.ts";
 import { normalise, isBack, isExit, isGreeting, extractSelection } from "../utils.ts";
 import { showMainMenu } from "./main-menu.ts";
+import { startExamEntry } from "./exams.ts"; // FIX #8: Static import forces Deno to bundle the updated exams.ts
 
 // ═══════════════════════════════════════════════════════
 // CONTEXT
@@ -266,7 +268,7 @@ async function processCourseMenuSelection(
 }
 
 // ═══════════════════════════════════════════════════════
-// 3. LESSON DELIVERY (FIX #1 & #4)
+// 3. LESSON DELIVERY
 // ═══════════════════════════════════════════════════════
 
 async function deliverLesson(
@@ -290,9 +292,6 @@ async function deliverLesson(
   const isFirst = currentOrder <= 1;
   const isLast = currentOrder >= lessons.length;
 
-  // FIX #1: Do NOT mark complete here. Only deliver content.
-  // Completion happens when student presses "✅ Complete Lesson".
-
   ctx.step = "VIEWING_LESSON";
   ctx.currentLessonOrder = currentOrder;
   ctx.totalLessons = lessons.length;
@@ -310,7 +309,6 @@ async function deliverLesson(
     message += `\n\n🎥 *Video Lecture:* ${currentLesson.video_url}`;
   }
 
-  // FIX #6: Deliver PDF via document message, not raw URL
   if (currentLesson.pdf_url && currentLesson.pdf_url.startsWith("http")) {
     await sendDocumentMessage(
       phone,
@@ -320,7 +318,6 @@ async function deliverLesson(
     );
   }
 
-  // FIX #4: Explicit "Complete Lesson" button
   const buttons = [makeButton("lsn_complete", "✅ Complete Lesson")];
   if (!isFirst) buttons.push(makeButton("lsn_prev", "⬅️ Previous"));
   buttons.push(makeButton("lsn_menu", "📋 Course Menu"));
@@ -332,7 +329,7 @@ async function deliverLesson(
 }
 
 // ═══════════════════════════════════════════════════════
-// 4. LESSON COMPLETION ACTION (FIX #1 & #4)
+// 4. LESSON NAVIGATION & PROGRESS SAVE
 // ═══════════════════════════════════════════════════════
 
 async function processLessonNavigation(
@@ -341,14 +338,11 @@ async function processLessonNavigation(
   const n = normalise(text);
   const currentOrder = ctx.currentLessonOrder || 1;
 
-  // FIX #4: Student explicitly marks lesson as complete
   if (n === "lsn_complete" || n.includes("complete") || n.includes("done") || n.includes("next")) {
-    // Now mark the lesson complete in the database
     if (ctx.studentCourseId && ctx.courseId) {
       const lessons = await getCourseLessons(ctx.courseId);
       const currentLesson = lessons.find((l) => l.lesson_order === currentOrder);
       if (currentLesson) {
-        // FIX #2: markLessonComplete now fetches existing progress atomically
         await markLessonComplete(ctx.studentCourseId, currentLesson.id, currentOrder);
       }
     }
@@ -356,7 +350,6 @@ async function processLessonNavigation(
     const isLast = currentOrder >= (ctx.totalLessons || 1);
 
     if (isLast) {
-      // All lessons done
       await sendTextMessage(phone,
         `🎉 *Congratulations!*\n\n` +
         `You have completed all *${ctx.totalLessons}* lessons in *${ctx.courseCode}*.\n\n` +
@@ -366,7 +359,6 @@ async function processLessonNavigation(
       return;
     }
 
-    // Move to next lesson
     ctx.currentLessonOrder = currentOrder + 1;
     ctx.step = "LESSON_COMPLETE";
     await saveCtx(conv.id, ctx, "LESSON_COMPLETE");
@@ -422,7 +414,7 @@ async function processLessonCompleteAction(
 }
 
 // ═══════════════════════════════════════════════════════
-// 5. COURSE MATERIALS (FIX #5 & #6)
+// 5. COURSE MATERIALS
 // ═══════════════════════════════════════════════════════
 
 async function showCourseMaterials(
@@ -430,7 +422,6 @@ async function showCourseMaterials(
 ): Promise<void> {
   if (!ctx.courseId) { await promptCourseCode(phone, conversationId); return; }
 
-  // FIX #5: Set state consistently
   ctx.step = "VIEWING_MATERIALS";
   await saveCtx(conversationId, ctx, "COURSE_MENU");
 
@@ -447,7 +438,6 @@ async function showCourseMaterials(
     return;
   }
 
-  // FIX #6: Deliver PDFs directly, show clean list for videos
   let listText = `📂 *Course Materials — ${ctx.courseCode}*\n\n`;
   let pdfCount = 0;
 
@@ -465,7 +455,6 @@ async function showCourseMaterials(
 
   await sendTextMessage(phone, listText);
 
-  // Send all PDFs as document attachments
   for (const m of withMaterials) {
     if (m.pdf_url && m.pdf_url.startsWith("http")) {
       await sendDocumentMessage(
@@ -487,7 +476,7 @@ async function showCourseMaterials(
 }
 
 // ═══════════════════════════════════════════════════════
-// 6. PROGRESS TRACKING (FIX #5)
+// 6. PROGRESS TRACKING
 // ═══════════════════════════════════════════════════════
 
 async function showStudentProgress(
@@ -495,7 +484,6 @@ async function showStudentProgress(
 ): Promise<void> {
   if (!ctx.studentId || !ctx.courseId) { await promptCourseCode(phone, conversationId); return; }
 
-  // FIX #5: Set state consistently
   ctx.step = "VIEWING_PROGRESS";
   await saveCtx(conversationId, ctx, "COURSE_MENU");
 
@@ -535,13 +523,13 @@ function makeProgressBar(percent: number): string {
 }
 
 // ═══════════════════════════════════════════════════════
-// 7. EXAM ENTRY & RESULTS (FIX #5 & #7)
+// 7. EXAM ENTRY & RESULTS
 // ═══════════════════════════════════════════════════════
 
 async function enterCourseExam(
   phone: string, conversationId: string, ctx: LearningCtx
 ): Promise<void> {
-  const { startExamEntry } = await import("./exams.ts");
+  // FIX #8: Standard call to the statically-imported function
   await startExamEntry(phone, conversationId, ctx);
 }
 
@@ -550,11 +538,9 @@ async function showStudentResults(
 ): Promise<void> {
   if (!ctx.studentId || !ctx.courseId) { await promptCourseCode(phone, conversationId); return; }
 
-  // FIX #5: Set state consistently
   ctx.step = "VIEWING_RESULTS";
   await saveCtx(conversationId, ctx, "COURSE_MENU");
 
-  // FIX #7: Query now returns oldest first, so index + 1 = correct attempt number
   const attempts = await getStudentExamAttempts(ctx.studentId, ctx.courseId);
 
   if (attempts.length === 0) {
@@ -569,10 +555,9 @@ async function showStudentResults(
 
   let resultMsg = `📊 *EXAMINATION RESULTS: ${ctx.courseCode}*\n\n`;
 
-  // FIX #7: Show newest first for display, but number chronologically
   const reversed = [...attempts].reverse();
   reversed.forEach((att, displayIdx) => {
-    const attemptNum = attempts.length - displayIdx; // chronological number
+    const attemptNum = attempts.length - displayIdx;
     const dateStr = att.submitted_at ? new Date(att.submitted_at).toLocaleDateString("en-GB") : "Recent";
     const statusIcon = att.passed ? "✅ PASSED" : "❌ FAILED";
     const pct = att.total_questions > 0 ? Math.round((att.score / att.total_questions) * 100) : 0;
