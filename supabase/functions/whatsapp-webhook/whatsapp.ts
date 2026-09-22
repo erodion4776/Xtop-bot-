@@ -2,40 +2,36 @@
 
 import { safeErrorLog } from "./utils.ts";
 
-// ── Types ──────────────────────────────────────────────
-
 export interface IncomingMessage {
-  from: string;           // sender phone number
-  messageId: string;      // WhatsApp message ID
+  from: string;
+  messageId: string;
   timestamp: string;
-  type: string;           // text, interactive, button, image, etc.
-  text: string;           // extracted text content
-  profileName: string;    // sender's WhatsApp profile name
-  interactiveType?: string;   // button_reply, list_reply
-  interactiveId?: string;     // button/list selection ID
-  interactiveTitle?: string;  // button/list selection title
+  type: string;
+  text: string;
+  profileName: string;
+  interactiveType?: string;
+  interactiveId?: string;
+  interactiveTitle?: string;
 }
 
 export interface WhatsAppButton {
   type: "reply";
   reply: {
     id: string;
-    title: string;        // max 20 chars
+    title: string; // Max 20 chars
   };
 }
 
 export interface WhatsAppListRow {
   id: string;
-  title: string;          // max 24 chars
-  description?: string;   // max 72 chars
+  title: string;        // Max 24 chars
+  description?: string; // Max 72 chars
 }
 
 export interface WhatsAppListSection {
-  title: string;          // max 24 chars
+  title: string;        // Max 24 chars
   rows: WhatsAppListRow[];
 }
-
-// ── Parse Incoming ─────────────────────────────────────
 
 export function parseWebhookPayload(body: Record<string, unknown>): IncomingMessage | null {
   try {
@@ -102,8 +98,6 @@ export function parseWebhookPayload(body: Record<string, unknown>): IncomingMess
   }
 }
 
-// ── Send Messages ──────────────────────────────────────
-
 const WA_API_BASE = "https://graph.facebook.com/v21.0";
 
 function getHeaders(): Record<string, string> {
@@ -146,9 +140,6 @@ async function sendToWhatsApp(payload: Record<string, unknown>): Promise<string 
   }
 }
 
-/**
- * Send a plain text message.
- */
 export async function sendTextMessage(to: string, body: string): Promise<string | null> {
   return sendToWhatsApp({
     messaging_product: "whatsapp",
@@ -159,9 +150,6 @@ export async function sendTextMessage(to: string, body: string): Promise<string 
   });
 }
 
-/**
- * Send an interactive button message (max 3 buttons).
- */
 export async function sendButtonMessage(
   to: string,
   body: string,
@@ -169,8 +157,14 @@ export async function sendButtonMessage(
   header?: string,
   footer?: string
 ): Promise<string | null> {
-  // WhatsApp allows max 3 buttons
-  const safeButtons = buttons.slice(0, 3);
+  // WhatsApp allows max 3 buttons, each title max 20 chars
+  const safeButtons = buttons.slice(0, 3).map((b) => ({
+    type: "reply",
+    reply: {
+      id: b.reply.id.substring(0, 256),
+      title: b.reply.title.substring(0, 20),
+    },
+  }));
 
   const payload: Record<string, unknown> = {
     messaging_product: "whatsapp",
@@ -180,27 +174,17 @@ export async function sendButtonMessage(
     interactive: {
       type: "button",
       body: { text: body },
-      action: {
-        buttons: safeButtons,
-      },
+      action: { buttons: safeButtons },
     },
   };
 
   const interactive = payload.interactive as Record<string, unknown>;
-
-  if (header) {
-    interactive.header = { type: "text", text: header };
-  }
-  if (footer) {
-    interactive.footer = { text: footer };
-  }
+  if (header) interactive.header = { type: "text", text: header.substring(0, 60) };
+  if (footer) interactive.footer = { text: footer.substring(0, 60) };
 
   return sendToWhatsApp(payload);
 }
 
-/**
- * Send an interactive list message.
- */
 export async function sendListMessage(
   to: string,
   body: string,
@@ -209,6 +193,28 @@ export async function sendListMessage(
   header?: string,
   footer?: string
 ): Promise<string | null> {
+  // WhatsApp rule: Max 10 rows total across all sections
+  let totalRows = 0;
+  const safeSections: WhatsAppListSection[] = [];
+
+  for (const sec of sections) {
+    if (totalRows >= 10) break;
+    const remaining = 10 - totalRows;
+    const safeRows = sec.rows.slice(0, remaining).map((r) => ({
+      id: r.id.substring(0, 200),
+      title: r.title.substring(0, 24), // Max 24 chars
+      description: r.description ? r.description.substring(0, 72) : undefined, // Max 72 chars
+    }));
+
+    if (safeRows.length > 0) {
+      safeSections.push({
+        title: sec.title.substring(0, 24),
+        rows: safeRows,
+      });
+      totalRows += safeRows.length;
+    }
+  }
+
   const payload: Record<string, unknown> = {
     messaging_product: "whatsapp",
     recipient_type: "individual",
@@ -219,26 +225,18 @@ export async function sendListMessage(
       body: { text: body },
       action: {
         button: buttonText.substring(0, 20),
-        sections,
+        sections: safeSections,
       },
     },
   };
 
   const interactive = payload.interactive as Record<string, unknown>;
-
-  if (header) {
-    interactive.header = { type: "text", text: header };
-  }
-  if (footer) {
-    interactive.footer = { text: footer };
-  }
+  if (header) interactive.header = { type: "text", text: header.substring(0, 60) };
+  if (footer) interactive.footer = { text: footer.substring(0, 60) };
 
   return sendToWhatsApp(payload);
 }
 
-/**
- * Send a document message.
- */
 export async function sendDocumentMessage(
   to: string,
   documentUrl: string,
@@ -258,9 +256,6 @@ export async function sendDocumentMessage(
   });
 }
 
-/**
- * Mark a message as read.
- */
 export async function markAsRead(messageId: string): Promise<void> {
   try {
     await sendToWhatsApp({
@@ -273,9 +268,6 @@ export async function markAsRead(messageId: string): Promise<void> {
   }
 }
 
-/**
- * Helper: create a button object.
- */
 export function makeButton(id: string, title: string): WhatsAppButton {
   return {
     type: "reply",
@@ -286,9 +278,6 @@ export function makeButton(id: string, title: string): WhatsAppButton {
   };
 }
 
-/**
- * Helper: create a list row.
- */
 export function makeListRow(id: string, title: string, description?: string): WhatsAppListRow {
   return {
     id: id.substring(0, 200),
