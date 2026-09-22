@@ -27,7 +27,6 @@ export async function showMainMenu(phone: string, conversationId: string): Promi
           makeListRow("menu_demos", "3️⃣ View Our Demos", "10 live interactive demos"),
           makeListRow("menu_magazine", "4️⃣ Product Magazine", "Digital catalogue"),
           makeListRow("menu_agent", "5️⃣ Talk to an Agent", "Get help & quotes"),
-          makeListRow("menu_learning", "6️⃣ Learning Centre", "Engr. Ero courses"),
           makeListRow("menu_sales", "🛠️ Build a Project", "Get instant quotation"),
         ],
       },
