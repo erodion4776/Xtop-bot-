@@ -1,15 +1,6 @@
 // supabase/functions/whatsapp-webhook/modules/attendance.ts
 // Phase 4 — Student Registration & Daily Attendance Gate
-//
-// RESPONSIBILITY BOUNDARY:
-// This module handles ONLY:
-//   1. Student identification by WhatsApp phone number
-//   2. New student registration (name, matric, department, level)
-//   3. Daily attendance recording
-//   4. Handoff to WAITING_COURSE_CODE (learning.ts takes over from there)
-//
-// This module does NOT handle:
-//   Course authentication, lessons, materials, progress, exams, results.
+// Strictly collects official academic name regardless of WhatsApp profile name.
 
 import {
   Contact, Conversation, updateConversation,
@@ -36,15 +27,9 @@ interface RegCtx {
 }
 
 // ═══════════════════════════════════════════════════════
-// MAIN HANDLER
+// MAIN REGISTRATION HANDLER
 // ═══════════════════════════════════════════════════════
 
-/**
- * Called by learning.ts when the student enters the Learning Centre.
- * Returns true if registration/attendance is complete and learning.ts
- * should continue to course-code authentication.
- * Returns false if the student is still in the registration flow.
- */
 export async function handleRegistration(
   phone: string, text: string, contact: Contact, conv: Conversation
 ): Promise<boolean> {
@@ -52,7 +37,7 @@ export async function handleRegistration(
   const state = conv.current_state;
   const ctx = (conv.context_json || {}) as RegCtx;
 
-  // ── Global interrupts during registration ──
+  // Global interrupts during registration
   if (isExit(text) || n === "exit" || n === "cancel") {
     await updateConversation(conv.id, {
       current_module: "MAIN_MENU",
@@ -76,7 +61,6 @@ export async function handleRegistration(
     return false;
   }
 
-  // ── State dispatcher ──
   switch (state) {
     case "ENTRY":
       return await checkStudentAndRoute(phone, contact, conv);
@@ -117,17 +101,17 @@ async function checkStudentAndRoute(
     return false;
   }
 
-  // ── RETURNING STUDENT: profile is complete ──
+  // RETURNING STUDENT — profile is complete
   if (student && isStudentProfileComplete(student)) {
     return await handleReturningStudent(phone, student, conv);
   }
 
-  // ── EXISTING BUT INCOMPLETE: resume from missing field ──
+  // EXISTING BUT INCOMPLETE — resume registration from missing field
   if (student && !isStudentProfileComplete(student)) {
     return await resumeIncompleteRegistration(phone, student, conv);
   }
 
-  // ── NEW STUDENT: start registration from scratch ──
+  // NEW STUDENT — start registration
   await updateConversation(conv.id, {
     current_module: "LEARNING",
     current_state: "WAITING_STUDENT_NAME",
@@ -167,13 +151,10 @@ async function handleReturningStudent(
       }
     }
   } catch (err) {
-    // Attendance failure should not block the student from entering
-    // but we must NOT claim success
     attendanceRecorded = false;
     attendanceAlreadyExists = false;
   }
 
-  // Build attendance message
   let attendanceLine = "";
   if (attendanceAlreadyExists) {
     attendanceLine = "✅ Attendance already recorded for today.";
@@ -192,7 +173,6 @@ async function handleReturningStudent(
     `*Level:* ${student.level} Level`
   );
 
-  // Handoff to course-code authentication in learning.ts
   await transitionToCourseCode(phone, conv);
   return true;
 }
@@ -206,7 +186,6 @@ async function resumeIncompleteRegistration(
 ): Promise<boolean> {
   const ctx: RegCtx = { step: "" };
 
-  // Check each field in order and resume from the first missing one
   if (!student.name || student.name.trim().length < 2) {
     ctx.step = "WAITING_STUDENT_NAME";
     await updateConversation(conv.id, {
@@ -260,23 +239,18 @@ async function resumeIncompleteRegistration(
     return false;
   }
 
-  // All fields are actually complete — treat as returning student
   return await handleReturningStudent(phone, student, conv);
 }
 
 // ═══════════════════════════════════════════════════════
-// REGISTRATION STEP: NAME
+// REGISTRATION STEP PROCESSORS
 // ═══════════════════════════════════════════════════════
 
 async function processNameInput(
   phone: string, text: string, contact: Contact, conv: Conversation, ctx: RegCtx
 ): Promise<boolean> {
   if (isBack(text)) {
-    await updateConversation(conv.id, {
-      current_module: "MAIN_MENU",
-      current_state: "IDLE",
-      context_json: {},
-    });
+    await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
     await showMainMenu(phone, conv.id);
     return false;
   }
@@ -285,7 +259,7 @@ async function processNameInput(
   if (name.length < 2) {
     await sendTextMessage(
       phone,
-      "⚠️ Name must be at least 2 characters.\n\n*Please enter your official full name (Surname First):*"
+      "⚠️ Name must be at least 2 characters. Please enter your official full name (Surname First):"
     );
     return false;
   }
@@ -303,10 +277,6 @@ async function processNameInput(
   );
   return false;
 }
-
-// ═══════════════════════════════════════════════════════
-// REGISTRATION STEP: MATRIC NUMBER
-// ═══════════════════════════════════════════════════════
 
 async function processMatricInput(
   phone: string, text: string, contact: Contact, conv: Conversation, ctx: RegCtx
@@ -329,12 +299,11 @@ async function processMatricInput(
   if (matric.length === 0) {
     await sendTextMessage(
       phone,
-      "⚠️ Matriculation number cannot be empty.\n\n*Please enter your Matriculation Number:*"
+      "⚠️ Matriculation number cannot be empty. Please enter your Matriculation Number:"
     );
     return false;
   }
 
-  // Store uppercase, no regex validation
   ctx.regMatric = matric.toUpperCase();
   ctx.step = "WAITING_DEPARTMENT";
   await updateConversation(conv.id, {
@@ -346,10 +315,6 @@ async function processMatricInput(
   return false;
 }
 
-// ═══════════════════════════════════════════════════════
-// REGISTRATION STEP: DEPARTMENT
-// ═══════════════════════════════════════════════════════
-
 async function processDeptInput(
   phone: string, text: string, contact: Contact, conv: Conversation, ctx: RegCtx
 ): Promise<boolean> {
@@ -360,7 +325,7 @@ async function processDeptInput(
       current_state: "WAITING_MATRIC_NUMBER",
       context_json: ctx as unknown as Record<string, unknown>,
     });
-    await sendTextMessage(phone, `*Please enter your Matriculation Number:*`);
+    await sendTextMessage(phone, "*Please enter your Matriculation Number:*");
     return false;
   }
 
@@ -368,7 +333,7 @@ async function processDeptInput(
   if (dept.length < 2) {
     await sendTextMessage(
       phone,
-      "⚠️ Department must be at least 2 characters.\n\n*Please enter your Department:*"
+      "⚠️ Department must be at least 2 characters. Please enter your Department:"
     );
     return false;
   }
@@ -384,10 +349,6 @@ async function processDeptInput(
   return false;
 }
 
-// ═══════════════════════════════════════════════════════
-// REGISTRATION STEP: LEVEL
-// ═══════════════════════════════════════════════════════
-
 async function processLevelInput(
   phone: string, text: string, contact: Contact, conv: Conversation, ctx: RegCtx
 ): Promise<boolean> {
@@ -397,7 +358,7 @@ async function processLevelInput(
       current_state: "WAITING_DEPARTMENT",
       context_json: ctx as unknown as Record<string, unknown>,
     });
-    await sendTextMessage(phone, `*Please enter your Department:*`);
+    await sendTextMessage(phone, "*Please enter your Department:*");
     return false;
   }
 
@@ -405,28 +366,29 @@ async function processLevelInput(
   if (!level) {
     await sendTextMessage(
       phone,
-      "⚠️ Invalid selection.\n\n*Please select a valid level:*\n\n1️⃣ 300 Level\n2️⃣ 400 Level"
+      "⚠️ Please select a valid level:\n\n1️⃣ 300 Level\n2️⃣ 400 Level"
     );
     return false;
   }
 
-  // ── DUPLICATE PROTECTION ──
-  // Check if a student already exists for this phone before creating
+  // ── DUPLICATE PROTECTION & STRICTOR DB EXCEPTION GUARD ──
   let student: Student | null = null;
   try {
     student = await getStudentByPhone(phone);
-  } catch {
-    // Ignore lookup errors — proceed to create
+  } catch (err) {
+    // Corrected rule: lookup failure stops progress, preventing silent bypasses
+    await sendTextMessage(
+      phone,
+      "⚠️ We could not verify your student record right now. Please try again later."
+    );
+    return false;
   }
 
   if (student && isStudentProfileComplete(student)) {
-    // Student was already fully registered (race condition or concurrent session)
-    // Just handle as returning student
     return await handleReturningStudent(phone, student, conv);
   }
 
   if (student && !isStudentProfileComplete(student)) {
-    // Existing incomplete profile — update it instead of creating a duplicate
     try {
       const updated = await updateStudentProfile(student.id, {
         name: ctx.regName || undefined,
@@ -438,13 +400,9 @@ async function processLevelInput(
       if (!updated) {
         await sendTextMessage(
           phone,
-          "⚠️ Registration could not be completed. Please try again by typing *menu* and re-entering the Learning Centre."
+          "⚠️ Registration could not be completed. Please try again by typing *menu*."
         );
-        await updateConversation(conv.id, {
-          current_module: "MAIN_MENU",
-          current_state: "IDLE",
-          context_json: {},
-        });
+        await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
         return false;
       }
 
@@ -454,15 +412,10 @@ async function processLevelInput(
         phone,
         "⚠️ Registration could not be completed. Please try again later."
       );
-      await updateConversation(conv.id, {
-        current_module: "MAIN_MENU",
-        current_state: "IDLE",
-        context_json: {},
-      });
+      await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
       return false;
     }
   } else {
-    // No existing student — create new profile
     try {
       student = await createStudentProfile(
         phone,
@@ -475,13 +428,9 @@ async function processLevelInput(
       if (!student) {
         await sendTextMessage(
           phone,
-          "⚠️ Registration could not be completed. Please try again by typing *menu* and re-entering the Learning Centre."
+          "⚠️ Registration could not be completed. Please try again by typing *menu*."
         );
-        await updateConversation(conv.id, {
-          current_module: "MAIN_MENU",
-          current_state: "IDLE",
-          context_json: {},
-        });
+        await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
         return false;
       }
     } catch {
@@ -489,11 +438,7 @@ async function processLevelInput(
         phone,
         "⚠️ Registration could not be completed. Please try again later."
       );
-      await updateConversation(conv.id, {
-        current_module: "MAIN_MENU",
-        current_state: "IDLE",
-        context_json: {},
-      });
+      await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
       return false;
     }
   }
@@ -503,7 +448,7 @@ async function processLevelInput(
   try {
     const existing = await getTodayAttendance(student.id);
     if (existing) {
-      attendanceSuccess = true; // Already recorded
+      attendanceSuccess = true;
     } else {
       const result = await recordAttendance(student.id);
       attendanceSuccess = !!result;
@@ -512,7 +457,6 @@ async function processLevelInput(
     attendanceSuccess = false;
   }
 
-  // ── SEND CONFIRMATION ──
   const attendanceLine = attendanceSuccess
     ? "📅 Today's attendance has also been recorded."
     : "⚠️ Could not record today's attendance. Please inform your lecturer.";
@@ -528,7 +472,6 @@ async function processLevelInput(
     `Welcome to the *Engr. Ero Learning Centre*!`
   );
 
-  // ── HANDOFF TO COURSE-CODE AUTHENTICATION ──
   await transitionToCourseCode(phone, conv);
   return true;
 }
@@ -537,10 +480,6 @@ async function processLevelInput(
 // HANDOFF HELPER
 // ═══════════════════════════════════════════════════════
 
-/**
- * Transitions the conversation to WAITING_COURSE_CODE.
- * From this point, learning.ts takes over for course authentication.
- */
 async function transitionToCourseCode(
   phone: string, conv: Conversation
 ): Promise<void> {
