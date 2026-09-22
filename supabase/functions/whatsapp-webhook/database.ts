@@ -1,11 +1,14 @@
 // supabase/functions/whatsapp-webhook/database.ts
-// Phases 1–4 Complete Database Layer
+// Phases 1–5 Complete Database Layer
+// All tables: contacts, conversations, messages, products, services,
+// demos, magazine, pricing, leads, quotations, agent_requests,
+// courses, students, student_courses, course_lessons, course_questions, exam_attempts, attendance
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { safeErrorLog } from "./utils.ts";
 
 // ═══════════════════════════════════════════════════════
-// TYPES — PHASE 1 & 2
+// TYPES — PHASES 1 & 2
 // ═══════════════════════════════════════════════════════
 
 export interface Contact {
@@ -27,28 +30,49 @@ export interface Conversation {
 }
 
 export interface Product {
-  id: string; name: string; slug: string; description: string;
-  category: string; features: string[]; target_audience: string;
-  price: number | null; price_text: string | null;
-  website_url: string | null; demo_url: string | null; status: string;
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  category: string;
+  features: string[];
+  target_audience: string;
+  price: number | null;
+  price_text: string | null;
+  website_url: string | null;
+  demo_url: string | null;
+  status: string;
 }
 
 export interface ServiceItem {
-  id: string; name: string; slug: string; description: string;
-  features: string[]; base_price: number | null;
-  price_range: string | null; display_order: number; status: string;
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  features: string[];
+  base_price: number | null;
+  price_range: string | null;
+  display_order: number;
+  status: string;
 }
 
 export interface DemoItem {
-  id: string; name: string; slug: string; description: string;
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
   demo_type: string;
   steps_json: Array<{ step: number; title: string; bot_message: string; options: string[] }>;
-  display_order: number; status: string;
+  display_order: number;
+  status: string;
 }
 
 export interface MagazineConfig {
-  id: string; title: string; description: string;
-  file_url: string | null; status: string;
+  id: string;
+  title: string;
+  description: string;
+  file_url: string | null;
+  status: string;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -56,56 +80,107 @@ export interface MagazineConfig {
 // ═══════════════════════════════════════════════════════
 
 export interface PricingPackage {
-  id: string; service_type: string; package_code: string;
-  package_name: string; description: string;
-  min_price: number; max_price: number; currency: string;
-  features: string[]; priority: number; status: string;
+  id: string;
+  service_type: string;
+  package_code: string;
+  package_name: string;
+  description: string;
+  min_price: number;
+  max_price: number;
+  currency: string;
+  features: string[];
+  priority: number;
+  status: string;
 }
 
 export interface Lead {
-  id: string; contact_id: string; service_type: string;
-  business_name: string | null; industry: string | null;
-  requirements_json: Record<string, unknown>; features: string[];
-  website_required: boolean; bot_required: boolean;
+  id: string;
+  contact_id: string;
+  service_type: string;
+  business_name: string | null;
+  industry: string | null;
+  requirements_json: Record<string, unknown>;
+  features: string[];
+  website_required: boolean;
+  bot_required: boolean;
   whatsapp_number_available: string | null;
-  domain_available: string | null; hosting_available: string | null;
+  domain_available: string | null;
+  hosting_available: string | null;
   budget_range: string | null;
-  estimated_min_price: number | null; estimated_max_price: number | null;
-  selected_package_id: string | null; status: string; created_at: string;
+  estimated_min_price: number | null;
+  estimated_max_price: number | null;
+  selected_package_id: string | null;
+  status: string;
+  created_at: string;
 }
 
 export interface Quotation {
-  id: string; lead_id: string; quotation_number: string;
-  package_id: string | null; title: string; summary: string | null;
+  id: string;
+  lead_id: string;
+  quotation_number: string;
+  package_id: string | null;
+  title: string;
+  summary: string | null;
   deliverables_json: string[];
-  estimated_min_price: number; estimated_max_price: number;
-  currency: string; valid_until: string | null;
-  status: string; created_at: string;
+  estimated_min_price: number;
+  estimated_max_price: number;
+  currency: string;
+  valid_until: string | null;
+  status: string;
+  created_at: string;
 }
 
 export interface AgentRequest {
-  id: string; contact_id: string;
-  lead_id: string | null; quotation_id: string | null;
-  request_type: string; message: string;
+  id: string;
+  contact_id: string;
+  lead_id: string | null;
+  quotation_id: string | null;
+  request_type: string;
+  message: string;
   quotation_summary: string | null;
-  status: string; priority: string; created_at: string;
+  status: string;
+  priority: string;
+  created_at: string;
 }
 
 // ═══════════════════════════════════════════════════════
-// TYPES — PHASE 4
+// TYPES — PHASE 4 & 5
 // ═══════════════════════════════════════════════════════
 
 export interface Course {
-  id: string; course_code: string; course_name: string;
-  term: string | null; description: string | null;
+  id: string;
+  course_code: string;
+  course_name: string;
+  term: string | null;
+  description: string | null;
   status: "OPEN" | "BLOCKED";
-  test_price: number; show_answers: boolean;
+  test_price: number;
+  show_answers: boolean;
 }
 
 export interface CourseLesson {
-  id: string; course_id: string; title: string; content: string;
-  video_url: string | null; pdf_url: string | null;
-  lesson_order: number; duration: string | null; status: string;
+  id: string;
+  course_id: string;
+  title: string;
+  content: string;
+  video_url: string | null;
+  pdf_url: string | null;
+  lesson_order: number;
+  duration: string | null;
+  status: string;
+}
+
+export interface CourseQuestion {
+  id: string;
+  course_id: string;
+  question: string;
+  option_a: string;
+  option_b: string;
+  option_c: string;
+  option_d: string;
+  correct_answer: "A" | "B" | "C" | "D";
+  explanation: string | null;
+  question_order: number;
 }
 
 export interface Student {
@@ -121,22 +196,30 @@ export interface Student {
 }
 
 export interface StudentCourseAccess {
-  id: string; student_id: string; course_id: string;
+  id: string;
+  student_id: string;
+  course_id: string;
   status: "ACTIVE" | "SUSPENDED" | "COMPLETED";
   progress: { completed_lessons?: string[]; last_lesson_order?: number };
 }
 
 export interface ExamAttempt {
-  id: string; student_id: string; course_id: string;
-  score: number; total_questions: number; passed: boolean;
+  id: string;
+  student_id: string;
+  course_id: string;
+  score: number;
+  total_questions: number;
+  passed: boolean;
   answers_json: Array<{
-    question_id: string; selected_option: string;
-    correct_option: string; is_correct: boolean;
+    question_id: string;
+    selected_option: string;
+    correct_option: string;
+    is_correct: boolean;
   }>;
-  submitted_at: string;
+  started_at: string;
+  submitted_at: string | null;
 }
 
-// PHASE 4 UPDATE: Attendance types
 export interface AttendanceRecord {
   id: string;
   student_id: string;
@@ -147,7 +230,7 @@ export interface AttendanceRecord {
 }
 
 // ═══════════════════════════════════════════════════════
-// HELPERS
+// UUID VALIDATOR HELPER
 // ═══════════════════════════════════════════════════════
 
 function toValidUuidOrNull(val?: string | null): string | null {
@@ -291,14 +374,24 @@ export async function getActiveMagazineConfig(): Promise<MagazineConfig | null> 
 }
 
 // ═══════════════════════════════════════════════════════
-// PRICING (Phase 3)
+// PRICING (Phase 3 — with number normalization)
 // ═══════════════════════════════════════════════════════
 
 export async function getPricingPackages(serviceType: string): Promise<PricingPackage[]> {
   const sb = getSupabaseClient();
-  const { data, error } = await sb.from("pricing_packages").select("*")
-    .eq("service_type", serviceType).eq("status", "ACTIVE").order("priority");
-  if (error) { safeErrorLog("getPricingPackages", error); throw error; }
+  const { data, error } = await sb
+    .from("pricing_packages")
+    .select("*")
+    .eq("service_type", serviceType)
+    .eq("status", "ACTIVE")
+    .order("priority");
+
+  if (error) {
+    safeErrorLog("getPricingPackages", error);
+    throw error;
+  }
+
+  // Normalize PostgreSQL numeric strings to JavaScript numbers
   return (data || []).map((row) => ({
     ...row,
     min_price: Number(row.min_price),
@@ -413,7 +506,7 @@ export async function createAgentRequest(
 }
 
 // ═══════════════════════════════════════════════════════
-// LEARNING CENTRE — COURSES / STUDENTS / ENROLLMENT
+// LEARNING CENTRE — COURSES / STUDENTS / ENROLLMENT (Phase 4)
 // ═══════════════════════════════════════════════════════
 
 export async function getCourseByCode(courseCode: string): Promise<Course | null> {
@@ -460,6 +553,10 @@ export async function getStudentCourseAccess(
   return created as StudentCourseAccess;
 }
 
+// ═══════════════════════════════════════════════════════
+// LEARNING CENTRE — LESSONS (Phase 4)
+// ═══════════════════════════════════════════════════════
+
 export async function getCourseLessons(courseId: string): Promise<CourseLesson[]> {
   const sb = getSupabaseClient();
   const { data, error } = await sb.from("course_lessons").select("*")
@@ -467,6 +564,10 @@ export async function getCourseLessons(courseId: string): Promise<CourseLesson[]
   if (error) { safeErrorLog("getCourseLessons", error); return []; }
   return (data || []) as CourseLesson[];
 }
+
+// ═══════════════════════════════════════════════════════
+// LEARNING CENTRE — PROGRESS (Phase 4, Fix #2)
+// ═══════════════════════════════════════════════════════
 
 export async function markLessonComplete(
   studentCourseId: string, lessonId: string, lessonOrder: number
@@ -497,13 +598,9 @@ export async function getStudentExamAttempts(studentId: string, courseId: string
 }
 
 // ═══════════════════════════════════════════════════════
-// PHASE 4 UPDATE: STUDENT REGISTRATION & ATTENDANCE
+// REGISTRATION & ATTENDANCE (Phase 4 Update)
 // ═══════════════════════════════════════════════════════
 
-/**
- * 1. Get student by WhatsApp phone number.
- * Returns null if no student exists for this phone.
- */
 export async function getStudentByPhone(phone: string): Promise<Student | null> {
   const sb = getSupabaseClient();
   const { data, error } = await sb
@@ -512,9 +609,6 @@ export async function getStudentByPhone(phone: string): Promise<Student | null> 
   return data as Student | null;
 }
 
-/**
- * 2. Create a fully registered student profile.
- */
 export async function createStudentProfile(
   phone: string, name: string, matricNumber: string,
   department: string, level: string
@@ -531,9 +625,6 @@ export async function createStudentProfile(
   return data as Student;
 }
 
-/**
- * 3. Update missing student profile fields.
- */
 export async function updateStudentProfile(
   studentId: string, fields: {
     name?: string; matric_number?: string;
@@ -555,16 +646,12 @@ export async function updateStudentProfile(
   return data as Student;
 }
 
-/**
- * 4. Record today's attendance. Idempotent — does not duplicate.
- */
 export async function recordAttendance(
   studentId: string, courseId?: string | null
 ): Promise<AttendanceRecord | null> {
   const sb = getSupabaseClient();
   const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
 
-  // Check if attendance already exists for today
   const existing = await getTodayAttendance(studentId, courseId);
   if (existing) return existing;
 
@@ -576,16 +663,12 @@ export async function recordAttendance(
   }).select("*").single();
 
   if (error) {
-    // Handle unique constraint violation gracefully
     safeErrorLog("recordAttendance", error);
     return await getTodayAttendance(studentId, courseId);
   }
   return data as AttendanceRecord;
 }
 
-/**
- * 5. Get today's attendance record for a student.
- */
 export async function getTodayAttendance(
   studentId: string, courseId?: string | null
 ): Promise<AttendanceRecord | null> {
@@ -602,14 +685,11 @@ export async function getTodayAttendance(
     query = query.is("course_id", null);
   }
 
-  const { data, error } = await query.maybeSingle();
+  const { data, error } = query.maybeSingle();
   if (error) { safeErrorLog("getTodayAttendance", error); return null; }
   return data as AttendanceRecord | null;
 }
 
-/**
- * 6. Get attendance history ordered by newest first.
- */
 export async function getStudentAttendance(
   studentId: string, limit: number = 30
 ): Promise<AttendanceRecord[]> {
@@ -622,9 +702,6 @@ export async function getStudentAttendance(
   return (data || []) as AttendanceRecord[];
 }
 
-/**
- * 7. Get total attendance count for a student.
- */
 export async function getAttendanceCount(studentId: string): Promise<number> {
   const sb = getSupabaseClient();
   const { count, error } = await sb.from("attendance")
@@ -635,9 +712,6 @@ export async function getAttendanceCount(studentId: string): Promise<number> {
   return count || 0;
 }
 
-/**
- * Helper: Check if a student profile is complete.
- */
 export function isStudentProfileComplete(student: Student): boolean {
   return !!(
     student.name && student.name.trim().length >= 2 &&
@@ -645,4 +719,102 @@ export function isStudentProfileComplete(student: Student): boolean {
     student.department && student.department.trim().length >= 2 &&
     student.level && (student.level === "300" || student.level === "400")
   );
+}
+
+// ═══════════════════════════════════════════════════════
+// PHASE 5: CBT EXAMINATION ENGINE
+// ═══════════════════════════════════════════════════════
+
+export async function getCourseQuestions(courseId: string): Promise<CourseQuestion[]> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("course_questions")
+    .select("*")
+    .eq("course_id", courseId)
+    .order("question_order", { ascending: true });
+
+  if (error) {
+    safeErrorLog("getCourseQuestions", error);
+    return [];
+  }
+  return (data || []) as CourseQuestion[];
+}
+
+export async function createExamAttempt(
+  studentId: string,
+  courseId: string,
+  totalQuestions: number
+): Promise<ExamAttempt | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("exam_attempts")
+    .insert({
+      student_id: studentId,
+      course_id: courseId,
+      score: 0,
+      total_questions: totalQuestions,
+      passed: false,
+      answers_json: [],
+      started_at: new Date().toISOString(),
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("createExamAttempt", error);
+    return null;
+  }
+  return data as ExamAttempt;
+}
+
+export async function submitExamAttempt(
+  attemptId: string,
+  score: number,
+  passed: boolean,
+  answersJson: unknown
+): Promise<void> {
+  const sb = getSupabaseClient();
+  const { error } = await sb
+    .from("exam_attempts")
+    .update({
+      score,
+      passed,
+      answers_json: answersJson,
+      submitted_at: new Date().toISOString(),
+    })
+    .eq("id", attemptId);
+
+  if (error) {
+    safeErrorLog("submitExamAttempt", error);
+  }
+}
+
+export async function getExamAttempt(attemptId: string): Promise<ExamAttempt | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("exam_attempts")
+    .select("*")
+    .eq("id", attemptId)
+    .maybeSingle();
+
+  if (error) {
+    safeErrorLog("getExamAttempt", error);
+    return null;
+  }
+  return data as ExamAttempt | null;
+}
+
+export async function getCourseConfig(courseId: string): Promise<Course | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("courses")
+    .select("*")
+    .eq("id", courseId)
+    .maybeSingle();
+
+  if (error) {
+    safeErrorLog("getCourseConfig", error);
+    return null;
+  }
+  return data as Course | null;
 }
