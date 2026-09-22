@@ -1,4 +1,5 @@
 // supabase/functions/whatsapp-webhook/modules/learning.ts
+// Phase 4 — Engr. Ero Learning Centre (Private Keyword Access)
 
 import {
   Contact, Conversation, updateConversation,
@@ -20,6 +21,7 @@ import { handleRegistration } from "./attendance.ts";
 
 export interface LearningCtx {
   step: string;
+  learningUnlocked?: boolean;
   courseCode?: string;
   courseId?: string;
   courseName?: string;
@@ -34,11 +36,14 @@ function getCtx(conv: Conversation): LearningCtx {
   return (conv.context_json || {}) as LearningCtx;
 }
 
+/**
+ * Preserves learningUnlocked flag across all context updates.
+ */
 async function saveCtx(convId: string, ctx: LearningCtx, state?: string): Promise<void> {
   await updateConversation(convId, {
     current_module: "LEARNING",
     ...(state ? { current_state: state } : {}),
-    context_json: ctx as unknown as Record<string, unknown>,
+    context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
   });
 }
 
@@ -53,27 +58,34 @@ export async function handleLearning(
   const ctx = getCtx(conv);
   const state = conv.current_state;
 
+  // Ensure learningUnlocked is set
+  ctx.learningUnlocked = true;
+
   // Global interrupts
   if (isGreeting(text) && !["ENTRY", "WAITING_STUDENT_NAME", "WAITING_MATRIC_NUMBER", "WAITING_DEPARTMENT", "WAITING_LEVEL"].includes(state)) {
     await showMainMenu(phone, conv.id);
     return;
   }
-  if (isExit(text) || n === "exit course" || n === "exit") {
+  if (isExit(text) || n === "exit learning centre" || n === "exit learning") {
     await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
-    await sendTextMessage(phone, "👋 You have exited the *Engr. Ero Learning Centre*.\n\nType *menu* to return.");
+    await sendTextMessage(phone, "👋 You have exited the *Engr. Ero Learning Centre*.\n\nType *menu* to return to Xtop Retail services.\n\nType *Engr Ero* anytime to re-enter the Learning Centre.");
     return;
   }
 
-  // Registration states -> delegate to attendance module
+  // Registration states → delegate to attendance module
   if (["ENTRY", "WAITING_STUDENT_NAME", "WAITING_MATRIC_NUMBER", "WAITING_DEPARTMENT", "WAITING_LEVEL"].includes(state)) {
     await handleRegistration(phone, text, contact, conv);
     return;
   }
 
-  // Back handling for learning sub-states
+  // Back handling
   if (isBack(text)) {
     if (["VIEWING_LESSON", "LESSON_COMPLETE", "VIEWING_MATERIALS", "VIEWING_PROGRESS", "VIEWING_RESULTS"].includes(ctx.step)) {
       await showCourseMenu(phone, conv.id, ctx);
+      return;
+    }
+    if (state === "WAITING_COURSE_CODE") {
+      await showLearningCentreGateway(phone, conv.id, ctx);
       return;
     }
     await showMainMenu(phone, conv.id);
@@ -100,6 +112,23 @@ export async function handleLearning(
 }
 
 // ═══════════════════════════════════════════════════════
+// LEARNING CENTRE GATEWAY (shown after Exit Course)
+// ═══════════════════════════════════════════════════════
+
+async function showLearningCentreGateway(
+  phone: string, conversationId: string, ctx: LearningCtx
+): Promise<void> {
+  await saveCtx(conversationId, { ...ctx, step: "WAITING_COURSE_CODE" }, "WAITING_COURSE_CODE");
+
+  await sendTextMessage(phone,
+    `🎓 *Engr. Ero Learning Centre*\n\n` +
+    `Please enter your *Course Code* to continue.\n\n` +
+    `_Examples:_ *ELA301*, *ELA302*, or *ELA401*\n\n` +
+    `_Type *Exit Learning Centre* to return to Xtop Retail._`
+  );
+}
+
+// ═══════════════════════════════════════════════════════
 // 1. COURSE CODE AUTHENTICATION
 // ═══════════════════════════════════════════════════════
 
@@ -107,7 +136,7 @@ export async function promptCourseCode(phone: string, conversationId: string): P
   await updateConversation(conversationId, {
     current_module: "LEARNING",
     current_state: "WAITING_COURSE_CODE",
-    context_json: { step: "WAITING_COURSE_CODE" },
+    context_json: { step: "WAITING_COURSE_CODE", learningUnlocked: true },
   });
   await sendTextMessage(phone,
     `🎓 *Engr. Ero Learning Centre*\n\n` +
@@ -155,6 +184,7 @@ async function processCourseCodeAuth(
   const lessons = await getCourseLessons(course.id);
   const ctx: LearningCtx = {
     step: "COURSE_MENU",
+    learningUnlocked: true,
     courseCode: course.course_code, courseId: course.id,
     courseName: course.course_name, term: course.term || "General",
     studentId: student.id, studentCourseId: enrollment.id,
@@ -173,6 +203,7 @@ async function processCourseCodeAuth(
 export async function showCourseMenu(
   phone: string, conversationId: string, ctx: LearningCtx
 ): Promise<void> {
+  ctx.learningUnlocked = true;
   await saveCtx(conversationId, { ...ctx, step: "COURSE_MENU" }, "COURSE_MENU");
   await sendListMessage(phone,
     `🎓 *${ctx.courseCode} — ${ctx.courseName?.toUpperCase()}*\n_${ctx.term}_\n\nSelect an option:`,
@@ -187,7 +218,8 @@ export async function showCourseMenu(
         makeListRow("cm_test", "4️⃣ Take Test / Exam", "Course test"),
         makeListRow("cm_result", "5️⃣ My Results", "View scores"),
         makeListRow("cm_switch", "6️⃣ Switch Course", "Another code"),
-        makeListRow("cm_exit", "7️⃣ Exit Course", "Main menu"),
+        makeListRow("cm_exit_course", "7️⃣ Exit Course", "Back to Learning Centre"),
+        makeListRow("cm_exit_lc", "8️⃣ Exit Learning Centre", "Return to Sabi"),
       ]},
     ],
     ctx.courseCode || "Learning Centre", "Engr. Ero Learning Centre"
@@ -205,13 +237,24 @@ async function processCourseMenuSelection(
   if (n === "cm_progress" || num === 3) { await showStudentProgress(phone, conv.id, ctx); return; }
   if (n === "cm_test" || num === 4) { await startExamEntry(phone, conv.id, ctx); return; }
   if (n === "cm_result" || num === 5) { await showStudentResults(phone, conv.id, ctx); return; }
-  if (n === "cm_switch" || num === 6) { await promptCourseCode(phone, conv.id); return; }
-  if (n === "cm_exit" || num === 7) {
-    await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
-    await showMainMenu(phone, conv.id);
+  if (n === "cm_switch" || num === 6) { await showLearningCentreGateway(phone, conv.id, ctx); return; }
+
+  // EXIT COURSE — stay in Learning Centre, go to course code prompt
+  if (n === "cm_exit_course" || num === 7 || n === "exit course") {
+    await showLearningCentreGateway(phone, conv.id, ctx);
     return;
   }
-  await sendTextMessage(phone, "⚠️ Please select a valid option (1–7):");
+
+  // EXIT LEARNING CENTRE — return to Sabi
+  if (n === "cm_exit_lc" || num === 8 || n === "exit learning centre" || n === "exit learning") {
+    await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
+    await sendTextMessage(phone,
+      "👋 You have exited the *Engr. Ero Learning Centre*.\n\nType *menu* to return to Xtop Retail services.\n\nType *Engr Ero* anytime to re-enter the Learning Centre."
+    );
+    return;
+  }
+
+  await sendTextMessage(phone, "⚠️ Please select a valid option (1–8):");
   await showCourseMenu(phone, conv.id, ctx);
 }
 
@@ -236,6 +279,7 @@ async function deliverLesson(
   ctx.step = "VIEWING_LESSON";
   ctx.currentLessonOrder = currentOrder;
   ctx.totalLessons = lessons.length;
+  ctx.learningUnlocked = true;
   await saveCtx(conversationId, ctx, "VIEWING_LESSON");
 
   let message =
@@ -274,6 +318,7 @@ async function processLessonNavigation(
     }
     ctx.currentLessonOrder = currentOrder + 1;
     ctx.step = "LESSON_COMPLETE";
+    ctx.learningUnlocked = true;
     await saveCtx(conv.id, ctx, "LESSON_COMPLETE");
     await sendButtonMessage(phone,
       `✅ *Lesson ${currentOrder} Complete!*\n\nReady for the next lesson?`,
@@ -305,6 +350,7 @@ async function processLessonCompleteAction(
 async function showCourseMaterials(phone: string, conversationId: string, ctx: LearningCtx): Promise<void> {
   if (!ctx.courseId) { await promptCourseCode(phone, conversationId); return; }
   ctx.step = "VIEWING_MATERIALS";
+  ctx.learningUnlocked = true;
   await saveCtx(conversationId, ctx, "COURSE_MENU");
   const lessons = await getCourseLessons(ctx.courseId);
   const withMats = lessons.filter((l) => l.pdf_url || l.video_url);
@@ -335,6 +381,7 @@ async function showCourseMaterials(phone: string, conversationId: string, ctx: L
 async function showStudentProgress(phone: string, conversationId: string, ctx: LearningCtx): Promise<void> {
   if (!ctx.studentId || !ctx.courseId) { await promptCourseCode(phone, conversationId); return; }
   ctx.step = "VIEWING_PROGRESS";
+  ctx.learningUnlocked = true;
   await saveCtx(conversationId, ctx, "COURSE_MENU");
   const access = await getStudentCourseAccess(ctx.studentId, ctx.courseId);
   const lessons = await getCourseLessons(ctx.courseId);
@@ -352,6 +399,7 @@ async function showStudentProgress(phone: string, conversationId: string, ctx: L
 async function showStudentResults(phone: string, conversationId: string, ctx: LearningCtx): Promise<void> {
   if (!ctx.studentId || !ctx.courseId) { await promptCourseCode(phone, conversationId); return; }
   ctx.step = "VIEWING_RESULTS";
+  ctx.learningUnlocked = true;
   await saveCtx(conversationId, ctx, "COURSE_MENU");
   const attempts = await getStudentExamAttempts(ctx.studentId, ctx.courseId);
   if (attempts.length === 0) {
