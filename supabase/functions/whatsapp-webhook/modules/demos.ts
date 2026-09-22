@@ -58,7 +58,7 @@ export async function showDemosList(phone: string, conversationId: string): Prom
   const demos = await getActiveDemos();
 
   if (demos.length === 0) {
-    await sendTextMessage(phone, "🎮 Demos are currently undergoing routine maintenance. Please check back shortly.");
+    await sendTextMessage(phone, "🎮 Demos are currently being updated. Please check back shortly.");
     await showMainMenu(phone, conversationId);
     return;
   }
@@ -69,15 +69,40 @@ export async function showDemosList(phone: string, conversationId: string): Prom
     context_json: {},
   });
 
-  const rows = demos.map((d, idx) =>
-    makeListRow(`demo_sel_${d.slug}`, `${idx + 1}️⃣ ${d.name}`, d.description.substring(0, 70))
+  // Split 10 demos into 2 neat sections (5 rows each = exactly 10 rows, adhering to WhatsApp limit)
+  const section1Demos = demos.slice(0, 5);
+  const section2Demos = demos.slice(5, 10);
+
+  // Short labels guaranteed to be <= 24 characters
+  const shortTitles: Record<string, string> = {
+    demo_xtopedu: "1️⃣ XtopEdu Bot",
+    demo_naijashop: "2️⃣ NaijaShop Retail",
+    demo_tutorial: "3️⃣ WAEC/JAMB Quiz",
+    demo_customer_service: "4️⃣ Customer Support",
+    demo_sales_bot: "5️⃣ Sales & Deals Bot",
+    demo_booking: "6️⃣ Appointment Bot",
+    demo_real_estate: "7️⃣ Real Estate Bot",
+    demo_quotation: "8️⃣ Instant Quote Bot",
+    demo_ngo: "9️⃣ NGO / Club Portal",
+    demo_custom_bot: "🔟 Custom Biz Bot",
+  };
+
+  const section1Rows = section1Demos.map((d) =>
+    makeListRow(`demo_sel_${d.slug}`, shortTitles[d.slug] || d.name.substring(0, 24), d.description.substring(0, 70))
   );
-  rows.push(makeListRow("demo_back_menu", "🔙 Main Menu", "Return to home"));
 
-  const body = `🎮 *Xtop Retail Demo Centre*\n\nExperience our live interactive WhatsApp bots. Select any bot below to test its automated flow in real-time:`;
+  const section2Rows = section2Demos.map((d) =>
+    makeListRow(`demo_sel_${d.slug}`, shortTitles[d.slug] || d.name.substring(0, 24), d.description.substring(0, 70))
+  );
 
-  await sendListMessage(phone, body, "Choose Demo", [
-    { title: "Live Bot Simulators", rows },
+  const body =
+    `🎮 *Xtop Retail Demo Centre*\n\n` +
+    `Experience our live interactive WhatsApp bots. Choose any bot below to test its automated flow in real-time:\n\n` +
+    `_Type *menu* anytime to return._`;
+
+  await sendListMessage(phone, body, "Select Demo", [
+    { title: "Commercial & Education", rows: section1Rows },
+    { title: "Services & Custom", rows: section2Rows },
   ]);
 }
 
@@ -128,7 +153,6 @@ export async function runDemoStep(
   const stepData = demo.steps_json.find((s) => s.step === stepNumber);
 
   if (!stepData) {
-    // Demo finished — show completion screen
     await showDemoCompletion(phone, conversationId, demoSlug);
     return;
   }
@@ -147,7 +171,7 @@ export async function runDemoStep(
     phone,
     stepData.bot_message,
     buttons,
-    `Demo: ${demo.name}`,
+    `Demo: ${demo.name.substring(0, 20)}`,
     `Step ${stepNumber} of ${demo.steps_json.length}`
   );
 }
@@ -168,7 +192,6 @@ async function processDemoStepProgression(
     return;
   }
 
-  // Progress to next step
   const nextStep = currentStep + 1;
   const demo = await getDemoBySlug(demoSlug);
 
