@@ -12,16 +12,18 @@ import {
   makeButton, makeListRow,
 } from "../whatsapp.ts";
 import { normalise, isBack, extractSelection } from "../utils.ts";
+import { showCourseMenu } from "./learning.ts";
 
 // ═══════════════════════════════════════════════════════
 // EXAM CONTEXT SHAPE
 // ═══════════════════════════════════════════════════════
 
-interface ExamCtx {
+export interface ExamCtx {
   step: "EXAM_ENTRY" | "EXAM_QUESTION" | "EXAM_CONFIRM" | "EXAM_RESULT" | "EXAM_REVIEW";
   courseId: string;
   courseCode: string;
   courseName: string;
+  term?: string;
   studentId: string;
   studentCourseId: string;
   examAttemptId?: string;
@@ -35,8 +37,10 @@ function getCtx(conv: Conversation): ExamCtx {
   return (conv.context_json || {}) as ExamCtx;
 }
 
+// Enforces current_module = "EXAMS" on every state update
 async function saveCtx(convId: string, ctx: ExamCtx, state: string): Promise<void> {
   await updateConversation(convId, {
+    current_module: "EXAMS",
     current_state: state,
     context_json: ctx as unknown as Record<string, unknown>,
   });
@@ -53,7 +57,7 @@ export async function handleExams(
   const ctx = getCtx(conv);
 
   if (isBack(text) && ctx.step !== "EXAM_QUESTION") {
-    await exitToCourseMenu(phone, conv, ctx, contact);
+    await exitToCourseMenu(phone, conv, ctx);
     return;
   }
 
@@ -96,17 +100,18 @@ export async function startExamEntry(
     courseId: ctx.courseId,
     courseCode: ctx.courseCode,
     courseName: ctx.courseName,
+    term: ctx.term,
     studentId: ctx.studentId,
     studentCourseId: ctx.studentCourseId,
-    features: ctx.features,
   };
 
+  // Sets current_module = "EXAMS" and current_state = "EXAM_ENTRY"
   await saveCtx(conversationId, eCtx, "EXAM_ENTRY");
 
   const prompt =
     `📝 *EXAMINATION PORTAL: ${eCtx.courseCode}*\n\n` +
     `*Course:* ${eCtx.courseName}\n` +
-    `*Term:* ${ctx.term || "Semester"}\n\n` +
+    `*Term:* ${eCtx.term || "Semester"}\n\n` +
     `📌 *Instructions:*\n` +
     `• Complete all lessons before starting.\n` +
     `• Grading is calculated server-side.\n` +
@@ -127,12 +132,12 @@ export async function startExamEntry(
 }
 
 async function processExamEntry(
-  phone: string, text: string, contact: Contact, conv: Conversation, ctx: ExamCtx
+  phone: string, text: string, _contact: Contact, conv: Conversation, ctx: ExamCtx
 ): Promise<void> {
   const n = normalise(text);
 
   if (n === "exam_cancel" || isBack(text)) {
-    await exitToCourseMenu(phone, conv, ctx, contact);
+    await exitToCourseMenu(phone, conv, ctx);
     return;
   }
 
@@ -145,19 +150,19 @@ async function processExamEntry(
         `⚠️ *No Questions Available*\n\n` +
         `There are currently no active questions for *${ctx.courseCode}* in the exam bank.`
       );
-      await exitToCourseMenu(phone, conv, ctx, contact);
+      await exitToCourseMenu(phone, conv, ctx);
       return;
     }
 
-    // Initialize Exam Attempt (Server-Side)
+    // Initialize Exam Attempt record (Server-Side)
     const attempt = await createExamAttempt(ctx.studentId, ctx.courseId, questions.length);
     if (!attempt) {
       await sendTextMessage(phone, "⚠️ Failed to initialize your exam session. Please try again.");
-      await exitToCourseMenu(phone, conv, ctx, contact);
+      await exitToCourseMenu(phone, conv, ctx);
       return;
     }
 
-    // Shuffle Question IDs (Deterministic Randomization)
+    // Deterministic Randomization of Questions
     const shuffledIds = questions
       .map((q) => q.id)
       .sort(() => Math.random() - 0.5);
@@ -176,7 +181,7 @@ async function processExamEntry(
 }
 
 // ═══════════════════════════════════════════════════════
-// 2. QUESTION DELIVERY & INTERACTIVE ANSWER INPUT
+// 2. QUESTION DELIVERY & SELECTION
 // ═══════════════════════════════════════════════════════
 
 async function deliverQuestion(phone: string, convId: string, ctx: ExamCtx): Promise<void> {
@@ -186,7 +191,7 @@ async function deliverQuestion(phone: string, convId: string, ctx: ExamCtx): Pro
 
   if (!q) {
     await sendTextMessage(phone, "⚠️ Error loading question. Aborting.");
-    await exitToCourseMenu(phone, convId, ctx);
+    await exitToCourseMenu(phone, { id: convId } as Conversation, ctx);
     return;
   }
 
@@ -223,12 +228,11 @@ async function deliverQuestion(phone: string, convId: string, ctx: ExamCtx): Pro
 }
 
 async function processAnswerSelection(
-  phone: string, text: string, contact: Contact, conv: Conversation, ctx: ExamCtx
+  phone: string, text: string, _contact: Contact, conv: Conversation, ctx: ExamCtx
 ): Promise<void> {
   const idx = ctx.currentIndex || 0;
   const qId = ctx.shuffledIds![idx];
 
-  // Strictly validate A, B, C, D input
   const resolved = resolveAnswerOption(text);
 
   if (!resolved) {
@@ -237,7 +241,6 @@ async function processAnswerSelection(
     return;
   }
 
-  // Store answer in context
   ctx.answers![qId] = resolved;
   const nextIndex = idx + 1;
 
@@ -246,7 +249,6 @@ async function processAnswerSelection(
     await saveCtx(conv.id, ctx, "EXAM_QUESTION");
     await deliverQuestion(phone, conv.id, ctx);
   } else {
-    // All questions answered — move to submission screen
     ctx.step = "EXAM_CONFIRM";
     await saveCtx(conv.id, ctx, "EXAM_CONFIRM");
 
@@ -257,7 +259,7 @@ async function processAnswerSelection(
       `Are you ready to submit your exam for grading?`,
       [
         makeButton("exam_submit", "✅ Submit Exam"),
-        makeButton("exam_cancel", "🔄 Cancel & Restart"),
+        makeButton("exam_cancel", "🔄 Cancel & Exit"),
       ],
       "Submit Assessment",
       "No corrections allowed after submission"
@@ -286,12 +288,12 @@ function resolveAnswerOption(text: string): "A" | "B" | "C" | "D" | null {
 // ═══════════════════════════════════════════════════════
 
 async function processExamSubmission(
-  phone: string, text: string, contact: Contact, conv: Conversation, ctx: ExamCtx
+  phone: string, text: string, _contact: Contact, conv: Conversation, ctx: ExamCtx
 ): Promise<void> {
   const n = normalise(text);
 
   if (n === "exam_cancel" || n.includes("cancel")) {
-    await exitToCourseMenu(phone, conv, ctx, contact);
+    await exitToCourseMenu(phone, conv, ctx);
     return;
   }
 
@@ -300,7 +302,6 @@ async function processExamSubmission(
     let score = 0;
     const answersJson: Array<any> = [];
 
-    // Grade each question server-side
     ctx.shuffledIds!.forEach((qId) => {
       const q = questions.find((item) => item.id === qId);
       if (q) {
@@ -317,14 +318,12 @@ async function processExamSubmission(
       }
     });
 
-    const passed = (score / ctx.shuffledIds!.length) >= 0.50; // 50% pass mark
+    const passed = (score / ctx.shuffledIds!.length) >= 0.50;
 
-    // Persist to database
     if (ctx.examAttemptId) {
       await submitExamAttempt(ctx.examAttemptId, score, passed, answersJson);
     }
 
-    // Display Results immediately
     ctx.step = "EXAM_RESULT";
     await saveCtx(conv.id, ctx, "EXAM_RESULT");
 
@@ -354,7 +353,7 @@ async function processExamSubmission(
       "Engr. Ero Learning Centre"
     );
   } else {
-    await sendTextMessage(phone, "Please select *Submit Exam* or *Cancel & Restart*.");
+    await sendTextMessage(phone, "Please select *Submit Exam* or *Cancel & Exit*.");
   }
 }
 
@@ -363,12 +362,12 @@ async function processExamSubmission(
 // ═══════════════════════════════════════════════════════
 
 async function processResultNavigation(
-  phone: string, text: string, contact: Contact, conv: Conversation, ctx: ExamCtx
+  phone: string, text: string, _contact: Contact, conv: Conversation, ctx: ExamCtx
 ): Promise<void> {
   const n = normalise(text);
 
   if (n === "exam_menu" || n.includes("menu")) {
-    await exitToCourseMenu(phone, conv, ctx, contact);
+    await exitToCourseMenu(phone, conv, ctx);
     return;
   }
 
@@ -384,7 +383,7 @@ async function processResultNavigation(
 
     if (!config?.show_answers) {
       await sendTextMessage(phone, "🔒 Answer review is currently unavailable for this course.");
-      await exitToCourseMenu(phone, conv, ctx, contact);
+      await exitToCourseMenu(phone, conv, ctx);
       return;
     }
 
@@ -395,11 +394,11 @@ async function processResultNavigation(
     return;
   }
 
-  await exitToCourseMenu(phone, conv, ctx, contact);
+  await exitToCourseMenu(phone, conv, ctx);
 }
 
 // ═══════════════════════════════════════════════════════
-// 5. DETERMINISTIC QUESTION-BY-QUESTION REVIEW
+// 5. DETERMINISTIC QUESTION REVIEW
 // ═══════════════════════════════════════════════════════
 
 async function deliverReviewQuestion(phone: string, convId: string, ctx: ExamCtx): Promise<void> {
@@ -408,7 +407,7 @@ async function deliverReviewQuestion(phone: string, convId: string, ctx: ExamCtx
 
   if (!attempt || !attempt.answers_json || attempt.answers_json.length === 0) {
     await sendTextMessage(phone, "⚠️ Unable to load review logs.");
-    await exitToCourseMenu(phone, convId, ctx);
+    await exitToCourseMenu(phone, { id: convId } as Conversation, ctx);
     return;
   }
 
@@ -418,7 +417,7 @@ async function deliverReviewQuestion(phone: string, convId: string, ctx: ExamCtx
 
   if (!q) {
     await sendTextMessage(phone, "⚠️ Error displaying review step.");
-    await exitToCourseMenu(phone, convId, ctx);
+    await exitToCourseMenu(phone, { id: convId } as Conversation, ctx);
     return;
   }
 
@@ -458,7 +457,7 @@ async function deliverReviewQuestion(phone: string, convId: string, ctx: ExamCtx
 }
 
 async function processReviewNavigation(
-  phone: string, text: string, contact: Contact, conv: Conversation, ctx: ExamCtx
+  phone: string, text: string, _contact: Contact, conv: Conversation, ctx: ExamCtx
 ): Promise<void> {
   const n = normalise(text);
   const idx = ctx.reviewIndex || 0;
@@ -470,7 +469,7 @@ async function processReviewNavigation(
       await saveCtx(conv.id, ctx, "EXAM_REVIEW");
       await deliverReviewQuestion(phone, conv.id, ctx);
     } else {
-      await exitToCourseMenu(phone, conv, ctx, contact);
+      await exitToCourseMenu(phone, conv, ctx);
     }
     return;
   }
@@ -483,11 +482,11 @@ async function processReviewNavigation(
   }
 
   if (n === "rev_menu" || n.includes("menu")) {
-    await exitToCourseMenu(phone, conv, ctx, contact);
+    await exitToCourseMenu(phone, conv, ctx);
     return;
   }
 
-  await exitToCourseMenu(phone, conv, ctx, contact);
+  await exitToCourseMenu(phone, conv, ctx);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -495,21 +494,15 @@ async function processReviewNavigation(
 // ═══════════════════════════════════════════════════════
 
 async function exitToCourseMenu(
-  phone: string, conv: Conversation, ctx: ExamCtx, contact: Contact
+  phone: string, conv: Conversation, ctx: ExamCtx
 ): Promise<void> {
-  await updateConversation(conv.id, {
-    current_module: "LEARNING",
-    current_state: "COURSE_MENU",
-    context_json: {
-      step: "COURSE_MENU",
-      courseCode: ctx.courseCode,
-      courseId: ctx.courseId,
-      courseName: ctx.courseName,
-      studentId: ctx.studentId,
-      studentCourseId: ctx.studentCourseId,
-    },
+  await showCourseMenu(phone, conv.id, {
+    step: "COURSE_MENU",
+    courseCode: ctx.courseCode,
+    courseId: ctx.courseId,
+    courseName: ctx.courseName,
+    term: ctx.term,
+    studentId: ctx.studentId,
+    studentCourseId: ctx.studentCourseId,
   });
-
-  const { handleLearning } = await import("./learning.ts");
-  await handleLearning(phone, "menu", contact, conv);
 }
