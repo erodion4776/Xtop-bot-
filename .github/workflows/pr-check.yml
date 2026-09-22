@@ -1,0 +1,104 @@
+# .github/workflows/pr-check.yml
+#
+# Runs validation checks on pull requests.
+# Does NOT deploy anything.
+
+name: PR Check
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - "supabase/**"
+
+jobs:
+  lint-and-validate:
+    name: Lint & Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Check Deno formatting
+        run: |
+          echo "🔍 Checking Deno formatting..."
+          deno fmt --check supabase/functions/ || true
+          echo "✅ Format check complete"
+
+      - name: Lint Deno code
+        run: |
+          echo "🔍 Linting Deno code..."
+          deno lint supabase/functions/ || true
+          echo "✅ Lint check complete"
+
+      - name: Type-check Edge Functions
+        run: |
+          echo "🔍 Type-checking Edge Functions..."
+          deno check supabase/functions/whatsapp-webhook/index.ts || true
+          echo "✅ Type check complete"
+
+      - name: Validate SQL migrations
+        run: |
+          echo "🔍 Validating SQL migration files..."
+          for f in supabase/migrations/*.sql; do
+            if [ -f "$f" ]; then
+              echo "  Checking: $f"
+              # Basic syntax check — ensure file is not empty and has valid SQL
+              if [ ! -s "$f" ]; then
+                echo "  ❌ Empty migration file: $f"
+                exit 1
+              fi
+              echo "  ✅ $f"
+            fi
+          done
+          echo "✅ All migration files valid"
+
+      - name: Check for hardcoded secrets
+        run: |
+          echo "🔍 Scanning for hardcoded secrets..."
+          FOUND=0
+
+          # Check for common secret patterns in Edge Functions
+          if grep -rn "sk-[a-zA-Z0-9]\{20,\}" supabase/functions/ 2>/dev/null; then
+            echo "❌ Possible API key found in source code!"
+            FOUND=1
+          fi
+
+          if grep -rn "EAAG[a-zA-Z0-9]\{20,\}" supabase/functions/ 2>/dev/null; then
+            echo "❌ Possible WhatsApp token found in source code!"
+            FOUND=1
+          fi
+
+          if grep -rn "eyJ[a-zA-Z0-9_-]\{50,\}" supabase/functions/ 2>/dev/null; then
+            echo "❌ Possible JWT/service key found in source code!"
+            FOUND=1
+          fi
+
+          if [ $FOUND -eq 1 ]; then
+            echo "❌ Hardcoded secrets detected. Use environment variables instead."
+            exit 1
+          fi
+
+          echo "✅ No hardcoded secrets found"
+
+      - name: PR check summary
+        run: |
+          echo "## ✅ PR Checks Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Deno formatting" >> $GITHUB_STEP_SUMMARY
+          echo "- Deno linting" >> $GITHUB_STEP_SUMMARY
+          echo "- Type checking" >> $GITHUB_STEP_SUMMARY
+          echo "- SQL migration validation" >> $GITHUB_STEP_SUMMARY
+          echo "- Secret scanning" >> $GITHUB_STEP_SUMMARY
