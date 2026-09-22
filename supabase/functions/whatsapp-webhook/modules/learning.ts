@@ -1,17 +1,25 @@
 // supabase/functions/whatsapp-webhook/modules/learning.ts
-// Placeholder for Phase 4 — Engr. Ero Learning Centre
 
-import { Conversation, Contact } from "../database.ts";
+import { Conversation, Contact, updateConversation } from "../database.ts";
 import { sendTextMessage } from "../whatsapp.ts";
 
 export async function handleLearning(
   phone: string,
   _text: string,
   _contact: Contact,
-  _conversation: Conversation
+  conversation: Conversation
 ): Promise<void> {
+  await updateConversation(conversation.id, {
+    current_module: "LEARNING",
+    current_state: "WAITING_COURSE_CODE",
+    context_json: {},
+  });
+
   await sendTextMessage(
     phone,
-    "🎓 *Engr. Ero Learning Centre*\n\nThe Learning Centre is coming soon. Type *menu* to go back."
+    "🎓 *Engr. Ero Learning Centre*\n\n" +
+    "Welcome to the academic portal.\n\n" +
+    "Please enter your course code to continue (e.g. *ELA301*, *ELA302*, or *ELA401*):\n\n" +
+    "_Type *menu* to return to the main menu._"
   );
 }
