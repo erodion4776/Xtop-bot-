@@ -1,4 +1,5 @@
 // supabase/functions/whatsapp-webhook/modules/demos.ts
+// Phase 3 — Interactive Demo Centre (Routes "Get an Estimate" into Phase 3 Sales Qualification)
 
 import {
   Contact,
@@ -16,6 +17,11 @@ import {
 } from "../whatsapp.ts";
 import { extractSelection, normalise, isBack } from "../utils.ts";
 import { showMainMenu } from "./main-menu.ts";
+import { showServiceTypeSelector } from "./sales.ts";
+
+// ═══════════════════════════════════════════════════════
+// MAIN HANDLER
+// ═══════════════════════════════════════════════════════
 
 export async function handleDemos(
   phone: string,
@@ -24,7 +30,7 @@ export async function handleDemos(
   conversation: Conversation
 ): Promise<void> {
   const state = conversation.current_state;
-  const context = conversation.context_json as {
+  const context = (conversation.context_json || {}) as {
     selectedDemoSlug?: string;
     currentStep?: number;
   };
@@ -54,6 +60,10 @@ export async function handleDemos(
   }
 }
 
+// ═══════════════════════════════════════════════════════
+// DEMOS LIST
+// ═══════════════════════════════════════════════════════
+
 export async function showDemosList(phone: string, conversationId: string): Promise<void> {
   const demos = await getActiveDemos();
 
@@ -69,11 +79,10 @@ export async function showDemosList(phone: string, conversationId: string): Prom
     context_json: {},
   });
 
-  // Split 10 demos into 2 neat sections (5 rows each = exactly 10 rows, adhering to WhatsApp limit)
+  // Split 10 demos into 2 sections (5 each = exactly 10 rows, adhering to WhatsApp limit)
   const section1Demos = demos.slice(0, 5);
   const section2Demos = demos.slice(5, 10);
 
-  // Short labels guaranteed to be <= 24 characters
   const shortTitles: Record<string, string> = {
     demo_xtopedu: "1️⃣ XtopEdu Bot",
     demo_naijashop: "2️⃣ NaijaShop Retail",
@@ -136,6 +145,10 @@ async function processDemoSelection(
 
   await runDemoStep(phone, conversation.id, selected.slug, 1);
 }
+
+// ═══════════════════════════════════════════════════════
+// DEMO STEPS EXECUTION
+// ═══════════════════════════════════════════════════════
 
 export async function runDemoStep(
   phone: string,
@@ -202,6 +215,10 @@ async function processDemoStepProgression(
   }
 }
 
+// ═══════════════════════════════════════════════════════
+// DEMO COMPLETION SCREEN
+// ═══════════════════════════════════════════════════════
+
 export async function showDemoCompletion(
   phone: string,
   conversationId: string,
@@ -230,6 +247,10 @@ export async function showDemoCompletion(
   );
 }
 
+// ═══════════════════════════════════════════════════════
+// POST-DEMO ACTION HANDLER (Connected to Phase 3 Sales)
+// ═══════════════════════════════════════════════════════
+
 async function processDemoCompletedAction(
   phone: string,
   text: string,
@@ -244,34 +265,47 @@ async function processDemoCompletedAction(
     return;
   }
 
-  if (n === "demo_act_estimate" || n.includes("estimate") || n.includes("build")) {
-    await updateConversation(conversation.id, {
-      current_module: "AGENT",
-      current_state: "COLLECT_MESSAGE",
-      context_json: {
-        request_type: "QUOTATION",
-        preset_message: `Requesting preliminary estimate inspired by demo: ${demoSlug || "General"}`,
-      },
-    });
+  // 1. GET AN ESTIMATE → Launch Phase 3 Structured Qualification
+  if (
+    n === "demo_act_estimate" ||
+    n.includes("estimate") ||
+    n.includes("quotation") ||
+    n.includes("quote") ||
+    n.includes("build") ||
+    n === "1"
+  ) {
     await sendTextMessage(
       phone,
-      `📋 *Project Quotation Request*\n\nPlease describe your business and the core features you would like included:\n\n_(An agent will calculate your tailored estimate)_`
+      `📋 *Let's prepare your estimate*\n\n` +
+      `We'll ask a few quick questions to generate a tailored preliminary quotation based on your requirements.`
     );
+    await showServiceTypeSelector(phone, conversation.id);
     return;
   }
 
-  if (n === "demo_act_agent" || n.includes("agent")) {
+  // 2. TALK TO AN AGENT → Genuine human escalation (Collect free text message)
+  if (
+    n === "demo_act_agent" ||
+    n.includes("agent") ||
+    n.includes("human") ||
+    n === "2"
+  ) {
     await updateConversation(conversation.id, {
       current_module: "AGENT",
       current_state: "COLLECT_MESSAGE",
       context_json: {
         request_type: "START_PROJECT",
-        preset_message: `Interested in building system based on demo: ${demoSlug || "General"}`,
+        source: "DEMO",
+        demoSlug: demoSlug || "GENERAL",
+        preset_message: `Inquiry after completing demo: ${demoSlug || "General"}`,
       },
     });
+
     await sendTextMessage(
       phone,
-      `👤 *Talk to an Agent*\n\nPlease leave your name and a brief note about your project. Our engineering team will follow up directly:`
+      `👤 *Talk to an Agent*\n\n` +
+      `You've completed the demo simulation.\n\n` +
+      `Please send a brief message describing what you'd like our team to help you with. A human agent will review your request and follow up directly:`
     );
     return;
   }
