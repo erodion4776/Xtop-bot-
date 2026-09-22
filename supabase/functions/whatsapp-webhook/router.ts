@@ -18,6 +18,7 @@ import { handleMagazine, displayMagazine } from "./modules/magazine.ts";
 import { handleAgent, showAgentCategories } from "./modules/agents.ts";
 import { handleLearning } from "./modules/learning.ts";
 import { handleSales, showServiceTypeSelector } from "./modules/sales.ts";
+import { handleExams } from "./modules/exams.ts";
 
 export async function routeMessage(incoming: IncomingMessage): Promise<void> {
   const phone = incoming.from;
@@ -40,14 +41,14 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       text || interactiveId || null, incoming.messageId
     );
 
-    // Global interrupts
+    // Global interrupts — bypass if currently in active CBT exam or Sales flow
     if ((isGreeting(text) || isHelp(text) || text === "menu_home")
-        && conversation.current_module !== "SALES") {
+        && !["SALES", "EXAMS"].includes(conversation.current_module)) {
       await showMainMenu(phone, conversation.id);
       return;
     }
 
-    if (isExit(text) && conversation.current_module !== "SALES") {
+    if (isExit(text) && !["SALES", "EXAMS"].includes(conversation.current_module)) {
       await updateConversation(conversation.id, {
         current_module: "MAIN_MENU", current_state: "IDLE", context_json: {},
       });
@@ -57,9 +58,9 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-    // Agent shortcut (only if not already inside a sales/agent flow)
+    // Agent shortcut
     if (isAgentRequest(text)
-        && !["AGENT", "SALES"].includes(conversation.current_module)) {
+        && !["AGENT", "SALES", "EXAMS"].includes(conversation.current_module)) {
       await showAgentCategories(phone, conversation.id);
       return;
     }
@@ -105,16 +106,20 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
         break;
 
       case "LEARNING":
-        if (isBack(text)) await showMainMenu(phone, conversation.id);
-        else await handleLearning(phone, text, contact, conversation);
+        await handleLearning(phone, text, contact, conversation);
         break;
 
       case "SALES":
         await handleSales(phone, text, contact, conversation);
         break;
 
+      case "EXAMS":
+        await handleExams(phone, text, contact, conversation);
+        break;
+
       default:
         await showMainMenu(phone, conversation.id);
+        break;
     }
   } catch (err) {
     safeErrorLog("routeMessage", err);
