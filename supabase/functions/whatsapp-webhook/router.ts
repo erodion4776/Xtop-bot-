@@ -8,7 +8,7 @@ import {
 import { IncomingMessage, sendTextMessage } from "./whatsapp.ts";
 import {
   sanitizeInput, isGreeting, isBack, isHelp,
-  isAgentRequest, isExit, detectIntent, safeErrorLog,
+  isAgentRequest, isExit, detectIntent, isLearningKeyword, safeErrorLog,
 } from "./utils.ts";
 import { showMainMenu } from "./modules/main-menu.ts";
 import { handleProducts, showProductsList } from "./modules/products.ts";
@@ -41,9 +41,28 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       text || interactiveId || null, incoming.messageId
     );
 
-    // Global interrupts — bypass if currently in active CBT exam or Sales flow
+    // ══════════════════════════════════════════════════════
+    // PRIVATE LEARNING CENTRE KEYWORD — checked FIRST
+    // ══════════════════════════════════════════════════════
+    if (isLearningKeyword(text)) {
+      // Merge learningUnlocked into existing context
+      const existingCtx = conversation.context_json || {};
+      await updateConversation(conversation.id, {
+        current_module: "LEARNING",
+        current_state: "ENTRY",
+        context_json: { ...existingCtx, learningUnlocked: true, step: "ENTRY" },
+      });
+      await handleLearning(phone, text, contact, conversation);
+      return;
+    }
+
+    // ══════════════════════════════════════════════════════
+    // GLOBAL INTERRUPTS
+    // ══════════════════════════════════════════════════════
     if ((isGreeting(text) || isHelp(text) || text === "menu_home")
         && !["SALES", "EXAMS"].includes(conversation.current_module)) {
+      // If user is in LEARNING module and types "menu", show main menu
+      // but do NOT clear learningUnlocked from their record
       await showMainMenu(phone, conversation.id);
       return;
     }
@@ -58,13 +77,15 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-    // Agent shortcut
     if (isAgentRequest(text)
         && !["AGENT", "SALES", "EXAMS"].includes(conversation.current_module)) {
       await showAgentCategories(phone, conversation.id);
       return;
     }
 
+    // ══════════════════════════════════════════════════════
+    // MODULE ROUTER
+    // ══════════════════════════════════════════════════════
     const currentModule = conversation.current_module;
 
     switch (currentModule) {
@@ -75,8 +96,8 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
         else if (intent === "DEMOS") await showDemosList(phone, conversation.id);
         else if (intent === "MAGAZINE") await displayMagazine(phone, conversation.id);
         else if (intent === "AGENT") await showAgentCategories(phone, conversation.id);
-        else if (intent === "LEARNING") await handleLearning(phone, text, contact, conversation);
         else if (intent === "SALES") await showServiceTypeSelector(phone, conversation.id);
+        // NOTE: "LEARNING" intent removed from normal menu routing
         else if (isBack(text)) await showMainMenu(phone, conversation.id);
         else {
           await sendTextMessage(phone, "Please select an option from the menu below:");
