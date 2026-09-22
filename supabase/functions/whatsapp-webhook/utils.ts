@@ -25,13 +25,13 @@ export function matchesAny(text: string, keywords: string[]): boolean {
 export function isGreeting(text: string): boolean {
   return matchesAny(text, [
     "hi", "hello", "hey", "start", "menu", "home",
-    "main menu", "go home", "show menu", "options", "sabi"
+    "main menu", "go home", "show menu", "options", "sabi",
   ]);
 }
 
 export function isBack(text: string): boolean {
   return matchesAny(text, [
-    "back", "go back", "take me back", "previous", "return", "0", "#0"
+    "back", "go back", "take me back", "previous", "return", "0", "#0",
   ]);
 }
 
@@ -40,24 +40,22 @@ export function isHelp(text: string): boolean {
 }
 
 export function isExit(text: string): boolean {
-  return matchesAny(text, ["exit", "quit", "stop", "bye", "goodbye", "end", "close"]);
+  return matchesAny(text, [
+    "exit", "quit", "stop", "bye", "goodbye", "end", "close", "cancel",
+  ]);
 }
 
 export function isAgentRequest(text: string): boolean {
   return containsAny(text, [
-    "agent", "talk to agent", "human", "customer care", "customer service",
-    "speak to someone", "representative", "call me", "support team"
+    "agent", "talk to agent", "human", "customer care",
+    "customer service", "speak to someone", "representative",
+    "call me", "support team",
   ]);
 }
 
 export type DetectedIntent =
-  | "PRODUCTS"
-  | "SERVICES"
-  | "DEMOS"
-  | "MAGAZINE"
-  | "AGENT"
-  | "LEARNING"
-  | "UNKNOWN";
+  | "PRODUCTS" | "SERVICES" | "DEMOS" | "MAGAZINE"
+  | "AGENT" | "LEARNING" | "SALES" | "UNKNOWN";
 
 export function detectIntent(text: string, interactiveId?: string): DetectedIntent {
   if (interactiveId) {
@@ -67,6 +65,7 @@ export function detectIntent(text: string, interactiveId?: string): DetectedInte
     if (interactiveId === "menu_magazine" || interactiveId.startsWith("mag_")) return "MAGAZINE";
     if (interactiveId === "menu_agent" || interactiveId.startsWith("agt_")) return "AGENT";
     if (interactiveId === "menu_learning") return "LEARNING";
+    if (interactiveId === "menu_sales" || interactiveId.startsWith("sales_")) return "SALES";
   }
 
   const num = extractSelection(text);
@@ -84,10 +83,11 @@ export function detectIntent(text: string, interactiveId?: string): DetectedInte
 
   const n = normalise(text);
 
+  if (n.includes("build") || n.includes("estimate") || n.includes("quote") || n.includes("quotation") || n.includes("project")) return "SALES";
   if (n.includes("product") || n.includes("xtopedu") || n.includes("naijashop")) return "PRODUCTS";
-  if (n.includes("service") || n.includes("build") || n.includes("website") || n.includes("bot") || n.includes("erp") || n.includes("automation")) return "SERVICES";
+  if (n.includes("service") || n.includes("website") || n.includes("bot") || n.includes("erp") || n.includes("automation")) return "SERVICES";
   if (n.includes("demo") || n.includes("sample") || n.includes("test")) return "DEMOS";
-  if (n.includes("magazine") || n.includes("catalog") || n.includes("catalogue") || n.includes("brochure") || n.includes("pdf")) return "MAGAZINE";
+  if (n.includes("magazine") || n.includes("catalog") || n.includes("brochure") || n.includes("pdf")) return "MAGAZINE";
   if (isAgentRequest(text)) return "AGENT";
   if (n.includes("learn") || n.includes("course") || n.includes("engr") || n.includes("ero") || n.includes("ela301") || n.includes("ela302") || n.includes("ela401")) return "LEARNING";
 
