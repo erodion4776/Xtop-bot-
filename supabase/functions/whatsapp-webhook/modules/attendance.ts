@@ -1,23 +1,22 @@
 // supabase/functions/whatsapp-webhook/modules/attendance.ts
 // Phase 4 — Student Registration & Daily Attendance Gate
-// Runs BEFORE course-code authentication in the Learning Centre.
-// 100% deterministic. NO AI API.
+// Strictly collects official academic name regardless of WhatsApp profile name.
 
 import {
   Contact, Conversation, updateConversation,
   Student,
-  getStudentByPhone, createStudentProfile, updateStudentProfile,
+  getStudentByPhone, createStudentProfile,
   recordAttendance, getTodayAttendance, isStudentProfileComplete,
 } from "../database.ts";
 import {
   sendButtonMessage, sendListMessage, sendTextMessage,
   makeButton, makeListRow,
 } from "../whatsapp.ts";
-import { normalise, isBack, isExit, isGreeting } from "../utils.ts";
+import { normalise, isBack, isExit } from "../utils.ts";
 import { showMainMenu } from "./main-menu.ts";
 
 // ═══════════════════════════════════════════════════════
-// REGISTRATION CONTEXT (stored in context_json during registration)
+// REGISTRATION CONTEXT
 // ═══════════════════════════════════════════════════════
 
 interface RegCtx {
@@ -31,12 +30,6 @@ interface RegCtx {
 // MAIN REGISTRATION HANDLER
 // ═══════════════════════════════════════════════════════
 
-/**
- * Called by learning.ts when the student enters the Learning Centre.
- * Returns true if registration/attendance is complete and the
- * learning flow should continue to course-code authentication.
- * Returns false if the student is still in the registration flow.
- */
 export async function handleRegistration(
   phone: string, text: string, contact: Contact, conv: Conversation
 ): Promise<boolean> {
@@ -81,6 +74,11 @@ export async function handleRegistration(
   }
 }
 
+function isGreeting(text: string): boolean {
+  const n = normalise(text);
+  return n === "hi" || n === "hello" || n === "hey" || n === "start" || n === "menu" || n === "home";
+}
+
 // ═══════════════════════════════════════════════════════
 // STEP 1: CHECK STUDENT BY PHONE
 // ═══════════════════════════════════════════════════════
@@ -90,17 +88,12 @@ async function checkStudentAndRoute(
 ): Promise<boolean> {
   const student = await getStudentByPhone(phone);
 
+  // If student profile is complete with a valid matric number, they are fully registered
   if (student && isStudentProfileComplete(student)) {
-    // RETURNING STUDENT — record attendance and proceed
     return await handleReturningStudent(phone, student, conv);
   }
 
-  if (student && !isStudentProfileComplete(student)) {
-    // EXISTING BUT INCOMPLETE — resume registration from missing field
-    return await resumeIncompleteRegistration(phone, student, conv);
-  }
-
-  // NEW STUDENT — start registration
+  // If they have never registered before (no matric_number), we MUST collect their official name
   await updateConversation(conv.id, {
     current_module: "LEARNING",
     current_state: "WAITING_STUDENT_NAME",
@@ -110,8 +103,8 @@ async function checkStudentAndRoute(
   await sendTextMessage(phone,
     `🎓 *ENGR. ERO LEARNING CENTRE*\n\n` +
     `Welcome to the Learning Centre.\n\n` +
-    `Before you continue, we need to register your student profile.\n\n` +
-    `*Please enter your full name:*`
+    `Before you continue, we need to register your student profile with your *official academic details*.\n\n` +
+    `*Please enter your official full name (Surname First):*`
   );
 
   return false;
@@ -145,7 +138,7 @@ async function handleReturningStudent(
     );
   }
 
-  // Transition to course-code authentication
+  // Transition directly to course-code authentication
   await updateConversation(conv.id, {
     current_module: "LEARNING",
     current_state: "WAITING_COURSE_CODE",
@@ -158,68 +151,6 @@ async function handleReturningStudent(
   );
 
   return true;
-}
-
-// ═══════════════════════════════════════════════════════
-// INCOMPLETE REGISTRATION RESUMPTION
-// ═══════════════════════════════════════════════════════
-
-async function resumeIncompleteRegistration(
-  phone: string, student: Student, conv: Conversation
-): Promise<boolean> {
-  const ctx: RegCtx = { step: "" };
-
-  if (!student.name || student.name.trim().length < 2) {
-    ctx.step = "WAITING_STUDENT_NAME";
-    await updateConversation(conv.id, {
-      current_state: "WAITING_STUDENT_NAME",
-      context_json: ctx as unknown as Record<string, unknown>,
-    });
-    await sendTextMessage(phone,
-      `🎓 *ENGR. ERO LEARNING CENTRE*\n\n` +
-      `Your profile is incomplete.\n\n*Please enter your full name:*`
-    );
-    return false;
-  }
-
-  ctx.regName = student.name;
-
-  if (!student.matric_number || student.matric_number.trim().length === 0) {
-    ctx.step = "WAITING_MATRIC_NUMBER";
-    await updateConversation(conv.id, {
-      current_state: "WAITING_MATRIC_NUMBER",
-      context_json: ctx as unknown as Record<string, unknown>,
-    });
-    await sendTextMessage(phone, `Thank you, *${student.name}*.\n\n*Please enter your Matriculation Number:*`);
-    return false;
-  }
-
-  ctx.regMatric = student.matric_number;
-
-  if (!student.department || student.department.trim().length < 2) {
-    ctx.step = "WAITING_DEPARTMENT";
-    await updateConversation(conv.id, {
-      current_state: "WAITING_DEPARTMENT",
-      context_json: ctx as unknown as Record<string, unknown>,
-    });
-    await sendTextMessage(phone, `*Please enter your Department:*`);
-    return false;
-  }
-
-  ctx.regDept = student.department;
-
-  if (!student.level || (student.level !== "300" && student.level !== "400")) {
-    ctx.step = "WAITING_LEVEL";
-    await updateConversation(conv.id, {
-      current_state: "WAITING_LEVEL",
-      context_json: ctx as unknown as Record<string, unknown>,
-    });
-    await sendLevelQuestion(phone);
-    return false;
-  }
-
-  // All fields present — should not reach here due to isStudentProfileComplete check
-  return await handleReturningStudent(phone, student, conv);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -237,7 +168,7 @@ async function processNameInput(
 
   const name = text.trim();
   if (name.length < 2) {
-    await sendTextMessage(phone, "⚠️ Name must be at least 2 characters. Please enter your full name:");
+    await sendTextMessage(phone, "⚠️ Name must be at least 2 characters. Please enter your official full name (Surname First):");
     return false;
   }
 
@@ -263,13 +194,13 @@ async function processMatricInput(
       current_state: "WAITING_STUDENT_NAME",
       context_json: ctx as unknown as Record<string, unknown>,
     });
-    await sendTextMessage(phone, "*Please enter your full name:*");
+    await sendTextMessage(phone, "*Please enter your official full name (Surname First):*");
     return false;
   }
 
   const matric = text.trim();
   if (matric.length === 0) {
-    await sendTextMessage(phone, "⚠️ Matriculation number cannot be empty. Please enter it:");
+    await sendTextMessage(phone, "⚠️ Matriculation number cannot be empty. Please enter your Matriculation Number:");
     return false;
   }
 
@@ -299,7 +230,7 @@ async function processDeptInput(
 
   const dept = text.trim();
   if (dept.length < 2) {
-    await sendTextMessage(phone, "⚠️ Department must be at least 2 characters. Please enter it:");
+    await sendTextMessage(phone, "⚠️ Department must be at least 2 characters. Please enter your Department:");
     return false;
   }
 
@@ -335,25 +266,25 @@ async function processLevelInput(
     return false;
   }
 
-  // All fields collected — create student profile
+  // Create official student profile
   const student = await createStudentProfile(
     phone,
-    ctx.regName || contact.name || "Student",
+    ctx.regName || "Student",
     ctx.regMatric || "",
     ctx.regDept || "",
     level
   );
 
   if (!student) {
-    await sendTextMessage(phone, "⚠️ Registration failed. Please try again by typing *menu* and re-entering the Learning Centre.");
+    await sendTextMessage(phone, "⚠️ Registration failed. Please try again.");
     await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
     return false;
   }
 
-  // Record today's attendance
+  // Record daily attendance
   await recordAttendance(student.id);
 
-  // Send confirmation
+  // Send formal confirmation
   await sendTextMessage(phone,
     `✅ *REGISTRATION SUCCESSFUL*\n\n` +
     `*Name:* ${student.name}\n` +
@@ -385,8 +316,8 @@ async function processLevelInput(
 
 function normalizeLevel(text: string): string | null {
   const n = normalise(text);
-  if (n === "1" || n === "300" || n === "300 level") return "300";
-  if (n === "2" || n === "400" || n === "400 level") return "400";
+  if (n === "1" || n === "300" || n === "300 level" || n === "lvl_300") return "300";
+  if (n === "2" || n === "400" || n === "400 level" || n === "lvl_400") return "400";
   return null;
 }
 
