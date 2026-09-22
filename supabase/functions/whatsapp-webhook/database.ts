@@ -136,6 +136,24 @@ export interface AgentRequest {
 }
 
 // ═══════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════
+
+/**
+ * Validates a string as a proper UUID.
+ * Returns null if the string is empty, undefined, or not a valid UUID.
+ * This prevents PostgreSQL errors like:
+ *   "invalid input syntax for type uuid: ''"
+ */
+function toValidUuidOrNull(val?: string | null): string | null {
+  if (!val || typeof val !== "string") return null;
+  const trimmed = val.trim();
+  if (trimmed.length === 0) return null;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(trimmed) ? trimmed : null;
+}
+
+// ═══════════════════════════════════════════════════════
 // CLIENT SINGLETON
 // ═══════════════════════════════════════════════════════
 
@@ -156,7 +174,8 @@ export function getSupabaseClient(): SupabaseClient {
 
 export async function getOrCreateContact(phone: string, profileName?: string): Promise<Contact> {
   const sb = getSupabaseClient();
-  const { data: existing, error: fe } = await sb.from("contacts").select("*").eq("phone", phone).maybeSingle();
+  const { data: existing, error: fe } = await sb
+    .from("contacts").select("*").eq("phone", phone).maybeSingle();
   if (fe) { safeErrorLog("getOrCreateContact", fe); throw fe; }
   if (existing) {
     if (profileName && !existing.name) {
@@ -165,7 +184,8 @@ export async function getOrCreateContact(phone: string, profileName?: string): P
     }
     return existing as Contact;
   }
-  const { data: c, error: ce } = await sb.from("contacts").insert({ phone, name: profileName || null }).select("*").single();
+  const { data: c, error: ce } = await sb
+    .from("contacts").insert({ phone, name: profileName || null }).select("*").single();
   if (ce) { safeErrorLog("createContact", ce); throw ce; }
   return c as Contact;
 }
@@ -176,21 +196,31 @@ export async function getOrCreateContact(phone: string, profileName?: string): P
 
 export async function getOrCreateConversation(contactId: string): Promise<Conversation> {
   const sb = getSupabaseClient();
-  const { data: existing, error: fe } = await sb.from("conversations").select("*").eq("contact_id", contactId).maybeSingle();
+  const { data: existing, error: fe } = await sb
+    .from("conversations").select("*").eq("contact_id", contactId).maybeSingle();
   if (fe) { safeErrorLog("getOrCreateConversation", fe); throw fe; }
   if (existing) return existing as Conversation;
-  const { data: c, error: ce } = await sb.from("conversations").insert({
-    contact_id: contactId, current_module: "MAIN_MENU", current_state: "IDLE", context_json: {},
-  }).select("*").single();
+  const { data: c, error: ce } = await sb
+    .from("conversations").insert({
+      contact_id: contactId,
+      current_module: "MAIN_MENU",
+      current_state: "IDLE",
+      context_json: {},
+    }).select("*").single();
   if (ce) { safeErrorLog("createConversation", ce); throw ce; }
   return c as Conversation;
 }
 
 export async function updateConversation(id: string, updates: {
-  current_module?: string; current_state?: string; context_json?: Record<string, unknown>;
+  current_module?: string;
+  current_state?: string;
+  context_json?: Record<string, unknown>;
 }): Promise<void> {
   const sb = getSupabaseClient();
-  const { error } = await sb.from("conversations").update({ ...updates, last_message_at: new Date().toISOString() }).eq("id", id);
+  const { error } = await sb
+    .from("conversations")
+    .update({ ...updates, last_message_at: new Date().toISOString() })
+    .eq("id", id);
   if (error) safeErrorLog("updateConversation", error);
 }
 
@@ -203,8 +233,11 @@ export async function storeMessage(
 ): Promise<void> {
   const sb = getSupabaseClient();
   const { error } = await sb.from("messages").insert({
-    contact_id: contactId, direction, message_type: messageType,
-    message_text: messageText, whatsapp_message_id: waId || null,
+    contact_id: contactId,
+    direction,
+    message_type: messageType,
+    message_text: messageText,
+    whatsapp_message_id: waId || null,
   });
   if (error) safeErrorLog("storeMessage", error);
 }
@@ -215,49 +248,56 @@ export async function storeMessage(
 
 export async function getActiveProducts(): Promise<Product[]> {
   const sb = getSupabaseClient();
-  const { data, error } = await sb.from("products").select("*").eq("status", "ACTIVE").order("name");
+  const { data, error } = await sb
+    .from("products").select("*").eq("status", "ACTIVE").order("name");
   if (error) { safeErrorLog("getActiveProducts", error); return []; }
   return (data || []) as Product[];
 }
 
 export async function getProductBySlug(slug: string): Promise<Product | null> {
   const sb = getSupabaseClient();
-  const { data, error } = await sb.from("products").select("*").eq("slug", slug).eq("status", "ACTIVE").maybeSingle();
+  const { data, error } = await sb
+    .from("products").select("*").eq("slug", slug).eq("status", "ACTIVE").maybeSingle();
   if (error) { safeErrorLog("getProductBySlug", error); return null; }
   return data as Product | null;
 }
 
 export async function getActiveServices(): Promise<ServiceItem[]> {
   const sb = getSupabaseClient();
-  const { data, error } = await sb.from("services").select("*").eq("status", "ACTIVE").order("display_order");
+  const { data, error } = await sb
+    .from("services").select("*").eq("status", "ACTIVE").order("display_order");
   if (error) { safeErrorLog("getActiveServices", error); return []; }
   return (data || []) as ServiceItem[];
 }
 
 export async function getServiceBySlug(slug: string): Promise<ServiceItem | null> {
   const sb = getSupabaseClient();
-  const { data, error } = await sb.from("services").select("*").eq("slug", slug).eq("status", "ACTIVE").maybeSingle();
+  const { data, error } = await sb
+    .from("services").select("*").eq("slug", slug).eq("status", "ACTIVE").maybeSingle();
   if (error) { safeErrorLog("getServiceBySlug", error); return null; }
   return data as ServiceItem | null;
 }
 
 export async function getActiveDemos(): Promise<DemoItem[]> {
   const sb = getSupabaseClient();
-  const { data, error } = await sb.from("demos").select("*").eq("status", "ACTIVE").order("display_order");
+  const { data, error } = await sb
+    .from("demos").select("*").eq("status", "ACTIVE").order("display_order");
   if (error) { safeErrorLog("getActiveDemos", error); return []; }
   return (data || []) as DemoItem[];
 }
 
 export async function getDemoBySlug(slug: string): Promise<DemoItem | null> {
   const sb = getSupabaseClient();
-  const { data, error } = await sb.from("demos").select("*").eq("slug", slug).eq("status", "ACTIVE").maybeSingle();
+  const { data, error } = await sb
+    .from("demos").select("*").eq("slug", slug).eq("status", "ACTIVE").maybeSingle();
   if (error) { safeErrorLog("getDemoBySlug", error); return null; }
   return data as DemoItem | null;
 }
 
 export async function getActiveMagazineConfig(): Promise<MagazineConfig | null> {
   const sb = getSupabaseClient();
-  const { data, error } = await sb.from("magazine_config").select("*").eq("status", "ACTIVE").limit(1).maybeSingle();
+  const { data, error } = await sb
+    .from("magazine_config").select("*").eq("status", "ACTIVE").limit(1).maybeSingle();
   if (error) { safeErrorLog("getActiveMagazineConfig", error); return null; }
   return data as MagazineConfig | null;
 }
@@ -268,8 +308,11 @@ export async function getActiveMagazineConfig(): Promise<MagazineConfig | null> 
 
 export async function getPricingPackages(serviceType: string): Promise<PricingPackage[]> {
   const sb = getSupabaseClient();
-  const { data, error } = await sb.from("pricing_packages").select("*")
-    .eq("service_type", serviceType).eq("status", "ACTIVE").order("priority");
+  const { data, error } = await sb
+    .from("pricing_packages").select("*")
+    .eq("service_type", serviceType)
+    .eq("status", "ACTIVE")
+    .order("priority");
   if (error) { safeErrorLog("getPricingPackages", error); return []; }
   return (data || []) as PricingPackage[];
 }
@@ -278,30 +321,46 @@ export async function getPricingPackages(serviceType: string): Promise<PricingPa
 // LEADS
 // ═══════════════════════════════════════════════════════
 
-export async function getActiveLeadForContact(contactId: string, serviceType: string): Promise<Lead | null> {
+export async function getActiveLeadForContact(
+  contactId: string, serviceType: string
+): Promise<Lead | null> {
   const sb = getSupabaseClient();
-  const { data, error } = await sb.from("leads").select("*")
-    .eq("contact_id", contactId).eq("service_type", serviceType)
+  const { data, error } = await sb
+    .from("leads").select("*")
+    .eq("contact_id", contactId)
+    .eq("service_type", serviceType)
     .in("status", ["QUALIFYING", "QUOTED", "PACKAGE_SELECTED", "AGENT_REQUESTED"])
-    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
   if (error) { safeErrorLog("getActiveLead", error); return null; }
   return data as Lead | null;
 }
 
-export async function createLead(contactId: string, serviceType: string, fields: Partial<Lead>): Promise<Lead | null> {
+export async function createLead(
+  contactId: string, serviceType: string, fields: Partial<Lead>
+): Promise<Lead | null> {
   const sb = getSupabaseClient();
-  const { data, error } = await sb.from("leads").insert({
-    contact_id: contactId, service_type: serviceType, status: "QUALIFYING", ...fields,
-  }).select("*").single();
+  const { data, error } = await sb
+    .from("leads").insert({
+      contact_id: contactId,
+      service_type: serviceType,
+      status: "QUALIFYING",
+      ...fields,
+    }).select("*").single();
   if (error) { safeErrorLog("createLead", error); return null; }
   return data as Lead;
 }
 
-export async function updateLead(leadId: string, fields: Partial<Lead>): Promise<Lead | null> {
+export async function updateLead(
+  leadId: string, fields: Partial<Lead>
+): Promise<Lead | null> {
   const sb = getSupabaseClient();
-  const { data, error } = await sb.from("leads").update({
-    ...fields, updated_at: new Date().toISOString(),
-  }).eq("id", leadId).select("*").single();
+  const { data, error } = await sb
+    .from("leads").update({
+      ...fields,
+      updated_at: new Date().toISOString(),
+    }).eq("id", leadId).select("*").single();
   if (error) { safeErrorLog("updateLead", error); return null; }
   return data as Lead;
 }
@@ -313,9 +372,12 @@ export async function updateLead(leadId: string, fields: Partial<Lead>): Promise
 async function getNextQuotationNumber(): Promise<string> {
   const sb = getSupabaseClient();
   const year = new Date().getFullYear();
-  const { data, error } = await sb.from("quotations").select("quotation_number")
+  const { data, error } = await sb
+    .from("quotations").select("quotation_number")
     .like("quotation_number", `XTR-${year}-%`)
-    .order("quotation_number", { ascending: false }).limit(1).maybeSingle();
+    .order("quotation_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
   if (error) safeErrorLog("getNextQuotationNumber", error);
   let seq = 1;
   if (data?.quotation_number) {
@@ -326,28 +388,58 @@ async function getNextQuotationNumber(): Promise<string> {
 }
 
 export async function createQuotation(
-  leadId: string, packageId: string | null,
-  title: string, summary: string, deliverables: string[],
-  minPrice: number, maxPrice: number
+  leadId: string,
+  packageId: string | null,
+  title: string,
+  summary: string,
+  deliverables: string[],
+  minPrice: number,
+  maxPrice: number
 ): Promise<Quotation | null> {
   const sb = getSupabaseClient();
+
+  const validLeadId = toValidUuidOrNull(leadId);
+  if (!validLeadId) {
+    safeErrorLog("createQuotation", { message: "Invalid or missing leadId" });
+    return null;
+  }
+
+  const validPackageId = toValidUuidOrNull(packageId);
   const qNum = await getNextQuotationNumber();
   const validUntil = new Date(Date.now() + 14 * 86400000).toISOString();
+
   const { data, error } = await sb.from("quotations").insert({
-    lead_id: leadId, quotation_number: qNum, package_id: packageId,
-    title, summary, deliverables_json: deliverables,
-    estimated_min_price: minPrice, estimated_max_price: maxPrice,
-    currency: "NGN", valid_until: validUntil, status: "PRESENTED",
+    lead_id: validLeadId,
+    quotation_number: qNum,
+    package_id: validPackageId,
+    title,
+    summary,
+    deliverables_json: deliverables || [],
+    estimated_min_price: minPrice || 0,
+    estimated_max_price: maxPrice || 0,
+    currency: "NGN",
+    valid_until: validUntil,
+    status: "PRESENTED",
   }).select("*").single();
+
   if (error) { safeErrorLog("createQuotation", error); return null; }
   return data as Quotation;
 }
 
-export async function updateQuotation(quotationId: string, fields: Partial<Quotation>): Promise<void> {
+export async function updateQuotation(
+  quotationId: string, fields: Partial<Quotation>
+): Promise<void> {
   const sb = getSupabaseClient();
-  const { error } = await sb.from("quotations").update({
-    ...fields, updated_at: new Date().toISOString(),
-  }).eq("id", quotationId);
+  const validId = toValidUuidOrNull(quotationId);
+  if (!validId) {
+    safeErrorLog("updateQuotation", { message: "Invalid quotationId" });
+    return;
+  }
+  const { error } = await sb
+    .from("quotations").update({
+      ...fields,
+      updated_at: new Date().toISOString(),
+    }).eq("id", validId);
   if (error) safeErrorLog("updateQuotation", error);
 }
 
@@ -356,17 +448,58 @@ export async function updateQuotation(quotationId: string, fields: Partial<Quota
 // ═══════════════════════════════════════════════════════
 
 export async function createAgentRequest(
-  contactId: string, requestType: string, message: string,
+  contactId: string,
+  requestType: string,
+  message: string,
   priority: string = "NORMAL",
-  leadId?: string, quotationId?: string, quotationSummary?: string
+  leadId?: string,
+  quotationId?: string,
+  quotationSummary?: string
 ): Promise<AgentRequest | null> {
   const sb = getSupabaseClient();
-  const { data, error } = await sb.from("agent_requests").insert({
-    contact_id: contactId, request_type: requestType, message,
-    status: "NEW", priority,
-    lead_id: leadId || null, quotation_id: quotationId || null,
+
+  const validLeadId = toValidUuidOrNull(leadId);
+  const validQuotationId = toValidUuidOrNull(quotationId);
+
+  const payload: Record<string, unknown> = {
+    contact_id: contactId,
+    request_type: requestType || "GENERAL_ENQUIRY",
+    message: message || "No message provided",
+    status: "NEW",
+    priority: priority || "NORMAL",
+    lead_id: validLeadId,
+    quotation_id: validQuotationId,
     quotation_summary: quotationSummary || null,
-  }).select("*").single();
-  if (error) { safeErrorLog("createAgentRequest", error); return null; }
+  };
+
+  const { data, error } = await sb
+    .from("agent_requests")
+    .insert(payload)
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("createAgentRequest", error);
+
+    // Fallback: retry with minimal payload so customer never gets stuck
+    const { data: fallbackData, error: fallbackError } = await sb
+      .from("agent_requests")
+      .insert({
+        contact_id: contactId,
+        request_type: "GENERAL_ENQUIRY",
+        message: message || "Request from user",
+        status: "NEW",
+        priority: "NORMAL",
+      })
+      .select("*")
+      .single();
+
+    if (fallbackError) {
+      safeErrorLog("createAgentRequest:fallback", fallbackError);
+      return null;
+    }
+    return fallbackData as AgentRequest;
+  }
+
   return data as AgentRequest;
 }
