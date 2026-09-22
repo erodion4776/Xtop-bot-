@@ -3,8 +3,6 @@
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { safeErrorLog } from "./utils.ts";
 
-// ── Types ──────────────────────────────────────────────
-
 export interface Contact {
   id: string;
   phone: string;
@@ -23,7 +21,67 @@ export interface Conversation {
   last_message_at: string;
 }
 
-// ── Client ─────────────────────────────────────────────
+export interface Product {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  category: string;
+  features: string[];
+  target_audience: string;
+  price: number | null;
+  price_text: string | null;
+  website_url: string | null;
+  demo_url: string | null;
+  whatsapp_demo_text: string | null;
+  status: string;
+}
+
+export interface ServiceItem {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  features: string[];
+  base_price: number | null;
+  price_range: string | null;
+  display_order: number;
+  status: string;
+}
+
+export interface DemoItem {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  demo_type: string;
+  steps_json: Array<{
+    step: number;
+    title: string;
+    bot_message: string;
+    options: string[];
+  }>;
+  display_order: number;
+  status: string;
+}
+
+export interface MagazineConfig {
+  id: string;
+  title: string;
+  description: string;
+  file_url: string | null;
+  status: string;
+}
+
+export interface AgentRequest {
+  id: string;
+  contact_id: string;
+  request_type: "START_PROJECT" | "QUOTATION" | "PRODUCT_QUESTION" | "TECH_SUPPORT" | "GENERAL_ENQUIRY";
+  message: string;
+  status: "NEW" | "IN_PROGRESS" | "RESOLVED";
+  priority: "NORMAL" | "HIGH" | "URGENT";
+  created_at: string;
+}
 
 let _client: SupabaseClient | null = null;
 
@@ -38,12 +96,10 @@ export function getSupabaseClient(): SupabaseClient {
   return _client;
 }
 
-// ── Contacts ───────────────────────────────────────────
+// ── Contacts & Conversations ───────────────────────────
 
 export async function getOrCreateContact(phone: string, profileName?: string): Promise<Contact> {
   const sb = getSupabaseClient();
-
-  // Try to find existing contact
   const { data: existing, error: fetchErr } = await sb
     .from("contacts")
     .select("*")
@@ -56,18 +112,13 @@ export async function getOrCreateContact(phone: string, profileName?: string): P
   }
 
   if (existing) {
-    // Update name if we have a profile name and contact has none
     if (profileName && !existing.name) {
-      await sb
-        .from("contacts")
-        .update({ name: profileName })
-        .eq("id", existing.id);
+      await sb.from("contacts").update({ name: profileName }).eq("id", existing.id);
       existing.name = profileName;
     }
     return existing as Contact;
   }
 
-  // Create new contact
   const { data: created, error: createErr } = await sb
     .from("contacts")
     .insert({ phone, name: profileName || null })
@@ -82,11 +133,8 @@ export async function getOrCreateContact(phone: string, profileName?: string): P
   return created as Contact;
 }
 
-// ── Conversations ──────────────────────────────────────
-
 export async function getOrCreateConversation(contactId: string): Promise<Conversation> {
   const sb = getSupabaseClient();
-
   const { data: existing, error: fetchErr } = await sb
     .from("conversations")
     .select("*")
@@ -128,7 +176,6 @@ export async function updateConversation(
   }
 ): Promise<void> {
   const sb = getSupabaseClient();
-
   const { error } = await sb
     .from("conversations")
     .update({
@@ -143,8 +190,6 @@ export async function updateConversation(
   }
 }
 
-// ── Messages ───────────────────────────────────────────
-
 export async function storeMessage(
   contactId: string,
   direction: "INBOUND" | "OUTBOUND",
@@ -153,7 +198,6 @@ export async function storeMessage(
   whatsappMessageId?: string
 ): Promise<void> {
   const sb = getSupabaseClient();
-
   const { error } = await sb.from("messages").insert({
     contact_id: contactId,
     direction,
@@ -162,8 +206,151 @@ export async function storeMessage(
     whatsapp_message_id: whatsappMessageId || null,
   });
 
+  if (error) safeErrorLog("storeMessage", error);
+}
+
+// ── Products ───────────────────────────────────────────
+
+export async function getActiveProducts(): Promise<Product[]> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("products")
+    .select("*")
+    .eq("status", "ACTIVE")
+    .order("name", { ascending: true });
+
   if (error) {
-    safeErrorLog("storeMessage", error);
-    // Non-critical — log but don't crash
+    safeErrorLog("getActiveProducts", error);
+    return [];
   }
+  return (data || []) as Product[];
+}
+
+export async function getProductBySlug(slug: string): Promise<Product | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("products")
+    .select("*")
+    .eq("slug", slug)
+    .eq("status", "ACTIVE")
+    .maybeSingle();
+
+  if (error) {
+    safeErrorLog("getProductBySlug", error);
+    return null;
+  }
+  return data as Product | null;
+}
+
+// ── Services ───────────────────────────────────────────
+
+export async function getActiveServices(): Promise<ServiceItem[]> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("services")
+    .select("*")
+    .eq("status", "ACTIVE")
+    .order("display_order", { ascending: true });
+
+  if (error) {
+    safeErrorLog("getActiveServices", error);
+    return [];
+  }
+  return (data || []) as ServiceItem[];
+}
+
+export async function getServiceBySlug(slug: string): Promise<ServiceItem | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("services")
+    .select("*")
+    .eq("slug", slug)
+    .eq("status", "ACTIVE")
+    .maybeSingle();
+
+  if (error) {
+    safeErrorLog("getServiceBySlug", error);
+    return null;
+  }
+  return data as ServiceItem | null;
+}
+
+// ── Demos ──────────────────────────────────────────────
+
+export async function getActiveDemos(): Promise<DemoItem[]> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("demos")
+    .select("*")
+    .eq("status", "ACTIVE")
+    .order("display_order", { ascending: true });
+
+  if (error) {
+    safeErrorLog("getActiveDemos", error);
+    return [];
+  }
+  return (data || []) as DemoItem[];
+}
+
+export async function getDemoBySlug(slug: string): Promise<DemoItem | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("demos")
+    .select("*")
+    .eq("slug", slug)
+    .eq("status", "ACTIVE")
+    .maybeSingle();
+
+  if (error) {
+    safeErrorLog("getDemoBySlug", error);
+    return null;
+  }
+  return data as DemoItem | null;
+}
+
+// ── Magazine ───────────────────────────────────────────
+
+export async function getActiveMagazineConfig(): Promise<MagazineConfig | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("magazine_config")
+    .select("*")
+    .eq("status", "ACTIVE")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    safeErrorLog("getActiveMagazineConfig", error);
+    return null;
+  }
+  return data as MagazineConfig | null;
+}
+
+// ── Agent Requests ─────────────────────────────────────
+
+export async function createAgentRequest(
+  contactId: string,
+  requestType: AgentRequest["request_type"],
+  message: string,
+  priority: AgentRequest["priority"] = "NORMAL"
+): Promise<AgentRequest | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("agent_requests")
+    .insert({
+      contact_id: contactId,
+      request_type: requestType,
+      message,
+      status: "NEW",
+      priority,
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("createAgentRequest", error);
+    return null;
+  }
+  return data as AgentRequest;
 }
