@@ -1,5 +1,5 @@
 // supabase/functions/whatsapp-webhook/modules/attendance.ts
-// Phase 4 — Student Registration & Daily Attendance Gate
+// Phase 4/5 — Student Registration & Daily Attendance Gate
 //
 // RESPONSIBILITY BOUNDARY:
 // This module handles ONLY:
@@ -30,6 +30,7 @@ import { showMainMenu } from "./main-menu.ts";
 
 interface RegCtx {
   step: string;
+  learningUnlocked?: boolean;
   regName?: string;
   regMatric?: string;
   regDept?: string;
@@ -119,7 +120,7 @@ async function checkStudentAndRoute(
   await updateConversation(conv.id, {
     current_module: "LEARNING",
     current_state: "WAITING_STUDENT_NAME",
-    context_json: { step: "WAITING_STUDENT_NAME" },
+    context_json: { step: "WAITING_STUDENT_NAME", learningUnlocked: true },
   });
 
   await sendTextMessage(
@@ -205,7 +206,7 @@ async function processNameInput(
   ctx.step = "WAITING_MATRIC_NUMBER";
   await updateConversation(conv.id, {
     current_state: "WAITING_MATRIC_NUMBER",
-    context_json: ctx as unknown as Record<string, unknown>,
+    context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
   });
 
   await sendTextMessage(
@@ -227,7 +228,7 @@ async function processMatricInput(
     ctx.regMatric = undefined;
     await updateConversation(conv.id, {
       current_state: "WAITING_STUDENT_NAME",
-      context_json: ctx as unknown as Record<string, unknown>,
+      context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
     });
     await sendTextMessage(
       phone,
@@ -249,7 +250,7 @@ async function processMatricInput(
   ctx.step = "WAITING_DEPARTMENT";
   await updateConversation(conv.id, {
     current_state: "WAITING_DEPARTMENT",
-    context_json: ctx as unknown as Record<string, unknown>,
+    context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
   });
 
   await sendTextMessage(phone, `🏫 *Please enter your Department:*`);
@@ -268,7 +269,7 @@ async function processDeptInput(
     ctx.regDept = undefined;
     await updateConversation(conv.id, {
       current_state: "WAITING_MATRIC_NUMBER",
-      context_json: ctx as unknown as Record<string, unknown>,
+      context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
     });
     await sendTextMessage(phone, "🎓 *Please enter your Matriculation Number:*");
     return false;
@@ -287,7 +288,7 @@ async function processDeptInput(
   ctx.step = "WAITING_LEVEL";
   await updateConversation(conv.id, {
     current_state: "WAITING_LEVEL",
-    context_json: ctx as unknown as Record<string, unknown>,
+    context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
   });
 
   await sendLevelQuestion(phone);
@@ -305,7 +306,7 @@ async function processLevelInput(
     ctx.step = "WAITING_DEPARTMENT";
     await updateConversation(conv.id, {
       current_state: "WAITING_DEPARTMENT",
-      context_json: ctx as unknown as Record<string, unknown>,
+      context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
     });
     await sendTextMessage(phone, "🏫 *Please enter your Department:*");
     return false;
@@ -422,7 +423,7 @@ async function processLevelInput(
     `${attendanceLine}`
   );
 
-  // Transition conversation cleanly toWA_Course_Code
+  // Transition conversation cleanly to WA_Course_Code
   await transitionToCourseCode(phone, conv);
   return true;
 }
@@ -434,10 +435,11 @@ async function processLevelInput(
 async function transitionToCourseCode(
   phone: string, conv: Conversation
 ): Promise<void> {
+  const existingCtx = conv.context_json || {};
   await updateConversation(conv.id, {
     current_module: "LEARNING",
     current_state: "WAITING_COURSE_CODE",
-    context_json: { step: "WAITING_COURSE_CODE" },
+    context_json: { ...existingCtx, step: "WAITING_COURSE_CODE", learningUnlocked: true },
   });
 
   await sendTextMessage(
