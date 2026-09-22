@@ -1,4 +1,10 @@
 // supabase/functions/whatsapp-webhook/utils.ts
+// Complete Utility Layer (Phases 1–5)
+// Deterministic NLU, sanitization, private keyword detection, safe logging
+
+// ═══════════════════════════════════════════════════════
+// STRING SANITIZATION & NORMALIZATION
+// ═══════════════════════════════════════════════════════
 
 export function sanitizeInput(input: string | undefined | null): string {
   if (!input) return "";
@@ -21,6 +27,10 @@ export function matchesAny(text: string, keywords: string[]): boolean {
   const n = normalise(text);
   return keywords.some((k) => n === k || n.startsWith(`${k} `));
 }
+
+// ═══════════════════════════════════════════════════════
+// GLOBAL COMMAND DETECTORS
+// ═══════════════════════════════════════════════════════
 
 export function isGreeting(text: string): boolean {
   return matchesAny(text, [
@@ -53,6 +63,19 @@ export function isAgentRequest(text: string): boolean {
   ]);
 }
 
+/**
+ * Detects the private Learning Centre access keyword.
+ * Recognises: "engr ero", "engr. ero", "engr.ero", "engrero"
+ */
+export function isLearningKeyword(text: string): boolean {
+  const n = normalise(text).replace(/\./g, "").replace(/\s+/g, " ").trim();
+  return n === "engr ero" || n === "engrero";
+}
+
+// ═══════════════════════════════════════════════════════
+// INTENT DETECTION & SELECTION EXTRACTION
+// ═══════════════════════════════════════════════════════
+
 export type DetectedIntent =
   | "PRODUCTS" | "SERVICES" | "DEMOS" | "MAGAZINE"
   | "AGENT" | "LEARNING" | "SALES" | "UNKNOWN";
@@ -76,20 +99,19 @@ export function detectIntent(text: string, interactiveId?: string): DetectedInte
       3: "DEMOS",
       4: "MAGAZINE",
       5: "AGENT",
-      6: "LEARNING",
     };
     if (numMap[num]) return numMap[num];
   }
 
   const n = normalise(text);
 
+  if (isLearningKeyword(text)) return "LEARNING";
   if (n.includes("build") || n.includes("estimate") || n.includes("quote") || n.includes("quotation") || n.includes("project")) return "SALES";
   if (n.includes("product") || n.includes("xtopedu") || n.includes("naijashop")) return "PRODUCTS";
   if (n.includes("service") || n.includes("website") || n.includes("bot") || n.includes("erp") || n.includes("automation")) return "SERVICES";
   if (n.includes("demo") || n.includes("sample") || n.includes("test")) return "DEMOS";
   if (n.includes("magazine") || n.includes("catalog") || n.includes("brochure") || n.includes("pdf")) return "MAGAZINE";
   if (isAgentRequest(text)) return "AGENT";
-  if (n.includes("learn") || n.includes("course") || n.includes("engr") || n.includes("ero") || n.includes("ela301") || n.includes("ela302") || n.includes("ela401")) return "LEARNING";
 
   return "UNKNOWN";
 }
@@ -103,6 +125,10 @@ export function extractSelection(text: string): number | null {
   if (wordMatch) return parseInt(wordMatch[1], 10);
   return null;
 }
+
+// ═══════════════════════════════════════════════════════
+// SAFE ERROR LOGGING
+// ═══════════════════════════════════════════════════════
 
 export function safeErrorLog(context: string, error: unknown): void {
   if (!error) return;
