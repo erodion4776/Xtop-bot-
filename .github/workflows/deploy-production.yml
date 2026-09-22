@@ -31,7 +31,7 @@ jobs:
 
       - name: Deploy whatsapp-webhook function
         run: |
-          echo "🚀 Deploying whatsapp-webhook Edge Function..."
+          echo "🚀 Deploying whatsapp-webhook Edge Function (Rule-Based Engine)..."
           supabase functions deploy whatsapp-webhook \
             --project-ref "$SUPABASE_PROJECT_ID" \
             --no-verify-jwt
