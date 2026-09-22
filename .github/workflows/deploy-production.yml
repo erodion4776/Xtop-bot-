@@ -24,14 +24,15 @@ jobs:
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 1.226.4
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Link project
         run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
 
       - name: Deploy whatsapp-webhook function
         run: |
-          echo "🚀 Deploying whatsapp-webhook Edge Function (Rule-Based Engine)..."
+          echo "🚀 Deploying whatsapp-webhook Edge Function (Phase 2)..."
           supabase functions deploy whatsapp-webhook \
             --project-ref "$SUPABASE_PROJECT_ID" \
             --no-verify-jwt
@@ -47,5 +48,5 @@ jobs:
           WEBHOOK_URL="https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/whatsapp-webhook"
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$WEBHOOK_URL" || true)
           echo "Webhook response status: $HTTP_STATUS"
-          echo "## 🚀 Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Phase 2 Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "Edge Function URL: \`$WEBHOOK_URL\`" >> $GITHUB_STEP_SUMMARY
