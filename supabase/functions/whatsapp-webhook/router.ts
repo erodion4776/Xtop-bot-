@@ -1,23 +1,14 @@
 // supabase/functions/whatsapp-webhook/router.ts
 
 import {
-  Contact,
-  Conversation,
-  getOrCreateContact,
-  getOrCreateConversation,
-  updateConversation,
-  storeMessage,
+  Contact, Conversation,
+  getOrCreateContact, getOrCreateConversation,
+  updateConversation, storeMessage,
 } from "./database.ts";
 import { IncomingMessage, sendTextMessage } from "./whatsapp.ts";
 import {
-  sanitizeInput,
-  isGreeting,
-  isBack,
-  isHelp,
-  isAgentRequest,
-  isExit,
-  detectIntent,
-  safeErrorLog,
+  sanitizeInput, isGreeting, isBack, isHelp,
+  isAgentRequest, isExit, detectIntent, safeErrorLog,
 } from "./utils.ts";
 import { showMainMenu } from "./modules/main-menu.ts";
 import { handleProducts, showProductsList } from "./modules/products.ts";
@@ -26,6 +17,7 @@ import { handleDemos, showDemosList } from "./modules/demos.ts";
 import { handleMagazine, displayMagazine } from "./modules/magazine.ts";
 import { handleAgent, showAgentCategories } from "./modules/agents.ts";
 import { handleLearning } from "./modules/learning.ts";
+import { handleSales, showServiceTypeSelector } from "./modules/sales.ts";
 
 export async function routeMessage(incoming: IncomingMessage): Promise<void> {
   const phone = incoming.from;
@@ -33,8 +25,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
   const interactiveId = incoming.interactiveId;
 
   if (!text && !interactiveId) {
-    await sendTextMessage(
-      phone,
+    await sendTextMessage(phone,
       "👋 Hello! Please send a text message or choose an option from the menu.\n\nType *menu* to view all services."
     );
     return;
@@ -45,50 +36,46 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     const conversation = await getOrCreateConversation(contact.id);
 
     await storeMessage(
-      contact.id,
-      "INBOUND",
-      incoming.type,
-      text || interactiveId || null,
-      incoming.messageId
+      contact.id, "INBOUND", incoming.type,
+      text || interactiveId || null, incoming.messageId
     );
 
-    // Global Interrupts
-    if (isGreeting(text) || isHelp(text) || text === "menu_home") {
+    // Global interrupts
+    if ((isGreeting(text) || isHelp(text) || text === "menu_home")
+        && conversation.current_module !== "SALES") {
       await showMainMenu(phone, conversation.id);
       return;
     }
 
-    if (isExit(text)) {
+    if (isExit(text) && conversation.current_module !== "SALES") {
       await updateConversation(conversation.id, {
-        current_module: "MAIN_MENU",
-        current_state: "IDLE",
-        context_json: {},
+        current_module: "MAIN_MENU", current_state: "IDLE", context_json: {},
       });
-      await sendTextMessage(
-        phone,
-        `👋 Thank you for contacting *Xtop Retail Technologies*, ${contact.name || ""}.\n\nWhenever you need assistance, simply type *hi* or *menu*.`
+      await sendTextMessage(phone,
+        `👋 Thank you for contacting *Xtop Retail Technologies*, ${contact.name || ""}.\n\nType *hi* or *menu* to return anytime.`
       );
       return;
     }
 
-    if (isAgentRequest(text) && conversation.current_module !== "AGENT") {
+    // Agent shortcut (only if not already inside a sales/agent flow)
+    if (isAgentRequest(text)
+        && !["AGENT", "SALES"].includes(conversation.current_module)) {
       await showAgentCategories(phone, conversation.id);
       return;
     }
 
-    // Module State Dispatcher
     const currentModule = conversation.current_module;
 
     switch (currentModule) {
       case "MAIN_MENU": {
         const intent = detectIntent(text, interactiveId);
-
         if (intent === "PRODUCTS") await showProductsList(phone, conversation.id);
         else if (intent === "SERVICES") await showServicesList(phone, conversation.id);
         else if (intent === "DEMOS") await showDemosList(phone, conversation.id);
         else if (intent === "MAGAZINE") await displayMagazine(phone, conversation.id);
         else if (intent === "AGENT") await showAgentCategories(phone, conversation.id);
         else if (intent === "LEARNING") await handleLearning(phone, text, contact, conversation);
+        else if (intent === "SALES") await showServiceTypeSelector(phone, conversation.id);
         else if (isBack(text)) await showMainMenu(phone, conversation.id);
         else {
           await sendTextMessage(phone, "Please select an option from the menu below:");
@@ -122,15 +109,17 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
         else await handleLearning(phone, text, contact, conversation);
         break;
 
+      case "SALES":
+        await handleSales(phone, text, contact, conversation);
+        break;
+
       default:
         await showMainMenu(phone, conversation.id);
-        break;
     }
   } catch (err) {
     safeErrorLog("routeMessage", err);
-    await sendTextMessage(
-      phone,
-      "Sorry, an error occurred while processing your request. Type *menu* to return to the home screen."
+    await sendTextMessage(phone,
+      "Sorry, an error occurred. Type *menu* to return to the home screen."
     );
   }
 }
