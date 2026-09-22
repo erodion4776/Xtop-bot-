@@ -943,6 +943,36 @@ async function handleAutoFlow(
         await sendTextMessage(phone, "Please enter your business name (at least 2 characters):"); return;
       }
       ctx.businessName = text.trim();
+      ctx.step = "ASK_INDUSTRY";
+      await saveCtx(conv.id, ctx);
+      await sendIndustryQuestion(phone);
+      break;
+    }
+
+    case "ASK_INDUSTRY": {
+      const r = resolveStrict(text, INDUSTRY_IDS, INDUSTRY_NUMS);
+      if (!r) {
+        await sendTextMessage(phone, "⚠️ Please select one of the industries from the list.");
+        await sendIndustryQuestion(phone); return;
+      }
+      if (r === "__OTHER__") {
+        ctx.step = "ASK_INDUSTRY_OTHER";
+        await saveCtx(conv.id, ctx);
+        await sendTextMessage(phone, "Please enter your business type:"); return;
+      }
+      ctx.industry = r;
+      ctx.step = "ASK_AUTO_ACTIVITIES";
+      await saveCtx(conv.id, ctx);
+      await sendAutoActivitiesQuestion(phone, ctx.autoActivities);
+      break;
+    }
+
+    case "ASK_INDUSTRY_OTHER": {
+      if (text.trim().length < 2) {
+        await sendTextMessage(phone, "Please enter a valid business type:");
+        return;
+      }
+      ctx.industry = text.trim();
       ctx.step = "ASK_AUTO_ACTIVITIES";
       await saveCtx(conv.id, ctx);
       await sendAutoActivitiesQuestion(phone, ctx.autoActivities);
@@ -1119,7 +1149,7 @@ async function handleAutoFlow(
 }
 
 // ═══════════════════════════════════════════════════════
-// QUOTATION GENERATOR
+// QUOTATION GENERATOR (Combo Mismatch Fixed)
 // ═══════════════════════════════════════════════════════
 
 async function generateAndShowQuotation(
@@ -1127,9 +1157,18 @@ async function generateAndShowQuotation(
 ): Promise<void> {
   const serviceType = ctx.serviceType || flowToServiceType(ctx.flow);
   const allFeatures = [...ctx.features, ...ctx.webFeatures, ...ctx.autoActivities];
-  const featureMap = ctx.flow === "WEB" ? WEB_FEATURE_MAP
-    : ctx.flow === "AUTO" ? AUTO_FEATURE_MAP : BOT_FEATURE_MAP;
-  const allCodes = mapFeaturesToCodes(allFeatures, featureMap);
+
+  // Resolve Combo matching mismatch dynamically
+  let allCodes: string[] = [];
+  if (ctx.flow === "COMBO") {
+    const botCodes = mapFeaturesToCodes(ctx.features, BOT_FEATURE_MAP);
+    const webCodes = mapFeaturesToCodes(ctx.webFeatures, WEB_FEATURE_MAP);
+    allCodes = [...new Set([...botCodes, ...webCodes])];
+  } else {
+    const featureMap = ctx.flow === "WEB" ? WEB_FEATURE_MAP
+      : ctx.flow === "AUTO" ? AUTO_FEATURE_MAP : BOT_FEATURE_MAP;
+    allCodes = mapFeaturesToCodes(allFeatures, featureMap);
+  }
 
   const match = await matchPackage(serviceType, allCodes, ctx.budget);
 
@@ -1178,11 +1217,7 @@ async function generateAndShowQuotation(
     `⚠️ _This is a preliminary estimate. Final pricing will be confirmed after reviewing your complete requirements._`;
 
   await sendButtonMessage(phone, msg,
-    [
-      makeButton("q_select", "✅ Select Package"),
-      makeButton("q_change", "🔄 Change Reqs"),
-      makeButton("q_agent", "👤 Talk to Agent"),
-    ],
+    [makeButton("q_select", "✅ Select Package"), makeButton("q_change", "🔄 Change Reqs"), makeButton("q_agent", "👤 Talk to Agent")],
     "Xtop Quotation Engine", "Valid for 14 days");
 }
 
