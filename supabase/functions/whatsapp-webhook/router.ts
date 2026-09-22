@@ -16,11 +16,17 @@ import {
   isHelp,
   isAgentRequest,
   isExit,
+  detectIntent,
   safeErrorLog,
 } from "./utils.ts";
-import { showMainMenu, resolveMainMenuSelection } from "./modules/main-menu.ts";
+import { showMainMenu } from "./modules/main-menu.ts";
 import { handleProducts } from "./modules/products.ts";
-import { handleSalesBot, handleSalesWebsite, handleSalesBotWebsite, handleSalesAutomation } from "./modules/sales.ts";
+import {
+  handleSalesBot,
+  handleSalesWebsite,
+  handleSalesBotWebsite,
+  handleSalesAutomation,
+} from "./modules/sales.ts";
 import { handleDemos } from "./modules/demos.ts";
 import { handleMagazine } from "./modules/magazine.ts";
 import { handleAgent } from "./modules/agents.ts";
@@ -28,38 +34,27 @@ import { handleLearning } from "./modules/learning.ts";
 import { handleExams } from "./modules/exams.ts";
 
 /**
- * Main message router.
- *
- * 1. Load/create contact
- * 2. Load/create conversation state
- * 3. Store inbound message
- * 4. Check global commands (menu, back, help, agent, exit)
- * 5. Route based on current_module
- * 6. Store outbound message
+ * Main Deterministic Router.
  */
 export async function routeMessage(incoming: IncomingMessage): Promise<void> {
   const phone = incoming.from;
-  const rawText = incoming.text;
-  const text = sanitizeInput(rawText);
+  const text = sanitizeInput(incoming.text);
   const interactiveId = incoming.interactiveId;
 
   if (!text && !interactiveId) {
-    // Non-text message types we don't handle yet (image, audio, etc.)
     await sendTextMessage(
       phone,
-      "I can currently process text messages and menu selections. Please type your message or choose an option."
+      "👋 Hello! Please send a text message or choose an option from the menu.\n\nType *menu* to view all services."
     );
     return;
   }
 
   try {
-    // ── Step 1: Contact ──────────────────────────────
+    // 1. Contact & State Management
     const contact = await getOrCreateContact(phone, incoming.profileName);
-
-    // ── Step 2: Conversation ─────────────────────────
     const conversation = await getOrCreateConversation(contact.id);
 
-    // ── Step 3: Store inbound message ────────────────
+    // 2. Persist Inbound Message
     await storeMessage(
       contact.id,
       "INBOUND",
@@ -68,7 +63,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       incoming.messageId
     );
 
-    // ── Step 4: Global commands ──────────────────────
+    // 3. Global Intercepts (Available anywhere)
     if (isGreeting(text) || isHelp(text)) {
       await showMainMenu(phone, conversation.id);
       return;
@@ -82,7 +77,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       });
       await sendTextMessage(
         phone,
-        `👋 Thank you for chatting with Xtop Retail Technologies, ${contact.name || ""}.\n\nType *hi* anytime to start again.`
+        `👋 Thank you for visiting *Xtop Retail Technologies*, ${contact.name || ""}.\n\nWhenever you are ready to continue, simply type *hi* or *menu*. Have a productive day!`
       );
       return;
     }
@@ -92,24 +87,21 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-    // ── Step 5: Route by current module ──────────────
+    // 4. Module State Machine Routing
     const currentModule = conversation.current_module;
 
     switch (currentModule) {
       case "MAIN_MENU": {
-        // Check if user is selecting from the menu
-        const resolved = resolveMainMenuSelection(text, interactiveId);
+        const intent = detectIntent(text, interactiveId);
 
-        if (resolved) {
-          // Route to the resolved module
-          await routeToModule(resolved, phone, text, contact, conversation);
+        if (intent !== "UNKNOWN" && intent !== "MENU") {
+          await routeToModule(intent, phone, text, contact, conversation);
         } else if (isBack(text)) {
           await showMainMenu(phone, conversation.id);
         } else {
-          // Unknown input at main menu — show menu again
           await sendTextMessage(
             phone,
-            "I didn't quite catch that. Let me show you the menu again."
+            "I didn't quite understand that selection. Let me show you the menu options below:"
           );
           await showMainMenu(phone, conversation.id);
         }
@@ -117,91 +109,62 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       }
 
       case "PRODUCTS":
-        if (isBack(text)) {
-          await showMainMenu(phone, conversation.id);
-        } else {
-          await handleProducts(phone, text, contact, conversation);
-        }
+        if (isBack(text)) await showMainMenu(phone, conversation.id);
+        else await handleProducts(phone, text, contact, conversation);
         break;
 
       case "SALES_BOT":
-        if (isBack(text)) {
-          await showMainMenu(phone, conversation.id);
-        } else {
-          await handleSalesBot(phone, text, contact, conversation);
-        }
+        if (isBack(text)) await showMainMenu(phone, conversation.id);
+        else await handleSalesBot(phone, text, contact, conversation);
         break;
 
       case "SALES_WEBSITE":
-        if (isBack(text)) {
-          await showMainMenu(phone, conversation.id);
-        } else {
-          await handleSalesWebsite(phone, text, contact, conversation);
-        }
+        if (isBack(text)) await showMainMenu(phone, conversation.id);
+        else await handleSalesWebsite(phone, text, contact, conversation);
         break;
 
       case "SALES_BOT_WEBSITE":
-        if (isBack(text)) {
-          await showMainMenu(phone, conversation.id);
-        } else {
-          await handleSalesBotWebsite(phone, text, contact, conversation);
-        }
+        if (isBack(text)) await showMainMenu(phone, conversation.id);
+        else await handleSalesBotWebsite(phone, text, contact, conversation);
         break;
 
       case "SALES_AUTOMATION":
-        if (isBack(text)) {
-          await showMainMenu(phone, conversation.id);
-        } else {
-          await handleSalesAutomation(phone, text, contact, conversation);
-        }
+        if (isBack(text)) await showMainMenu(phone, conversation.id);
+        else await handleSalesAutomation(phone, text, contact, conversation);
         break;
 
       case "DEMOS":
-        if (isBack(text)) {
-          await showMainMenu(phone, conversation.id);
-        } else {
-          await handleDemos(phone, text, contact, conversation);
-        }
+        if (isBack(text)) await showMainMenu(phone, conversation.id);
+        else await handleDemos(phone, text, contact, conversation);
         break;
 
       case "MAGAZINE":
-        if (isBack(text)) {
-          await showMainMenu(phone, conversation.id);
-        } else {
-          await handleMagazine(phone, text, contact, conversation);
-        }
+        if (isBack(text)) await showMainMenu(phone, conversation.id);
+        else await handleMagazine(phone, text, contact, conversation);
         break;
 
       case "AGENT":
         if (isBack(text) || isGreeting(text)) {
           await showMainMenu(phone, conversation.id);
         } else {
-          // User sent another message while waiting for agent
           await sendTextMessage(
             phone,
-            "An agent will be with you shortly. Type *menu* to return to the main menu."
+            "An Xtop agent has been notified and will reach out to you shortly.\n\nType *menu* to return to the main options."
           );
         }
         break;
 
       case "LEARNING":
-        if (isBack(text)) {
-          await showMainMenu(phone, conversation.id);
-        } else {
-          await handleLearning(phone, text, contact, conversation);
-        }
+        if (isBack(text)) await showMainMenu(phone, conversation.id);
+        else await handleLearning(phone, text, contact, conversation);
         break;
 
       case "EXAMS":
-        if (isBack(text)) {
-          await showMainMenu(phone, conversation.id);
-        } else {
-          await handleExams(phone, text, contact, conversation);
-        }
+        if (isBack(text)) await showMainMenu(phone, conversation.id);
+        else await handleExams(phone, text, contact, conversation);
         break;
 
       default:
-        // Unknown state — reset to main menu
         await showMainMenu(phone, conversation.id);
         break;
     }
@@ -209,13 +172,13 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     safeErrorLog("routeMessage", err);
     await sendTextMessage(
       phone,
-      "Sorry, I'm having trouble processing that right now. Please type *menu* for options or *agent* to speak with our team."
+      "Sorry, something went wrong processing your request. Please type *menu* or *agent* to speak with our team."
     );
   }
 }
 
 /**
- * Route to a specific module and update conversation state.
+ * Module Switcher.
  */
 async function routeToModule(
   module: string,
@@ -224,14 +187,12 @@ async function routeToModule(
   contact: Contact,
   conversation: Conversation
 ): Promise<void> {
-  // Update conversation state to the new module
   await updateConversation(conversation.id, {
     current_module: module,
     current_state: "ENTRY",
     context_json: {},
   });
 
-  // Refresh conversation with new state
   const updatedConversation: Conversation = {
     ...conversation,
     current_module: module,
