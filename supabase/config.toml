@@ -1,19 +1,102 @@
-# supabase/config.toml
+# .github/workflows/deploy-production.yml
+name: Deploy to Production
 
-[project]
-id = "mldywarnnwjitfvqpgis"
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "supabase/**"
+      - ".github/workflows/deploy-production.yml"
+  workflow_dispatch:
 
-[api]
-enabled = true
-port = 54321
-schemas = ["public", "graphql_public"]
-extra_search_path = ["public", "extensions"]
-max_rows = 1000
+env:
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
 
-[db]
-port = 54322
-shadow_port = 54320
-major_version = 15
+jobs:
+  # ── Validate ──────────────────────────────────────
+  validate:
+    name: Validate Configuration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-[functions.whatsapp-webhook]
-verify_jwt = false
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Verify Supabase project link
+        run: |
+          supabase link --project-ref $SUPABASE_PROJECT_ID
+          echo "✅ Successfully linked to Supabase project"
+
+  # ── Deploy Edge Functions ─────────────────────────
+  deploy-functions:
+    name: Deploy Edge Functions
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link project
+        run: supabase link --project-ref $SUPABASE_PROJECT_ID
+
+      - name: Deploy whatsapp-webhook function
+        run: |
+          echo "🚀 Deploying whatsapp-webhook Edge Function..."
+          supabase functions deploy whatsapp-webhook \
+            --project-ref $SUPABASE_PROJECT_ID \
+            --no-verify-jwt
+          echo "✅ Edge Function deployed successfully"
+
+  # ── Deploy Secrets ────────────────────────────────
+  deploy-secrets:
+    name: Deploy Secrets
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link project
+        run: supabase link --project-ref $SUPABASE_PROJECT_ID
+
+      - name: Set Edge Function secrets
+        run: |
+          echo "🔐 Setting Edge Function secrets..."
+          supabase secrets set \
+            WHATSAPP_ACCESS_TOKEN=${{ secrets.WHATSAPP_ACCESS_TOKEN }} \
+            WHATSAPP_PHONE_NUMBER_ID=${{ secrets.WHATSAPP_PHONE_NUMBER_ID }} \
+            WHATSAPP_VERIFY_TOKEN=${{ secrets.WHATSAPP_VERIFY_TOKEN }} \
+            AI_API_KEY=${{ secrets.AI_API_KEY }} \
+            AI_MODEL=${{ secrets.AI_MODEL || 'gpt-4o-mini' }} \
+            --project-ref $SUPABASE_PROJECT_ID
+          echo "✅ Secrets configured successfully"
+
+  # ── Verify ────────────────────────────────────────
+  verify:
+    name: Verify Deployment
+    runs-on: ubuntu-latest
+    needs: [deploy-functions, deploy-secrets]
+    steps:
+      - name: Check Webhook Status
+        run: |
+          WEBHOOK_URL="https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/whatsapp-webhook"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$WEBHOOK_URL" || true)
+          echo "Webhook response status: $HTTP_STATUS"
+          echo "## 🚀 Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "Edge Function URL: \`$WEBHOOK_URL\`" >> $GITHUB_STEP_SUMMARY
