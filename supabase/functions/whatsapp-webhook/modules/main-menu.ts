@@ -10,26 +10,28 @@ export async function showMainMenu(phone: string, conversationId: string): Promi
     context_json: {},
   });
 
-  const body = `👋 Welcome to *Xtop Retail Technologies*.\n\nI'm *Sabi*, your digital assistant.\n\nI can help you explore our platforms, view live interactive demos, get project quotations, or speak directly with our team.\n\n👇 *Select an option below to continue:*`;
+  const body =
+    `👋 Welcome to *Xtop Retail Technologies*.\n\n` +
+    `I'm *Sabi*, your digital assistant.\n\n` +
+    `I can help you explore our platforms, view live demos, get instant project quotations, or speak with our team.\n\n` +
+    `👇 *Select an option below to continue:*`;
 
   await sendListMessage(
-    phone,
-    body,
-    "Main Menu",
+    phone, body, "Main Menu",
     [
       {
         title: "Explore & Build",
         rows: [
-          makeListRow("menu_products", "1️⃣ Our Products", "XtopEdu & NaijaShop.com"),
-          makeListRow("menu_services", "2️⃣ Our Services", "WhatsApp Bots, Websites & ERP"),
-          makeListRow("menu_demos", "3️⃣ View Our Demos", "10 Live interactive bot demos"),
-          makeListRow("menu_magazine", "4️⃣ Product Magazine", "Digital product catalogue"),
-          makeListRow("menu_agent", "5️⃣ Talk to an Agent", "Consultations & custom quotes"),
-          makeListRow("menu_learning", "6️⃣ Learning Centre", "Engr. Ero academic portal"),
+          makeListRow("menu_products", "1️⃣ Our Products", "XtopEdu & NaijaShop"),
+          makeListRow("menu_services", "2️⃣ Our Services", "WhatsApp Bots, Websites & more"),
+          makeListRow("menu_demos", "3️⃣ View Our Demos", "10 live interactive demos"),
+          makeListRow("menu_magazine", "4️⃣ Product Magazine", "Digital catalogue"),
+          makeListRow("menu_agent", "5️⃣ Talk to an Agent", "Get help & quotes"),
+          makeListRow("menu_learning", "6️⃣ Learning Centre", "Engr. Ero courses"),
+          makeListRow("menu_sales", "🛠️ Build a Project", "Get instant quotation"),
         ],
       },
     ],
-    "Xtop Retail Technologies",
-    "Sabi Digital Assistant"
+    "Xtop Retail Technologies", "Sabi Digital Assistant"
   );
 }
