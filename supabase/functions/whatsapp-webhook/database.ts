@@ -139,12 +139,6 @@ export interface AgentRequest {
 // HELPERS
 // ═══════════════════════════════════════════════════════
 
-/**
- * Validates a string as a proper UUID.
- * Returns null if the string is empty, undefined, or not a valid UUID.
- * This prevents PostgreSQL errors like:
- *   "invalid input syntax for type uuid: ''"
- */
 function toValidUuidOrNull(val?: string | null): string | null {
   if (!val || typeof val !== "string") return null;
   const trimmed = val.trim();
@@ -309,12 +303,24 @@ export async function getActiveMagazineConfig(): Promise<MagazineConfig | null> 
 export async function getPricingPackages(serviceType: string): Promise<PricingPackage[]> {
   const sb = getSupabaseClient();
   const { data, error } = await sb
-    .from("pricing_packages").select("*")
+    .from("pricing_packages")
+    .select("*")
     .eq("service_type", serviceType)
     .eq("status", "ACTIVE")
     .order("priority");
-  if (error) { safeErrorLog("getPricingPackages", error); return []; }
-  return (data || []) as PricingPackage[];
+
+  if (error) {
+    safeErrorLog("getPricingPackages", error);
+    throw error;
+  }
+
+  return (data || []).map((row) => ({
+    ...row,
+    min_price: Number(row.min_price),
+    max_price: Number(row.max_price),
+    priority: Number(row.priority ?? 0),
+    features: Array.isArray(row.features) ? row.features : [],
+  })) as PricingPackage[];
 }
 
 // ═══════════════════════════════════════════════════════
