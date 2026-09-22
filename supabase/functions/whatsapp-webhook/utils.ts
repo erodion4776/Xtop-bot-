@@ -104,7 +104,23 @@ export function extractSelection(text: string): number | null {
   return null;
 }
 
+/**
+ * Safe error logger.
+ * Supabase returns plain JSON error objects, NOT JavaScript Error instances.
+ * This function handles both formats so we always see the real error message.
+ */
 export function safeErrorLog(context: string, error: unknown): void {
-  const message = error instanceof Error ? error.message : "Unknown error";
-  console.error(`[${context}]`, message);
+  if (!error) return;
+
+  if (error instanceof Error) {
+    console.error(`[${context}] ${error.message}`);
+  } else if (typeof error === "object") {
+    // Supabase errors are plain objects: { message, details, hint, code }
+    const err = error as Record<string, unknown>;
+    const msg = err.message || err.details || err.hint || JSON.stringify(error);
+    const code = err.code ? ` (code: ${err.code})` : "";
+    console.error(`[${context}] ${msg}${code}`);
+  } else {
+    console.error(`[${context}] ${String(error)}`);
+  }
 }
