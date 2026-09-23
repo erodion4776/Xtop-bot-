@@ -2,6 +2,7 @@ package com.xtop.admin.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -10,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
@@ -20,43 +22,34 @@ import com.xtop.admin.data.models.CourseQuestion
 import com.xtop.admin.data.models.ModuleSlide
 import com.xtop.admin.data.remote.GeneratedCourse
 import com.xtop.admin.data.remote.PollinationsService
+import com.xtop.admin.data.repository.CourseRepository
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.query.Columns
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CourseAiGeneratorScreen(navController: NavController) {
     val scope = rememberCoroutineScope()
+    val courseRepo = remember { CourseRepository() }
 
-    // Form inputs
-    var isNewCourse by remember { mutableStateOf(true) }
     var existingCourses by remember { mutableStateOf<List<Course>>(emptyList()) }
-    var selectedCourse by remember { mutableStateOf<Course?>(null) }
-    var courseDropdownExpanded by remember { mutableStateOf(false) }
-
-    var courseCode by remember { mutableStateOf("") }
-    var courseName by remember { mutableStateOf("") }
-    var term by remember { mutableStateOf("First Semester") }
+    var courseCode by remember { mutableStateOf("ELA301") }
+    var courseName by remember { mutableStateOf("Automotive Engineering") }
     var lessonNumber by remember { mutableStateOf("1") }
-    var questionCount by remember { mutableStateOf("5") }
     var topicPrompt by remember { mutableStateOf("") }
+    var questionCount by remember { mutableStateOf("5") }
 
-    // Generation state
     var isGenerating by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
     var generatedCourse by remember { mutableStateOf<GeneratedCourse?>(null) }
     var imageUrl by remember { mutableStateOf<String?>(null) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
-    var statusIsError by remember { mutableStateOf(false) }
 
-    // Fetch existing courses on start
     LaunchedEffect(Unit) {
         try {
-            val courses = SupabaseClient.postgrest.from("courses").select().decodeList<Course>()
-            existingCourses = courses
-        } catch (e: Exception) {
-            // Ignore error if courses table is empty
-        }
+            existingCourses = courseRepo.getCourses()
+        } catch (_: Exception) {}
     }
 
     Scaffold(
@@ -77,154 +70,73 @@ fun CourseAiGeneratorScreen(navController: NavController) {
                 .padding(padding)
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
-                "Generate Course & Exam with Pollinations AI",
+                "Generate Interactive Lessons & Exams",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary
             )
             Text(
-                "Configure the course details, lesson number, and question count below. The AI will generate classroom lecture notes, technical diagram schematic, and CBT questions ready for WhatsApp.",
+                "Provide the course info, lesson topic, and CBT question count. Pollinations AI will generate complete lecture notes, technical blueprints, and CBT questions ready for WhatsApp.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            // Course Mode Selection (New vs Existing)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = isNewCourse,
-                    onClick = { isNewCourse = true },
-                    label = { Text("Create New Course") },
-                    leadingIcon = { if (isNewCourse) Icon(Icons.Default.Check, null) }
-                )
-                FilterChip(
-                    selected = !isNewCourse,
-                    onClick = { isNewCourse = false },
-                    label = { Text("Add to Existing Course") },
-                    leadingIcon = { if (!isNewCourse) Icon(Icons.Default.Check, null) }
-                )
-            }
-
-            if (isNewCourse) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = courseCode,
-                        onValueChange = { courseCode = it.uppercase() },
-                        label = { Text("Course Code (e.g. ELA305)") },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = term,
-                        onValueChange = { term = it },
-                        label = { Text("Term / Semester") },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true
-                    )
-                }
-
+            // Course Code & Name
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
-                    value = courseName,
-                    onValueChange = { courseName = it },
-                    label = { Text("Course Name (e.g. Automotive Electronic Systems)") },
-                    modifier = Modifier.fillMaxWidth(),
+                    value = courseCode,
+                    onValueChange = { courseCode = it },
+                    label = { Text("Course Code") },
+                    modifier = Modifier.weight(1f),
                     singleLine = true
                 )
-            } else {
-                // Dropdown for existing courses
-                ExposedDropdownMenuBox(
-                    expanded = courseDropdownExpanded,
-                    onExpandedChange = { courseDropdownExpanded = !courseDropdownExpanded },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    OutlinedTextField(
-                        value = selectedCourse?.let { "${it.courseCode} - ${it.courseName}" } ?: "Select an existing course",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Select Course") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = courseDropdownExpanded) },
-                        modifier = Modifier
-                            .menuAnchor()
-                            .fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(
-                        expanded = courseDropdownExpanded,
-                        onDismissRequest = { courseDropdownExpanded = false }
-                    ) {
-                        if (existingCourses.isEmpty()) {
-                            DropdownMenuItem(
-                                text = { Text("No existing courses found. Choose 'Create New Course'") },
-                                onClick = { courseDropdownExpanded = false }
-                            )
-                        } else {
-                            existingCourses.forEach { course ->
-                                DropdownMenuItem(
-                                    text = { Text("${course.courseCode}: ${course.courseName}") },
-                                    onClick = {
-                                        selectedCourse = course
-                                        courseCode = course.courseCode
-                                        courseName = course.courseName
-                                        term = course.term ?: "First Semester"
-                                        courseDropdownExpanded = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Lesson Number & Question Count
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
                 OutlinedTextField(
                     value = lessonNumber,
-                    onValueChange = { if (it.all { char -> char.isDigit() }) lessonNumber = it },
-                    label = { Text("Lesson / Module #") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true
-                )
-
-                OutlinedTextField(
-                    value = questionCount,
-                    onValueChange = { if (it.all { char -> char.isDigit() }) questionCount = it },
-                    label = { Text("Question Count") },
-                    modifier = Modifier.weight(1f),
+                    onValueChange = { lessonNumber = it.filter { ch -> ch.isDigit() } },
+                    label = { Text("Lesson #") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(0.6f),
                     singleLine = true
                 )
             }
 
-            // Topic / Syllabus Prompt
+            OutlinedTextField(
+                value = courseName,
+                onValueChange = { courseName = it },
+                label = { Text("Course Title / Subject") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+
+            // Topic prompt
             OutlinedTextField(
                 value = topicPrompt,
                 onValueChange = { topicPrompt = it },
-                label = { Text("Lesson Topic (e.g. Anti-Lock Braking System (ABS) Operation)") },
+                label = { Text("Lesson Topic (e.g. Brake Systems & ABS)") },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = false,
-                minLines = 3
+                minLines = 2
             )
 
-            // Generate Button
+            // Number of questions
+            OutlinedTextField(
+                value = questionCount,
+                onValueChange = { questionCount = it.filter { ch -> ch.isDigit() } },
+                label = { Text("Number of Questions (e.g. 5, 10, 15)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+
             Button(
                 onClick = {
                     scope.launch {
                         try {
                             isGenerating = true
                             statusMessage = null
-                            statusIsError = false
-
-                            val qCount = questionCount.toIntOrNull() ?: 5
                             val lNum = lessonNumber.toIntOrNull() ?: 1
-
+                            val qCount = questionCount.toIntOrNull() ?: 5
                             val res = PollinationsService.generateCourseWithAI(
                                 topicPrompt = topicPrompt,
                                 courseCode = courseCode,
@@ -236,7 +148,6 @@ fun CourseAiGeneratorScreen(navController: NavController) {
                             imageUrl = PollinationsService.getImageUrl(res.image_prompt)
                         } catch (e: Exception) {
                             statusMessage = "AI Generation Failed: ${e.localizedMessage}"
-                            statusIsError = true
                         } finally {
                             isGenerating = false
                         }
@@ -248,7 +159,7 @@ fun CourseAiGeneratorScreen(navController: NavController) {
                 if (isGenerating) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary)
                     Spacer(Modifier.width(8.dp))
-                    Text("Generating Lesson & Diagram...")
+                    Text("Generating Lesson & CBT...")
                 } else {
                     Icon(Icons.Default.AutoAwesome, null)
                     Spacer(Modifier.width(8.dp))
@@ -256,37 +167,18 @@ fun CourseAiGeneratorScreen(navController: NavController) {
                 }
             }
 
-            // Status message
-            statusMessage?.let { msg ->
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (statusIsError) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = msg,
-                        modifier = Modifier.padding(12.dp),
-                        color = if (statusIsError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer
-                    )
+            if (statusMessage != null) {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                    Text(statusMessage ?: "", modifier = Modifier.padding(12.dp))
                 }
             }
 
-            // Preview Generated Course
+            // Preview Section
             generatedCourse?.let { course ->
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            "${course.course_code}: ${course.course_name}",
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                        Text(
-                            "Semester: ${course.term} • ${course.description}",
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("${course.course_code}: ${course.course_name}", style = MaterialTheme.typography.titleLarge)
+                        Text("Term: ${course.term} • ${course.description}", style = MaterialTheme.typography.bodySmall)
 
                         HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
@@ -301,26 +193,19 @@ fun CourseAiGeneratorScreen(navController: NavController) {
                                 contentDescription = "AI Generated Diagram",
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(220.dp),
+                                    .height(200.dp),
                                 contentScale = ContentScale.Crop
                             )
                         }
 
                         HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
-                        Text("Generated Exam Questions (${course.questions.size}):", style = MaterialTheme.typography.titleSmall)
+                        Text("Generated CBT Exam Questions (${course.questions.size}):", style = MaterialTheme.typography.titleSmall)
                         course.questions.forEachIndexed { i, q ->
                             Text("${i + 1}. ${q.question}", style = MaterialTheme.typography.bodySmall)
-                            Text("   A: ${q.option_a}")
-                            Text("   B: ${q.option_b}")
-                            Text("   C: ${q.option_c}")
-                            Text("   D: ${q.option_d}")
-                            Text(
-                                "   Correct Answer: ${q.correct_answer} (${q.explanation})",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(Modifier.height(4.dp))
+                            Text("   A) ${q.option_a}  B) ${q.option_b}", style = MaterialTheme.typography.bodySmall)
+                            Text("   C) ${q.option_c}  D) ${q.option_d}", style = MaterialTheme.typography.bodySmall)
+                            Text("   Correct: Option ${q.correct_answer} (${q.explanation})", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                         }
 
                         Spacer(Modifier.height(12.dp))
@@ -330,45 +215,52 @@ fun CourseAiGeneratorScreen(navController: NavController) {
                                 scope.launch {
                                     try {
                                         isSaving = true
-                                        statusMessage = null
-                                        statusIsError = false
                                         val db = SupabaseClient.postgrest
-                                        val lNum = lessonNumber.toIntOrNull() ?: 1
 
-                                        // 1. Resolve or Create Course ID
-                                        val targetCourseId = if (!isNewCourse && selectedCourse?.id != null) {
-                                            selectedCourse!!.id!!
+                                        // 1. Check if course with code already exists or create new
+                                        val existing = db.from("courses")
+                                            .select {
+                                                filter {
+                                                    eq("course_code", course.course_code)
+                                                }
+                                            }.decodeList<Course>()
+
+                                        val targetCourseId = if (existing.isNotEmpty() && !existing.first().id.isNullOrBlank()) {
+                                            existing.first().id!!
                                         } else {
-                                            val insertedCourse = db.from("courses").insert(
+                                            val createdCourse = db.from("courses").insert(
                                                 Course(
-                                                    courseCode = if (courseCode.isNotBlank()) courseCode else course.course_code,
-                                                    courseName = if (courseName.isNotBlank()) courseName else course.course_name,
-                                                    term = if (term.isNotBlank()) term else course.term,
+                                                    id = null,
+                                                    courseCode = course.course_code,
+                                                    courseName = course.course_name,
+                                                    term = course.term,
                                                     description = course.description,
                                                     status = "OPEN",
                                                     showAnswers = true
                                                 )
-                                            ) { select() }.decodeSingle<Course>()
-
-                                            insertedCourse.id ?: throw IllegalStateException("Could not retrieve created course ID.")
+                                            ) { select(Columns.ALL) }.decodeSingle<Course>()
+                                            createdCourse.id ?: throw IllegalStateException("Course ID was not returned by Supabase")
                                         }
 
                                         // 2. Insert Module
-                                        val insertedModule = db.from("course_modules").insert(
+                                        val lNum = lessonNumber.toIntOrNull() ?: 1
+                                        val createdModule = db.from("course_modules").insert(
                                             CourseModule(
+                                                id = null,
                                                 courseId = targetCourseId,
                                                 title = course.lesson_title,
                                                 description = course.description,
                                                 moduleOrder = lNum,
                                                 status = "ACTIVE"
                                             )
-                                        ) { select() }.decodeSingle<CourseModule>()
+                                        ) { select(Columns.ALL) }.decodeSingle<CourseModule>()
 
-                                        val targetModuleId = insertedModule.id ?: throw IllegalStateException("Could not retrieve created module ID.")
+                                        val targetModuleId = createdModule.id ?: throw IllegalStateException("Module ID was not returned")
 
-                                        // 3. Insert Slide (Lesson content & Technical Image)
+                                        // 3. Insert Module Slide (notes & image)
                                         db.from("module_slides").insert(
                                             ModuleSlide(
+                                                id = null,
                                                 moduleId = targetModuleId,
                                                 title = course.lesson_title,
                                                 content = course.lesson_content,
@@ -379,33 +271,31 @@ fun CourseAiGeneratorScreen(navController: NavController) {
                                             )
                                         )
 
-                                        // 4. Insert Exam Questions
-                                        val questionsList = course.questions.mapIndexed { idx, q ->
-                                            CourseQuestion(
-                                                courseId = targetCourseId,
-                                                moduleId = targetModuleId,
-                                                question = q.question,
-                                                optionA = q.option_a,
-                                                optionB = q.option_b,
-                                                optionC = q.option_c,
-                                                optionD = q.option_d,
-                                                correctAnswer = q.correct_answer.trim().uppercase().take(1).ifBlank { "A" },
-                                                explanation = q.explanation,
-                                                questionOrder = idx + 1,
-                                                status = "ACTIVE"
-                                            )
-                                        }
-
-                                        if (questionsList.isNotEmpty()) {
+                                        // 4. Insert CBT Questions
+                                        if (course.questions.isNotEmpty()) {
+                                            val questionsList = course.questions.mapIndexed { idx, q ->
+                                                CourseQuestion(
+                                                    id = null,
+                                                    courseId = targetCourseId,
+                                                    moduleId = targetModuleId,
+                                                    question = q.question,
+                                                    optionA = q.option_a,
+                                                    optionB = q.option_b,
+                                                    optionC = q.option_c,
+                                                    optionD = q.option_d,
+                                                    correctAnswer = q.correct_answer,
+                                                    explanation = q.explanation,
+                                                    questionOrder = idx + 1,
+                                                    status = "ACTIVE"
+                                                )
+                                            }
                                             db.from("course_questions").insert(questionsList)
                                         }
 
-                                        statusMessage = "✅ Successfully Published to WhatsApp Bot Database!"
-                                        statusIsError = false
+                                        statusMessage = "✅ Successfully Published to WhatsApp Bot!"
                                         generatedCourse = null
                                     } catch (e: Exception) {
                                         statusMessage = "Save Error: ${e.localizedMessage}"
-                                        statusIsError = true
                                     } finally {
                                         isSaving = false
                                     }
