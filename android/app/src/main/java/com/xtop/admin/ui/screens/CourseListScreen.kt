@@ -1,5 +1,10 @@
 package com.xtop.admin.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,6 +27,7 @@ fun CourseListScreen(navController: NavController) {
     var courses by remember { mutableStateOf<List<Course>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isFabExpanded by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun loadCourses() {
@@ -59,8 +65,66 @@ fun CourseListScreen(navController: NavController) {
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { navController.navigate("course_editor/new") }) {
-                Icon(Icons.Default.Add, "Add Course")
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                AnimatedVisibility(
+                    visible = isFabExpanded,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // 1. AI Generate
+                        ExtendedFloatingActionButton(
+                            onClick = {
+                                isFabExpanded = false
+                                navController.navigate("ai_generator")
+                            },
+                            icon = { Icon(Icons.Default.AutoAwesome, "AI Generate") },
+                            text = { Text("AI Generate") },
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+
+                        // 2. Manual Course Editor
+                        ExtendedFloatingActionButton(
+                            onClick = {
+                                isFabExpanded = false
+                                navController.navigate("manual_course_editor")
+                            },
+                            icon = { Icon(Icons.Default.EditNote, "Manual Entry") },
+                            text = { Text("Manual Entry") },
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+
+                        // 3. Import CSV
+                        ExtendedFloatingActionButton(
+                            onClick = {
+                                isFabExpanded = false
+                                navController.navigate("csv_import")
+                            },
+                            icon = { Icon(Icons.Default.UploadFile, "Import CSV") },
+                            text = { Text("Import CSV") },
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    }
+                }
+
+                // Main Toggle FAB
+                FloatingActionButton(
+                    onClick = { isFabExpanded = !isFabExpanded }
+                ) {
+                    Icon(
+                        imageVector = if (isFabExpanded) Icons.Default.Close else Icons.Default.Add,
+                        contentDescription = if (isFabExpanded) "Close Menu" else "Add Course"
+                    )
+                }
             }
         }
     ) { padding ->
@@ -94,7 +158,7 @@ fun CourseListScreen(navController: NavController) {
                 }
                 courses.isEmpty() -> {
                     Text(
-                        text = "No courses found. Tap + to add one.",
+                        text = "No courses found. Tap + to add or import courses.",
                         modifier = Modifier.align(Alignment.Center),
                         style = MaterialTheme.typography.bodyMedium
                     )
