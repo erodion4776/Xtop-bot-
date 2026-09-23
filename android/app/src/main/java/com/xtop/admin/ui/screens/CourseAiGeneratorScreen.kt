@@ -15,8 +15,9 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.xtop.admin.data.SupabaseClient
 import com.xtop.admin.data.models.Course
-import com.xtop.admin.data.models.CourseLesson
+import com.xtop.admin.data.models.CourseModule
 import com.xtop.admin.data.models.CourseQuestion
+import com.xtop.admin.data.models.ModuleSlide
 import com.xtop.admin.data.remote.GeneratedCourse
 import com.xtop.admin.data.remote.PollinationsService
 import io.github.jan.supabase.postgrest.from
@@ -163,22 +164,35 @@ fun CourseAiGeneratorScreen(navController: NavController) {
                                             )
                                         ) { select() }.decodeSingle<Course>()
 
-                                        // 2. Insert Lesson & Image
-                                        db.from("course_lessons").insert(
-                                            CourseLesson(
+                                        // 2. Insert Module
+                                        val insertedModule = db.from("course_modules").insert(
+                                            CourseModule(
                                                 courseId = insertedCourse.id,
                                                 title = course.lesson_title,
+                                                description = course.description,
+                                                moduleOrder = 1,
+                                                status = "ACTIVE"
+                                            )
+                                        ) { select() }.decodeSingle<CourseModule>()
+
+                                        // 3. Insert Slide (Lesson content & Diagram Image)
+                                        db.from("module_slides").insert(
+                                            ModuleSlide(
+                                                moduleId = insertedModule.id,
+                                                title = course.lesson_title,
                                                 content = course.lesson_content,
-                                                videoUrl = imageUrl, // Stores the AI image URL
-                                                lessonOrder = 1,
-                                                duration = "15 mins"
+                                                imageUrl = imageUrl,
+                                                slideOrder = 1,
+                                                duration = "15 mins",
+                                                status = "ACTIVE"
                                             )
                                         )
 
-                                        // 3. Insert Exam Questions
+                                        // 4. Insert Exam Questions
                                         val questionsList = course.questions.mapIndexed { idx, q ->
                                             CourseQuestion(
                                                 courseId = insertedCourse.id,
+                                                moduleId = insertedModule.id,
                                                 question = q.question,
                                                 optionA = q.option_a,
                                                 optionB = q.option_b,
@@ -186,7 +200,8 @@ fun CourseAiGeneratorScreen(navController: NavController) {
                                                 optionD = q.option_d,
                                                 correctAnswer = q.correct_answer,
                                                 explanation = q.explanation,
-                                                questionOrder = idx + 1
+                                                questionOrder = idx + 1,
+                                                status = "ACTIVE"
                                             )
                                         }
                                         db.from("course_questions").insert(questionsList)
