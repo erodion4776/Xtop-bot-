@@ -34,7 +34,6 @@ fun DashboardScreen(navController: NavController) {
     val context = LocalContext.current
     var crashLogContent by remember { mutableStateOf<String?>(null) }
 
-    // Read crash_log.txt on launch if present (DEBUG builds only)
     LaunchedEffect(Unit) {
         if (BuildConfig.DEBUG) {
             try {
@@ -49,9 +48,36 @@ fun DashboardScreen(navController: NavController) {
     }
 
     val menuItems = listOf(
-        DashboardItem("Courses", "Manage courses, question banks & exam settings", Icons.Default.School, "courses"),
-        DashboardItem("Students", "View registered students & attendance", Icons.Default.People, "students"),
-        DashboardItem("Analytics", "System overview & reports", Icons.Default.Analytics, "analytics"),
+        DashboardItem(
+            title = "AI Course & Image Creator",
+            subtitle = "Generate lessons, diagrams & questions with Pollinations AI",
+            icon = Icons.Default.AutoAwesome,
+            route = "ai_generator"
+        ),
+        DashboardItem(
+            title = "Live WhatsApp Activity",
+            subtitle = "See live student chats and bot responses",
+            icon = Icons.Default.Chat,
+            route = "bot_activity"
+        ),
+        DashboardItem(
+            title = "Courses",
+            subtitle = "Manage courses, question banks & exam settings",
+            icon = Icons.Default.School,
+            route = "courses"
+        ),
+        DashboardItem(
+            title = "Students",
+            subtitle = "View registered students & attendance",
+            icon = Icons.Default.People,
+            route = "students"
+        ),
+        DashboardItem(
+            title = "Analytics",
+            subtitle = "System overview & reports",
+            icon = Icons.Default.Analytics,
+            route = "analytics"
+        ),
     )
 
     Scaffold(
@@ -60,7 +86,7 @@ fun DashboardScreen(navController: NavController) {
                 title = { Text("Xtop Admin") },
                 actions = {
                     IconButton(onClick = { navController.navigate("settings") }) {
-                        Icon(Icons.Default.Settings, "Database Settings")
+                        Icon(Icons.Default.Settings, contentDescription = "Database Settings")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -78,13 +104,13 @@ fun DashboardScreen(navController: NavController) {
         ) {
             item {
                 Text(
-                    "Engr. Ero Learning Centre",
+                    text = "Engr. Ero Learning Centre",
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    "Admin Control Panel",
+                    text = "Admin Control Panel & AI Studio",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -103,16 +129,16 @@ fun DashboardScreen(navController: NavController) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            item.icon,
+                            imageVector = item.icon,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(32.dp)
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
-                            Text(item.title, style = MaterialTheme.typography.titleMedium)
+                            Text(text = item.title, style = MaterialTheme.typography.titleMedium)
                             Text(
-                                item.subtitle,
+                                text = item.subtitle,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -121,60 +147,44 @@ fun DashboardScreen(navController: NavController) {
                 }
             }
 
-            // ═══════════════════════════════════════════════════════
-            // ON-DEVICE CRASH LOG VIEWER (Visible only when crash exists)
-            // ═══════════════════════════════════════════════════════
+            // On-device crash log viewer for debugging
             if (BuildConfig.DEBUG && !crashLogContent.isNullOrBlank()) {
                 item {
                     Spacer(modifier = Modifier.height(16.dp))
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFF2B1010) // Dark red container
-                        )
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF2B1010))
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp)
-                        ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "⚠️ LAST CRASH STACK TRACE",
-                                    color = Color(0xFFFF5252),
-                                    style = MaterialTheme.typography.titleSmall
-                                )
+                                Text(text = "⚠️ LAST CRASH STACK TRACE", color = Color(0xFFFF5252))
                                 TextButton(
                                     onClick = {
                                         try {
-                                            val file = File(context.getExternalFilesDir(null), "crash_log.txt")
-                                            if (file.exists()) file.delete()
+                                            File(context.getExternalFilesDir(null), "crash_log.txt").delete()
                                             crashLogContent = null
                                         } catch (e: Exception) {
                                             // Ignore
                                         }
                                     }
                                 ) {
-                                    Text("Dismiss", color = Color(0xFFFF8A80))
+                                    Text(text = "Dismiss", color = Color(0xFFFF8A80))
                                 }
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
                             Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 260.dp)
+                                    .heightIn(max = 200.dp)
                                     .horizontalScroll(rememberScrollState())
                             ) {
                                 Text(
                                     text = crashLogContent ?: "",
                                     color = Color(0xFFFFCDD2),
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp,
-                                    lineHeight = 15.sp
+                                    fontSize = 11.sp
                                 )
                             }
                         }
