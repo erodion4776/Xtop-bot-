@@ -6,22 +6,23 @@ import androidx.activity.compose.setContent
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.xtop.admin.data.SupabaseClient
 import com.xtop.admin.ui.screens.*
 import com.xtop.admin.ui.theme.XtopAdminTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Initialize SharedPreferences storage for Supabase credentials
+        SupabaseClient.init(applicationContext)
+
         setContent {
             XtopAdminTheme {
                 val navController = rememberNavController()
                 NavHost(navController = navController, startDestination = "dashboard") {
-                    composable("dashboard") {
-                        DashboardScreen(navController)
-                    }
-                    composable("courses") {
-                        CourseListScreen(navController)
-                    }
+                    composable("dashboard") { DashboardScreen(navController) }
+                    composable("courses") { CourseListScreen(navController) }
                     composable("course_editor/{courseId}") { backStack ->
                         val courseId = backStack.arguments?.getString("courseId") ?: "new"
                         CourseEditorScreen(navController, courseId)
@@ -42,12 +43,9 @@ class MainActivity : ComponentActivity() {
                         val courseId = backStack.arguments?.getString("courseId") ?: ""
                         ExamConfigScreen(navController, courseId)
                     }
-                    composable("students") {
-                        StudentListScreen(navController)
-                    }
-                    composable("analytics") {
-                        AnalyticsScreen(navController)
-                    }
+                    composable("students") { StudentListScreen(navController) }
+                    composable("analytics") { AnalyticsScreen(navController) }
+                    composable("settings") { SettingsScreen(navController) }
                 }
             }
         }
