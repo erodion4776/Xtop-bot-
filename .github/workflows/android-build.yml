@@ -33,8 +33,11 @@ jobs:
       - name: Build Debug APK with Gradle
         working-directory: android
         env:
+          # Default Supabase project URL
           SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://mldywarnnwjitfvqpgis.supabase.co' }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          # In GitHub repo Settings -> Secrets and variables -> Actions, ensure SUPABASE_ANON_KEY is set.
+          # If not set, it defaults to a clear placeholder string that the app detects and prompts in Settings.
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'SUPABASE_ANON_KEY_PLACEHOLDER' }}
         run: |
           gradle assembleDebug --stacktrace
 
@@ -50,4 +53,4 @@ jobs:
           echo "## 📱 Android Build Succeeded" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Debug APK is ready for download!**" >> $GITHUB_STEP_SUMMARY
-          echo "Download the artifact **XtopAdmin-Debug-APK** below to install on your phone." >> $GITHUB_STEP_SUMMARY
+          echo "If the app reports an invalid key upon launch, enter your project anon key in the in-app Settings (gear icon)." >> $GITHUB_STEP_SUMMARY
