@@ -25,7 +25,6 @@ import com.xtop.admin.data.models.*
 import com.xtop.admin.data.remote.SqlExporter
 import com.xtop.admin.data.remote.StorageService
 import io.github.jan.supabase.postgrest.from
-import io.github.jan.supabase.postgrest.query.Columns
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -308,7 +307,7 @@ fun ManualCourseEditorScreen(navController: NavController) {
                                             status = "OPEN",
                                             showAnswers = true
                                         )
-                                    ) { select(Columns.ALL) }.decodeSingle<Course>()
+                                    ) { select() }.decodeSingle<Course>()
                                     created.id ?: throw IllegalStateException("Course ID generation failed")
                                 }
 
@@ -322,7 +321,7 @@ fun ManualCourseEditorScreen(navController: NavController) {
                                         moduleOrder = lNum,
                                         status = "ACTIVE"
                                     )
-                                ) { select(Columns.ALL) }.decodeSingle<CourseModule>()
+                                ) { select() }.decodeSingle<CourseModule>()
 
                                 val targetModuleId = createdModule.id ?: throw IllegalStateException("Module ID generation failed")
 
@@ -341,7 +340,7 @@ fun ManualCourseEditorScreen(navController: NavController) {
 
                                 // 4. Questions
                                 val validQuestions = questions.filter { it.question.isNotBlank() }.mapIndexed { idx, q ->
-                                    q.copy(id = null, courseId = targetCourseId, moduleId = targetModuleId, questionOrder = idx + 1)
+                                    q.copy(courseId = targetCourseId, moduleId = targetModuleId, questionOrder = idx + 1)
                                 }
                                 if (validQuestions.isNotEmpty()) {
                                     db.from("course_questions").insert(validQuestions)
