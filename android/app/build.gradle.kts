@@ -55,6 +55,7 @@ android {
 }
 
 dependencies {
+    // Jetpack Compose BOM
     val composeBom = platform("androidx.compose:compose-bom:2024.01.00")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
@@ -65,16 +66,20 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.7.6")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
 
-    // Supabase Kotlin SDK
-    implementation("io.github.jan-tennert.supabase:postgrest-kt:2.1.1")
-    implementation("io.github.jan-tennert.supabase:auth-kt:2.1.1")
-    implementation("io.github.jan-tennert.supabase:storage-kt:2.1.1")
-    implementation("io.ktor:ktor-client-android:2.3.7")
+    // Supabase Kotlin SDK BOM (Version 2.5.4 contains auth-kt, postgrest-kt, storage-kt)
+    val supabaseBom = platform("io.github.jan-tennert.supabase:bom:2.5.4")
+    implementation(supabaseBom)
+    implementation("io.github.jan-tennert.supabase:postgrest-kt")
+    implementation("io.github.jan-tennert.supabase:auth-kt")
+    implementation("io.github.jan-tennert.supabase:storage-kt")
+
+    // Ktor Client for Android Networking
+    implementation("io.ktor:ktor-client-android:2.3.11")
 
     // Image loading
     implementation("io.coil-kt:coil-compose:2.5.0")
 
-    // JSON Serialization
+    // Serialization & Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 }
