@@ -66,15 +66,16 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.7.6")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
 
-    // Supabase Kotlin SDK BOM (Version 2.5.4 contains auth-kt, postgrest-kt, storage-kt)
-    val supabaseBom = platform("io.github.jan-tennert.supabase:bom:2.5.4")
-    implementation(supabaseBom)
-    implementation("io.github.jan-tennert.supabase:postgrest-kt")
-    implementation("io.github.jan-tennert.supabase:auth-kt")
-    implementation("io.github.jan-tennert.supabase:storage-kt")
+    // Supabase Kotlin SDK — Explicit versioning (2.5.4)
+    val supabaseVersion = "2.5.4"
+    implementation("io.github.jan-tennert.supabase:postgrest-kt:$supabaseVersion")
+    implementation("io.github.jan-tennert.supabase:auth-kt:$supabaseVersion")
+    implementation("io.github.jan-tennert.supabase:storage-kt:$supabaseVersion")
 
     // Ktor Client for Android Networking
-    implementation("io.ktor:ktor-client-android:2.3.11")
+    val ktorVersion = "2.3.11"
+    implementation("io.ktor:ktor-client-android:$ktorVersion")
+    implementation("io.ktor:ktor-client-core:$ktorVersion")
 
     // Image loading
     implementation("io.coil-kt:coil-compose:2.5.0")
