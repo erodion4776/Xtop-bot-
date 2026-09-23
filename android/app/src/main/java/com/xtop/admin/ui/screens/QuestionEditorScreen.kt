@@ -11,33 +11,33 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.xtop.admin.data.models.Course
-import com.xtop.admin.data.repository.CourseRepository
+import com.xtop.admin.data.models.CourseQuestion
+import com.xtop.admin.data.repository.QuestionRepository
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CourseEditorScreen(
+fun QuestionEditorScreen(
     navController: NavController,
     courseId: String
 ) {
-    val repo = remember { CourseRepository() }
+    val repo = remember { QuestionRepository() }
     val scope = rememberCoroutineScope()
 
-    var courseCode by remember { mutableStateOf("") }
-    var courseName by remember { mutableStateOf("") }
-    var term by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var showAnswers by remember { mutableStateOf(false) }
+    var question by remember { mutableStateOf("") }
+    var optionA by remember { mutableStateOf("") }
+    var optionB by remember { mutableStateOf("") }
+    var optionC by remember { mutableStateOf("") }
+    var optionD by remember { mutableStateOf("") }
+    var correctAnswer by remember { mutableStateOf("A") }
+    var explanation by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-
-    val isNew = courseId == "new"
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (isNew) "Add New Course" else "Edit Course") },
+                title = { Text("Add Question") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.Default.ArrowBack, "Back")
@@ -50,27 +50,27 @@ fun CourseEditorScreen(
                                 try {
                                     saving = true
                                     errorMessage = null
-                                    if (isNew) {
-                                        repo.createCourse(
-                                            Course(
-                                                courseCode = courseCode.trim().uppercase(),
-                                                courseName = courseName.trim(),
-                                                term = term.trim().ifBlank { null },
-                                                description = description.trim().ifBlank { null },
-                                                showAnswers = showAnswers,
-                                                status = "OPEN"
-                                            )
+                                    repo.createQuestion(
+                                        CourseQuestion(
+                                            courseId = courseId,
+                                            question = question.trim(),
+                                            optionA = optionA.trim(),
+                                            optionB = optionB.trim(),
+                                            optionC = optionC.trim(),
+                                            optionD = optionD.trim(),
+                                            correctAnswer = correctAnswer,
+                                            explanation = explanation.trim().ifBlank { null }
                                         )
-                                    }
+                                    )
                                     navController.popBackStack()
                                 } catch (e: Exception) {
-                                    errorMessage = e.message ?: "Failed to save course"
+                                    errorMessage = e.message ?: "Failed to save question"
                                 } finally {
                                     saving = false
                                 }
                             }
                         },
-                        enabled = courseCode.isNotBlank() && courseName.isNotBlank() && !saving
+                        enabled = question.isNotBlank() && optionA.isNotBlank() && optionB.isNotBlank() && !saving
                     ) {
                         Icon(Icons.Default.Save, "Save")
                     }
@@ -99,44 +99,59 @@ fun CourseEditorScreen(
             }
 
             OutlinedTextField(
-                value = courseCode,
-                onValueChange = { courseCode = it },
-                label = { Text("Course Code (e.g. ELA301)") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-
-            OutlinedTextField(
-                value = courseName,
-                onValueChange = { courseName = it },
-                label = { Text("Course Title (e.g. Auto Shop)") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-
-            OutlinedTextField(
-                value = term,
-                onValueChange = { term = it },
-                label = { Text("Semester / Term (e.g. First Semester)") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-
-            OutlinedTextField(
-                value = description,
-                onValueChange = { description = it },
-                label = { Text("Description") },
+                value = question,
+                onValueChange = { question = it },
+                label = { Text("Question Text") },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 3
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("Allow Students to Review Answers")
-                Switch(checked = showAnswers, onCheckedChange = { showAnswers = it })
+            OutlinedTextField(
+                value = optionA,
+                onValueChange = { optionA = it },
+                label = { Text("Option A") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            OutlinedTextField(
+                value = optionB,
+                onValueChange = { optionB = it },
+                label = { Text("Option B") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            OutlinedTextField(
+                value = optionC,
+                onValueChange = { optionC = it },
+                label = { Text("Option C") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            OutlinedTextField(
+                value = optionD,
+                onValueChange = { optionD = it },
+                label = { Text("Option D") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Text("Select Correct Option:", style = MaterialTheme.typography.labelLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("A", "B", "C", "D").forEach { opt ->
+                    FilterChip(
+                        selected = correctAnswer == opt,
+                        onClick = { correctAnswer = opt },
+                        label = { Text("Option $opt") }
+                    )
+                }
             }
+
+            OutlinedTextField(
+                value = explanation,
+                onValueChange = { explanation = it },
+                label = { Text("Explanation (Optional for review)") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2
+            )
 
             if (saving) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
