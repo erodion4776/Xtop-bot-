@@ -6,7 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -24,11 +24,9 @@ data class DashboardItem(
 @Composable
 fun DashboardScreen(navController: NavController) {
     val menuItems = listOf(
-        DashboardItem("Courses", "Manage courses, modules & slides", Icons.Default.School, "courses"),
-        DashboardItem("Question Bank", "Add/edit exam questions", Icons.Default.Quiz, "questions"),
-        DashboardItem("Exam Config", "Set question count, pass mark & rules", Icons.Default.Settings, "exam_config"),
-        DashboardItem("Students", "View profiles, attendance & results", Icons.Default.People, "students"),
-        DashboardItem("Analytics", "Performance & attendance reports", Icons.Default.Analytics, "analytics"),
+        DashboardItem("Courses", "Manage courses, question banks & exam settings", Icons.Default.School, "courses"),
+        DashboardItem("Students", "View registered students & attendance", Icons.Default.People, "students"),
+        DashboardItem("Analytics", "System overview & reports", Icons.Default.Analytics, "analytics"),
     )
 
     Scaffold(
@@ -60,6 +58,7 @@ fun DashboardScreen(navController: NavController) {
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Spacer(modifier = Modifier.height(8.dp))
             }
 
             items(menuItems) { item ->
