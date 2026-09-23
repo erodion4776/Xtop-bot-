@@ -33,6 +33,11 @@ fun DashboardScreen(navController: NavController) {
         topBar = {
             TopAppBar(
                 title = { Text("Xtop Admin") },
+                actions = {
+                    IconButton(onClick = { navController.navigate("settings") }) {
+                        Icon(Icons.Default.Settings, "Database Settings")
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
