@@ -126,9 +126,10 @@ fun QuestionBankScreen(navController: NavController, courseId: String) {
                                     )
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                                         IconButton(onClick = {
+                                            val questionId = q.id ?: return@IconButton
                                             scope.launch {
                                                 try {
-                                                    repo.deleteQuestion(q.id)
+                                                    repo.deleteQuestion(questionId)
                                                     loadQuestions()
                                                 } catch (e: Exception) {
                                                     errorMessage = e.message
