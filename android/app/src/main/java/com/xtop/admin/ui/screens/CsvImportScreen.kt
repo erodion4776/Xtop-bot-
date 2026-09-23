@@ -20,7 +20,6 @@ import com.xtop.admin.data.SupabaseClient
 import com.xtop.admin.data.models.*
 import com.xtop.admin.data.remote.SqlExporter
 import io.github.jan.supabase.postgrest.from
-import io.github.jan.supabase.postgrest.query.Columns
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -30,7 +29,6 @@ fun CsvImportScreen(navController: NavController) {
     val scope = rememberCoroutineScope()
 
     var csvText by remember { mutableStateOf("") }
-    var parsedCount by remember { mutableStateOf(0) }
     var isSaving by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
 
@@ -169,15 +167,18 @@ ELA301,Braking Systems,First Semester,1,ABS Fundamentals,*Anti-Lock Braking Syst
                                             filter { eq("course_code", code) }
                                         }.decodeList<Course>()
 
-                                        val cId = if (existing.isNotEmpty()) existing.first().id!!
-                                        else db.from("courses").insert(
-                                            Course(courseCode = code, courseName = name, term = term, status = "OPEN", showAnswers = true)
-                                        ) { select(Columns.ALL) }.decodeSingle<Course>().id!!
+                                        val cId = if (existing.isNotEmpty() && !existing.first().id.isNullOrBlank()) {
+                                            existing.first().id!!
+                                        } else {
+                                            db.from("courses").insert(
+                                                Course(courseCode = code, courseName = name, term = term, status = "OPEN", showAnswers = true)
+                                            ) { select() }.decodeSingle<Course>().id!!
+                                        }
 
                                         // 2. Module
                                         val mId = db.from("course_modules").insert(
                                             CourseModule(courseId = cId, title = lTitle, moduleOrder = lNum, status = "ACTIVE")
-                                        ) { select(Columns.ALL) }.decodeSingle<CourseModule>().id!!
+                                        ) { select() }.decodeSingle<CourseModule>().id!!
 
                                         // 3. Slide
                                         db.from("module_slides").insert(
