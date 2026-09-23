@@ -19,7 +19,7 @@ class MainActivity : ComponentActivity() {
         // ═══════════════════════════════════════════════════════
         // GLOBAL UNCAUGHT EXCEPTION HANDLER
         // Captures any unhandled crash and persists the full stack
-        // trace to crash_log.txt in the app's external files directory.
+        // trace to crash_log.txt so it can be viewed on device.
         // ═══════════════════════════════════════════════════════
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
@@ -36,20 +36,29 @@ class MainActivity : ComponentActivity() {
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
-                // Delegate to Android's default handler to finalize normal termination
                 defaultHandler?.uncaughtException(thread, throwable)
             }
         }
 
-        // Initialize SharedPreferences storage for Supabase credentials
+        // Initialize SharedPreferences credentials store
         SupabaseClient.init(applicationContext)
 
         setContent {
             XtopAdminTheme {
                 val navController = rememberNavController()
                 NavHost(navController = navController, startDestination = "dashboard") {
-                    composable("dashboard") { DashboardScreen(navController) }
-                    composable("courses") { CourseListScreen(navController) }
+                    composable("dashboard") {
+                        DashboardScreen(navController)
+                    }
+                    composable("ai_generator") {
+                        CourseAiGeneratorScreen(navController)
+                    }
+                    composable("bot_activity") {
+                        BotActivityScreen(navController)
+                    }
+                    composable("courses") {
+                        CourseListScreen(navController)
+                    }
                     composable("course_editor/{courseId}") { backStack ->
                         val courseId = backStack.arguments?.getString("courseId") ?: "new"
                         CourseEditorScreen(navController, courseId)
@@ -70,9 +79,15 @@ class MainActivity : ComponentActivity() {
                         val courseId = backStack.arguments?.getString("courseId") ?: ""
                         ExamConfigScreen(navController, courseId)
                     }
-                    composable("students") { StudentListScreen(navController) }
-                    composable("analytics") { AnalyticsScreen(navController) }
-                    composable("settings") { SettingsScreen(navController) }
+                    composable("students") {
+                        StudentListScreen(navController)
+                    }
+                    composable("analytics") {
+                        AnalyticsScreen(navController)
+                    }
+                    composable("settings") {
+                        SettingsScreen(navController)
+                    }
                 }
             }
         }
