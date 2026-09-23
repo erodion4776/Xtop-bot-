@@ -20,7 +20,8 @@ object SupabaseClient {
         ignoreUnknownKeys = true
         coerceInputValues = true
         isLenient = true
-        encodeDefaults = true
+        encodeDefaults = false
+        explicitNulls = false
     }
 
     fun init(context: Context) {
@@ -44,7 +45,7 @@ object SupabaseClient {
             ?.putString("supabase_url", url.trim())
             ?.putString("supabase_key", key.trim())
             ?.apply()
-        customClient = null // Invalidate client to rebuild on next access
+        customClient = null
     }
 
     val client: JanSupabaseClient
@@ -53,15 +54,14 @@ object SupabaseClient {
                 val url = getSupabaseUrl()
                 val key = getSupabaseKey()
 
-                // Diagnostic validation before attempting initialization
                 if (url.isBlank() || isPlaceholder(url)) {
-                    val msg = "Supabase URL is not configured. Please set a valid Project URL in Settings (gear icon)."
+                    val msg = "Supabase URL is not configured. Please set a valid Project URL in Settings."
                     Log.e(TAG, msg)
                     throw IllegalStateException(msg)
                 }
 
                 if (key.isBlank() || isPlaceholder(key)) {
-                    val msg = "Supabase Anon Key is missing or invalid. Please configure your public anon key in Settings (gear icon)."
+                    val msg = "Supabase Anon Key is missing or invalid. Please configure your public anon key in Settings."
                     Log.e(TAG, msg)
                     throw IllegalStateException(msg)
                 }
