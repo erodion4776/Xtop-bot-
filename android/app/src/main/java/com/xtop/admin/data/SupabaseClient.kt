@@ -7,6 +7,8 @@ import io.github.jan.supabase.SupabaseClient as JanSupabaseClient
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.storage.Storage
+import io.github.jan.supabase.storage.storage
 import io.github.jan.supabase.serializer.KotlinXSerializer
 import kotlinx.serialization.json.Json
 import com.xtop.admin.BuildConfig
@@ -73,6 +75,7 @@ object SupabaseClient {
                     ) {
                         defaultSerializer = KotlinXSerializer(customJson)
                         install(Postgrest)
+                        install(Storage)
                     }
                 } catch (e: Throwable) {
                     val msg = "Failed to initialize Supabase client: ${e.localizedMessage}"
@@ -85,6 +88,9 @@ object SupabaseClient {
 
     val postgrest: Postgrest
         get() = client.postgrest
+
+    val storage: Storage
+        get() = client.storage
 
     private fun isPlaceholder(value: String): Boolean {
         val lower = value.lowercase()
