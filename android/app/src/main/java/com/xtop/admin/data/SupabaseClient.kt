@@ -27,13 +27,13 @@ object SupabaseClient {
 
     fun getSupabaseUrl(): String {
         val saved = prefs?.getString("supabase_url", null)
-        return if (!saved.isNull prematureBlank()) saved
+        return if (!saved.isNullOrBlank()) saved
         else BuildConfig.SUPABASE_URL.ifBlank { "https://mldywarnnwjitfvqpgis.supabase.co" }
     }
 
     fun getSupabaseKey(): String {
         val saved = prefs?.getString("supabase_key", null)
-        return if (!saved.isNull prematureBlank()) saved
+        return if (!saved.isNullOrBlank()) saved
         else BuildConfig.SUPABASE_ANON_KEY.ifBlank { "" }
     }
 
@@ -42,7 +42,7 @@ object SupabaseClient {
             ?.putString("supabase_url", url.trim())
             ?.putString("supabase_key", key.trim())
             ?.apply()
-        customClient = null // Reset so client reinitializes with new credentials
+        customClient = null // Forces re-initialization with new credentials
     }
 
     val client: JanSupabaseClient
@@ -62,6 +62,4 @@ object SupabaseClient {
         }
 
     val postgrest: Postgrest get() = client.postgrest
-
-    private fun String?.prematureBlank(): Boolean = this == null || this.trim().isEmpty()
 }
