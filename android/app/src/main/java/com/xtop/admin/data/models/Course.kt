@@ -13,7 +13,8 @@ data class Course(
     val status: String = "OPEN",
     @SerialName("test_price") val testPrice: Double = 0.0,
     @SerialName("show_answers") val showAnswers: Boolean = false,
-    @SerialName("created_at") val createdAt: String? = null
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null
 )
 
 @Serializable
@@ -24,7 +25,8 @@ data class CourseModule(
     val description: String? = null,
     @SerialName("module_order") val moduleOrder: Int = 1,
     val status: String = "ACTIVE",
-    @SerialName("created_at") val createdAt: String? = null
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null
 )
 
 @Serializable
@@ -38,7 +40,9 @@ data class ModuleSlide(
     @SerialName("video_url") val videoUrl: String? = null,
     @SerialName("slide_order") val slideOrder: Int = 1,
     val duration: String? = null,
-    val status: String = "ACTIVE"
+    val status: String = "ACTIVE",
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null
 )
 
 @Serializable
@@ -54,7 +58,8 @@ data class CourseQuestion(
     @SerialName("correct_answer") val correctAnswer: String = "A",
     val explanation: String? = null,
     @SerialName("question_order") val questionOrder: Int = 1,
-    val status: String = "ACTIVE"
+    val status: String = "ACTIVE",
+    @SerialName("created_at") val createdAt: String? = null
 )
 
 @Serializable
@@ -67,7 +72,9 @@ data class ExamConfig(
     @SerialName("randomize_options") val randomizeOptions: Boolean = false,
     @SerialName("show_answers") val showAnswers: Boolean = true,
     @SerialName("allow_retake") val allowRetake: Boolean = true,
-    @SerialName("time_limit_minutes") val timeLimitMinutes: Int? = null
+    @SerialName("time_limit_minutes") val timeLimitMinutes: Int? = null,
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null
 )
 
 @Serializable
@@ -78,5 +85,7 @@ data class Student(
     @SerialName("matric_number") val matricNumber: String? = null,
     val department: String? = null,
     val level: String? = null,
-    val email: String? = null
+    val email: String? = null,
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null
 )
