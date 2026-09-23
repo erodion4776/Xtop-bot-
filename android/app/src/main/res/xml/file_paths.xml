@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Configures secure access to the application's internal cache for exporting SQL logs -->
+    <cache-path name="cache" path="." />
+    <external-files-path name="external_files" path="." />
+</paths>
