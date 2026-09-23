@@ -66,13 +66,13 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.7.6")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
 
-    // Supabase Kotlin SDK — Explicit versioning (2.5.4)
+    // Supabase Kotlin SDK v2.5.4 (Maven artifact is gotrue-kt)
     val supabaseVersion = "2.5.4"
     implementation("io.github.jan-tennert.supabase:postgrest-kt:$supabaseVersion")
-    implementation("io.github.jan-tennert.supabase:auth-kt:$supabaseVersion")
+    implementation("io.github.jan-tennert.supabase:gotrue-kt:$supabaseVersion")
     implementation("io.github.jan-tennert.supabase:storage-kt:$supabaseVersion")
 
-    // Ktor Client for Android Networking
+    // Ktor Networking Engine for Android
     val ktorVersion = "2.3.11"
     implementation("io.ktor:ktor-client-android:$ktorVersion")
     implementation("io.ktor:ktor-client-core:$ktorVersion")
