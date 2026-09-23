@@ -9,11 +9,38 @@ import androidx.navigation.compose.rememberNavController
 import com.xtop.admin.data.SupabaseClient
 import com.xtop.admin.ui.screens.*
 import com.xtop.admin.ui.theme.XtopAdminTheme
+import java.io.File
+import java.util.Date
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
+        // ═══════════════════════════════════════════════════════
+        // GLOBAL UNCAUGHT EXCEPTION HANDLER
+        // Captures any unhandled crash and persists the full stack
+        // trace to crash_log.txt in the app's external files directory.
+        // ═══════════════════════════════════════════════════════
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                val crashLogFile = File(applicationContext.getExternalFilesDir(null), "crash_log.txt")
+                crashLogFile.writeText(
+                    "Timestamp: ${Date()}\n" +
+                    "Thread: ${thread.name} (id: ${thread.id})\n" +
+                    "Exception: ${throwable.javaClass.name}\n" +
+                    "Message: ${throwable.message}\n\n" +
+                    "=== FULL STACK TRACE ===\n" +
+                    throwable.stackTraceToString()
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                // Delegate to Android's default handler to finalize normal termination
+                defaultHandler?.uncaughtException(thread, throwable)
+            }
+        }
+
         // Initialize SharedPreferences storage for Supabase credentials
         SupabaseClient.init(applicationContext)
 
