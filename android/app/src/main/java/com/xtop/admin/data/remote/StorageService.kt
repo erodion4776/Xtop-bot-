@@ -17,9 +17,8 @@ object StorageService {
         val fileName = "diagrams/${UUID.randomUUID()}.jpg"
         val bucket = SupabaseClient.storage.from(BUCKET_NAME)
 
-        bucket.upload(fileName, bytes) {
-            upsert = true
-        }
+        // Supabase-kt v2.5.4 upload syntax
+        bucket.upload(path = fileName, data = bytes, upsert = true)
 
         return bucket.publicUrl(fileName)
     }
