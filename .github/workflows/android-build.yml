@@ -23,35 +23,31 @@ jobs:
         with:
           distribution: "temurin"
           java-version: "17"
-          cache: "gradle"
 
-      - name: Setup Gradle
+      - name: Setup Gradle 8.5
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.5"
+          cache-disabled: false
 
-      - name: Make Gradlew Executable
-        run: |
-          if [ -f "android/gradlew" ]; then
-            chmod +x android/gradlew
-          fi
-
-      - name: Build Debug APK
+      - name: Build Debug APK with Gradle
         working-directory: android
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://mldywarnnwjitfvqpgis.supabase.co' }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          ./gradlew assembleDebug --stacktrace
+          gradle assembleDebug --stacktrace
 
-      - name: Upload APK as GitHub Artifact
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: XtopAdmin-Debug-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/debug/*.apk
           retention-days: 30
 
-      - name: Create Summary
+      - name: Build Summary
         run: |
-          echo "## 📱 Android Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "## 📱 Android Build Succeeded" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Debug APK built successfully!**" >> $GITHUB_STEP_SUMMARY
-          echo "Download the artifact **XtopAdmin-Debug-APK** from the summary page to install on your Android device." >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Debug APK is ready for download!**" >> $GITHUB_STEP_SUMMARY
+          echo "Download the artifact **XtopAdmin-Debug-APK** below to install on your phone." >> $GITHUB_STEP_SUMMARY
