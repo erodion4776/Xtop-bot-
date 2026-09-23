@@ -22,18 +22,14 @@ import com.xtop.admin.data.models.CourseQuestion
 import com.xtop.admin.data.models.ModuleSlide
 import com.xtop.admin.data.remote.GeneratedCourse
 import com.xtop.admin.data.remote.PollinationsService
-import com.xtop.admin.data.repository.CourseRepository
 import io.github.jan.supabase.postgrest.from
-import io.github.jan.supabase.postgrest.query.Columns
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CourseAiGeneratorScreen(navController: NavController) {
     val scope = rememberCoroutineScope()
-    val courseRepo = remember { CourseRepository() }
 
-    var existingCourses by remember { mutableStateOf<List<Course>>(emptyList()) }
     var courseCode by remember { mutableStateOf("ELA301") }
     var courseName by remember { mutableStateOf("Automotive Engineering") }
     var lessonNumber by remember { mutableStateOf("1") }
@@ -45,12 +41,6 @@ fun CourseAiGeneratorScreen(navController: NavController) {
     var generatedCourse by remember { mutableStateOf<GeneratedCourse?>(null) }
     var imageUrl by remember { mutableStateOf<String?>(null) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(Unit) {
-        try {
-            existingCourses = courseRepo.getCourses()
-        } catch (_: Exception) {}
-    }
 
     Scaffold(
         topBar = {
@@ -83,7 +73,7 @@ fun CourseAiGeneratorScreen(navController: NavController) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            // Course Code & Name
+            // Course Code & Lesson Number
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = courseCode,
@@ -205,7 +195,7 @@ fun CourseAiGeneratorScreen(navController: NavController) {
                             Text("${i + 1}. ${q.question}", style = MaterialTheme.typography.bodySmall)
                             Text("   A) ${q.option_a}  B) ${q.option_b}", style = MaterialTheme.typography.bodySmall)
                             Text("   C) ${q.option_c}  D) ${q.option_d}", style = MaterialTheme.typography.bodySmall)
-                            Text("   Correct: Option ${q.correct_answer} (${q.explanation})", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                            Text("   Correct: Option ${q.correct_answer}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                         }
 
                         Spacer(Modifier.height(12.dp))
@@ -217,20 +207,16 @@ fun CourseAiGeneratorScreen(navController: NavController) {
                                         isSaving = true
                                         val db = SupabaseClient.postgrest
 
-                                        // 1. Check if course with code already exists or create new
-                                        val existing = db.from("courses")
-                                            .select {
-                                                filter {
-                                                    eq("course_code", course.course_code)
-                                                }
-                                            }.decodeList<Course>()
+                                        // 1. Check or insert Course
+                                        val existing = db.from("courses").select {
+                                            filter { eq("course_code", course.course_code) }
+                                        }.decodeList<Course>()
 
                                         val targetCourseId = if (existing.isNotEmpty() && !existing.first().id.isNullOrBlank()) {
                                             existing.first().id!!
                                         } else {
                                             val createdCourse = db.from("courses").insert(
                                                 Course(
-                                                    id = null,
                                                     courseCode = course.course_code,
                                                     courseName = course.course_name,
                                                     term = course.term,
@@ -238,29 +224,27 @@ fun CourseAiGeneratorScreen(navController: NavController) {
                                                     status = "OPEN",
                                                     showAnswers = true
                                                 )
-                                            ) { select(Columns.ALL) }.decodeSingle<Course>()
-                                            createdCourse.id ?: throw IllegalStateException("Course ID was not returned by Supabase")
+                                            ) { select() }.decodeSingle<Course>()
+                                            createdCourse.id ?: throw IllegalStateException("Course ID was not returned")
                                         }
 
                                         // 2. Insert Module
                                         val lNum = lessonNumber.toIntOrNull() ?: 1
                                         val createdModule = db.from("course_modules").insert(
                                             CourseModule(
-                                                id = null,
                                                 courseId = targetCourseId,
                                                 title = course.lesson_title,
                                                 description = course.description,
                                                 moduleOrder = lNum,
                                                 status = "ACTIVE"
                                             )
-                                        ) { select(Columns.ALL) }.decodeSingle<CourseModule>()
+                                        ) { select() }.decodeSingle<CourseModule>()
 
                                         val targetModuleId = createdModule.id ?: throw IllegalStateException("Module ID was not returned")
 
-                                        // 3. Insert Module Slide (notes & image)
+                                        // 3. Insert Module Slide
                                         db.from("module_slides").insert(
                                             ModuleSlide(
-                                                id = null,
                                                 moduleId = targetModuleId,
                                                 title = course.lesson_title,
                                                 content = course.lesson_content,
@@ -275,7 +259,6 @@ fun CourseAiGeneratorScreen(navController: NavController) {
                                         if (course.questions.isNotEmpty()) {
                                             val questionsList = course.questions.mapIndexed { idx, q ->
                                                 CourseQuestion(
-                                                    id = null,
                                                     courseId = targetCourseId,
                                                     moduleId = targetModuleId,
                                                     question = q.question,
