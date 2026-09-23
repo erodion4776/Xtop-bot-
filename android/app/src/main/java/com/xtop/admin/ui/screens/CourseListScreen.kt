@@ -108,7 +108,12 @@ fun CourseListScreen(navController: NavController) {
                     ) {
                         items(courses) { course ->
                             Card(
-                                onClick = { navController.navigate("course_detail/${course.id}") },
+                                onClick = {
+                                    val courseId = course.id ?: ""
+                                    if (courseId.isNotBlank()) {
+                                        navController.navigate("course_detail/$courseId")
+                                    }
+                                },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
@@ -131,9 +136,10 @@ fun CourseListScreen(navController: NavController) {
                                         )
                                     }
                                     IconButton(onClick = {
+                                        val courseId = course.id ?: return@IconButton
                                         scope.launch {
                                             try {
-                                                repo.toggleCourseStatus(course.id, course.status)
+                                                repo.toggleCourseStatus(courseId, course.status)
                                                 loadCourses()
                                             } catch (e: Exception) {
                                                 errorMessage = e.message
