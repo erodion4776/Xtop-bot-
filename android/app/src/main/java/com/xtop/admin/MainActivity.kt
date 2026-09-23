@@ -16,11 +16,11 @@ class MainActivity : ComponentActivity() {
             XtopAdminTheme {
                 val navController = rememberNavController()
                 NavHost(navController = navController, startDestination = "dashboard") {
-                    composable("dashboard") { 
-                        DashboardScreen(navController) 
+                    composable("dashboard") {
+                        DashboardScreen(navController)
                     }
-                    composable("courses") { 
-                        CourseListScreen(navController) 
+                    composable("courses") {
+                        CourseListScreen(navController)
                     }
                     composable("course_editor/{courseId}") { backStack ->
                         val courseId = backStack.arguments?.getString("courseId") ?: "new"
@@ -42,11 +42,11 @@ class MainActivity : ComponentActivity() {
                         val courseId = backStack.arguments?.getString("courseId") ?: ""
                         ExamConfigScreen(navController, courseId)
                     }
-                    composable("students") { 
-                        StudentListScreen(navController) 
+                    composable("students") {
+                        StudentListScreen(navController)
                     }
-                    composable("analytics") { 
-                        AnalyticsScreen(navController) 
+                    composable("analytics") {
+                        AnalyticsScreen(navController)
                     }
                 }
             }
