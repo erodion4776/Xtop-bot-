@@ -16,11 +16,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // ═══════════════════════════════════════════════════════
-        // GLOBAL UNCAUGHT EXCEPTION HANDLER
-        // Captures any unhandled crash and persists the full stack
-        // trace to crash_log.txt so it can be viewed on device.
-        // ═══════════════════════════════════════════════════════
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             try {
@@ -40,7 +35,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Initialize SharedPreferences credentials store
         SupabaseClient.init(applicationContext)
 
         setContent {
@@ -52,6 +46,12 @@ class MainActivity : ComponentActivity() {
                     }
                     composable("ai_generator") {
                         CourseAiGeneratorScreen(navController)
+                    }
+                    composable("manual_course_editor") {
+                        ManualCourseEditorScreen(navController)
+                    }
+                    composable("csv_import") {
+                        CsvImportScreen(navController)
                     }
                     composable("bot_activity") {
                         BotActivityScreen(navController)
