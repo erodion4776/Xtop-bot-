@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class Course(
-    val id: String = "",
+    val id: String? = null,
     @SerialName("course_code") val courseCode: String = "",
     @SerialName("course_name") val courseName: String = "",
     val term: String? = null,
@@ -19,7 +19,7 @@ data class Course(
 
 @Serializable
 data class CourseModule(
-    val id: String = "",
+    val id: String? = null,
     @SerialName("course_id") val courseId: String = "",
     val title: String = "",
     val description: String? = null,
@@ -31,7 +31,7 @@ data class CourseModule(
 
 @Serializable
 data class ModuleSlide(
-    val id: String = "",
+    val id: String? = null,
     @SerialName("module_id") val moduleId: String = "",
     val title: String = "",
     val content: String? = null,
@@ -47,7 +47,7 @@ data class ModuleSlide(
 
 @Serializable
 data class CourseQuestion(
-    val id: String = "",
+    val id: String? = null,
     @SerialName("course_id") val courseId: String = "",
     @SerialName("module_id") val moduleId: String? = null,
     val question: String = "",
@@ -64,7 +64,7 @@ data class CourseQuestion(
 
 @Serializable
 data class ExamConfig(
-    val id: String = "",
+    val id: String? = null,
     @SerialName("course_id") val courseId: String = "",
     @SerialName("question_count") val questionCount: Int = 10,
     @SerialName("pass_mark_percent") val passMarkPercent: Int = 50,
@@ -79,7 +79,7 @@ data class ExamConfig(
 
 @Serializable
 data class Student(
-    val id: String = "",
+    val id: String? = null,
     val phone: String = "",
     val name: String? = null,
     @SerialName("matric_number") val matricNumber: String? = null,
