@@ -5,13 +5,15 @@
 import {
   Contact, Conversation, updateConversation,
   getCourseQuestions, createExamAttempt, submitExamAttempt, getExamAttempt, getCourseConfig,
-  CourseQuestion, getSupabaseClient, safeErrorLog, Course, ExamAttempt,
+  CourseQuestion, getSupabaseClient, Course, ExamAttempt,
 } from "../database.ts";
 import {
   sendButtonMessage, sendListMessage, sendTextMessage,
   makeButton, makeListRow,
 } from "../whatsapp.ts";
-import { normalise, isBack, extractSelection } from "../utils.ts";
+import {
+  normalise, isBack, extractSelection, safeErrorLog,
+} from "../utils.ts";
 import { showCourseMenu } from "./learning.ts";
 
 // ═══════════════════════════════════════════════════════
@@ -52,7 +54,6 @@ function getCtx(conv: Conversation): ExamCtx {
   return (conv.context_json || {}) as ExamCtx;
 }
 
-// Enforces current_module = "EXAMS" on every state update
 async function saveCtx(convId: string, ctx: ExamCtx, state: string): Promise<void> {
   await updateConversation(convId, {
     current_module: "EXAMS",
@@ -61,9 +62,6 @@ async function saveCtx(convId: string, ctx: ExamCtx, state: string): Promise<voi
   });
 }
 
-/**
- * Fetches course exam configuration from Supabase with safe defaults.
- */
 async function getExamConfig(courseId: string): Promise<ExamConfig> {
   const sb = getSupabaseClient();
   const { data, error } = await sb
@@ -209,12 +207,10 @@ async function processExamEntry(
 
     let selectedQuestions = [...allQuestions];
 
-    // Handle randomized question order
     if (config.randomize_questions) {
       selectedQuestions.sort(() => Math.random() - 0.5);
     }
 
-    // Enforce configured question limit
     if (config.question_count < selectedQuestions.length) {
       selectedQuestions = selectedQuestions.slice(0, config.question_count);
     }
@@ -265,7 +261,7 @@ async function deliverQuestion(phone: string, convId: string, ctx: ExamCtx): Pro
     `📝 *QUESTION ${qNum} of ${total}*\n\n` +
     `${q.question}\n\n` +
     `🅰️ ${q.option_a}\n` +
-    `饰 ${q.option_b}\n` +
+    `🅱️ ${q.option_b}\n` +
     `🆃 ${q.option_c}\n` +
     `🅳 ${q.option_d}\n\n` +
     `_Select your answer using the menu below:_`;
@@ -381,7 +377,6 @@ async function processExamSubmission(
       }
     });
 
-    // Handle pass mark validation dynamically using config percent
     const passMarkPercent = ctx.examConfig?.pass_mark_percent || 50;
     const passRatio = passMarkPercent / 100;
     const passed = (score / ctx.shuffledIds!.length) >= passRatio;
@@ -456,7 +451,7 @@ async function processResultNavigation(
   if (n === "exam_review" || n.includes("review")) {
     const config = ctx.examConfig || await getExamConfig(ctx.courseId);
 
-    if (!config.show_answers) {
+    if (!config?.show_answers) {
       await sendTextMessage(phone, "🔒 Answer review is currently unavailable for this course.");
       await exitToCourseMenu(phone, conv, ctx);
       return;
@@ -473,7 +468,7 @@ async function processResultNavigation(
 }
 
 // ═══════════════════════════════════════════════════════
-// 5. DETERMINISTIC QUESTION-BY-QUESTION REVIEW
+// 5. DETERMINISTIC QUESTION REVIEW
 // ═══════════════════════════════════════════════════════
 
 async function deliverReviewQuestion(phone: string, convId: string, ctx: ExamCtx): Promise<void> {
@@ -573,7 +568,6 @@ async function exitToCourseMenu(
 ): Promise<void> {
   await showCourseMenu(phone, conv.id, {
     step: "COURSE_MENU",
-    learningUnlocked: true,
     courseCode: ctx.courseCode,
     courseId: ctx.courseId,
     courseName: ctx.courseName,
