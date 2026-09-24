@@ -80,7 +80,7 @@ async function saveCtx(convId: string, ctx: LearningCtx, state?: string): Promis
 }
 
 // ═══════════════════════════════════════════════════════
-// DYNAMIC SUPABASE FETCHERS
+// DYNAMIC SUPABASE FETCHERS (ORDERED SEQUENTIAL PLAYLIST)
 // ═══════════════════════════════════════════════════════
 
 async function fetchPublishedModules(courseId: string) {
@@ -93,19 +93,39 @@ async function fetchPublishedModules(courseId: string) {
   return data || [];
 }
 
+/**
+ * Builds an ordered playlist of all lessons across all modules for this course.
+ * Ensures Lesson 1, Lesson 2, Lesson 3... are sequentially indexed 1-to-N.
+ */
 async function fetchAllCourseLessons(courseId: string) {
   const modules = await fetchPublishedModules(courseId);
   if (modules.length === 0) return [];
 
-  const moduleIds = modules.map((m: any) => m.id);
-  const { data } = await supabase
-    .from("module_slides")
-    .select("*, course_modules!inner(module_order, title)")
-    .in("module_id", moduleIds)
-    .eq("status", "ACTIVE")
-    .eq("is_draft", false)
-    .order("slide_order", { ascending: true });
-  return data || [];
+  const playlist: any[] = [];
+  let seq = 1;
+
+  for (const mod of modules) {
+    const { data: slides } = await supabase
+      .from("module_slides")
+      .select("*")
+      .eq("module_id", mod.id)
+      .eq("status", "ACTIVE")
+      .eq("is_draft", false)
+      .order("order_index", { ascending: true });
+
+    if (slides && slides.length > 0) {
+      for (const slide of slides) {
+        playlist.push({
+          ...slide,
+          seqNumber: seq++,
+          moduleTitle: mod.title,
+          moduleOrder: mod.module_order,
+        });
+      }
+    }
+  }
+
+  return playlist;
 }
 
 async function fetchLessonSections(lessonId: string) {
@@ -149,12 +169,12 @@ export async function handleLearning(
 
   ctx.learningUnlocked = true;
 
-  // 1. Ignore empty inputs or delivery status callbacks
+  // 1. Ignore empty inputs or status receipts
   if (!text || text.trim().length === 0) {
     return;
   }
 
-  // 2. Only explicit exit commands return to Xtop Retail
+  // 2. Explicit exit
   if (
     n === "exit learning centre" ||
     n === "exit learning center" ||
@@ -167,13 +187,13 @@ export async function handleLearning(
     return;
   }
 
-  // 3. Registration flow
+  // 3. Registration
   if (["ENTRY", "WAITING_STUDENT_NAME", "WAITING_MATRIC_NUMBER", "WAITING_DEPARTMENT", "WAITING_LEVEL"].includes(state)) {
     await handleRegistration(phone, text, contact, conv);
     return;
   }
 
-  // 4. Menu / Back Navigation
+  // 4. Back / Menu
   if (
     n === "lsn_menu" ||
     n === "cm_menu" ||
@@ -191,7 +211,7 @@ export async function handleLearning(
     return;
   }
 
-  // 5. Route to appropriate sub-handler
+  // 5. State Router
   switch (state) {
     case "WAITING_COURSE_CODE":
       await processCourseCodeAuth(phone, text, contact, conv);
@@ -301,6 +321,8 @@ async function processCourseCodeAuth(
   const lessons = await fetchAllCourseLessons(course.id);
   const enrollment = await getStudentCourseAccess(student.id, course.id, course.status);
 
+  const startLessonOrder = Math.max(1, (enrollment?.progress?.last_lesson_order || 0) + 1);
+
   const ctx: LearningCtx = {
     step: "COURSE_MENU",
     learningUnlocked: true,
@@ -311,7 +333,7 @@ async function processCourseCodeAuth(
     studentId: student.id,
     studentCourseId: enrollment?.id,
     totalLessons: lessons.length,
-    currentLessonOrder: (enrollment?.progress?.last_lesson_order || 0) + 1,
+    currentLessonOrder: startLessonOrder > lessons.length ? 1 : startLessonOrder,
     currentSectionIndex: 0,
     currentPracticeIndex: 0
   };
@@ -394,7 +416,7 @@ async function processCourseMenuSelection(
 // ═══════════════════════════════════════════════════════
 
 async function deliverLesson(
-  phone: string, conversationId: string, ctx: LearningCtx, lessonOrder: number
+  phone: string, conversationId: string, ctx: LearningCtx, targetOrder: number
 ): Promise<void> {
   if (!ctx.courseId) { await promptCourseCode(phone, conversationId); return; }
   
@@ -405,13 +427,15 @@ async function deliverLesson(
     return;
   }
 
-  const currentLesson = allLessons.find((l: any) => l.slide_order === lessonOrder || l.order_index === lessonOrder) || allLessons[0];
-  const currentOrder = currentLesson.slide_order || currentLesson.order_index || 1;
-  const isFirst = currentOrder <= 1;
+  // 1-based index resolution
+  const safeIndex = Math.max(0, Math.min(targetOrder - 1, allLessons.length - 1));
+  const currentLesson = allLessons[safeIndex];
+  const activeOrder = safeIndex + 1;
+  const isFirst = activeOrder <= 1;
 
   ctx.step = "VIEWING_LESSON";
   ctx.currentLessonId = currentLesson.id;
-  ctx.currentLessonOrder = currentOrder;
+  ctx.currentLessonOrder = activeOrder;
   ctx.currentSectionIndex = 0;
   ctx.currentPracticeIndex = 0;
   ctx.practiceScore = 0;
@@ -423,8 +447,8 @@ async function deliverLesson(
 
   let message =
     `🎓 *${ctx.courseCode} — LECTURE HALL*\n` +
-    `📖 *Lesson ${currentLesson.lesson_number || currentOrder}: ${currentLesson.title}*\n` +
-    `⏱️ _Duration: ${currentLesson.duration || "15 mins"} | Lesson ${currentOrder} of ${allLessons.length}_\n\n` +
+    `📖 *Lesson ${activeOrder}: ${currentLesson.title}*\n` +
+    `⏱️ _Duration: ${currentLesson.duration || "15 mins"} | Lesson ${activeOrder} of ${allLessons.length}_\n\n` +
     `━━━━━━━━━━━━━━━━\n\n` +
     `${currentLesson.content || "_Lecture notes in progress._"}\n\n` +
     `━━━━━━━━━━━━━━━━`;
@@ -454,7 +478,7 @@ async function deliverLesson(
   if (!isFirst) buttons.push(makeButton("lsn_prev", "⬅️ Prev Lesson"));
   buttons.push(makeButton("lsn_menu", "📋 Course Menu"));
 
-  await sendButtonMessage(phone, "Select your next action:", buttons, `${ctx.courseCode} Classroom`, `Lesson ${currentOrder}/${allLessons.length}`);
+  await sendButtonMessage(phone, "Select your next action:", buttons, `${ctx.courseCode} Classroom`, `Lesson ${activeOrder}/${allLessons.length}`);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -560,7 +584,6 @@ async function processPracticeAnswer(
     return;
   }
 
-  // Extract letter cleanly (e.g. "C", "Option C", "c)")
   const rawLetter = text.trim().toUpperCase().replace(/[^A-D]/g, "");
   const ans = rawLetter.length > 0 ? rawLetter.charAt(0) : text.trim().toUpperCase().charAt(0);
   const isCorrect = ans === activeQ.correct_answer.trim().toUpperCase();
@@ -590,24 +613,29 @@ async function completeAndAdvanceLesson(
   const currentOrder = ctx.currentLessonOrder || 1;
   if (ctx.studentCourseId && ctx.courseId) {
     const allLessons = await fetchAllCourseLessons(ctx.courseId);
-    const cl = allLessons.find((l: any) => l.slide_order === currentOrder || l.order_index === currentOrder);
+    const safeIndex = currentOrder - 1;
+    const cl = allLessons[safeIndex];
     if (cl) await markLessonComplete(ctx.studentCourseId, cl.id, currentOrder);
   }
 
-  if (currentOrder >= (ctx.totalLessons || 1)) {
-    await sendTextMessage(phone, `🎉 *Congratulations!* You have completed all *${ctx.totalLessons}* lessons in *${ctx.courseCode}*. You are now ready to take the Final Exam.`);
+  const nextOrder = currentOrder + 1;
+  const total = ctx.totalLessons || 1;
+
+  if (currentOrder >= total) {
+    await sendTextMessage(phone, `🎉 *Congratulations!* You have completed all *${total}* lessons in *${ctx.courseCode}*. You are now ready to take the Final Exam.`);
     await showCourseMenu(phone, convId, ctx);
     return;
   }
 
-  ctx.currentLessonOrder = currentOrder + 1;
+  // Update target lesson order to the next lesson
+  ctx.currentLessonOrder = nextOrder;
   ctx.step = "LESSON_COMPLETE";
   await saveCtx(convId, ctx, "LESSON_COMPLETE");
 
   await sendButtonMessage(phone,
-    `✅ *Lesson ${currentOrder} Complete!*\n\nReady to start the next lesson?`,
-    [makeButton("lsn_next_go", "Next Lesson ➡️"), makeButton("lsn_menu", "📋 Course Menu")],
-    `${ctx.courseCode} Progress`, `${currentOrder}/${ctx.totalLessons} completed`
+    `✅ *Lesson ${currentOrder} Complete!*\n\nReady to start Lesson ${nextOrder}?`,
+    [makeButton("lsn_next_go", `Lesson ${nextOrder} ➡️`), makeButton("lsn_menu", "📋 Course Menu")],
+    `${ctx.courseCode} Progress`, `${currentOrder}/${total} completed`
   );
 }
 
@@ -615,8 +643,9 @@ async function processLessonCompleteAction(
   phone: string, text: string, conv: Conversation, ctx: LearningCtx
 ): Promise<void> {
   const n = normalise(text);
-  if (n === "lsn_next_go" || n.includes("next")) {
-    await deliverLesson(phone, conv.id, ctx, ctx.currentLessonOrder || 1);
+  if (n === "lsn_next_go" || n.includes("lesson") || n.includes("next")) {
+    const nextOrder = ctx.currentLessonOrder || 1;
+    await deliverLesson(phone, conv.id, ctx, nextOrder);
     return;
   }
   await showCourseMenu(phone, conv.id, ctx);
@@ -662,7 +691,7 @@ async function showCourseMaterials(phone: string, conversationId: string, ctx: L
   }
   for (const l of pdfLessons) {
     if (l.pdf_url?.startsWith("http")) {
-      await sendDocumentMessage(phone, l.pdf_url, `${ctx.courseCode}_L${l.slide_order || 1}.pdf`, l.title);
+      await sendDocumentMessage(phone, l.pdf_url, `${ctx.courseCode}_L${l.seqNumber || 1}.pdf`, l.title);
     }
   }
 
