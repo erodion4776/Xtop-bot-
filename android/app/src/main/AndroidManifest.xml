@@ -1,12 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.xtop.admin">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Web connection capabilities for Supabase, Ktor, and Pollinations AI -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-
-    <!-- Storage permissions for picking manual images/diagrams from the device gallery -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 
     <application
@@ -27,10 +23,6 @@
             </intent-filter>
         </activity>
 
-        <!-- 
-          The FileProvider securely shares the exported Course/Lesson .sql files 
-          to your local file system, Email, Google Drive, or WhatsApp.
-        -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="com.xtop.admin.fileprovider"
