@@ -9,7 +9,6 @@ import io.github.jan.supabase.postgrest.query.Order
 
 class CourseRepository {
 
-    // Lazy initialization defers client creation until called inside a suspend function
     private val db by lazy { SupabaseClient.postgrest }
 
     suspend fun getCourses(): List<Course> {
@@ -36,6 +35,17 @@ class CourseRepository {
         try {
             db.from("courses").update(updates) {
                 filter { eq("id", courseId) }
+            }
+        } catch (e: Exception) {
+            throw Exception("Failed to update course: ${e.localizedMessage}", e)
+        }
+    }
+
+    suspend fun updateCourse(course: Course) {
+        val cId = course.id ?: return
+        try {
+            db.from("courses").update(course) {
+                filter { eq("id", cId) }
             }
         } catch (e: Exception) {
             throw Exception("Failed to update course: ${e.localizedMessage}", e)
