@@ -15,6 +15,15 @@ class CourseEditorRepository {
     suspend fun createCourse(course: Course): Course =
         db.from("courses").insert(course) { select() }.decodeSingle<Course>()
 
+    suspend fun updateCourse(courseId: String, updates: Map<String, String>) {
+        db.from("courses").update(updates) { filter { eq("id", courseId) } }
+    }
+
+    suspend fun updateCourse(course: Course) {
+        val cId = course.id ?: return
+        db.from("courses").update(course) { filter { eq("id", cId) } }
+    }
+
     suspend fun updateCourseStatus(courseId: String, status: String) {
         db.from("courses").update({
             set("status", status)
@@ -38,6 +47,10 @@ class CourseEditorRepository {
     suspend fun createModule(module: CourseModule): CourseModule =
         db.from("course_modules").insert(module) { select() }.decodeSingle<CourseModule>()
 
+    suspend fun updateModule(moduleId: String, updates: Map<String, String>) {
+        db.from("course_modules").update(updates) { filter { eq("id", moduleId) } }
+    }
+
     suspend fun updateModuleStatus(moduleId: String, status: String) {
         db.from("course_modules").update({
             set("status", status)
@@ -59,6 +72,10 @@ class CourseEditorRepository {
 
     suspend fun createLesson(lesson: ModuleSlide): ModuleSlide =
         db.from("module_slides").insert(lesson) { select() }.decodeSingle<ModuleSlide>()
+
+    suspend fun updateLesson(lessonId: String, updates: Map<String, String>) {
+        db.from("module_slides").update(updates) { filter { eq("id", lessonId) } }
+    }
 
     suspend fun updateLessonContent(lessonId: String, content: String) {
         db.from("module_slides").update({
@@ -109,6 +126,20 @@ class CourseEditorRepository {
         db.from("lesson_media").delete { filter { eq("id", mediaId) } }
     }
 
+    // ── LESSON MATERIALS ──
+    suspend fun getMaterials(lessonId: String): List<LessonMaterial> =
+        db.from("lesson_materials").select {
+            filter { eq("lesson_id", lessonId) }
+            order("order_index", Order.ASCENDING)
+        }.decodeList<LessonMaterial>()
+
+    suspend fun createMaterial(material: LessonMaterial): LessonMaterial =
+        db.from("lesson_materials").insert(material) { select() }.decodeSingle<LessonMaterial>()
+
+    suspend fun deleteMaterial(materialId: String) {
+        db.from("lesson_materials").delete { filter { eq("id", materialId) } }
+    }
+
     // ── PRACTICE QUESTIONS ──
     suspend fun getPracticeQuestions(lessonId: String): List<LessonPracticeQuestion> =
         db.from("lesson_practice_questions").select {
@@ -123,7 +154,7 @@ class CourseEditorRepository {
         db.from("lesson_practice_questions").delete { filter { eq("id", qId) } }
     }
 
-    // ── REVISIONS (Safe execution) ──
+    // ── REVISIONS ──
     suspend fun getRevisions(entityType: String, entityId: String): List<CourseRevision> {
         return try {
             db.from("course_revisions").select {
