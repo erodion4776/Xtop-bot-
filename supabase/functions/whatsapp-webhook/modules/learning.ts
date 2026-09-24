@@ -138,11 +138,26 @@ export async function handleLearning(
 
   ctx.learningUnlocked = true;
 
-  // Global interrupts
-  if (isGreeting(text) && !["ENTRY", "WAITING_STUDENT_NAME", "WAITING_MATRIC_NUMBER", "WAITING_DEPARTMENT", "WAITING_LEVEL"].includes(state)) {
-    await showMainMenu(phone, conv.id);
+  // 1. DISCARD AND IGNORE INBOUND SYSTEM EVENT HOOKS (DELIVERED, READ RECEIPTS)
+  if (!text || text.trim().length === 0) {
     return;
   }
+
+  // Detect lesson navigation actions explicitly to bypass general triggers
+  const isClassroomButton = text.startsWith("lsn_") || text.startsWith("cm_") || n === "next" || n === "back";
+
+  // 2. CLASSROOM INTERRUPTS
+  if (isGreeting(text) && !isClassroomButton && !["ENTRY", "WAITING_STUDENT_NAME", "WAITING_MATRIC_NUMBER", "WAITING_DEPARTMENT", "WAITING_LEVEL"].includes(state)) {
+    // If they explicitly requested "menu" while actively learning, show the classroom menu, not the store menu
+    if (["VIEWING_LESSON", "VIEWING_SECTION", "PRACTICE_QUESTION", "LESSON_COMPLETE"].includes(state)) {
+      await showCourseMenu(phone, conv.id, ctx);
+    } else {
+      await showMainMenu(phone, conv.id);
+    }
+    return;
+  }
+
+  // Explicit Exit Command handling
   if (isExit(text) || n === "exit learning centre" || n === "exit learning") {
     await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
     await sendTextMessage(phone, "👋 You have exited the *Engr. Ero Learning Centre*.\n\nType *menu* to return to Xtop Retail services.\n\nType *Engr Ero* anytime to re-enter the Learning Centre.");
@@ -156,7 +171,7 @@ export async function handleLearning(
   }
 
   // Back navigation
-  if (isBack(text)) {
+  if (isBack(text) && !isClassroomButton) {
     if (["VIEWING_LESSON", "VIEWING_SECTION", "PRACTICE_QUESTION", "LESSON_COMPLETE", "VIEWING_MATERIALS", "VIEWING_PROGRESS", "VIEWING_RESULTS"].includes(ctx.step)) {
       await showCourseMenu(phone, conv.id, ctx);
       return;
