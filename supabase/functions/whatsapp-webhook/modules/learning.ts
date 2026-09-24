@@ -11,12 +11,11 @@ import {
   sendButtonMessage, sendListMessage, sendTextMessage, sendDocumentMessage, sendImageMessage,
   makeButton, makeListRow,
 } from "../whatsapp.ts";
-import { normalise, isBack, isExit, isGreeting, extractSelection } from "../utils.ts";
+import { normalise, isExit } from "../utils.ts";
 import { showMainMenu } from "./main-menu.ts";
 import { startExamEntry } from "./exams.ts";
 import { handleRegistration } from "./attendance.ts";
 
-// Initialize the database client singleton
 const supabase = getSupabaseClient();
 
 // ═══════════════════════════════════════════════════════
@@ -46,9 +45,6 @@ function getCtx(conv: Conversation): LearningCtx {
   return (conv.context_json || {}) as LearningCtx;
 }
 
-/**
- * Preserves learningUnlocked flag and updates state context
- */
 async function saveCtx(convId: string, ctx: LearningCtx, state?: string): Promise<void> {
   await updateConversation(convId, {
     current_module: "LEARNING",
@@ -58,7 +54,7 @@ async function saveCtx(convId: string, ctx: LearningCtx, state?: string): Promis
 }
 
 // ═══════════════════════════════════════════════════════
-// DYNAMIC SUPABASE FETCHERS (PUBLISHED CONTENT ONLY)
+// DYNAMIC SUPABASE FETCHERS
 // ═══════════════════════════════════════════════════════
 
 async function fetchPublishedModules(courseId: string) {
@@ -68,17 +64,6 @@ async function fetchPublishedModules(courseId: string) {
     .eq("course_id", courseId)
     .eq("status", "ACTIVE")
     .order("module_order", { ascending: true });
-  return data || [];
-}
-
-async function fetchPublishedLessons(moduleId: string) {
-  const { data } = await supabase
-    .from("module_slides")
-    .select("*")
-    .eq("module_id", moduleId)
-    .eq("status", "ACTIVE")
-    .eq("is_draft", false)
-    .order("order_index", { ascending: true });
   return data || [];
 }
 
@@ -138,52 +123,49 @@ export async function handleLearning(
 
   ctx.learningUnlocked = true;
 
-  // 1. DISCARD AND IGNORE INBOUND SYSTEM EVENT HOOKS (DELIVERED, READ RECEIPTS)
+  // 1. Ignore empty inputs or delivery status callbacks
   if (!text || text.trim().length === 0) {
     return;
   }
 
-  // Detect lesson navigation actions explicitly to bypass general triggers
-  const isClassroomButton = text.startsWith("lsn_") || text.startsWith("cm_") || n === "next" || n === "back";
-
-  // 2. CLASSROOM INTERRUPTS
-  if (isGreeting(text) && !isClassroomButton && !["ENTRY", "WAITING_STUDENT_NAME", "WAITING_MATRIC_NUMBER", "WAITING_DEPARTMENT", "WAITING_LEVEL"].includes(state)) {
-    // If they explicitly requested "menu" while actively learning, show the classroom menu, not the store menu
-    if (["VIEWING_LESSON", "VIEWING_SECTION", "PRACTICE_QUESTION", "LESSON_COMPLETE"].includes(state)) {
-      await showCourseMenu(phone, conv.id, ctx);
-    } else {
-      await showMainMenu(phone, conv.id);
-    }
-    return;
-  }
-
-  // Explicit Exit Command handling
-  if (isExit(text) || n === "exit learning centre" || n === "exit learning") {
+  // 2. Only explicit exit commands return to Xtop Retail
+  if (
+    n === "exit learning centre" ||
+    n === "exit learning center" ||
+    n === "exit learning" ||
+    n === "cm_exit_lc" ||
+    text === "8️⃣ Exit Learning Centre"
+  ) {
     await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
     await sendTextMessage(phone, "👋 You have exited the *Engr. Ero Learning Centre*.\n\nType *menu* to return to Xtop Retail services.\n\nType *Engr Ero* anytime to re-enter the Learning Centre.");
     return;
   }
 
-  // Registration flow
+  // 3. Registration flow
   if (["ENTRY", "WAITING_STUDENT_NAME", "WAITING_MATRIC_NUMBER", "WAITING_DEPARTMENT", "WAITING_LEVEL"].includes(state)) {
     await handleRegistration(phone, text, contact, conv);
     return;
   }
 
-  // Back navigation
-  if (isBack(text) && !isClassroomButton) {
-    if (["VIEWING_LESSON", "VIEWING_SECTION", "PRACTICE_QUESTION", "LESSON_COMPLETE", "VIEWING_MATERIALS", "VIEWING_PROGRESS", "VIEWING_RESULTS"].includes(ctx.step)) {
-      await showCourseMenu(phone, conv.id, ctx);
-      return;
-    }
+  // 4. Menu / Back Navigation
+  if (
+    n === "lsn_menu" ||
+    n === "cm_menu" ||
+    n === "menu" ||
+    n === "course menu" ||
+    n === "back" ||
+    n === "cm_exit_course" ||
+    text.includes("Course Menu")
+  ) {
     if (state === "WAITING_COURSE_CODE") {
       await showLearningCentreGateway(phone, conv.id, ctx);
-      return;
+    } else {
+      await showCourseMenu(phone, conv.id, ctx);
     }
-    await showMainMenu(phone, conv.id);
     return;
   }
 
+  // 5. Route to appropriate sub-handler
   switch (state) {
     case "WAITING_COURSE_CODE":
       await processCourseCodeAuth(phone, text, contact, conv);
@@ -202,13 +184,17 @@ export async function handleLearning(
       await processLessonCompleteAction(phone, text, conv, ctx);
       break;
     default:
-      await handleRegistration(phone, text, contact, conv);
+      if (ctx.courseId) {
+        await showCourseMenu(phone, conv.id, ctx);
+      } else {
+        await showLearningCentreGateway(phone, conv.id, ctx);
+      }
       break;
   }
 }
 
 // ═══════════════════════════════════════════════════════
-// 1. COURSE SELECTION & ACCESS VERIFICATION
+// 1. COURSE GATEWAY & AUTHENTICATION
 // ═══════════════════════════════════════════════════════
 
 async function showLearningCentreGateway(
@@ -250,21 +236,20 @@ async function processCourseCodeAuth(
   if (!course || course.status === "DRAFT" || course.is_archived) {
     await sendTextMessage(phone,
       `❌ *Course Not Available: "${rawCode}"*\n\n` +
-      `This course is not currently active in the Learning Hub.\n\nType *menu* to exit.`
+      `This course is not currently active in the Learning Hub.\n\nType *Exit Learning Centre* to leave.`
     );
     return;
   }
 
   if (course.status === "BLOCKED") {
     await sendTextMessage(phone,
-      `🔒 *Course Blocked*\n\n*${course.course_code} — ${course.course_name}* is currently locked by the administrator.`
+      `🔒 *Course Blocked*\n\n*${course.course_code} — ${course.course_name}* is currently locked by the instructor.`
     );
     return;
   }
 
   const student = await getOrCreateStudent(phone, contact.name);
   
-  // Verify access permissions in student_course_access
   const { data: access } = await supabase
     .from("student_course_access")
     .select("*")
@@ -277,7 +262,6 @@ async function processCourseCodeAuth(
     return;
   }
 
-  // Record attendance automatically
   try {
     const today = new Date().toISOString().split("T")[0];
     await supabase.from("attendance").upsert({
@@ -346,25 +330,41 @@ async function processCourseMenuSelection(
   const n = normalise(text);
   const num = extractSelection(text);
 
-  if (n === "cm_lecture" || num === 1) { await deliverLesson(phone, conv.id, ctx, ctx.currentLessonOrder || 1); return; }
-  if (n === "cm_materials" || num === 2) { await showCourseMaterials(phone, conv.id, ctx); return; }
-  if (n === "cm_progress" || num === 3) { await showStudentProgress(phone, conv.id, ctx); return; }
-  if (n === "cm_test" || num === 4) { await startExamEntry(phone, conv.id, ctx); return; }
-  if (n === "cm_result" || num === 5) { await showStudentResults(phone, conv.id, ctx); return; }
-  if (n === "cm_switch" || num === 6) { await showLearningCentreGateway(phone, conv.id, ctx); return; }
-  if (n === "cm_exit_course" || num === 7 || n === "exit course") { await showLearningCentreGateway(phone, conv.id, ctx); return; }
-  if (n === "cm_exit_lc" || num === 8 || n === "exit learning centre") {
-    await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
-    await sendTextMessage(phone, "👋 You have exited the *Engr. Ero Learning Centre*.\n\nType *menu* to return to Xtop Retail services.");
+  if (n === "cm_lecture" || num === 1 || n.includes("lecture") || n.includes("classroom")) {
+    await deliverLesson(phone, conv.id, ctx, ctx.currentLessonOrder || 1);
+    return;
+  }
+  if (n === "cm_materials" || num === 2 || n.includes("materials")) {
+    await showCourseMaterials(phone, conv.id, ctx);
+    return;
+  }
+  if (n === "cm_progress" || num === 3 || n.includes("progress")) {
+    await showStudentProgress(phone, conv.id, ctx);
+    return;
+  }
+  if (n === "cm_test" || num === 4 || n.includes("exam") || n.includes("test")) {
+    await startExamEntry(phone, conv.id, ctx);
+    return;
+  }
+  if (n === "cm_result" || num === 5 || n.includes("results")) {
+    await showStudentResults(phone, conv.id, ctx);
+    return;
+  }
+  if (n === "cm_switch" || num === 6 || n.includes("switch")) {
+    await showLearningCentreGateway(phone, conv.id, ctx);
+    return;
+  }
+  if (n === "cm_exit_course" || num === 7 || n.includes("exit course")) {
+    await showLearningCentreGateway(phone, conv.id, ctx);
     return;
   }
 
-  await sendTextMessage(phone, "⚠️ Please select a valid option (1–8):");
+  await sendTextMessage(phone, "⚠️ Please select a valid course option (1–8):");
   await showCourseMenu(phone, conv.id, ctx);
 }
 
 // ═══════════════════════════════════════════════════════
-// 3. COMPLETE LESSON DELIVERY (Notes, Diagrams, Sections)
+// 3. LESSON DELIVERY
 // ═══════════════════════════════════════════════════════
 
 async function deliverLesson(
@@ -392,7 +392,6 @@ async function deliverLesson(
   ctx.totalLessons = allLessons.length;
   await saveCtx(conversationId, ctx, "VIEWING_LESSON");
 
-  // Fetch sections, diagrams and materials authored in Admin
   const sections = await fetchLessonSections(currentLesson.id);
   const mediaList = await fetchLessonMedia(currentLesson.id);
 
@@ -404,30 +403,22 @@ async function deliverLesson(
     `${currentLesson.content || "_Lecture notes in progress._"}\n\n` +
     `━━━━━━━━━━━━━━━━`;
 
-  // Send main text
   await sendTextMessage(phone, message);
 
-  // Send primary diagram if attached
   if (currentLesson.image_url) {
     try {
-      if (typeof sendImageMessage === "function") {
-        await sendImageMessage(phone, currentLesson.image_url, currentLesson.title);
-      }
+      await sendImageMessage(phone, currentLesson.image_url, currentLesson.title);
     } catch (_) {}
   }
 
-  // Send authored media diagrams from lesson_media
   for (const m of mediaList) {
     if (m.file_url) {
       try {
-        if (typeof sendImageMessage === "function") {
-          await sendImageMessage(phone, m.file_url, m.caption || m.description || "Technical Diagram");
-        }
+        await sendImageMessage(phone, m.file_url, m.caption || m.description || "Technical Diagram");
       } catch (_) {}
     }
   }
 
-  // Next action buttons
   const buttons = [];
   if (sections.length > 0) {
     buttons.push(makeButton("lsn_section_next", "📖 Read Sections ➡️"));
@@ -437,11 +428,11 @@ async function deliverLesson(
   if (!isFirst) buttons.push(makeButton("lsn_prev", "⬅️ Prev Lesson"));
   buttons.push(makeButton("lsn_menu", "📋 Course Menu"));
 
-  await sendButtonMessage(phone, "Select how you would like to proceed:", buttons, `${ctx.courseCode} Classroom`, `Lesson ${currentOrder}/${allLessons.length}`);
+  await sendButtonMessage(phone, "Select your next action:", buttons, `${ctx.courseCode} Classroom`, `Lesson ${currentOrder}/${allLessons.length}`);
 }
 
 // ═══════════════════════════════════════════════════════
-// 4. SECTION-BY-SECTION & PRACTICE QUESTION NAVIGATION
+// 4. SECTION-BY-SECTION & PRACTICE NAVIGATION
 // ═══════════════════════════════════════════════════════
 
 async function processLessonNavigation(
@@ -451,18 +442,24 @@ async function processLessonNavigation(
   const currentOrder = ctx.currentLessonOrder || 1;
   const lessonId = ctx.currentLessonId;
 
-  if (n === "lsn_menu" || isBack(text)) {
+  if (n === "lsn_menu" || n.includes("course menu")) {
     await showCourseMenu(phone, conv.id, ctx);
     return;
   }
 
-  if (n === "lsn_prev") {
+  if (n === "lsn_prev" || n.includes("prev lesson")) {
     await deliverLesson(phone, conv.id, ctx, Math.max(1, currentOrder - 1));
     return;
   }
 
-  // Navigate through lesson sections
-  if (n === "lsn_section_next" || n.includes("section") || n === "next") {
+  // Handle Section advancing
+  if (
+    n === "lsn_section_next" ||
+    n.includes("read section") ||
+    n.includes("next section") ||
+    n === "next" ||
+    n === "section"
+  ) {
     if (!lessonId) { await showCourseMenu(phone, conv.id, ctx); return; }
     const sections = await fetchLessonSections(lessonId);
     const secIdx = ctx.currentSectionIndex || 0;
@@ -479,20 +476,23 @@ async function processLessonNavigation(
       const isLastSec = (secIdx + 1) >= sections.length;
       const nextButtons = [
         makeButton(isLastSec ? "lsn_practice_start" : "lsn_section_next", isLastSec ? "✍️ Start Practice" : "Next Section ➡️"),
-        makeButton("lsn_menu", "📋 Menu")
+        makeButton("lsn_menu", "📋 Course Menu")
       ];
       await sendButtonMessage(phone, `Section ${secIdx + 1} of ${sections.length} completed.`, nextButtons, "Section Guide");
       return;
     }
   }
 
-  // Start in-lesson practice check
-  if (n === "lsn_practice_start" || n.includes("practice")) {
+  // Start in-lesson practice questions
+  if (
+    n === "lsn_practice_start" ||
+    n.includes("practice") ||
+    n.includes("start practice")
+  ) {
     if (!lessonId) { await showCourseMenu(phone, conv.id, ctx); return; }
     const questions = await fetchLessonPracticeQuestions(lessonId);
 
     if (questions.length === 0) {
-      // No practice questions -> complete lesson directly
       await completeAndAdvanceLesson(phone, conv.id, ctx);
       return;
     }
@@ -534,7 +534,9 @@ async function processPracticeAnswer(
     return;
   }
 
-  const ans = text.trim().toUpperCase().take(1);
+  // Extract letter cleanly in JavaScript/TypeScript (e.g. "C", "Option C", "c)")
+  const rawLetter = text.trim().toUpperCase().replace(/[^A-D]/g, '');
+  const ans = rawLetter.length > 0 ? rawLetter.charAt(0) : text.trim().toUpperCase().charAt(0);
   const isCorrect = ans === activeQ.correct_answer.trim().toUpperCase();
 
   if (isCorrect) {
@@ -550,7 +552,6 @@ async function processPracticeAnswer(
     await saveCtx(conv.id, ctx, "PRACTICE_QUESTION");
     await sendPracticeQuestionPrompt(phone, questions[nextIdx], nextIdx, questions.length);
   } else {
-    // Finished all practice questions
     const finalScore = ctx.practiceScore || 0;
     await sendTextMessage(phone, `🎯 *Practice Complete!*\nScore: *${finalScore}/${questions.length}*`);
     await completeAndAdvanceLesson(phone, conv.id, ctx);
@@ -628,7 +629,6 @@ async function showCourseMaterials(phone: string, conversationId: string, ctx: L
 
   await sendTextMessage(phone, txt);
 
-  // Send PDF files
   for (const m of (materials || [])) {
     if (m.file_url?.startsWith("http")) {
       await sendDocumentMessage(phone, m.file_url, m.file_name, ctx.courseCode || "Document");
