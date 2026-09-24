@@ -19,6 +19,32 @@ import { handleRegistration } from "./attendance.ts";
 const supabase = getSupabaseClient();
 
 // ═══════════════════════════════════════════════════════
+// HELPER: EXTRACT NUMERIC SELECTION (e.g., "1", "1️⃣", "Option 1")
+// ═══════════════════════════════════════════════════════
+
+function extractSelection(text: string): number | null {
+  if (!text) return null;
+  const cleaned = text
+    .replace(/1️⃣|1\uFE0F\u20E3/g, "1")
+    .replace(/2️⃣|2\uFE0F\u20E3/g, "2")
+    .replace(/3️⃣|3\uFE0F\u20E3/g, "3")
+    .replace(/4️⃣|4\uFE0F\u20E3/g, "4")
+    .replace(/5️⃣|5\uFE0F\u20E3/g, "5")
+    .replace(/6️⃣|6\uFE0F\u20E3/g, "6")
+    .replace(/7️⃣|7\uFE0F\u20E3/g, "7")
+    .replace(/8️⃣|8\uFE0F\u20E3/g, "8")
+    .replace(/9️⃣|9\uFE0F\u20E3/g, "9")
+    .replace(/🔟/g, "10");
+
+  const match = cleaned.match(/\b([1-9]|10)\b/);
+  if (match) {
+    const val = parseInt(match[1], 10);
+    return isNaN(val) ? null : val;
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════
 // CONTEXT INTERFACE
 // ═══════════════════════════════════════════════════════
 
@@ -476,7 +502,7 @@ async function processLessonNavigation(
       const isLastSec = (secIdx + 1) >= sections.length;
       const nextButtons = [
         makeButton(isLastSec ? "lsn_practice_start" : "lsn_section_next", isLastSec ? "✍️ Start Practice" : "Next Section ➡️"),
-        makeButton("lsn_menu", "📋 Course Menu")
+        makeButton("lsn_menu", "📋 Menu")
       ];
       await sendButtonMessage(phone, `Section ${secIdx + 1} of ${sections.length} completed.`, nextButtons, "Section Guide");
       return;
@@ -534,8 +560,8 @@ async function processPracticeAnswer(
     return;
   }
 
-  // Extract letter cleanly in JavaScript/TypeScript (e.g. "C", "Option C", "c)")
-  const rawLetter = text.trim().toUpperCase().replace(/[^A-D]/g, '');
+  // Extract letter cleanly (e.g. "C", "Option C", "c)")
+  const rawLetter = text.trim().toUpperCase().replace(/[^A-D]/g, "");
   const ans = rawLetter.length > 0 ? rawLetter.charAt(0) : text.trim().toUpperCase().charAt(0);
   const isCorrect = ans === activeQ.correct_answer.trim().toUpperCase();
 
