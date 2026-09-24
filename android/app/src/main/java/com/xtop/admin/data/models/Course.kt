@@ -233,3 +233,79 @@ data class ExamConfig(
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null
 )
+// ── MANUAL COURSE EDITOR MODELS ──
+
+@Serializable
+data class LessonSection(
+    val id: String? = null,
+    @SerialName("lesson_id") val lessonId: String = "",
+    val title: String = "",
+    val content: String? = null,
+    @SerialName("order_index") val orderIndex: Int = 1,
+    @SerialName("created_at") val createdAt: String? = null
+)
+
+@Serializable
+data class LessonMedia(
+    val id: String? = null,
+    @SerialName("lesson_id") val lessonId: String = "",
+    @SerialName("media_type") val mediaType: String = "image",
+    @SerialName("file_url") val fileUrl: String = "",
+    val caption: String? = null,
+    val description: String? = null,
+    @SerialName("alt_text") val altText: String? = null,
+    @SerialName("order_index") val orderIndex: Int = 1,
+    @SerialName("created_at") val createdAt: String? = null
+)
+
+@Serializable
+data class LessonMaterial(
+    val id: String? = null,
+    @SerialName("lesson_id") val lessonId: String = "",
+    val title: String = "",
+    @SerialName("file_url") val fileUrl: String = "",
+    @SerialName("file_type") val fileType: String = "pdf",
+    val description: String? = null,
+    @SerialName("order_index") val orderIndex: Int = 1,
+    @SerialName("created_at") val createdAt: String? = null
+)
+
+@Serializable
+data class LessonPracticeQuestion(
+    val id: String? = null,
+    @SerialName("lesson_id") val lessonId: String = "",
+    val question: String = "",
+    @SerialName("question_type") val questionType: String = "mcq",
+    val options: String = "[]",
+    @SerialName("correct_answer") val correctAnswer: String = "A",
+    val explanation: String? = null,
+    val difficulty: String = "medium",
+    val marks: Int = 1,
+    @SerialName("order_index") val orderIndex: Int = 1,
+    val status: String = "ACTIVE",
+    @SerialName("created_at") val createdAt: String? = null
+)
+
+@Serializable
+data class CourseSettings(
+    @SerialName("course_id") val courseId: String = "",
+    @SerialName("sequential_lessons") val sequentialLessons: Boolean = true,
+    @SerialName("allow_skip") val allowSkip: Boolean = false,
+    @SerialName("require_practice") val requirePractice: Boolean = false,
+    @SerialName("practice_pass_score") val practicePassScore: Int = 50,
+    @SerialName("require_final_cbt") val requireFinalCbt: Boolean = true,
+    @SerialName("cbt_pass_score") val cbtPassScore: Int = 50,
+    @SerialName("updated_at") val updatedAt: String? = null
+)
+
+@Serializable
+data class CourseRevision(
+    val id: String? = null,
+    @SerialName("entity_type") val entityType: String = "",
+    @SerialName("entity_id") val entityId: String = "",
+    val action: String = "",
+    @SerialName("previous_data") val previousData: String? = null,
+    @SerialName("new_data") val newData: String? = null,
+    @SerialName("changed_by") val changedBy: String = "admin",
+    @SerialName("created_at") val createdAt: String? = null
+)
