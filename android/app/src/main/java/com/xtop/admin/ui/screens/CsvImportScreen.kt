@@ -1,13 +1,10 @@
 package com.xtop.admin.ui.screens
 
 import android.net.Uri
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -40,7 +37,7 @@ fun CsvImportScreen(navController: NavController) {
             try {
                 val stream = context.contentResolver.openInputStream(it)
                 csvText = stream?.bufferedReader()?.use { reader -> reader.readText() } ?: ""
-                scope.launch { snackbarHostState.showSnackbar("CSV File loaded successfully!") }
+                scope.launch { snackbarHostState.showSnackbar("CSV file loaded successfully!") }
             } catch (e: Exception) {
                 scope.launch { snackbarHostState.showSnackbar("Read failed: ${e.localizedMessage}") }
             }
@@ -51,7 +48,7 @@ fun CsvImportScreen(navController: NavController) {
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("CSV Bulk Course & Content Import") },
+                title = { Text("CSV Bulk Course Import") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.Default.ArrowBack, "Back")
@@ -69,13 +66,13 @@ fun CsvImportScreen(navController: NavController) {
         ) {
             item {
                 Text(
-                    "Bulk Upload Courses, Lessons & Practice Questions",
+                    "Bulk Upload Courses, Modules, Lessons & Practice Questions",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    "Imported content will automatically show up in the Manual Course Editor where you can review, add diagram images, edit sections, and publish to WhatsApp.",
+                    "Every row imported here is instantly saved to Supabase and will immediately appear in the Manual Course Editor.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -95,7 +92,7 @@ ELA301,Automobile Workshop I,Automobile Workshop,300,First Semester,"Workshop sa
 ELA301,Automobile Workshop I,Automobile Workshop,300,First Semester,"Workshop safety and vehicle maintenance",Introduction to Automobile Workshop,2,Workshop Hand Tools,"*Common Workshop Tools*:\n• Spanners (Open, Ring, Combination)\n• Sockets and Ratchets\n• Pliers and Screwdrivers",Which tool is best for loosening high-torque bolts?,Pliers,Open-ended spanner,Socket with breaker bar,Adjustable wrench,C,"Sockets provide full grip around the fastener."
 """.trimIndent()
                     }) {
-                        Text("Load Sample CSV")
+                        Text("Load Sample Template")
                     }
                 }
             }
@@ -106,7 +103,7 @@ ELA301,Automobile Workshop I,Automobile Workshop,300,First Semester,"Workshop sa
                         checked = importAsDraft,
                         onCheckedChange = { importAsDraft = it }
                     )
-                    Text("Import as Draft (Recommended: allows review in Manual Editor before publishing)")
+                    Text("Import as Draft (allows review in Manual Editor before publishing)")
                 }
             }
 
@@ -117,7 +114,7 @@ ELA301,Automobile Workshop I,Automobile Workshop,300,First Semester,"Workshop sa
                     label = { Text("Paste CSV Content Here") },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp),
+                        .height(220.dp),
                     singleLine = false
                 )
             }
@@ -130,7 +127,11 @@ ELA301,Automobile Workshop I,Automobile Workshop,300,First Semester,"Workshop sa
                     ) {
                         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(result, style = MaterialTheme.typography.bodyMedium)
-                            Button(onClick = { navController.navigate("manual_course_editor") }) {
+                            Button(onClick = {
+                                navController.navigate("manual_course_editor") {
+                                    popUpTo("manual_course_editor") { inclusive = true }
+                                }
+                            }) {
                                 Icon(Icons.Default.EditNote, null)
                                 Spacer(Modifier.width(6.dp))
                                 Text("Open in Manual Course Editor")
@@ -146,8 +147,10 @@ ELA301,Automobile Workshop I,Automobile Workshop,300,First Semester,"Workshop sa
                         scope.launch {
                             try {
                                 isImporting = true
-                                val lines = csvText.lines().filter { it.trim().isNotBlank() }
-                                if (lines.size < 2) {
+                                importResult = null
+
+                                val allRows = parseFullCsv(csvText)
+                                if (allRows.size < 2) {
                                     importResult = "CSV contains no data rows."
                                     return@launch
                                 }
@@ -161,22 +164,23 @@ ELA301,Automobile Workshop I,Automobile Workshop,300,First Semester,"Workshop sa
                                 var importedLessons = 0
                                 var importedQuestions = 0
 
-                                // Parse data rows (skipping header)
-                                for (i in 1 until lines.size) {
-                                    val row = parseCsvLine(lines[i])
-                                    if (row.size >= 10) {
+                                // Skip header row (index 0)
+                                for (i in 1 until allRows.size) {
+                                    val row = allRows[i]
+                                    if (row.size >= 9) {
                                         val cCode = row.getOrNull(0)?.trim()?.uppercase() ?: continue
-                                        val cName = row.getOrNull(1)?.trim() ?: cCode
-                                        val cDept = row.getOrNull(2)?.trim() ?: "Automobile Workshop"
-                                        val cLevel = row.getOrNull(3)?.trim() ?: "300"
-                                        val cSem = row.getOrNull(4)?.trim() ?: "First Semester"
+                                        if (cCode.isBlank() || cCode == "COURSE_CODE") continue
+
+                                        val cName = row.getOrNull(1)?.trim().takeUnless { it.isNullOrBlank() } ?: cCode
+                                        val cDept = row.getOrNull(2)?.trim().takeUnless { it.isNullOrBlank() } ?: "Automobile Workshop"
+                                        val cLevel = row.getOrNull(3)?.trim().takeUnless { it.isNullOrBlank() } ?: "300"
+                                        val cSem = row.getOrNull(4)?.trim().takeUnless { it.isNullOrBlank() } ?: "First Semester"
                                         val cDesc = row.getOrNull(5)?.trim() ?: ""
-                                        val mTitle = row.getOrNull(6)?.trim() ?: "Module 1"
+                                        val mTitle = row.getOrNull(6)?.trim().takeUnless { it.isNullOrBlank() } ?: "Module 1"
                                         val lNum = row.getOrNull(7)?.trim()?.toIntOrNull() ?: 1
-                                        val lTitle = row.getOrNull(8)?.trim() ?: "Lesson $lNum"
+                                        val lTitle = row.getOrNull(8)?.trim().takeUnless { it.isNullOrBlank() } ?: "Lesson $lNum"
                                         val lContent = row.getOrNull(9)?.trim() ?: ""
 
-                                        // Optional practice question fields
                                         val pqText = row.getOrNull(10)?.trim() ?: ""
                                         val pqA = row.getOrNull(11)?.trim() ?: ""
                                         val pqB = row.getOrNull(12)?.trim() ?: ""
@@ -185,7 +189,7 @@ ELA301,Automobile Workshop I,Automobile Workshop,300,First Semester,"Workshop sa
                                         val pqAns = row.getOrNull(15)?.trim()?.uppercase()?.take(1) ?: "A"
                                         val pqExp = row.getOrNull(16)?.trim() ?: ""
 
-                                        // 1. Course
+                                        // 1. Course lookup or creation
                                         val existingCourses = db.from("courses").select {
                                             filter { eq("course_code", cCode) }
                                         }.decodeList<Course>()
@@ -208,7 +212,7 @@ ELA301,Automobile Workshop I,Automobile Workshop,300,First Semester,"Workshop sa
                                             created.id!!
                                         }
 
-                                        // 2. Module
+                                        // 2. Module lookup or creation
                                         val existingModules = db.from("course_modules").select {
                                             filter {
                                                 eq("course_id", targetCourseId)
@@ -230,7 +234,7 @@ ELA301,Automobile Workshop I,Automobile Workshop,300,First Semester,"Workshop sa
                                             createdMod.id!!
                                         }
 
-                                        // 3. Slide / Lesson
+                                        // 3. Lesson / Slide creation
                                         val createdLesson = db.from("module_slides").insert(
                                             ModuleSlide(
                                                 moduleId = targetModuleId,
@@ -245,7 +249,7 @@ ELA301,Automobile Workshop I,Automobile Workshop,300,First Semester,"Workshop sa
                                         ) { select() }.decodeSingle<ModuleSlide>()
                                         importedLessons++
 
-                                        // 4. Practice Question
+                                        // 4. Practice Question creation
                                         if (pqText.isNotBlank() && !createdLesson.id.isNullOrBlank()) {
                                             db.from("lesson_practice_questions").insert(
                                                 LessonPracticeQuestion(
@@ -265,7 +269,7 @@ ELA301,Automobile Workshop I,Automobile Workshop,300,First Semester,"Workshop sa
                                     }
                                 }
 
-                                importResult = "✅ Successfully imported $importedLessons lesson(s) and $importedQuestions practice question(s). You can now open and edit them in the Manual Course Editor."
+                                importResult = "✅ Successfully imported $importedLessons lesson(s) and $importedQuestions practice question(s) into database. Tap below to view and edit."
                             } catch (e: Exception) {
                                 importResult = "Import Error: ${e.localizedMessage}"
                             } finally {
@@ -292,28 +296,49 @@ ELA301,Automobile Workshop I,Automobile Workshop,300,First Semester,"Workshop sa
 }
 
 /**
- * Parses a CSV line respecting quoted strings with embedded commas.
+ * Robust RFC-4180 CSV parser that supports multiline values inside quotes.
  */
-private fun parseCsvLine(line: String): List<String> {
-    val tokens = mutableListOf<String>()
+private fun parseFullCsv(csv: String): List<List<String>> {
+    val rows = mutableListOf<List<String>>()
+    val currentRow = mutableListOf<String>()
+    val currentField = StringBuilder()
     var inQuotes = false
-    val sb = StringBuilder()
+    var i = 0
 
-    for (i in line.indices) {
-        val c = line[i]
-        if (c == '\"') {
-            inQuotes = !inQuotes
+    while (i < csv.length) {
+        val c = csv[i]
+        if (c == '"') {
+            if (inQuotes && i + 1 < csv.length && csv[i + 1] == '"') {
+                currentField.append('"')
+                i++
+            } else {
+                inQuotes = !inQuotes
+            }
         } else if (c == ',' && !inQuotes) {
-            tokens.add(cleanToken(sb.toString()))
-            sb.clear()
+            currentRow.add(currentField.toString().trim())
+            currentField.clear()
+        } else if ((c == '\r' || c == '\n') && !inQuotes) {
+            if (c == '\r' && i + 1 < csv.length && csv[i + 1] == '\n') {
+                i++
+            }
+            currentRow.add(currentField.toString().trim())
+            currentField.clear()
+            if (currentRow.any { it.isNotBlank() }) {
+                rows.add(currentRow.toList())
+            }
+            currentRow.clear()
         } else {
-            sb.append(c)
+            currentField.append(c)
+        }
+        i++
+    }
+
+    if (currentField.isNotEmpty() || currentRow.isNotEmpty()) {
+        currentRow.add(currentField.toString().trim())
+        if (currentRow.any { it.isNotBlank() }) {
+            rows.add(currentRow.toList())
         }
     }
-    tokens.add(cleanToken(sb.toString()))
-    return tokens
-}
 
-private fun cleanToken(token: String): String {
-    return token.trim().removePrefix("\"").removeSuffix("\"").replace("\\n", "\n")
+    return rows
 }
