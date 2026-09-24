@@ -5,7 +5,7 @@ import {
   Contact, Conversation, updateConversation,
   getCourseByCode, getOrCreateStudent, getStudentCourseAccess,
   markLessonComplete, getStudentExamAttempts,
-  supabase,
+  getSupabaseClient,
 } from "../database.ts";
 import {
   sendButtonMessage, sendListMessage, sendTextMessage, sendDocumentMessage, sendImageMessage,
@@ -15,6 +15,9 @@ import { normalise, isBack, isExit, isGreeting, extractSelection } from "../util
 import { showMainMenu } from "./main-menu.ts";
 import { startExamEntry } from "./exams.ts";
 import { handleRegistration } from "./attendance.ts";
+
+// Initialize the database client singleton
+const supabase = getSupabaseClient();
 
 // ═══════════════════════════════════════════════════════
 // CONTEXT INTERFACE
@@ -106,15 +109,6 @@ async function fetchLessonSections(lessonId: string) {
 async function fetchLessonMedia(lessonId: string) {
   const { data } = await supabase
     .from("lesson_media")
-    .select("*")
-    .eq("lesson_id", lessonId)
-    .order("order_index", { ascending: true });
-  return data || [];
-}
-
-async function fetchLessonMaterials(lessonId: string) {
-  const { data } = await supabase
-    .from("lesson_materials")
     .select("*")
     .eq("lesson_id", lessonId)
     .order("order_index", { ascending: true });
