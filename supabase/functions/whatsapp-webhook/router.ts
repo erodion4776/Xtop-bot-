@@ -25,16 +25,21 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
   const text = sanitizeInput(incoming.text);
   const interactiveId = incoming.interactiveId;
 
-  if (!text && !interactiveId) {
-    await sendTextMessage(phone,
-      "👋 Hello! Please send a text message or choose an option from the menu.\n\nType *menu* to view all services."
-    );
-    return;
-  }
-
   try {
     const contact = await getOrCreateContact(phone, incoming.profileName);
     const conversation = await getOrCreateConversation(contact.id);
+
+    // If message is empty (e.g., status callback or unhandled interactive event)
+    if (!text && !interactiveId) {
+      if (conversation.current_module === "LEARNING") {
+        // Do NOT send the Xtop Retail menu to a learning student!
+        return;
+      }
+      await sendTextMessage(phone,
+        "👋 Hello! Please send a text message or choose an option from the menu.\n\nType *menu* to view all services."
+      );
+      return;
+    }
 
     await storeMessage(
       contact.id, "INBOUND", incoming.type,
@@ -42,10 +47,19 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     );
 
     // ══════════════════════════════════════════════════════
-    // PRIVATE LEARNING CENTRE KEYWORD — checked FIRST
+    // 1. ACTIVE LEARNING MODULE ISOLATION (PRIORITY #1)
+    // ══════════════════════════════════════════════════════
+    // If the student is already inside the Learning Centre, route directly
+    // to handleLearning so Retail store greetings/menus NEVER interrupt class!
+    if (conversation.current_module === "LEARNING") {
+      await handleLearning(phone, text, contact, conversation);
+      return;
+    }
+
+    // ══════════════════════════════════════════════════════
+    // 2. PRIVATE LEARNING CENTRE KEYWORD TRIGGER
     // ══════════════════════════════════════════════════════
     if (isLearningKeyword(text)) {
-      // Merge learningUnlocked into existing context
       const existingCtx = conversation.context_json || {};
       await updateConversation(conversation.id, {
         current_module: "LEARNING",
@@ -57,17 +71,15 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     }
 
     // ══════════════════════════════════════════════════════
-    // GLOBAL INTERRUPTS
+    // 3. GLOBAL INTERRUPTS (RETAIL STORE ONLY)
     // ══════════════════════════════════════════════════════
     if ((isGreeting(text) || isHelp(text) || text === "menu_home")
-        && !["SALES", "EXAMS"].includes(conversation.current_module)) {
-      // If user is in LEARNING module and types "menu", show main menu
-      // but do NOT clear learningUnlocked from their record
+        && !["SALES", "EXAMS", "LEARNING"].includes(conversation.current_module)) {
       await showMainMenu(phone, conversation.id);
       return;
     }
 
-    if (isExit(text) && !["SALES", "EXAMS"].includes(conversation.current_module)) {
+    if (isExit(text) && !["SALES", "EXAMS", "LEARNING"].includes(conversation.current_module)) {
       await updateConversation(conversation.id, {
         current_module: "MAIN_MENU", current_state: "IDLE", context_json: {},
       });
@@ -78,13 +90,13 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     }
 
     if (isAgentRequest(text)
-        && !["AGENT", "SALES", "EXAMS"].includes(conversation.current_module)) {
+        && !["AGENT", "SALES", "EXAMS", "LEARNING"].includes(conversation.current_module)) {
       await showAgentCategories(phone, conversation.id);
       return;
     }
 
     // ══════════════════════════════════════════════════════
-    // MODULE ROUTER
+    // 4. MODULE ROUTER
     // ══════════════════════════════════════════════════════
     const currentModule = conversation.current_module;
 
@@ -97,7 +109,6 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
         else if (intent === "MAGAZINE") await displayMagazine(phone, conversation.id);
         else if (intent === "AGENT") await showAgentCategories(phone, conversation.id);
         else if (intent === "SALES") await showServiceTypeSelector(phone, conversation.id);
-        // NOTE: "LEARNING" intent removed from normal menu routing
         else if (isBack(text)) await showMainMenu(phone, conversation.id);
         else {
           await sendTextMessage(phone, "Please select an option from the menu below:");
