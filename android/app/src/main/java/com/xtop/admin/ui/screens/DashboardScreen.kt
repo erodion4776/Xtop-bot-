@@ -17,8 +17,18 @@ import com.xtop.admin.data.models.AuditLog
 import com.xtop.admin.data.repository.AdminRepository
 import kotlinx.coroutines.launch
 
-data class StatCard(val label: String, val value: String, val icon: ImageVector, val color: androidx.compose.ui.graphics.Color)
-data class NavItem(val title: String, val subtitle: String, val icon: ImageVector, val route: String)
+data class DashboardNavEntry(val title: String, val subtitle: String, val icon: ImageVector, val route: String)
+
+data class DashboardRawStats(
+    val studentCount: Int = 0,
+    val activeCourseCount: Int = 0,
+    val todayAttendanceCount: Int = 0,
+    val cbtAttemptCount: Int = 0,
+    val avgCbtScore: Double = 0.0,
+    val passRate: Double = 0.0,
+    val publishedLessonCount: Int = 0,
+    val activeAccessCount: Int = 0
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -26,24 +36,24 @@ fun DashboardScreen(navController: NavController) {
     val repo = remember { AdminRepository() }
     val scope = rememberCoroutineScope()
 
-    var stats by remember { mutableStateOf<List<StatCard>>(emptyList()) }
+    var rawStats by remember { mutableStateOf(DashboardRawStats()) }
     var recentLogs by remember { mutableStateOf<List<AuditLog>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
         scope.launch {
             try {
-                val s = listOf(
-                    StatCard("Students", repo.getStudentCount().toString(), Icons.Default.People, MaterialTheme.colorScheme.primary),
-                    StatCard("Active Courses", repo.getActiveCourseCount().toString(), Icons.Default.MenuBook, MaterialTheme.colorScheme.secondary),
-                    StatCard("Attendance Today", repo.getTodayAttendanceCount().toString(), Icons.Default.EventAvailable, MaterialTheme.colorScheme.tertiary),
-                    StatCard("CBT Attempts", repo.getCbtAttemptCount().toString(), Icons.Default.Quiz, MaterialTheme.colorScheme.error),
-                    StatCard("Avg CBT Score", "%.1f%%".format(repo.getAverageCbtScore()), Icons.Default.TrendingUp, MaterialTheme.colorScheme.primary),
-                    StatCard("Pass Rate", "%.1f%%".format(repo.getPassRate()), Icons.Default.CheckCircle, MaterialTheme.colorScheme.secondary),
-                    StatCard("Published Lessons", repo.getPublishedLessonCount().toString(), Icons.Default.AutoStories, MaterialTheme.colorScheme.tertiary),
-                    StatCard("Active Access", repo.getActiveAccessCount().toString(), Icons.Default.Key, MaterialTheme.colorScheme.error)
+                val stats = DashboardRawStats(
+                    studentCount = repo.getStudentCount(),
+                    activeCourseCount = repo.getActiveCourseCount(),
+                    todayAttendanceCount = repo.getTodayAttendanceCount(),
+                    cbtAttemptCount = repo.getCbtAttemptCount(),
+                    avgCbtScore = repo.getAverageCbtScore(),
+                    passRate = repo.getPassRate(),
+                    publishedLessonCount = repo.getPublishedLessonCount(),
+                    activeAccessCount = repo.getActiveAccessCount()
                 )
-                stats = s
+                rawStats = stats
                 recentLogs = repo.getRecentAuditLogs()
             } catch (_: Exception) {}
             loading = false
@@ -51,21 +61,21 @@ fun DashboardScreen(navController: NavController) {
     }
 
     val navItems = listOf(
-        NavItem("Courses & Content", "Manage courses, modules, lessons & materials", Icons.Default.MenuBook, "courses"),
-        NavItem("Students", "Student profiles, registration & history", Icons.Default.People, "students"),
-        NavItem("Attendance", "Record & view daily attendance", Icons.Default.EventAvailable, "attendance"),
-        NavItem("Course Access", "Grant, block & manage student access", Icons.Default.Key, "course_access"),
-        NavItem("Exams & CBT", "Create exams, question bank & CBT settings", Icons.Default.Quiz, "exams"),
-        NavItem("Results", "View scores, calculate & release results", Icons.Default.Assessment, "results"),
-        NavItem("AI Generator", "Generate lessons & CBT with AI (draft mode)", Icons.Default.AutoAwesome, "ai_generator"),
-        NavItem("Manual Editor", "Create courses manually with image upload", Icons.Default.EditNote, "manual_course_editor"),
-        NavItem("CSV Import", "Bulk import students, courses & questions", Icons.Default.UploadFile, "csv_import"),
-        NavItem("Media Library", "Upload & manage images, PDFs & materials", Icons.Default.PhotoLibrary, "media_library"),
-        NavItem("Bot Activity", "WhatsApp bot event logs & interactions", Icons.Default.SmartToy, "bot_activity"),
-        NavItem("Analytics", "Academic performance & engagement stats", Icons.Default.BarChart, "analytics"),
-        NavItem("Admin Users", "Manage admin roles & permissions", Icons.Default.AdminPanelSettings, "admin_users"),
-        NavItem("Audit Logs", "Track all administrative actions", Icons.Default.ReceiptLong, "audit_logs"),
-        NavItem("Settings", "System, WhatsApp, database & security", Icons.Default.Settings, "settings")
+        DashboardNavEntry("Courses & Content", "Manage courses, modules, lessons & materials", Icons.Default.MenuBook, "courses"),
+        DashboardNavEntry("Students", "Student profiles, registration & history", Icons.Default.People, "students"),
+        DashboardNavEntry("Attendance", "Record & view daily attendance", Icons.Default.EventAvailable, "attendance"),
+        DashboardNavEntry("Course Access", "Grant, block & manage student access", Icons.Default.Key, "course_access"),
+        DashboardNavEntry("Exams & CBT", "Create exams, question bank & CBT settings", Icons.Default.Quiz, "exams"),
+        DashboardNavEntry("Results", "View scores, calculate & release results", Icons.Default.Assessment, "results"),
+        DashboardNavEntry("AI Generator", "Generate lessons & CBT with AI (draft mode)", Icons.Default.AutoAwesome, "ai_generator"),
+        DashboardNavEntry("Manual Editor", "Create courses manually with image upload", Icons.Default.EditNote, "manual_course_editor"),
+        DashboardNavEntry("CSV Import", "Bulk import students, courses & questions", Icons.Default.UploadFile, "csv_import"),
+        DashboardNavEntry("Media Library", "Upload & manage images, PDFs & materials", Icons.Default.PhotoLibrary, "media_library"),
+        DashboardNavEntry("Bot Activity", "WhatsApp bot event logs & interactions", Icons.Default.SmartToy, "bot_activity"),
+        DashboardNavEntry("Analytics", "Academic performance & engagement stats", Icons.Default.BarChart, "analytics"),
+        DashboardNavEntry("Admin Users", "Manage admin roles & permissions", Icons.Default.AdminPanelSettings, "admin_users"),
+        DashboardNavEntry("Audit Logs", "Track all administrative actions", Icons.Default.ReceiptLong, "audit_logs"),
+        DashboardNavEntry("Settings", "System, WhatsApp, database & security", Icons.Default.Settings, "settings")
     )
 
     Scaffold(
@@ -74,33 +84,54 @@ fun DashboardScreen(navController: NavController) {
                 title = {
                     Column {
                         Text("Xtop Bot Admin", fontWeight = FontWeight.Bold)
-                        Text("Engr. Ero E-Learning Hub", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "Engr. Ero E-Learning Hub",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             )
         }
     ) { padding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(12.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Stats Grid
             item {
                 Text("Dashboard Overview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
 
             if (loading) {
-                item { CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally)) }
+                item {
+                    Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
             } else {
-                items(stats.chunked(2)) { row ->
+                val statCards = listOf(
+                    Triple("Students", "${rawStats.studentCount}", Icons.Default.People),
+                    Triple("Active Courses", "${rawStats.activeCourseCount}", Icons.Default.MenuBook),
+                    Triple("Attendance Today", "${rawStats.todayAttendanceCount}", Icons.Default.EventAvailable),
+                    Triple("CBT Attempts", "${rawStats.cbtAttemptCount}", Icons.Default.Quiz),
+                    Triple("Avg CBT Score", "%.1f%%".format(rawStats.avgCbtScore), Icons.Default.TrendingUp),
+                    Triple("Pass Rate", "%.1f%%".format(rawStats.passRate), Icons.Default.CheckCircle),
+                    Triple("Published Lessons", "${rawStats.publishedLessonCount}", Icons.Default.AutoStories),
+                    Triple("Active Access", "${rawStats.activeAccessCount}", Icons.Default.Key)
+                )
+
+                items(statCards.chunked(2)) { row ->
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        row.forEach { stat ->
+                        row.forEach { (label, value, icon) ->
                             Card(modifier = Modifier.weight(1f)) {
                                 Column(modifier = Modifier.padding(12.dp)) {
-                                    Icon(stat.icon, null, tint = stat.color, modifier = Modifier.size(24.dp))
+                                    Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                                     Spacer(Modifier.height(4.dp))
-                                    Text(stat.value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                                    Text(stat.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                                    Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
@@ -109,7 +140,6 @@ fun DashboardScreen(navController: NavController) {
                 }
             }
 
-            // Recent Activity
             item {
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                 Text("Recent Activity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -125,14 +155,17 @@ fun DashboardScreen(navController: NavController) {
                             Spacer(Modifier.width(8.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("${log.action} — ${log.entity}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                                Text("by ${log.adminUser} • ${log.createdAt?.take(16) ?: ""}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    "by ${log.adminUser} • ${log.createdAt?.take(16) ?: ""}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                     }
                 }
             }
 
-            // Navigation Grid
             item {
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                 Text("Modules", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
