@@ -16,6 +16,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // ═══════════════════════════════════════════════════════
+        // GLOBAL UNCAUGHT EXCEPTION HANDLER
+        // Captures any unhandled crash and persists the full stack
+        // trace to crash_log.txt so it can be viewed on device.
+        // ═══════════════════════════════════════════════════════
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             try {
@@ -35,15 +40,20 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // Initialize SharedPreferences credentials store for Supabase
         SupabaseClient.init(applicationContext)
 
         setContent {
             XtopAdminTheme {
                 val navController = rememberNavController()
                 NavHost(navController = navController, startDestination = "dashboard") {
+                    
+                    // 1. DASHBOARD & CORE
                     composable("dashboard") {
                         DashboardScreen(navController)
                     }
+                    
+                    // 2. COURSE GENERATION & CONTENT CREATION
                     composable("ai_generator") {
                         CourseAiGeneratorScreen(navController)
                     }
@@ -53,9 +63,11 @@ class MainActivity : ComponentActivity() {
                     composable("csv_import") {
                         CsvImportScreen(navController)
                     }
-                    composable("bot_activity") {
-                        BotActivityScreen(navController)
+                    composable("media_library") {
+                        MediaLibraryScreen(navController)
                     }
+
+                    // 3. COURSES & LESSON MANAGEMENT
                     composable("courses") {
                         CourseListScreen(navController)
                     }
@@ -67,6 +79,8 @@ class MainActivity : ComponentActivity() {
                         val courseId = backStack.arguments?.getString("courseId") ?: ""
                         CourseDetailScreen(navController, courseId)
                     }
+
+                    // 4. QUESTIONS & CBT EXAM CONFIGURATION
                     composable("questions/{courseId}") { backStack ->
                         val courseId = backStack.arguments?.getString("courseId") ?: ""
                         QuestionBankScreen(navController, courseId)
@@ -79,11 +93,36 @@ class MainActivity : ComponentActivity() {
                         val courseId = backStack.arguments?.getString("courseId") ?: ""
                         ExamConfigScreen(navController, courseId)
                     }
+                    composable("exams") {
+                        ExamsScreen(navController)
+                    }
+
+                    // 5. ACADEMIC RECORDS & MANAGEMENT
                     composable("students") {
                         StudentListScreen(navController)
                     }
+                    composable("attendance") {
+                        AttendanceScreen(navController)
+                    }
+                    composable("course_access") {
+                        CourseAccessScreen(navController)
+                    }
+                    composable("results") {
+                        ResultsScreen(navController)
+                    }
+
+                    // 6. LOGS, ANALYTICS & ADMIN CONTROLS
+                    composable("bot_activity") {
+                        BotActivityScreen(navController)
+                    }
                     composable("analytics") {
                         AnalyticsScreen(navController)
+                    }
+                    composable("admin_users") {
+                        AdminUsersScreen(navController)
+                    }
+                    composable("audit_logs") {
+                        AuditLogScreen(navController)
                     }
                     composable("settings") {
                         SettingsScreen(navController)
