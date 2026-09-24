@@ -33,7 +33,12 @@ fun MediaLibraryScreen(navController: NavController) {
     var loading by remember { mutableStateOf(true) }
     var uploading by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { try { materials = repo.getMaterials() } catch (_: Exception) {}; loading = false }
+    LaunchedEffect(Unit) {
+        try {
+            materials = repo.getMaterials()
+        } catch (_: Exception) {}
+        loading = false
+    }
 
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         uri?.let {
@@ -41,33 +46,87 @@ fun MediaLibraryScreen(navController: NavController) {
                 try {
                     uploading = true
                     val url = StorageService.uploadImage(context, it)
-                    val mat = repo.uploadMaterial(CourseMaterial(fileName = "upload_${System.currentTimeMillis()}", fileType = "image", fileUrl = url, uploadedBy = "admin"))
+                    val mat = repo.uploadMaterial(
+                        CourseMaterial(
+                            fileName = "upload_${System.currentTimeMillis()}",
+                            fileType = "image",
+                            fileUrl = url,
+                            uploadedBy = "admin"
+                        )
+                    )
                     materials = listOf(mat) + materials
                     repo.logAction("admin", "MATERIAL_UPLOADED", "course_materials", mat.id)
-                    Toast.makeText(context, "Uploaded!", Toast.LENGTH_SHORT).show()
-                } catch (e: Exception) { Toast.makeText(context, "Failed: ${e.localizedMessage}", Toast.LENGTH_SHORT).show() }
-                uploading = false
+                    Toast.makeText(context, "Uploaded successfully!", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Upload failed: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                } finally {
+                    uploading = false
+                }
             }
         }
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Media Library") }, navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, "Back") } }) },
-        floatingActionButton = { FloatingActionButton(onClick = { filePicker.launch("image/*") }, enabled = !uploading) { Icon(Icons.Default.CloudUpload, "Upload") } }
+        topBar = {
+            TopAppBar(
+                title = { Text("Media Library") },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(Icons.Default.ArrowBack, "Back")
+                    }
+                }
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = {
+                    if (!uploading) {
+                        filePicker.launch("image/*")
+                    }
+                }
+            ) {
+                Icon(Icons.Default.CloudUpload, "Upload")
+            }
+        }
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
-            if (uploading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            if (loading) CircularProgressIndicator()
-            else if (materials.isEmpty()) Text("No media files uploaded yet.", style = MaterialTheme.typography.bodyMedium)
-            else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp)
+        ) {
+            if (uploading) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+            }
+            if (loading) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else if (materials.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No media files uploaded yet.", style = MaterialTheme.typography.bodyMedium)
+                }
+            } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(materials) { m ->
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(8.dp)) {
-                                AsyncImage(model = m.fileUrl, contentDescription = m.fileName, modifier = Modifier.fillMaxWidth().height(150.dp), contentScale = ContentScale.Crop)
+                                AsyncImage(
+                                    model = m.fileUrl,
+                                    contentDescription = m.fileName,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(150.dp),
+                                    contentScale = ContentScale.Crop
+                                )
                                 Spacer(Modifier.height(4.dp))
                                 Text(m.fileName, style = MaterialTheme.typography.bodySmall)
-                                Text(m.fileType.uppercase() + " • " + (m.createdAt?.take(10) ?: ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    m.fileType.uppercase() + " • " + (m.createdAt?.take(10) ?: ""),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                     }
