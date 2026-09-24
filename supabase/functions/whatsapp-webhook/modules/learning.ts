@@ -94,8 +94,7 @@ async function fetchPublishedModules(courseId: string) {
 }
 
 /**
- * Builds an ordered playlist of all lessons across all modules for this course.
- * Ensures Lesson 1, Lesson 2, Lesson 3... are sequentially indexed 1-to-N.
+ * Builds an ordered playlist of all published lessons across all active modules.
  */
 async function fetchAllCourseLessons(courseId: string) {
   const modules = await fetchPublishedModules(courseId);
@@ -174,7 +173,7 @@ export async function handleLearning(
     return;
   }
 
-  // 2. Explicit exit
+  // 2. Explicit exit command
   if (
     n === "exit learning centre" ||
     n === "exit learning center" ||
@@ -187,13 +186,13 @@ export async function handleLearning(
     return;
   }
 
-  // 3. Registration
+  // 3. Registration flow
   if (["ENTRY", "WAITING_STUDENT_NAME", "WAITING_MATRIC_NUMBER", "WAITING_DEPARTMENT", "WAITING_LEVEL"].includes(state)) {
     await handleRegistration(phone, text, contact, conv);
     return;
   }
 
-  // 4. Back / Menu
+  // 4. Back / Menu navigation
   if (
     n === "lsn_menu" ||
     n === "cm_menu" ||
@@ -321,7 +320,11 @@ async function processCourseCodeAuth(
   const lessons = await fetchAllCourseLessons(course.id);
   const enrollment = await getStudentCourseAccess(student.id, course.id, course.status);
 
-  const startLessonOrder = Math.max(1, (enrollment?.progress?.last_lesson_order || 0) + 1);
+  // Filter completed lessons against only valid published lesson IDs
+  const publishedIds = new Set(lessons.map((l: any) => l.id));
+  const rawCompleted = enrollment?.progress?.completed_lessons || [];
+  const validCompleted = rawCompleted.filter((id: string) => publishedIds.has(id));
+  const nextLessonOrder = validCompleted.length >= lessons.length ? 1 : validCompleted.length + 1;
 
   const ctx: LearningCtx = {
     step: "COURSE_MENU",
@@ -333,7 +336,7 @@ async function processCourseCodeAuth(
     studentId: student.id,
     studentCourseId: enrollment?.id,
     totalLessons: lessons.length,
-    currentLessonOrder: startLessonOrder > lessons.length ? 1 : startLessonOrder,
+    currentLessonOrder: nextLessonOrder,
     currentSectionIndex: 0,
     currentPracticeIndex: 0
   };
@@ -427,7 +430,6 @@ async function deliverLesson(
     return;
   }
 
-  // 1-based index resolution
   const safeIndex = Math.max(0, Math.min(targetOrder - 1, allLessons.length - 1));
   const currentLesson = allLessons[safeIndex];
   const activeOrder = safeIndex + 1;
@@ -502,7 +504,6 @@ async function processLessonNavigation(
     return;
   }
 
-  // Handle Section advancing
   if (
     n === "lsn_section_next" ||
     n.includes("read section") ||
@@ -533,7 +534,6 @@ async function processLessonNavigation(
     }
   }
 
-  // Start in-lesson practice questions
   if (
     n === "lsn_practice_start" ||
     n.includes("practice") ||
@@ -611,15 +611,16 @@ async function completeAndAdvanceLesson(
   phone: string, convId: string, ctx: LearningCtx
 ) {
   const currentOrder = ctx.currentLessonOrder || 1;
-  if (ctx.studentCourseId && ctx.courseId) {
-    const allLessons = await fetchAllCourseLessons(ctx.courseId);
-    const safeIndex = currentOrder - 1;
-    const cl = allLessons[safeIndex];
-    if (cl) await markLessonComplete(ctx.studentCourseId, cl.id, currentOrder);
+  const allLessons = await fetchAllCourseLessons(ctx.courseId || "");
+  const safeIndex = currentOrder - 1;
+  const cl = allLessons[safeIndex];
+
+  if (ctx.studentCourseId && cl) {
+    await markLessonComplete(ctx.studentCourseId, cl.id, currentOrder);
   }
 
   const nextOrder = currentOrder + 1;
-  const total = ctx.totalLessons || 1;
+  const total = allLessons.length;
 
   if (currentOrder >= total) {
     await sendTextMessage(phone, `🎉 *Congratulations!* You have completed all *${total}* lessons in *${ctx.courseCode}*. You are now ready to take the Final Exam.`);
@@ -627,7 +628,6 @@ async function completeAndAdvanceLesson(
     return;
   }
 
-  // Update target lesson order to the next lesson
   ctx.currentLessonOrder = nextOrder;
   ctx.step = "LESSON_COMPLETE";
   await saveCtx(convId, ctx, "LESSON_COMPLETE");
@@ -652,7 +652,54 @@ async function processLessonCompleteAction(
 }
 
 // ═══════════════════════════════════════════════════════
-// 5. COURSE MATERIALS / PROGRESS / RESULTS
+// 5. ACCURATE PROGRESS REPORTING & CLEANUP
+// ═══════════════════════════════════════════════════════
+
+async function showStudentProgress(phone: string, conversationId: string, ctx: LearningCtx): Promise<void> {
+  if (!ctx.studentId || !ctx.courseId) { await promptCourseCode(phone, conversationId); return; }
+  ctx.step = "VIEWING_PROGRESS";
+  await saveCtx(conversationId, ctx, "COURSE_MENU");
+
+  const access = await getStudentCourseAccess(ctx.studentId, ctx.courseId);
+  const lessons = await fetchAllCourseLessons(ctx.courseId);
+  
+  if (lessons.length === 0) {
+    await sendTextMessage(phone, `📊 No published lessons in *${ctx.courseCode}* yet.`);
+    await showCourseMenu(phone, conversationId, ctx);
+    return;
+  }
+
+  // Filter completed lessons to only count published lessons (removes old/stale test IDs)
+  const publishedIds = new Set(lessons.map((l: any) => l.id));
+  const rawCompleted = access?.progress?.completed_lessons || [];
+  const validCompleted = rawCompleted.filter((id: string) => publishedIds.has(id));
+
+  // Sync back to database if there were stale IDs
+  if (access?.id && validCompleted.length !== rawCompleted.length) {
+    try {
+      await supabase.from("student_courses").update({
+        progress: {
+          completed_lessons: validCompleted,
+          last_lesson_order: validCompleted.length
+        }
+      }).eq("id", access.id);
+    } catch (_) {}
+  }
+
+  const done = validCompleted.length;
+  const total = lessons.length;
+  const pct = Math.min(100, Math.round((done / total) * 100));
+  const bar = `[${"🟩".repeat(Math.round(pct / 10))}${"⬜".repeat(10 - Math.round(pct / 10))}]`;
+
+  await sendButtonMessage(phone,
+    `📊 *PROGRESS: ${ctx.courseCode}*\n\n*Completed Lessons:* ${done}/${total} (${pct}%)\n${bar}\n\n${pct >= 100 ? "🎉 All lessons completed! You are eligible for the exam." : "Keep studying!"}`,
+    [makeButton("cm_lecture", "📖 Continue"), makeButton("cm_test", "📝 Take Test"), makeButton("cm_menu", "📋 Menu")],
+    "Academic Progress"
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// 6. MATERIALS & RESULTS
 // ═══════════════════════════════════════════════════════
 
 async function showCourseMaterials(phone: string, conversationId: string, ctx: LearningCtx): Promise<void> {
@@ -698,25 +745,6 @@ async function showCourseMaterials(phone: string, conversationId: string, ctx: L
   await sendButtonMessage(phone, "All materials sent above.",
     [makeButton("cm_lecture", "📖 Go to Class"), makeButton("cm_menu", "📋 Course Menu")],
     "Materials Library"
-  );
-}
-
-async function showStudentProgress(phone: string, conversationId: string, ctx: LearningCtx): Promise<void> {
-  if (!ctx.studentId || !ctx.courseId) { await promptCourseCode(phone, conversationId); return; }
-  ctx.step = "VIEWING_PROGRESS";
-  await saveCtx(conversationId, ctx, "COURSE_MENU");
-
-  const access = await getStudentCourseAccess(ctx.studentId, ctx.courseId);
-  const lessons = await fetchAllCourseLessons(ctx.courseId);
-  const done = access?.progress?.completed_lessons?.length || 0;
-  const total = lessons.length || 1;
-  const pct = Math.min(100, Math.round((done / total) * 100));
-  const bar = `[${"🟩".repeat(Math.round(pct / 10))}${"⬜".repeat(10 - Math.round(pct / 10))}]`;
-
-  await sendButtonMessage(phone,
-    `📊 *PROGRESS: ${ctx.courseCode}*\n\n*Completed Lessons:* ${done}/${total} (${pct}%)\n${bar}\n\n${pct >= 100 ? "🎉 All lessons completed! You are eligible for the exam." : "Keep studying!"}`,
-    [makeButton("cm_lecture", "📖 Continue"), makeButton("cm_test", "📝 Take Test"), makeButton("cm_menu", "📋 Menu")],
-    "Academic Progress"
   );
 }
 
