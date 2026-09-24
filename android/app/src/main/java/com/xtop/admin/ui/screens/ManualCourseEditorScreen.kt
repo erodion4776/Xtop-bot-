@@ -4,16 +4,11 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -41,6 +36,7 @@ fun ManualCourseEditorScreen(navController: NavController) {
     val context = LocalContext.current
     val repo = remember { CourseEditorRepository() }
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     // ── STATE ──
     var courses by remember { mutableStateOf<List<Course>>(emptyList()) }
@@ -56,7 +52,6 @@ fun ManualCourseEditorScreen(navController: NavController) {
     var revisions by remember { mutableStateOf<List<CourseRevision>>(emptyList()) }
 
     var loading by remember { mutableStateOf(true) }
-    var statusMsg by remember { mutableStateOf<String?>(null) }
     var showCreateCourse by remember { mutableStateOf(false) }
     var showAddModule by remember { mutableStateOf(false) }
     var showAddLesson by remember { mutableStateOf(false) }
@@ -66,21 +61,35 @@ fun ManualCourseEditorScreen(navController: NavController) {
     var showHistory by remember { mutableStateOf(false) }
     var uploadingImage by remember { mutableStateOf(false) }
 
-    // ── LOAD COURSES ──
+    fun showMessage(msg: String) {
+        scope.launch { snackbarHostState.showSnackbar(msg) }
+    }
+
+    fun refreshCourses() {
+        scope.launch {
+            try {
+                courses = repo.getCourses()
+            } catch (e: Exception) {
+                showMessage("Load failed: ${e.localizedMessage}")
+            } finally {
+                loading = false
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
-        try { courses = repo.getCourses() } catch (_: Exception) {}
-        loading = false
+        refreshCourses()
     }
 
     fun loadModules(courseId: String) {
         scope.launch {
-            try { modules = repo.getModules(courseId) } catch (_: Exception) {}
+            try { modules = repo.getModules(courseId) } catch (e: Exception) { showMessage(e.localizedMessage ?: "Error loading modules") }
         }
     }
 
     fun loadLessons(moduleId: String) {
         scope.launch {
-            try { lessons = repo.getLessons(moduleId) } catch (_: Exception) {}
+            try { lessons = repo.getLessons(moduleId) } catch (e: Exception) { showMessage(e.localizedMessage ?: "Error loading lessons") }
         }
     }
 
@@ -89,9 +98,8 @@ fun ManualCourseEditorScreen(navController: NavController) {
             try {
                 sections = repo.getSections(lessonId)
                 media = repo.getMedia(lessonId)
-                materials = repo.getMaterials(lessonId)
                 practiceQs = repo.getPracticeQuestions(lessonId)
-            } catch (_: Exception) {}
+            } catch (e: Exception) { showMessage(e.localizedMessage ?: "Error loading lesson details") }
         }
     }
 
@@ -105,16 +113,16 @@ fun ManualCourseEditorScreen(navController: NavController) {
                     repo.createMedia(LessonMedia(lessonId = lessonId, fileUrl = url, caption = "Diagram", mediaType = "image"))
                     media = repo.getMedia(lessonId)
                     repo.logRevision("lesson", lessonId, "IMAGE_UPLOADED")
-                    Toast.makeText(context, "Image uploaded!", Toast.LENGTH_SHORT).show()
+                    showMessage("Image uploaded!")
                 } catch (e: Exception) {
-                    Toast.makeText(context, "Upload failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                    showMessage("Upload failed: ${e.localizedMessage}")
                 } finally { uploadingImage = false }
             }
         }
     }
 
-    // ── SCAFFOLD ──
     Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -127,7 +135,7 @@ fun ManualCourseEditorScreen(navController: NavController) {
                 },
                 navigationIcon = {
                     IconButton(onClick = {
-                        if (selectedLesson != null) { selectedLesson = null; sections = emptyList(); media = emptyList(); materials = emptyList(); practiceQs = emptyList() }
+                        if (selectedLesson != null) { selectedLesson = null; sections = emptyList(); media = emptyList(); practiceQs = emptyList() }
                         else if (selectedModule != null) { selectedModule = null; lessons = emptyList() }
                         else if (selectedCourse != null) { selectedCourse = null; modules = emptyList() }
                         else navController.popBackStack()
@@ -144,15 +152,14 @@ fun ManualCourseEditorScreen(navController: NavController) {
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (loading) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
             } else if (showPreview && selectedLesson != null) {
-                // ── PREVIEW MODE ──
                 LessonPreviewContent(lesson = selectedLesson!!, sections = sections, media = media, practiceQs = practiceQs, onBack = { showPreview = false })
             } else if (showHistory && selectedCourse != null) {
-                // ── REVISION HISTORY ──
                 RevisionHistoryContent(revisions = revisions, courseId = selectedCourse!!.id ?: "", repo = repo, onBack = { showHistory = false })
             } else if (selectedLesson != null) {
-                // ── LESSON EDITOR ──
                 LessonEditorContent(
                     lesson = selectedLesson!!,
                     sections = sections, media = media, materials = materials, practiceQs = practiceQs,
@@ -161,81 +168,100 @@ fun ManualCourseEditorScreen(navController: NavController) {
                     onToggleSection = { showAddSection = !showAddSection },
                     onTogglePracticeQ = { showAddPracticeQ = !showAddPracticeQ },
                     onPickImage = { imagePicker.launch("image/*") },
-                    onSaveSection = { title, content ->
+                    onSaveSection = { title, secCont ->
                         scope.launch {
-                            val lessonId = selectedLesson?.id ?: return@launch
-                            repo.createSection(LessonSection(lessonId = lessonId, title = title, content = content, orderIndex = sections.size + 1))
-                            sections = repo.getSections(lessonId)
-                            showAddSection = false
-                            repo.logRevision("lesson", lessonId, "SECTION_ADDED")
+                            try {
+                                val lessonId = selectedLesson?.id ?: return@launch
+                                repo.createSection(LessonSection(lessonId = lessonId, title = title, content = secCont, orderIndex = sections.size + 1))
+                                sections = repo.getSections(lessonId)
+                                showAddSection = false
+                                repo.logRevision("lesson", lessonId, "SECTION_ADDED")
+                                showMessage("Section added")
+                            } catch (e: Exception) { showMessage(e.localizedMessage ?: "Error") }
                         }
                     },
                     onSavePracticeQ = { q ->
                         scope.launch {
-                            val lessonId = selectedLesson?.id ?: return@launch
-                            repo.createPracticeQuestion(q.copy(lessonId = lessonId, orderIndex = practiceQs.size + 1))
-                            practiceQs = repo.getPracticeQuestions(lessonId)
-                            showAddPracticeQ = false
-                            repo.logRevision("lesson", lessonId, "PRACTICE_Q_ADDED")
+                            try {
+                                val lessonId = selectedLesson?.id ?: return@launch
+                                repo.createPracticeQuestion(q.copy(lessonId = lessonId, orderIndex = practiceQs.size + 1))
+                                practiceQs = repo.getPracticeQuestions(lessonId)
+                                showAddPracticeQ = false
+                                repo.logRevision("lesson", lessonId, "PRACTICE_Q_ADDED")
+                                showMessage("Question saved")
+                            } catch (e: Exception) { showMessage(e.localizedMessage ?: "Error") }
                         }
                     },
                     onDeleteSection = { sId ->
                         scope.launch {
-                            repo.deleteSection(sId)
-                            sections = repo.getSections(selectedLesson?.id ?: "")
+                            try {
+                                repo.deleteSection(sId)
+                                sections = repo.getSections(selectedLesson?.id ?: "")
+                            } catch (e: Exception) { showMessage(e.localizedMessage ?: "Error") }
                         }
                     },
                     onDeleteMedia = { mId ->
                         scope.launch {
-                            repo.deleteMedia(mId)
-                            media = repo.getMedia(selectedLesson?.id ?: "")
+                            try {
+                                repo.deleteMedia(mId)
+                                media = repo.getMedia(selectedLesson?.id ?: "")
+                            } catch (e: Exception) { showMessage(e.localizedMessage ?: "Error") }
                         }
                     },
                     onDeletePracticeQ = { qId ->
                         scope.launch {
-                            repo.deletePracticeQuestion(qId)
-                            practiceQs = repo.getPracticeQuestions(selectedLesson?.id ?: "")
+                            try {
+                                repo.deletePracticeQuestion(qId)
+                                practiceQs = repo.getPracticeQuestions(selectedLesson?.id ?: "")
+                            } catch (e: Exception) { showMessage(e.localizedMessage ?: "Error") }
                         }
                     },
                     onPublish = {
                         scope.launch {
-                            val lId = selectedLesson?.id ?: return@launch
-                            repo.publishLesson(lId)
-                            selectedLesson = selectedLesson?.copy(status = "ACTIVE", isDraft = false)
-                            statusMsg = "✅ Lesson Published"
-                            repo.logRevision("lesson", lId, "PUBLISHED")
+                            try {
+                                val lId = selectedLesson?.id ?: return@launch
+                                repo.publishLesson(lId)
+                                selectedLesson = selectedLesson?.copy(status = "ACTIVE", isDraft = false)
+                                showMessage("✅ Lesson Published to WhatsApp Bot")
+                            } catch (e: Exception) { showMessage("Publish Error: ${e.localizedMessage}") }
                         }
                     },
                     onUnpublish = {
                         scope.launch {
-                            val lId = selectedLesson?.id ?: return@launch
-                            repo.unpublishLesson(lId)
-                            selectedLesson = selectedLesson?.copy(status = "DRAFT", isDraft = true)
-                            statusMsg = "Lesson set to Draft"
+                            try {
+                                val lId = selectedLesson?.id ?: return@launch
+                                repo.unpublishLesson(lId)
+                                selectedLesson = selectedLesson?.copy(status = "DRAFT", isDraft = true)
+                                showMessage("Lesson reverted to Draft")
+                            } catch (e: Exception) { showMessage("Error: ${e.localizedMessage}") }
                         }
                     },
-                    onSaveContent = { content ->
+                    onSaveContent = { updatedText ->
                         scope.launch {
-                            val lId = selectedLesson?.id ?: return@launch
-                            repo.updateLesson(lId, mapOf("content" to content))
-                            selectedLesson = selectedLesson?.copy(content = content)
-                            statusMsg = "💾 Saved"
-                            repo.logRevision("lesson", lId, "CONTENT_UPDATED")
+                            try {
+                                val lId = selectedLesson?.id ?: return@launch
+                                repo.updateLessonContent(lId, updatedText)
+                                selectedLesson = selectedLesson?.copy(content = updatedText)
+                                showMessage("💾 Content Saved")
+                                repo.logRevision("lesson", lId, "CONTENT_UPDATED")
+                            } catch (e: Exception) { showMessage("Save Error: ${e.localizedMessage}") }
                         }
                     }
                 )
             } else if (selectedModule != null) {
-                // ── MODULE LESSONS LIST ──
                 ModuleLessonsContent(
                     module = selectedModule!!, lessons = lessons, showAddLesson = showAddLesson,
                     onToggleAdd = { showAddLesson = !showAddLesson },
                     onCreateLesson = { title, number ->
                         scope.launch {
-                            val mId = selectedModule?.id ?: return@launch
-                            val l = repo.createLesson(ModuleSlide(moduleId = mId, title = title, lessonNumber = number, orderIndex = lessons.size + 1, status = "DRAFT", isDraft = true))
-                            lessons = repo.getLessons(mId)
-                            showAddLesson = false
-                            repo.logRevision("module", mId, "LESSON_CREATED: ${l.title}")
+                            try {
+                                val mId = selectedModule?.id ?: return@launch
+                                val l = repo.createLesson(ModuleSlide(moduleId = mId, title = title, lessonNumber = number, orderIndex = lessons.size + 1, status = "DRAFT", isDraft = true))
+                                lessons = repo.getLessons(mId)
+                                showAddLesson = false
+                                repo.logRevision("module", mId, "LESSON_CREATED: ${l.title}")
+                                showMessage("Lesson created as Draft")
+                            } catch (e: Exception) { showMessage("Create Error: ${e.localizedMessage}") }
                         }
                     },
                     onSelectLesson = { l ->
@@ -244,31 +270,37 @@ fun ManualCourseEditorScreen(navController: NavController) {
                     },
                     onDeleteLesson = { lId ->
                         scope.launch {
-                            repo.deleteLesson(lId)
-                            lessons = repo.getLessons(selectedModule?.id ?: "")
+                            try {
+                                repo.deleteLesson(lId)
+                                lessons = repo.getLessons(selectedModule?.id ?: "")
+                            } catch (e: Exception) { showMessage(e.localizedMessage ?: "Error") }
                         }
                     },
                     onPublishModule = {
                         scope.launch {
-                            val mId = selectedModule?.id ?: return@launch
-                            repo.publishModule(mId)
-                            selectedModule = selectedModule?.copy(status = "ACTIVE")
-                            statusMsg = "✅ Module Published"
+                            try {
+                                val mId = selectedModule?.id ?: return@launch
+                                repo.publishModule(mId)
+                                selectedModule = selectedModule?.copy(status = "ACTIVE")
+                                showMessage("✅ Module Published")
+                            } catch (e: Exception) { showMessage("Publish Error: ${e.localizedMessage}") }
                         }
                     }
                 )
             } else if (selectedCourse != null) {
-                // ── COURSE MODULES LIST ──
                 CourseModulesContent(
                     course = selectedCourse!!, modules = modules, showAddModule = showAddModule,
                     onToggleAdd = { showAddModule = !showAddModule },
                     onCreateModule = { title, desc ->
                         scope.launch {
-                            val cId = selectedCourse?.id ?: return@launch
-                            repo.createModule(CourseModule(courseId = cId, title = title, description = desc, moduleOrder = modules.size + 1, status = "DRAFT"))
-                            modules = repo.getModules(cId)
-                            showAddModule = false
-                            repo.logRevision("course", cId, "MODULE_CREATED: $title")
+                            try {
+                                val cId = selectedCourse?.id ?: return@launch
+                                repo.createModule(CourseModule(courseId = cId, title = title, description = desc, moduleOrder = modules.size + 1, status = "DRAFT"))
+                                modules = repo.getModules(cId)
+                                showAddModule = false
+                                repo.logRevision("course", cId, "MODULE_CREATED: $title")
+                                showMessage("Module created")
+                            } catch (e: Exception) { showMessage("Create Error: ${e.localizedMessage}") }
                         }
                     },
                     onSelectModule = { m ->
@@ -277,29 +309,34 @@ fun ManualCourseEditorScreen(navController: NavController) {
                     },
                     onDeleteModule = { mId ->
                         scope.launch {
-                            repo.deleteModule(mId)
-                            modules = repo.getModules(selectedCourse?.id ?: "")
+                            try {
+                                repo.deleteModule(mId)
+                                modules = repo.getModules(selectedCourse?.id ?: "")
+                            } catch (e: Exception) { showMessage(e.localizedMessage ?: "Error") }
                         }
                     },
                     onPublishCourse = {
                         scope.launch {
-                            val cId = selectedCourse?.id ?: return@launch
-                            repo.publishCourse(cId)
-                            selectedCourse = selectedCourse?.copy(status = "OPEN")
-                            statusMsg = "✅ Course Published to WhatsApp Bot!"
+                            try {
+                                val cId = selectedCourse?.id ?: return@launch
+                                repo.publishCourse(cId)
+                                selectedCourse = selectedCourse?.copy(status = "OPEN")
+                                showMessage("✅ Course Published to WhatsApp Bot!")
+                            } catch (e: Exception) { showMessage("Publish Error: ${e.localizedMessage}") }
                         }
                     },
                     onUnpublishCourse = {
                         scope.launch {
-                            val cId = selectedCourse?.id ?: return@launch
-                            repo.unpublishCourse(cId)
-                            selectedCourse = selectedCourse?.copy(status = "DRAFT")
-                            statusMsg = "Course set to Draft"
+                            try {
+                                val cId = selectedCourse?.id ?: return@launch
+                                repo.unpublishCourse(cId)
+                                selectedCourse = selectedCourse?.copy(status = "DRAFT")
+                                showMessage("Course set to Draft")
+                            } catch (e: Exception) { showMessage("Error: ${e.localizedMessage}") }
                         }
                     }
                 )
             } else {
-                // ── COURSE LIST ──
                 CourseListContent(
                     courses = courses, showCreate = showCreateCourse,
                     onToggleCreate = { showCreateCourse = !showCreateCourse },
@@ -310,8 +347,8 @@ fun ManualCourseEditorScreen(navController: NavController) {
                                 courses = repo.getCourses()
                                 showCreateCourse = false
                                 repo.logRevision("course", c.id ?: "", "COURSE_CREATED: $code")
-                                statusMsg = "✅ Course $code created as Draft"
-                            } catch (e: Exception) { statusMsg = "Error: ${e.localizedMessage}" }
+                                showMessage("✅ Course $code created as Draft")
+                            } catch (e: Exception) { showMessage("Error: ${e.localizedMessage}") }
                         }
                     },
                     onSelectCourse = { c ->
@@ -320,19 +357,13 @@ fun ManualCourseEditorScreen(navController: NavController) {
                     },
                     onDeleteCourse = { cId ->
                         scope.launch {
-                            repo.deleteCourse(cId)
-                            courses = repo.getCourses()
+                            try {
+                                repo.deleteCourse(cId)
+                                courses = repo.getCourses()
+                            } catch (e: Exception) { showMessage(e.localizedMessage ?: "Error") }
                         }
                     }
                 )
-            }
-
-            // Status message overlay
-            statusMsg?.let { msg ->
-                Snackbar(
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
-                    action = { TextButton(onClick = { statusMsg = null }) { Text("OK") } }
-                ) { Text(msg) }
             }
         }
     }
@@ -360,16 +391,20 @@ fun CourseListContent(
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("All Courses (${courses.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Button(onClick = onToggleCreate) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text("Create") }
+                Button(onClick = onToggleCreate) {
+                    Icon(if (showCreate) Icons.Default.Close else Icons.Default.Add, null)
+                    Spacer(Modifier.width(4.dp))
+                    Text(if (showCreate) "Close" else "Create")
+                }
             }
         }
 
         if (showCreate) {
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Create New Course", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                        OutlinedTextField(value = code, onValueChange = { code = it.uppercase() }, label = { Text("Course Code *") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                        OutlinedTextField(value = code, onValueChange = { code = it.uppercase() }, label = { Text("Course Code (e.g. ELA301) *") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                         OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Course Title *") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(value = dept, onValueChange = { dept = it }, label = { Text("Department") }, modifier = Modifier.weight(1f), singleLine = true)
@@ -379,7 +414,10 @@ fun CourseListContent(
                         OutlinedTextField(value = desc, onValueChange = { desc = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
                         OutlinedTextField(value = obj, onValueChange = { obj = it }, label = { Text("Objectives") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { if (code.isNotBlank() && name.isNotBlank()) onCreateCourse(code, name, dept, lvl, sem, desc, obj) }, enabled = code.isNotBlank() && name.isNotBlank()) { Text("Save as Draft") }
+                            Button(
+                                onClick = { if (code.isNotBlank() && name.isNotBlank()) onCreateCourse(code, name, dept, lvl, sem, desc, obj) },
+                                enabled = code.isNotBlank() && name.isNotBlank()
+                            ) { Text("Save as Draft") }
                             OutlinedButton(onClick = onToggleCreate) { Text("Cancel") }
                         }
                     }
@@ -387,7 +425,7 @@ fun CourseListContent(
             }
         }
 
-        if (courses.isEmpty()) {
+        if (courses.isEmpty() && !showCreate) {
             item {
                 Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -450,7 +488,11 @@ fun CourseModulesContent(
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Modules", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Button(onClick = onToggleAdd) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text("Module") }
+                Button(onClick = onToggleAdd) {
+                    Icon(if (showAddModule) Icons.Default.Close else Icons.Default.Add, null)
+                    Spacer(Modifier.width(4.dp))
+                    Text(if (showAddModule) "Close" else "Module")
+                }
             }
         }
 
@@ -470,7 +512,7 @@ fun CourseModulesContent(
             }
         }
 
-        if (modules.isEmpty()) {
+        if (modules.isEmpty() && !showAddModule) {
             item {
                 Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -526,7 +568,11 @@ fun ModuleLessonsContent(
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Lessons", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Button(onClick = onToggleAdd) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text("Lesson") }
+                Button(onClick = onToggleAdd) {
+                    Icon(if (showAddLesson) Icons.Default.Close else Icons.Default.Add, null)
+                    Spacer(Modifier.width(4.dp))
+                    Text(if (showAddLesson) "Close" else "Lesson")
+                }
             }
         }
 
@@ -548,7 +594,7 @@ fun ModuleLessonsContent(
             }
         }
 
-        if (lessons.isEmpty()) {
+        if (lessons.isEmpty() && !showAddLesson) {
             item {
                 Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -600,7 +646,6 @@ fun LessonEditorContent(
     var pqExp by remember { mutableStateOf("") }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // Header
         item {
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
                 Column(modifier = Modifier.padding(12.dp)) {
@@ -616,18 +661,16 @@ fun LessonEditorContent(
             }
         }
 
-        // Content Editor
         item {
             Text("Lesson Content", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             OutlinedTextField(
                 value = content, onValueChange = { content = it },
                 label = { Text("Write lesson content (WhatsApp formatted)") },
-                modifier = Modifier.fillMaxWidth().height(200.dp),
+                modifier = Modifier.fillMaxWidth().height(180.dp),
                 singleLine = false
             )
         }
 
-        // Sections
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Sections (${sections.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
@@ -659,7 +702,6 @@ fun LessonEditorContent(
             }
         }
 
-        // Images
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Images & Diagrams (${media.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
@@ -679,7 +721,6 @@ fun LessonEditorContent(
             }
         }
 
-        // Practice Questions
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Practice Questions (${practiceQs.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
@@ -690,7 +731,7 @@ fun LessonEditorContent(
         if (showAddPracticeQ) {
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(12.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         OutlinedTextField(value = pqQuestion, onValueChange = { pqQuestion = it }, label = { Text("Question") }, modifier = Modifier.fillMaxWidth())
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             OutlinedTextField(value = pqA, onValueChange = { pqA = it }, label = { Text("A") }, modifier = Modifier.weight(1f))
@@ -716,7 +757,7 @@ fun LessonEditorContent(
         }
 
         items(practiceQs) { q ->
-                        Card(modifier = Modifier.fillMaxWidth()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
                 Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.Top) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(q.question, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
@@ -731,32 +772,11 @@ fun LessonEditorContent(
             }
         }
 
-        // CBT Connection Info
         item {
-            HorizontalDivider(Modifier.padding(vertical = 4.dp))
-            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text("CBT Connection", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    Text("Final CBT questions are managed in the Question Bank module.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("Practice questions above are for lesson reinforcement only.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(4.dp))
-                    TextButton(onClick = { /* Navigate to question bank */ }) {
-                        Icon(Icons.Default.Quiz, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Manage Question Bank")
-                    }
-                }
-            }
+            Spacer(Modifier.height(40.dp))
         }
-
-        // Bottom spacer
-        item { Spacer(Modifier.height(80.dp)) }
     }
 }
-
-// ════════════════════════════════════════════════════════════
-// LESSON PREVIEW (Student View + WhatsApp View)
-// ════════════════════════════════════════════════════════════
 
 @Composable
 fun LessonPreviewContent(
@@ -768,139 +788,133 @@ fun LessonPreviewContent(
 ) {
     var showWhatsAppView by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(12.dp)
-            .verticalScroll(rememberScrollState()),
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                if (showWhatsAppView) "WhatsApp Preview" else "Student Preview",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                FilterChip(
-                    selected = !showWhatsAppView,
-                    onClick = { showWhatsAppView = false },
-                    label = { Text("Student") }
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (showWhatsAppView) "WhatsApp Preview" else "Student Preview",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
                 )
-                FilterChip(
-                    selected = showWhatsAppView,
-                    onClick = { showWhatsAppView = true },
-                    label = { Text("WhatsApp") }
-                )
-                IconButton(onClick = onBack) { Icon(Icons.Default.Close, "Close Preview") }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    FilterChip(
+                        selected = !showWhatsAppView,
+                        onClick = { showWhatsAppView = false },
+                        label = { Text("Student") }
+                    )
+                    FilterChip(
+                        selected = showWhatsAppView,
+                        onClick = { showWhatsAppView = true },
+                        label = { Text("WhatsApp") }
+                    )
+                    IconButton(onClick = onBack) { Icon(Icons.Default.Close, "Close Preview") }
+                }
             }
         }
 
-        HorizontalDivider()
+        item { HorizontalDivider() }
 
         if (showWhatsAppView) {
-            // WhatsApp-style preview
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFDCF8C6))
-            ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        "*${lesson.title}*",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        lesson.content ?: "_No content yet._",
-                        style = MaterialTheme.typography.bodySmall
-                    )
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFDCF8C6))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("*${lesson.title}*", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(lesson.content ?: "_No content yet._", style = MaterialTheme.typography.bodySmall)
 
-                    sections.forEachIndexed { idx, s ->
-                        HorizontalDivider(Modifier.padding(vertical = 2.dp))
-                        Text("*${idx + 1}. ${s.title}*", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                        Text(s.content ?: "", style = MaterialTheme.typography.bodySmall)
-                    }
-
-                    media.forEach { m ->
-                        Spacer(Modifier.height(4.dp))
-                        AsyncImage(
-                            model = m.fileUrl,
-                            contentDescription = m.caption,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(150.dp)
-                                .clip(RoundedCornerShape(8.dp)),
-                            contentScale = ContentScale.Crop
-                        )
-                        Text("_${m.caption ?: "Image"}_", style = MaterialTheme.typography.labelSmall)
-                    }
-
-                    if (practiceQs.isNotEmpty()) {
-                        HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                        Text("*Practice Questions:*", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                        practiceQs.forEachIndexed { idx, q ->
-                            Text("${idx + 1}. ${q.question}", style = MaterialTheme.typography.bodySmall)
-                            Text("A) ${q.optionA}  B) ${q.optionB}", style = MaterialTheme.typography.labelSmall)
-                            Text("C) ${q.optionC}  D) ${q.optionD}", style = MaterialTheme.typography.labelSmall)
+                        sections.forEachIndexed { idx, s ->
+                            HorizontalDivider(Modifier.padding(vertical = 2.dp))
+                            Text("*${idx + 1}. ${s.title}*", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                            Text(s.content ?: "", style = MaterialTheme.typography.bodySmall)
                         }
-                    }
 
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "_Reply with your answer or type NEXT to continue._",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF666666)
-                    )
+                        media.forEach { m ->
+                            Spacer(Modifier.height(4.dp))
+                            AsyncImage(
+                                model = m.fileUrl,
+                                contentDescription = m.caption,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(150.dp)
+                                    .clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                            Text("_${m.caption ?: "Image"}_", style = MaterialTheme.typography.labelSmall)
+                        }
+
+                        if (practiceQs.isNotEmpty()) {
+                            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                            Text("*Practice Questions:*", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                            practiceQs.forEachIndexed { idx, q ->
+                                Text("${idx + 1}. ${q.question}", style = MaterialTheme.typography.bodySmall)
+                                Text("A) ${q.optionA}  B) ${q.optionB}", style = MaterialTheme.typography.labelSmall)
+                                Text("C) ${q.optionC}  D) ${q.optionD}", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "_Reply with your answer or type NEXT to continue._",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF666666)
+                        )
+                    }
                 }
             }
         } else {
-            // Student view preview
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(lesson.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text("Lesson ${lesson.lessonNumber} • ${lesson.estimatedMinutes} min", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(lesson.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text("Lesson ${lesson.lessonNumber} • ${lesson.estimatedMinutes} min", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-                    lesson.objectives?.let { obj ->
+                        lesson.objectives?.let { obj ->
+                            HorizontalDivider()
+                            Text("Learning Objectives", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Text(obj, style = MaterialTheme.typography.bodySmall)
+                        }
+
                         HorizontalDivider()
-                        Text("Learning Objectives", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                        Text(obj, style = MaterialTheme.typography.bodySmall)
-                    }
+                        Text("Lesson Content", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(lesson.content ?: "No content yet.", style = MaterialTheme.typography.bodyMedium)
 
-                    HorizontalDivider()
-                    Text("Lesson Content", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    Text(lesson.content ?: "No content yet.", style = MaterialTheme.typography.bodyMedium)
+                        sections.forEachIndexed { idx, s ->
+                            HorizontalDivider(Modifier.padding(vertical = 2.dp))
+                            Text("${idx + 1}. ${s.title}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Text(s.content ?: "", style = MaterialTheme.typography.bodySmall)
+                        }
 
-                    sections.forEachIndexed { idx, s ->
-                        HorizontalDivider(Modifier.padding(vertical = 2.dp))
-                        Text("${idx + 1}. ${s.title}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                        Text(s.content ?: "", style = MaterialTheme.typography.bodySmall)
-                    }
+                        media.forEach { m ->
+                            Spacer(Modifier.height(8.dp))
+                            AsyncImage(
+                                model = m.fileUrl,
+                                contentDescription = m.caption,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(180.dp)
+                                    .clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                            Text(m.caption ?: "", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
 
-                    media.forEach { m ->
-                        Spacer(Modifier.height(8.dp))
-                        AsyncImage(
-                            model = m.fileUrl,
-                            contentDescription = m.caption,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(180.dp)
-                                .clip(RoundedCornerShape(8.dp)),
-                            contentScale = ContentScale.Crop
-                        )
-                        Text(m.caption ?: "", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-
-                    if (practiceQs.isNotEmpty()) {
-                        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                        Text("Practice Questions", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                        practiceQs.forEachIndexed { idx, q ->
-                            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Text("${idx + 1}. ${q.question}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                                    Text("A) ${q.optionA}", style = MaterialTheme.typography.labelSmall)
-                                    Text("B) ${q.optionB}", style = MaterialTheme.typography.labelSmall)
-                                    Text("C) ${q.optionC}", style = MaterialTheme.typography.labelSmall)
-                                    Text("D) ${q.optionD}", style = MaterialTheme.typography.labelSmall)
+                        if (practiceQs.isNotEmpty()) {
+                            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                            Text("Practice Questions", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            practiceQs.forEachIndexed { idx, q ->
+                                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Text("${idx + 1}. ${q.question}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                                        Text("A) ${q.optionA}", style = MaterialTheme.typography.labelSmall)
+                                        Text("B) ${q.optionB}", style = MaterialTheme.typography.labelSmall)
+                                        Text("C) ${q.optionC}", style = MaterialTheme.typography.labelSmall)
+                                        Text("D) ${q.optionD}", style = MaterialTheme.typography.labelSmall)
+                                    }
                                 }
                             }
                         }
@@ -909,13 +923,9 @@ fun LessonPreviewContent(
             }
         }
 
-        Spacer(Modifier.height(40.dp))
+        item { Spacer(Modifier.height(40.dp)) }
     }
 }
-
-// ════════════════════════════════════════════════════════════
-// REVISION HISTORY
-// ════════════════════════════════════════════════════════════
 
 @Composable
 fun RevisionHistoryContent(
@@ -934,11 +944,7 @@ fun RevisionHistoryContent(
         loading = false
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(12.dp)
-    ) {
+    Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
