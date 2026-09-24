@@ -10,7 +10,7 @@ data class Course(
     @SerialName("course_name") val courseName: String = "",
     val term: String? = null,
     val description: String? = null,
-    val status: String = "OPEN",
+    val status: String = "DRAFT",
     @SerialName("test_price") val testPrice: Double = 0.0,
     @SerialName("show_answers") val showAnswers: Boolean = false,
     val department: String? = "Automobile Workshop",
@@ -18,6 +18,11 @@ data class Course(
     val semester: String? = "First Semester",
     val duration: String? = "15 weeks",
     @SerialName("is_archived") val isArchived: Boolean = false,
+    val objectives: String? = null,
+    val instructor: String? = null,
+    val prerequisite: String? = null,
+    @SerialName("thumbnail_url") val thumbnailUrl: String? = null,
+    @SerialName("created_by") val createdBy: String? = "admin",
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null
 )
@@ -28,8 +33,9 @@ data class CourseModule(
     @SerialName("course_id") val courseId: String = "",
     val title: String = "",
     val description: String? = null,
+    val objectives: String? = null,
     @SerialName("module_order") val moduleOrder: Int = 1,
-    val status: String = "ACTIVE",
+    val status: String = "DRAFT",
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null
 )
@@ -45,11 +51,95 @@ data class ModuleSlide(
     @SerialName("video_url") val videoUrl: String? = null,
     @SerialName("slide_order") val slideOrder: Int = 1,
     val duration: String? = null,
-    val status: String = "ACTIVE",
+    val status: String = "DRAFT",
     @SerialName("is_draft") val isDraft: Boolean = true,
     @SerialName("published_at") val publishedAt: String? = null,
+    @SerialName("lesson_number") val lessonNumber: Int = 1,
+    @SerialName("estimated_minutes") val estimatedMinutes: Int = 15,
+    val objectives: String? = null,
+    @SerialName("order_index") val orderIndex: Int = 1,
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null
+)
+
+@Serializable
+data class LessonSection(
+    val id: String? = null,
+    @SerialName("lesson_id") val lessonId: String = "",
+    val title: String = "",
+    val content: String? = null,
+    @SerialName("order_index") val orderIndex: Int = 1,
+    @SerialName("created_at") val createdAt: String? = null
+)
+
+@Serializable
+data class LessonMedia(
+    val id: String? = null,
+    @SerialName("lesson_id") val lessonId: String = "",
+    @SerialName("media_type") val mediaType: String = "image",
+    @SerialName("file_url") val fileUrl: String = "",
+    val caption: String? = null,
+    val description: String? = null,
+    @SerialName("alt_text") val altText: String? = null,
+    @SerialName("order_index") val orderIndex: Int = 1,
+    @SerialName("created_at") val createdAt: String? = null
+)
+
+@Serializable
+data class LessonMaterial(
+    val id: String? = null,
+    @SerialName("lesson_id") val lessonId: String = "",
+    val title: String = "",
+    @SerialName("file_url") val fileUrl: String = "",
+    @SerialName("file_type") val fileType: String = "pdf",
+    val description: String? = null,
+    @SerialName("order_index") val orderIndex: Int = 1,
+    @SerialName("created_at") val createdAt: String? = null
+)
+
+@Serializable
+data class LessonPracticeQuestion(
+    val id: String? = null,
+    @SerialName("lesson_id") val lessonId: String = "",
+    val question: String = "",
+    @SerialName("question_type") val questionType: String = "mcq",
+    @SerialName("option_a") val optionA: String = "",
+    @SerialName("option_b") val optionB: String = "",
+    @SerialName("option_c") val optionC: String = "",
+    @SerialName("option_d") val optionD: String = "",
+    @SerialName("correct_answer") val correctAnswer: String = "A",
+    val explanation: String? = null,
+    val difficulty: String = "medium",
+    val marks: Int = 1,
+    @SerialName("order_index") val orderIndex: Int = 1,
+    val status: String = "ACTIVE",
+    @SerialName("created_at") val createdAt: String? = null
+)
+
+@Serializable
+data class CourseSettings(
+    val id: String? = null,
+    @SerialName("course_id") val courseId: String = "",
+    @SerialName("sequential_lessons") val sequentialLessons: Boolean = true,
+    @SerialName("allow_skip") val allowSkip: Boolean = false,
+    @SerialName("require_practice") val requirePractice: Boolean = false,
+    @SerialName("practice_pass_score") val practicePassScore: Int = 50,
+    @SerialName("require_final_cbt") val requireFinalCbt: Boolean = true,
+    @SerialName("cbt_pass_score") val cbtPassScore: Int = 50,
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null
+)
+
+@Serializable
+data class CourseRevision(
+    val id: String? = null,
+    @SerialName("entity_type") val entityType: String = "",
+    @SerialName("entity_id") val entityId: String = "",
+    val action: String = "",
+    @SerialName("previous_data") val previousData: String? = null,
+    @SerialName("new_data") val newData: String? = null,
+    @SerialName("changed_by") val changedBy: String = "admin",
+    @SerialName("created_at") val createdAt: String? = null
 )
 
 @Serializable
@@ -232,80 +322,4 @@ data class ExamConfig(
     @SerialName("time_limit_minutes") val timeLimitMinutes: Int? = null,
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null
-)
-// ── MANUAL COURSE EDITOR MODELS ──
-
-@Serializable
-data class LessonSection(
-    val id: String? = null,
-    @SerialName("lesson_id") val lessonId: String = "",
-    val title: String = "",
-    val content: String? = null,
-    @SerialName("order_index") val orderIndex: Int = 1,
-    @SerialName("created_at") val createdAt: String? = null
-)
-
-@Serializable
-data class LessonMedia(
-    val id: String? = null,
-    @SerialName("lesson_id") val lessonId: String = "",
-    @SerialName("media_type") val mediaType: String = "image",
-    @SerialName("file_url") val fileUrl: String = "",
-    val caption: String? = null,
-    val description: String? = null,
-    @SerialName("alt_text") val altText: String? = null,
-    @SerialName("order_index") val orderIndex: Int = 1,
-    @SerialName("created_at") val createdAt: String? = null
-)
-
-@Serializable
-data class LessonMaterial(
-    val id: String? = null,
-    @SerialName("lesson_id") val lessonId: String = "",
-    val title: String = "",
-    @SerialName("file_url") val fileUrl: String = "",
-    @SerialName("file_type") val fileType: String = "pdf",
-    val description: String? = null,
-    @SerialName("order_index") val orderIndex: Int = 1,
-    @SerialName("created_at") val createdAt: String? = null
-)
-
-@Serializable
-data class LessonPracticeQuestion(
-    val id: String? = null,
-    @SerialName("lesson_id") val lessonId: String = "",
-    val question: String = "",
-    @SerialName("question_type") val questionType: String = "mcq",
-    val options: String = "[]",
-    @SerialName("correct_answer") val correctAnswer: String = "A",
-    val explanation: String? = null,
-    val difficulty: String = "medium",
-    val marks: Int = 1,
-    @SerialName("order_index") val orderIndex: Int = 1,
-    val status: String = "ACTIVE",
-    @SerialName("created_at") val createdAt: String? = null
-)
-
-@Serializable
-data class CourseSettings(
-    @SerialName("course_id") val courseId: String = "",
-    @SerialName("sequential_lessons") val sequentialLessons: Boolean = true,
-    @SerialName("allow_skip") val allowSkip: Boolean = false,
-    @SerialName("require_practice") val requirePractice: Boolean = false,
-    @SerialName("practice_pass_score") val practicePassScore: Int = 50,
-    @SerialName("require_final_cbt") val requireFinalCbt: Boolean = true,
-    @SerialName("cbt_pass_score") val cbtPassScore: Int = 50,
-    @SerialName("updated_at") val updatedAt: String? = null
-)
-
-@Serializable
-data class CourseRevision(
-    val id: String? = null,
-    @SerialName("entity_type") val entityType: String = "",
-    @SerialName("entity_id") val entityId: String = "",
-    val action: String = "",
-    @SerialName("previous_data") val previousData: String? = null,
-    @SerialName("new_data") val newData: String? = null,
-    @SerialName("changed_by") val changedBy: String = "admin",
-    @SerialName("created_at") val createdAt: String? = null
 )
