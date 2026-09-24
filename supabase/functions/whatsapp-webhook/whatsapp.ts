@@ -150,6 +150,23 @@ export async function sendTextMessage(to: string, body: string): Promise<string 
   });
 }
 
+export async function sendImageMessage(
+  to: string,
+  imageUrl: string,
+  caption?: string
+): Promise<string | null> {
+  return sendToWhatsApp({
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to,
+    type: "image",
+    image: {
+      link: imageUrl,
+      caption: caption || undefined,
+    },
+  });
+}
+
 export async function sendButtonMessage(
   to: string,
   body: string,
