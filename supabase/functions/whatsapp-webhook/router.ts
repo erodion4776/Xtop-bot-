@@ -19,46 +19,34 @@ import { handleAgent, showAgentCategories } from "./modules/agents.ts";
 import { handleLearning } from "./modules/learning.ts";
 import { handleSales, showServiceTypeSelector } from "./modules/sales.ts";
 import { handleExams } from "./modules/exams.ts";
-import { handleTools, showToolsMenu } from "./modules/tools.ts"; // Added Tools module
+import { handleTools, showToolsMenu } from "./modules/tools.ts";
 
 export async function routeMessage(incoming: IncomingMessage): Promise<void> {
   const phone = incoming.from;
   const text = sanitizeInput(incoming.text);
   const interactiveId = incoming.interactiveId;
 
+  // ⛔️ CRITICAL GUARD: If there is NO text and NO button click, DO NOT REPLY!
+  if (!text && !interactiveId) {
+    return;
+  }
+
   try {
     const contact = await getOrCreateContact(phone, incoming.profileName);
     const conversation = await getOrCreateConversation(contact.id);
-
-    // If message is empty (e.g., status callback or unhandled interactive event)
-    if (!text && !interactiveId) {
-      if (conversation.current_module === "LEARNING") {
-        return; // Ignore silently to avoid interrupting active classroom
-      }
-      await sendTextMessage(phone,
-        "👋 Hello! Please send a text message or choose an option from the menu.\n\nType *menu* to view all services."
-      );
-      return;
-    }
 
     await storeMessage(
       contact.id, "INBOUND", incoming.type,
       text || interactiveId || null, incoming.messageId
     );
 
-    // ══════════════════════════════════════════════════════
-    // 1. ACTIVE LEARNING MODULE ISOLATION (PRIORITY #1)
-    // ══════════════════════════════════════════════════════
-    // If the student is already inside the Learning Centre, route directly
-    // to handleLearning so Retail store greetings/menus NEVER interrupt class!
+    // 1. ACTIVE LEARNING MODULE ISOLATION
     if (conversation.current_module === "LEARNING") {
       await handleLearning(phone, text, contact, conversation);
       return;
     }
 
-    // ══════════════════════════════════════════════════════
-    // 2. PRIVATE LEARNING CENTRE KEYWORD TRIGGER
-    // ══════════════════════════════════════════════════════
+    // 2. PRIVATE LEARNING CENTRE TRIGGER
     if (isLearningKeyword(text)) {
       const existingCtx = conversation.context_json || {};
       await updateConversation(conversation.id, {
@@ -70,46 +58,42 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-    // ══════════════════════════════════════════════════════
     // 3. GLOBAL INTERRUPTS (RETAIL STORE ONLY)
-    // ══════════════════════════════════════════════════════
-    if ((isGreeting(text) || isHelp(text) || text === "menu_home")
-        && !["SALES", "EXAMS", "LEARNING", "TOOLS"].includes(conversation.current_module)) {
+    if ((isGreeting(text) || isHelp(text) || text === "menu_home" || interactiveId === "menu_home")
+        && !["SALES", "EXAMS", "LEARNING"].includes(conversation.current_module || "")) {
       await showMainMenu(phone, conversation.id);
       return;
     }
 
-    if (isExit(text) && !["SALES", "EXAMS", "LEARNING", "TOOLS"].includes(conversation.current_module)) {
+    if (isExit(text) && !["SALES", "EXAMS", "LEARNING"].includes(conversation.current_module || "")) {
       await updateConversation(conversation.id, {
         current_module: "MAIN_MENU", current_state: "IDLE", context_json: {},
       });
       await sendTextMessage(phone,
-        `👋 Thank you for contacting *Xtop Retail Technologies*, ${contact.name || ""}.\n\nType *hi* or *menu* to return anytime.`
+        `👋 Thank you for contacting *Xtop Retail Technologies*, ${contact.name || ""}.\n\nType *menu* to return anytime.`
       );
       return;
     }
 
     if (isAgentRequest(text)
-        && !["AGENT", "SALES", "EXAMS", "LEARNING", "TOOLS"].includes(conversation.current_module)) {
+        && !["AGENT", "SALES", "EXAMS", "LEARNING"].includes(conversation.current_module || "")) {
       await showAgentCategories(phone, conversation.id);
       return;
     }
 
-    // ══════════════════════════════════════════════════════
     // 4. MODULE ROUTER
-    // ══════════════════════════════════════════════════════
     const currentModule = conversation.current_module;
 
     switch (currentModule) {
       case "MAIN_MENU": {
         const intent = detectIntent(text, interactiveId);
-        if (intent === "PRODUCTS") await showProductsList(phone, conversation.id);
-        else if (intent === "SERVICES") await showServicesList(phone, conversation.id);
-        else if (intent === "DEMOS") await showDemosList(phone, conversation.id);
-        else if (intent === "TOOLS") await showToolsMenu(phone, conversation.id);
-        else if (intent === "MAGAZINE") await displayMagazine(phone, conversation.id);
-        else if (intent === "AGENT") await showAgentCategories(phone, conversation.id);
-        else if (intent === "SALES") await showServiceTypeSelector(phone, conversation.id);
+        if (intent === "PRODUCTS" || interactiveId === "menu_products") await showProductsList(phone, conversation.id);
+        else if (intent === "SERVICES" || interactiveId === "menu_services") await showServicesList(phone, conversation.id);
+        else if (intent === "DEMOS" || interactiveId === "menu_demos") await showDemosList(phone, conversation.id);
+        else if (intent === "TOOLS" || interactiveId === "menu_tools" || text.toLowerCase().includes("free tools")) await showToolsMenu(phone, conversation.id);
+        else if (intent === "MAGAZINE" || interactiveId === "menu_magazine") await displayMagazine(phone, conversation.id);
+        else if (intent === "AGENT" || interactiveId === "menu_agent") await showAgentCategories(phone, conversation.id);
+        else if (intent === "SALES" || interactiveId === "menu_sales") await showServiceTypeSelector(phone, conversation.id);
         else if (isBack(text)) await showMainMenu(phone, conversation.id);
         else {
           await sendTextMessage(phone, "Please select an option from the menu below:");
