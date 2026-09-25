@@ -1,6 +1,28 @@
 // supabase/functions/whatsapp-webhook/database.ts
 
-// --- Student Types & Functions ---
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// ==========================================
+// 1. Supabase Client & Helper Functions
+// ==========================================
+let supabaseInstance: SupabaseClient | null = null;
+
+export function getSupabaseClient(): SupabaseClient {
+  if (!supabaseInstance) {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    supabaseInstance = createClient(supabaseUrl, supabaseKey);
+  }
+  return supabaseInstance;
+}
+
+export function safeErrorLog(context: string, error: unknown): void {
+  console.error(`[DB Error - ${context}]:`, error);
+}
+
+// ==========================================
+// 2. Student Interfaces & Functions
+// ==========================================
 export interface Student {
   id: string;
   phone: string;
@@ -90,7 +112,9 @@ export async function updateStudentProfile(
   return data as Student;
 }
 
-// --- Conversation Types & Functions (Fix for Boot Error) ---
+// ==========================================
+// 3. Conversation Interfaces & Functions
+// ==========================================
 export interface ConversationUpdate {
   current_module?: string;
   current_state?: string;
@@ -120,4 +144,51 @@ export async function updateConversation(
     return null;
   }
   return data;
+}
+
+// ==========================================
+// 4. Products Interfaces & Functions
+// ==========================================
+export interface Product {
+  id: string;
+  name: string;
+  slug?: string;
+  description?: string;
+  price?: number;
+  category?: string;
+  is_active?: boolean;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
+export async function getActiveProducts(): Promise<Product[]> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("products")
+    .select("*")
+    .eq("is_active", true)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    safeErrorLog("getActiveProducts", error);
+    return [];
+  }
+  return (data as Product[]) || [];
+}
+
+export async function getProductById(productId: string): Promise<Product | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("products")
+    .select("*")
+    .eq("id", productId)
+    .single();
+
+  if (error) {
+    safeErrorLog("getProductById", error);
+    return null;
+  }
+  return data as Product;
 }
