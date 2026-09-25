@@ -1,5 +1,5 @@
 // supabase/functions/whatsapp-webhook/modules/demos.ts
-// Phase 3 — Interactive Demo Centre (Directs Xtop Edu and Naijashop to live platforms)
+// Phase 3 — Interactive Demo Centre (Directs all demos to live platforms & WhatsApp lines)
 
 import {
   Contact,
@@ -18,10 +18,6 @@ import {
 import { extractSelection, normalise, isBack } from "../utils.ts";
 import { showMainMenu } from "./main-menu.ts";
 import { showServiceTypeSelector } from "./sales.ts";
-
-// ═══════════════════════════════════════════════════════
-// MAIN HANDLER
-// ═══════════════════════════════════════════════════════
 
 export async function handleDemos(
   phone: string,
@@ -60,10 +56,6 @@ export async function handleDemos(
   }
 }
 
-// ═══════════════════════════════════════════════════════
-// DEMOS LIST
-// ═══════════════════════════════════════════════════════
-
 export async function showDemosList(phone: string, conversationId: string): Promise<void> {
   const demos = await getActiveDemos();
 
@@ -79,39 +71,38 @@ export async function showDemosList(phone: string, conversationId: string): Prom
     context_json: {},
   });
 
-  // Split 10 demos into 2 sections (5 each = exactly 10 rows, adhering to WhatsApp limit)
   const section1Demos = demos.slice(0, 5);
   const section2Demos = demos.slice(5, 10);
 
   const shortTitles: Record<string, string> = {
     demo_xtopedu: "1️⃣ XtopEdu Bot",
-    demo_naijashop: "2️⃣ NaijaShop Retail",
-    demo_tutorial: "3️⃣ WAEC/JAMB Quiz",
-    demo_customer_service: "4️⃣ Customer Support",
-    demo_sales_bot: "5️⃣ Sales & Deals Bot",
-    demo_booking: "6️⃣ Appointment Bot",
-    demo_real_estate: "7️⃣ Real Estate Bot",
-    demo_quotation: "8️⃣ Instant Quote Bot",
-    demo_ngo: "9️⃣ NGO / Club Portal",
-    demo_custom_bot: "🔟 Custom Biz Bot",
+    demo_naijashop: "2️⃣ NaijaShop Store",
+    demo_tutorial: "3️⃣ Edvenia (WAEC/JAMB)",
+    demo_custom_bot: "4️⃣ BarPrep AI Tutor",
+    demo_customer_service: "5️⃣ Customer Support",
+    demo_sales_bot: "6️⃣ Sales & Deals Bot",
+    demo_booking: "7️⃣ Appointment Bot",
+    demo_real_estate: "8️⃣ Real Estate Bot",
+    demo_quotation: "9️⃣ Instant Quote Bot",
+    demo_ngo: "🔟 Custom App Dev",
   };
 
   const section1Rows = section1Demos.map((d) =>
-    makeListRow(`demo_sel_${d.slug}`, shortTitles[d.slug] || d.name.substring(0, 24), d.description.substring(0, 70))
+    makeListRow(`demo_sel_${d.slug}`, (shortTitles[d.slug] || d.name).substring(0, 24), d.description.substring(0, 70))
   );
 
   const section2Rows = section2Demos.map((d) =>
-    makeListRow(`demo_sel_${d.slug}`, shortTitles[d.slug] || d.name.substring(0, 24), d.description.substring(0, 70))
+    makeListRow(`demo_sel_${d.slug}`, (shortTitles[d.slug] || d.name).substring(0, 24), d.description.substring(0, 70))
   );
 
   const body =
-    `🎮 *Xtop Retail Demo Centre*\n\n` +
-    `Experience our live interactive WhatsApp bots. Choose any bot below to test its automated flow in real-time:\n\n` +
-    `_Type *menu* anytime to return._`;
+    `🎮 *Xtop Retail Technologies — Live Demos & Products*\n\n` +
+    `Experience our live web platforms, AI bots, and custom applications:\n\n` +
+    `_Select any platform below to test or launch:_`;
 
-  await sendListMessage(phone, body, "Select Demo", [
-    { title: "Commercial & Education", rows: section1Rows },
-    { title: "Services & Custom", rows: section2Rows },
+  await sendListMessage(phone, body, "Choose Demo", [
+    { title: "Live Platforms & Education", rows: section1Rows },
+    { title: "Commercial & Custom Solutions", rows: section2Rows },
   ]);
 }
 
@@ -146,43 +137,55 @@ async function processDemoSelection(
   await runDemoStep(phone, conversation.id, selected.slug, 1);
 }
 
-// ═══════════════════════════════════════════════════════
-// DEMO STEPS EXECUTION
-// ═══════════════════════════════════════════════════════
-
 export async function runDemoStep(
   phone: string,
   conversationId: string,
   demoSlug: string,
   stepNumber: number
 ): Promise<void> {
-  // ── REDIRECT XTOP EDU TO LIVE BOT (+2348073158887) ──
-  if (demoSlug.toLowerCase().includes("edu") || demoSlug.toLowerCase().includes("learning") || demoSlug === "demo_xtopedu") {
+  const s = demoSlug.toLowerCase();
+
+  // 1. Xtop Edu -> WhatsApp Demo
+  if (s.includes("edu") || s.includes("learning") || s === "demo_xtopedu") {
     await sendTextMessage(
       phone,
-      `🎓 *XTOP EDU — LIVE WHATSAPP DEMO*\n\n` +
-      `Experience our full, interactive automated lecture delivery system, attendance tracking, and CBT exam engine live on our official edu line:\n\n` +
-      `📱 *WhatsApp Line:* +2348073158887\n` +
-      `👉 *Direct Link:* https://wa.me/2348073158887?text=Hi%20Engr%20Ero\n\n` +
-      `_Tap the link above and send *Engr Ero* to start studying instantly!_`
+      `🎓 *XTOP EDU — LIVE WHATSAPP CLASSROOM*\n\nExperience lecture delivery, attendance, and CBT exams live:\n\n📱 *WhatsApp Line:* +2348073158887\n👉 *Direct Link:* https://wa.me/2348073158887?text=Hi%20Engr%20Ero\n\n_Send *Engr Ero* to the number above to start studying!_`
     );
     await showDemoCompletion(phone, conversationId, demoSlug);
     return;
   }
 
-  // ── REDIRECT NAIJASHOP TO LIVE E-COMMERCE STORE ──
-  if (demoSlug.toLowerCase().includes("naijashop") || demoSlug === "demo_naijashop") {
+  // 2. Naijashop -> Live Store
+  if (s.includes("naijashop") || s === "demo_naijashop") {
     await sendTextMessage(
       phone,
-      `🛒 *NAIJASHOP — LIVE STORE DEMO*\n\n` +
-      `Explore our optimized e-commerce, automated ordering, and checkout experience live on our official domain:\n\n` +
-      `🌐 *Visit Store:* https://naijashop.com.ng\n\n` +
-      `_Add products to your cart, test order submissions, and explore the layout!_`
+      `🛒 *NAIJASHOP — LIVE STORE*\n\nExplore our e-commerce platform and inventory system:\n\n🌐 *Visit Store:* https://naijashop.com.ng\n\n_Browse products, test order placements, and experience the checkout flow!_`
     );
     await showDemoCompletion(phone, conversationId, demoSlug);
     return;
   }
 
+  // 3. Edvenia -> WAEC / JAMB CBT Platform
+  if (s.includes("tutorial") || s.includes("edvenia") || s.includes("jamb")) {
+    await sendTextMessage(
+      phone,
+      `📚 *EDVENIA — WAEC, NECO & JAMB AI CBT*\n\nPractice thousands of past questions with AI mock scoring:\n\n🌐 *Visit Platform:* https://edvenia.com\n\n_Available on web and mobile for students and tutorial centres!_`
+    );
+    await showDemoCompletion(phone, conversationId, demoSlug);
+    return;
+  }
+
+  // 4. BarPrep -> AI Law School Tutor
+  if (s.includes("custom_bot") || s.includes("barprep") || s.includes("law")) {
+    await sendTextMessage(
+      phone,
+      `⚖️ *CYBERCOACH BARPREP — AI LAW TUTOR*\n\nAutomated legal preparation for Law School and Bar Exams:\n\n🌐 *Visit Portal:* https://barprep.cybarcoach.com\n\n_Access practice bar drills, legal research checks, and AI tutoring!_`
+    );
+    await showDemoCompletion(phone, conversationId, demoSlug);
+    return;
+  }
+
+  // Fallback for simulated bot steps
   const demo = await getDemoBySlug(demoSlug);
   if (!demo || !demo.steps_json) {
     await sendTextMessage(phone, "Demo not found.");
@@ -190,8 +193,7 @@ export async function runDemoStep(
     return;
   }
 
-  const stepData = demo.steps_json.find((s) => s.step === stepNumber);
-
+  const stepData = demo.steps_json.find((st) => st.step === stepNumber);
   if (!stepData) {
     await showDemoCompletion(phone, conversationId, demoSlug);
     return;
@@ -242,10 +244,6 @@ async function processDemoStepProgression(
   }
 }
 
-// ═══════════════════════════════════════════════════════
-// DEMO COMPLETION SCREEN
-// ═══════════════════════════════════════════════════════
-
 export async function showDemoCompletion(
   phone: string,
   conversationId: string,
@@ -258,8 +256,8 @@ export async function showDemoCompletion(
   });
 
   const body =
-    `🎉 *Demo Completed!*\n\n` +
-    `Would you like a custom automated WhatsApp bot or online store deployed for your business/school?`;
+    `🎉 *Platform Overview Complete!*\n\n` +
+    `Would you like us to build or deploy a custom automated WhatsApp bot, e-learning platform, or mobile app for your business?`;
 
   await sendButtonMessage(
     phone,
@@ -267,16 +265,12 @@ export async function showDemoCompletion(
     [
       makeButton("demo_act_estimate", "✅ Get an Estimate"),
       makeButton("demo_act_agent", "👤 Talk to an Agent"),
-      makeButton("demo_act_back", "🔙 Back to Demos"),
+      makeButton("demo_act_back", "🔙 All Demos"),
     ],
     "Xtop Retail Technologies",
     "Turnaround time: 5-7 days"
   );
 }
-
-// ═══════════════════════════════════════════════════════
-// POST-DEMO ACTION HANDLER (Connected to Phase 3 Sales)
-// ═══════════════════════════════════════════════════════
 
 async function processDemoCompletedAction(
   phone: string,
@@ -322,15 +316,14 @@ async function processDemoCompletedAction(
         request_type: "START_PROJECT",
         source: "DEMO",
         demoSlug: demoSlug || "GENERAL",
-        preset_message: `Inquiry after completing demo: ${demoSlug || "General"}`,
+        preset_message: `Inquiry after reviewing portfolio: ${demoSlug || "General"}`,
       },
     });
 
     await sendTextMessage(
       phone,
       `👤 *Talk to an Agent*\n\n` +
-      `You've completed the demo simulation.\n\n` +
-      `Please send a brief message describing what you'd like our team to help you with. A human agent will review your request and follow up directly:`
+      `Please send a brief message describing your project requirements. A technical consultant will review and follow up with you directly:`
     );
     return;
   }
