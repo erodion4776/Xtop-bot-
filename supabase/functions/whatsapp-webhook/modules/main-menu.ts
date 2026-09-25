@@ -17,7 +17,9 @@ export async function showMainMenu(phone: string, conversationId: string): Promi
     `👇 *Select an option below to continue:*`;
 
   await sendListMessage(
-    phone, body, "Main Menu",
+    phone,
+    body,
+    "Main Menu",
     [
       {
         title: "Explore & Build",
@@ -37,6 +39,7 @@ export async function showMainMenu(phone: string, conversationId: string): Promi
         ],
       },
     ],
-    "Xtop Retail Technologies", "Sabi Digital Assistant"
+    "Xtop Retail Technologies",
+    "Sabi Digital Assistant"
   );
 }
