@@ -3,7 +3,7 @@
 import {
   Contact, Conversation,
   getOrCreateContact, getOrCreateConversation,
-  updateConversation, storeMessage,
+  updateConversation, storeMessage, getSupabaseClient
 } from "./database.ts";
 import { IncomingMessage, sendTextMessage } from "./whatsapp.ts";
 import {
@@ -21,32 +21,53 @@ import { handleSales, showServiceTypeSelector } from "./modules/sales.ts";
 import { handleExams } from "./modules/exams.ts";
 import { handleTools, showToolsMenu } from "./modules/tools.ts";
 
+const supabase = getSupabaseClient();
+
 export async function routeMessage(incoming: IncomingMessage): Promise<void> {
   const phone = incoming.from;
   const text = sanitizeInput(incoming.text);
   const interactiveId = incoming.interactiveId;
 
-  // ⛔️ CRITICAL GUARD: If there is NO text and NO button click, DO NOT REPLY!
+  // ⛔️ 1. Ignore completely empty payloads
   if (!text && !interactiveId) {
     return;
+  }
+
+  // ⛔️ 2. MESSAGE DEDUPLICATION (Stops Meta retries from triggering duplicate messages)
+  if (incoming.messageId) {
+    const { data: existingMsg } = await supabase
+      .from("messages")
+      .select("id")
+      .eq("whatsapp_message_id", incoming.messageId)
+      .maybeSingle();
+
+    if (existingMsg) {
+      console.log(`[Deduplication] Message ${incoming.messageId} already processed. Ignoring.`);
+      return;
+    }
   }
 
   try {
     const contact = await getOrCreateContact(phone, incoming.profileName);
     const conversation = await getOrCreateConversation(contact.id);
 
+    // Save message record
     await storeMessage(
       contact.id, "INBOUND", incoming.type,
       text || interactiveId || null, incoming.messageId
     );
 
-    // 1. ACTIVE LEARNING MODULE ISOLATION
+    // ══════════════════════════════════════════════════════
+    // 1. ACTIVE LEARNING MODULE ISOLATION (PRIORITY)
+    // ══════════════════════════════════════════════════════
     if (conversation.current_module === "LEARNING") {
       await handleLearning(phone, text, contact, conversation);
       return;
     }
 
+    // ══════════════════════════════════════════════════════
     // 2. PRIVATE LEARNING CENTRE TRIGGER
+    // ══════════════════════════════════════════════════════
     if (isLearningKeyword(text)) {
       const existingCtx = conversation.context_json || {};
       await updateConversation(conversation.id, {
@@ -58,7 +79,9 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
+    // ══════════════════════════════════════════════════════
     // 3. GLOBAL INTERRUPTS (RETAIL STORE ONLY)
+    // ══════════════════════════════════════════════════════
     if ((isGreeting(text) || isHelp(text) || text === "menu_home" || interactiveId === "menu_home")
         && !["SALES", "EXAMS", "LEARNING"].includes(conversation.current_module || "")) {
       await showMainMenu(phone, conversation.id);
@@ -70,7 +93,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
         current_module: "MAIN_MENU", current_state: "IDLE", context_json: {},
       });
       await sendTextMessage(phone,
-        `👋 Thank you for contacting *Xtop Retail Technologies*, ${contact.name || ""}.\n\nType *menu* to return anytime.`
+        `👋 Thank you for contacting *Xtop Retail Technologies*, ${contact.name || ""}.\n\nType *hi* or *menu* to return anytime.`
       );
       return;
     }
@@ -81,7 +104,9 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
+    // ══════════════════════════════════════════════════════
     // 4. MODULE ROUTER
+    // ══════════════════════════════════════════════════════
     const currentModule = conversation.current_module;
 
     switch (currentModule) {
@@ -144,8 +169,5 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     }
   } catch (err) {
     safeErrorLog("routeMessage", err);
-    await sendTextMessage(phone,
-      "Sorry, an error occurred. Type *menu* to return to the home screen."
-    );
   }
 }
