@@ -60,4 +60,770 @@ export interface DemoItem {
   description: string;
   demo_type: string;
   steps_json: Array<{ step: number; title: string; bot_message: string; options: string[] }>;
-  display_order: 
+  display_order: number;
+  status: string;
+}
+
+export interface MagazineConfig {
+  id: string;
+  title: string;
+  description: string;
+  file_url: string | null;
+  status: string;
+}
+
+// ═══════════════════════════════════════════════════════
+// TYPES — PHASE 3 (CRM & Sales)
+// ═══════════════════════════════════════════════════════
+
+export interface PricingPackage {
+  id: string;
+  service_type: string;
+  package_code: string;
+  package_name: string;
+  description: string;
+  min_price: number;
+  max_price: number;
+  currency: string;
+  features: string[];
+  priority: number;
+  status: string;
+}
+
+export interface Lead {
+  id: string;
+  contact_id: string;
+  service_type: string;
+  business_name: string | null;
+  industry: string | null;
+  requirements_json: Record<string, unknown>;
+  features: string[];
+  website_required: boolean;
+  bot_required: boolean;
+  whatsapp_number_available: string | null;
+  domain_available: string | null;
+  hosting_available: string | null;
+  budget_range: string | null;
+  estimated_min_price: number | null;
+  estimated_max_price: number | null;
+  selected_package_id: string | null;
+  status: string;
+  created_at: string;
+}
+
+export interface Quotation {
+  id: string;
+  lead_id: string;
+  quotation_number: string;
+  package_id: string | null;
+  title: string;
+  summary: string | null;
+  deliverables_json: string[];
+  estimated_min_price: number;
+  estimated_max_price: number;
+  currency: string;
+  valid_until: string | null;
+  status: string;
+  created_at: string;
+}
+
+export interface AgentRequest {
+  id: string;
+  contact_id: string;
+  lead_id: string | null;
+  quotation_id: string | null;
+  request_type: string;
+  message: string;
+  quotation_summary: string | null;
+  status: string;
+  priority: string;
+  created_at: string;
+}
+
+// ═══════════════════════════════════════════════════════
+// TYPES — ACADEMICS & E-LEARNING
+// ═══════════════════════════════════════════════════════
+
+export interface Course {
+  id: string;
+  course_code: string;
+  course_name: string;
+  term: string | null;
+  description: string | null;
+  status: string;
+  test_price: number;
+  show_answers: boolean;
+}
+
+export interface CourseLesson {
+  id: string;
+  module_id: string;
+  title: string;
+  content: string;
+  image_url: string | null;
+  pdf_url: string | null;
+  video_url: string | null;
+  lesson_order: number;
+  duration: string | null;
+  status: string;
+}
+
+export interface CourseQuestion {
+  id: string;
+  course_id: string;
+  question: string;
+  option_a: string;
+  option_b: string;
+  option_c: string;
+  option_d: string;
+  correct_answer: "A" | "B" | "C" | "D";
+  explanation: string | null;
+  question_order: number;
+}
+
+export interface Student {
+  id: string;
+  phone: string;
+  name: string | null;
+  matric_number: string | null;
+  department: string | null;
+  level: string | null;
+  email: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface StudentCourseAccess {
+  id: string;
+  student_id: string;
+  course_id: string;
+  access_status: "ACTIVE" | "BLOCKED" | "EXPIRED" | "PENDING";
+  progress?: { completed_lessons?: string[]; last_lesson_order?: number };
+}
+
+export interface ExamAttempt {
+  id: string;
+  student_id: string;
+  course_id: string;
+  score: number;
+  total_questions: number;
+  passed: boolean;
+  answers_json: Array<{
+    question_id: string;
+    selected_option: string;
+    correct_option: string;
+    is_correct: boolean;
+  }>;
+  started_at: string;
+  submitted_at: string | null;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  student_id: string;
+  course_id: string | null;
+  session_date: string;
+  session_label: string;
+  phone: string;
+  recorded_at: string;
+}
+
+// ═══════════════════════════════════════════════════════
+// UUID VALIDATOR HELPER
+// ═══════════════════════════════════════════════════════
+
+function toValidUuidOrNull(val?: string | null): string | null {
+  if (!val || typeof val !== "string") return null;
+  const trimmed = val.trim();
+  if (trimmed.length === 0) return null;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(trimmed) ? trimmed : null;
+}
+
+// ═══════════════════════════════════════════════════════
+// CLIENT SINGLETON
+// ═══════════════════════════════════════════════════════
+
+let _client: SupabaseClient | null = null;
+
+export function getSupabaseClient(): SupabaseClient {
+  if (_client) return _client;
+  const url = Deno.env.get("SUPABASE_URL");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !key) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  _client = createClient(url, key);
+  return _client;
+}
+
+// ═══════════════════════════════════════════════════════
+// DATABASE METHODS (CRM, MESSAGING & RECONNAISSANCE)
+// ═══════════════════════════════════════════════════════
+
+export async function getOrCreateContact(phone: string, profileName?: string): Promise<Contact> {
+  const sb = getSupabaseClient();
+  const { data: existing, error: fe } = await sb
+    .from("contacts").select("*").eq("phone", phone).maybeSingle();
+  if (fe) { safeErrorLog("getOrCreateContact", fe); throw fe; }
+  if (existing) {
+    if (profileName && !existing.name) {
+      await sb.from("contacts").update({ name: profileName }).eq("id", existing.id);
+      existing.name = profileName;
+    }
+    return existing as Contact;
+  }
+  const { data: c, error: ce } = await sb
+    .from("contacts").insert({ phone, name: profileName || null }).select("*").single();
+  if (ce) { safeErrorLog("createContact", ce); throw ce; }
+  return c as Contact;
+}
+
+export async function getOrCreateConversation(contactId: string): Promise<Conversation> {
+  const sb = getSupabaseClient();
+  const { data: existing, error: fe } = await sb
+    .from("conversations").select("*").eq("contact_id", contactId).maybeSingle();
+  if (fe) { safeErrorLog("getOrCreateConversation", fe); throw fe; }
+  if (existing) return existing as Conversation;
+  const { data: c, error: ce } = await sb
+    .from("conversations").insert({
+      contact_id: contactId, current_module: "MAIN_MENU",
+      current_state: "IDLE", context_json: {},
+    }).select("*").single();
+  if (ce) { safeErrorLog("createConversation", ce); throw ce; }
+  return c as Conversation;
+}
+
+export async function updateConversation(id: string, updates: {
+  current_module?: string; current_state?: string;
+  context_json?: Record<string, unknown>;
+}): Promise<void> {
+  const sb = getSupabaseClient();
+  const { error } = await sb.from("conversations")
+    .update({ ...updates, last_message_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) safeErrorLog("updateConversation", error);
+}
+
+export async function storeMessage(
+  contactId: string, direction: "INBOUND" | "OUTBOUND",
+  messageType: string, messageText: string | null, waId?: string
+): Promise<void> {
+  const sb = getSupabaseClient();
+  const { error } = await sb.from("messages").insert({
+    contact_id: contactId, direction, message_type: messageType,
+    message_text: messageText, whatsapp_message_id: waId || null,
+  });
+  if (error) safeErrorLog("storeMessage", error);
+}
+
+export async function getActiveProducts(): Promise<Product[]> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb.from("products").select("*").eq("status", "ACTIVE").order("name");
+  if (error) { safeErrorLog("getActiveProducts", error); return []; }
+  return (data || []) as Product[];
+}
+
+export async function getProductBySlug(slug: string): Promise<Product | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb.from("products").select("*").eq("slug", slug).eq("status", "ACTIVE").maybeSingle();
+  if (error) { safeErrorLog("getProductBySlug", error); return null; }
+  return data as Product | null;
+}
+
+export async function getActiveServices(): Promise<ServiceItem[]> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb.from("services").select("*").eq("status", "ACTIVE").order("display_order");
+  if (error) { safeErrorLog("getActiveServices", error); return []; }
+  return (data || []) as ServiceItem[];
+}
+
+export async function getServiceBySlug(slug: string): Promise<ServiceItem | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb.from("services").select("*").eq("slug", slug).eq("status", "ACTIVE").maybeSingle();
+  if (error) { safeErrorLog("getServiceBySlug", error); return null; }
+  return data as ServiceItem | null;
+}
+
+export async function getActiveDemos(): Promise<DemoItem[]> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb.from("demos").select("*").eq("status", "ACTIVE").order("display_order");
+  if (error) { safeErrorLog("getActiveDemos", error); return []; }
+  return (data || []) as DemoItem[];
+}
+
+export async function getDemoBySlug(slug: string): Promise<DemoItem | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb.from("demos").select("*").eq("slug", slug).eq("status", "ACTIVE").maybeSingle();
+  if (error) { safeErrorLog("getDemoBySlug", error); return null; }
+  return data as DemoItem | null;
+}
+
+export async function getActiveMagazineConfig(): Promise<MagazineConfig | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb.from("magazine_config").select("*").eq("status", "ACTIVE").limit(1).maybeSingle();
+  if (error) { safeErrorLog("getActiveMagazineConfig", error); return null; }
+  return data as MagazineConfig | null;
+}
+
+export async function getPricingPackages(serviceType: string): Promise<PricingPackage[]> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("pricing_packages")
+    .select("*")
+    .eq("service_type", serviceType)
+    .eq("status", "ACTIVE")
+    .order("priority");
+
+  if (error) {
+    safeErrorLog("getPricingPackages", error);
+    throw error;
+  }
+  return (data || []).map((row) => ({
+    ...row,
+    min_price: Number(row.min_price),
+    max_price: Number(row.max_price),
+    priority: Number(row.priority ?? 0),
+    features: Array.isArray(row.features) ? row.features : [],
+  })) as PricingPackage[];
+}
+
+export async function getActiveLeadForContact(contactId: string, serviceType: string): Promise<Lead | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb.from("leads").select("*")
+    .eq("contact_id", contactId).eq("service_type", serviceType)
+    .in("status", ["QUALIFYING", "QUOTED", "PACKAGE_SELECTED", "AGENT_REQUESTED"])
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (error) { safeErrorLog("getActiveLead", error); return null; }
+  return data as Lead | null;
+}
+
+export async function createLead(contactId: string, serviceType: string, fields: Partial<Lead>): Promise<Lead | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb.from("leads").insert({
+    contact_id: contactId, service_type: serviceType, status: "QUALIFYING", ...fields,
+  }).select("*").single();
+  if (error) { safeErrorLog("createLead", error); return null; }
+  return data as Lead;
+}
+
+export async function updateLead(leadId: string, fields: Partial<Lead>): Promise<Lead | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb.from("leads").update({
+    ...fields, updated_at: new Date().toISOString(),
+  }).eq("id", leadId).select("*").single();
+  if (error) { safeErrorLog("updateLead", error); return null; }
+  return data as Lead;
+}
+
+async function getNextQuotationNumber(): Promise<string> {
+  const sb = getSupabaseClient();
+  const year = new Date().getFullYear();
+  const { data, error } = await sb.from("quotations").select("quotation_number")
+    .like("quotation_number", `XTR-${year}-%`)
+    .order("quotation_number", { ascending: false }).limit(1).maybeSingle();
+  if (error) safeErrorLog("getNextQuotationNumber", error);
+  let seq = 1;
+  if (data?.quotation_number) {
+    const parts = data.quotation_number.split("-");
+    if (parts.length >= 3) seq = parseInt(parts[2], 10) + 1;
+  }
+  return `XTR-${year}-${String(seq).padStart(6, "0")}`;
+}
+
+export async function createQuotation(
+  leadId: string, packageId: string | null, title: string,
+  summary: string, deliverables: string[], minPrice: number, maxPrice: number
+): Promise<Quotation | null> {
+  const sb = getSupabaseClient();
+  const validLeadId = toValidUuidOrNull(leadId);
+  if (!validLeadId) { safeErrorLog("createQuotation", { message: "Invalid leadId" }); return null; }
+  const validPackageId = toValidUuidOrNull(packageId);
+  const qNum = await getNextQuotationNumber();
+  const validUntil = new Date(Date.now() + 14 * 86400000).toISOString();
+  const { data, error } = await sb.from("quotations").insert({
+    lead_id: validLeadId, quotation_number: qNum, package_id: validPackageId,
+    title, summary, deliverables_json: deliverables || [],
+    estimated_min_price: minPrice || 0, estimated_max_price: maxPrice || 0,
+    currency: "NGN", valid_until: validUntil, status: "PRESENTED",
+  }).select("*").single();
+  if (error) { safeErrorLog("createQuotation", error); return null; }
+  return data as Quotation;
+}
+
+export async function updateQuotation(quotationId: string, fields: Partial<Quotation>): Promise<void> {
+  const sb = getSupabaseClient();
+  const validId = toValidUuidOrNull(quotationId);
+  if (!validId) return;
+  const { error } = await sb.from("quotations").update({
+    ...fields, updated_at: new Date().toISOString(),
+  }).eq("id", validId);
+  if (error) safeErrorLog("updateQuotation", error);
+}
+
+export async function createAgentRequest(
+  contactId: string, requestType: string, message: string,
+  priority: string = "NORMAL", leadId?: string,
+  quotationId?: string, quotationSummary?: string
+): Promise<AgentRequest | null> {
+  const sb = getSupabaseClient();
+  const payload: Record<string, unknown> = {
+    contact_id: contactId, request_type: requestType || "GENERAL_ENQUIRY",
+    message: message || "No message provided", status: "NEW",
+    priority: priority || "NORMAL",
+    lead_id: toValidUuidOrNull(leadId),
+    quotation_id: toValidUuidOrNull(quotationId),
+    quotation_summary: quotationSummary || null,
+  };
+  const { data, error } = await sb.from("agent_requests").insert(payload).select("*").single();
+  if (error) {
+    safeErrorLog("createAgentRequest", error);
+    const { data: fb, error: fbe } = await sb.from("agent_requests").insert({
+      contact_id: contactId, request_type: "GENERAL_ENQUIRY",
+      message: message || "Request from user", status: "NEW", priority: "NORMAL",
+    }).select("*").single();
+    if (fbe) { safeErrorLog("createAgentRequest:fallback", fbe); return null; }
+    return fb as AgentRequest;
+  }
+  return data as AgentRequest;
+}
+
+// ═══════════════════════════════════════════════════════
+// ACADEMICS — COURSES, STUDENTS & ACCESS ENFORCEMENT
+// ═══════════════════════════════════════════════════════
+
+export async function getCourseByCode(courseCode: string): Promise<Course | null> {
+  const sb = getSupabaseClient();
+  const normalizedCode = courseCode.toUpperCase().replace(/[\s-]/g, "");
+  const { data, error } = await sb.from("courses").select("*")
+    .eq("course_code", normalizedCode).maybeSingle();
+  if (error) { safeErrorLog("getCourseByCode", error); return null; }
+  return data as Course | null;
+}
+
+export async function getOrCreateStudent(phone: string, name?: string | null): Promise<Student> {
+  const sb = getSupabaseClient();
+  const { data: existing, error: fe } = await sb
+    .from("students").select("*").eq("phone", phone).maybeSingle();
+  if (fe) { safeErrorLog("getOrCreateStudent:fetch", fe); throw fe; }
+  if (existing) {
+    if (name && !existing.name) {
+      await sb.from("students").update({ name }).eq("id", existing.id);
+      existing.name = name;
+    }
+    return existing as Student;
+  }
+  const { data: created, error: ce } = await sb
+    .from("students").insert({ phone, name: name || null }).select("*").single();
+  if (ce) { safeErrorLog("getOrCreateStudent:create", ce); throw ce; }
+  return created as Student;
+}
+
+export async function getStudentCourseAccess(
+  studentId: string, courseId: string, courseStatus?: string
+): Promise<StudentCourseAccess | null> {
+  const sb = getSupabaseClient();
+  if (courseStatus === "BLOCKED") return null;
+  
+  // Queries "student_course_access" (v2.0 Schema) instead of legacy table
+  const { data: existing, error } = await sb.from("student_course_access").select("*")
+    .eq("student_id", studentId).eq("course_id", courseId).maybeSingle();
+    
+  if (error) { safeErrorLog("getStudentCourseAccess", error); return null; }
+  if (existing) return existing as StudentCourseAccess;
+  
+  // Automatically create pending/active record
+  const { data: created, error: ce } = await sb.from("student_course_access").insert({
+    student_id: studentId, 
+    course_id: courseId, 
+    access_status: "ACTIVE",
+    expires_at: null,
+    granted_by: "system"
+  }).select("*").single();
+  
+  if (ce) { safeErrorLog("autoEnrollStudent", ce); return null; }
+  return created as StudentCourseAccess;
+}
+
+export async function getCourseLessons(courseId: string): Promise<CourseLesson[]> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb.from("module_slides")
+    .select("*, course_modules!inner(course_id)")
+    .eq("course_modules.course_id", courseId)
+    .eq("status", "ACTIVE")
+    .eq("is_draft", false)
+    .order("order_index", { ascending: true });
+    
+  if (error) { safeErrorLog("getCourseLessons", error); return []; }
+  return (data || []) as CourseLesson[];
+}
+
+export async function markLessonComplete(
+  studentCourseId: string, lessonId: string, lessonOrder: number
+): Promise<void> {
+  const sb = getSupabaseClient();
+  const { data: access, error: fetchErr } = await sb.from("student_course_access")
+    .select("progress").eq("id", studentCourseId).maybeSingle();
+    
+  if (fetchErr) { safeErrorLog("markLessonComplete:fetch", fetchErr); return; }
+  
+  const existingProgress = (access?.progress || {}) as { completed_lessons?: string[]; last_lesson_order?: number };
+  const completed = new Set(existingProgress.completed_lessons || []);
+  completed.add(lessonId);
+  
+  const updatedProgress = {
+    completed_lessons: Array.from(completed),
+    last_lesson_order: Math.max(lessonOrder, existingProgress.last_lesson_order || 0),
+  };
+  
+  const { error } = await sb.from("student_course_access")
+    .update({ progress: updatedProgress }).eq("id", studentCourseId);
+    
+  if (error) safeErrorLog("markLessonComplete:update", error);
+}
+
+export async function getStudentExamAttempts(studentId: string, courseId: string): Promise<ExamAttempt[]> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb.from("exam_attempts").select("*")
+    .eq("student_id", studentId).eq("course_id", courseId)
+    .order("submitted_at", { ascending: true });
+    
+  if (error) { safeErrorLog("getStudentExamAttempts", error); return []; }
+  return (data || []) as ExamAttempt[];
+}
+
+// ═══════════════════════════════════════════════════════
+// REGISTRATION & ATTENDANCE (Aligned with Schema v2.0)
+// ═══════════════════════════════════════════════════════
+
+export async function getStudentByPhone(phone: string): Promise<Student | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("students").select("*").eq("phone", phone).maybeSingle();
+  if (error) { safeErrorLog("getStudentByPhone", error); return null; }
+  return data as Student | null;
+}
+
+export async function createStudentProfile(
+  phone: string, name: string, matricNumber: string,
+  department: string, level: string
+): Promise<Student | null> {
+  const sb = getSupabaseClient();
+  const names = name.trim().split(" ");
+  const firstName = names[0] || "";
+  const lastName = names.slice(1).join(" ") || "";
+
+  const { data, error } = await sb.from("students").insert({
+    phone,
+    name: name.trim(),
+    first_name: firstName,
+    last_name: lastName,
+    matric_number: matricNumber.trim().toUpperCase(),
+    department: department.trim(),
+    level: level.trim(),
+    status: "ACTIVE"
+  }).select("*").single();
+  
+  if (error) { safeErrorLog("createStudentProfile", error); return null; }
+  return data as Student;
+}
+
+export async function updateStudentProfile(
+  studentId: string, fields: {
+    name?: string; matric_number?: string;
+    department?: string; level?: string;
+  }
+): Promise<Student | null> {
+  const sb = getSupabaseClient();
+  const updatePayload: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (fields.name) {
+    updatePayload.name = fields.name.trim();
+    const names = fields.name.trim().split(" ");
+    updatePayload.first_name = names[0] || "";
+    updatePayload.last_name = names.slice(1).join(" ") || "";
+  }
+  if (fields.matric_number) updatePayload.matric_number = fields.matric_number.trim().toUpperCase();
+  if (fields.department) updatePayload.department = fields.department.trim();
+  if (fields.level) updatePayload.level = fields.level.trim();
+
+  const { data, error } = await sb.from("students")
+    .update(updatePayload).eq("id", studentId).select("*").single();
+  if (error) { safeErrorLog("updateStudentProfile", error); return null; }
+  return data as Student;
+}
+
+export async function recordAttendance(
+  studentId: string, courseId?: string | null
+): Promise<AttendanceRecord | null> {
+  const sb = getSupabaseClient();
+  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+
+  const existing = await getTodayAttendance(studentId, courseId);
+  if (existing) return existing;
+
+  const { data, error } = await sb.from("attendance").insert({
+    student_id: studentId,
+    course_id: courseId || null,
+    session_date: today,
+    session_label: "Regular",
+    recorded_at: new Date().toISOString()
+  }).select("*").single();
+
+  if (error) {
+    safeErrorLog("recordAttendance", error);
+    return await getTodayAttendance(studentId, courseId);
+  }
+  return data as AttendanceRecord;
+}
+
+export async function getTodayAttendance(
+  studentId: string, courseId?: string | null
+): Promise<AttendanceRecord | null> {
+  const sb = getSupabaseClient();
+  const today = new Date().toISOString().split("T")[0];
+
+  let query = sb.from("attendance").select("*")
+    .eq("student_id", studentId)
+    .eq("session_date", today);
+
+  if (courseId) {
+    query = query.eq("course_id", courseId);
+  } else {
+    query = query.is("course_id", null);
+  }
+
+  const { data, error } = await query.maybeSingle();
+  if (error) { safeErrorLog("getTodayAttendance", error); return null; }
+  return data as AttendanceRecord | null;
+}
+
+export async function getStudentAttendance(
+  studentId: string, limit: number = 30
+): Promise<AttendanceRecord[]> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb.from("attendance").select("*")
+    .eq("student_id", studentId)
+    .order("session_date", { ascending: false })
+    .limit(limit);
+  if (error) { safeErrorLog("getStudentAttendance", error); return []; }
+  return (data || []) as AttendanceRecord[];
+}
+
+export async function getAttendanceCount(studentId: string): Promise<number> {
+  const sb = getSupabaseClient();
+  const { count, error } = await sb.from("attendance")
+    .select("*", { count: "exact", head: true })
+    .eq("student_id", studentId);
+  if (error) { safeErrorLog("getAttendanceCount", error); return 0; }
+  return count || 0;
+}
+
+export function isStudentProfileComplete(student: Student): boolean {
+  return !!(
+    student.name && student.name.trim().length >= 2 &&
+    student.matric_number && student.matric_number.trim().length > 0 &&
+    student.department && student.department.trim().length >= 2 &&
+    student.level && student.level.trim().length > 0
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// CBT EXAMINATION MODULE
+// ═══════════════════════════════════════════════════════
+
+export async function getCourseQuestions(courseId: string): Promise<CourseQuestion[]> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("course_questions")
+    .select("*")
+    .eq("course_id", courseId)
+    .order("question_order", { ascending: true });
+
+  if (error) {
+    safeErrorLog("getCourseQuestions", error);
+    return [];
+  }
+  return (data || []) as CourseQuestion[];
+}
+
+export async function createExamAttempt(
+  studentId: string,
+  courseId: string,
+  totalQuestions: number
+): Promise<ExamAttempt | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("exam_attempts")
+    .insert({
+      student_id: studentId,
+      course_id: courseId,
+      score: 0,
+      total_marks: totalQuestions,
+      percentage: 0,
+      pass_status: "PENDING",
+      is_locked: false,
+      started_at: new Date().toISOString(),
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("createExamAttempt", error);
+    return null;
+  }
+  return data as ExamAttempt;
+}
+
+export async function submitExamAttempt(
+  attemptId: string,
+  score: number,
+  passed: boolean,
+  answersJson: unknown
+): Promise<void> {
+  const sb = getSupabaseClient();
+  const pct = Math.round(score * 100); // percentage mapping placeholder
+  const { error } = await sb
+    .from("exam_attempts")
+    .update({
+      score,
+      percentage: pct,
+      pass_status: passed ? "PASS" : "FAIL",
+      answers_json: answersJson,
+      submitted_at: new Date().toISOString(),
+    })
+    .eq("id", attemptId);
+
+  if (error) {
+    safeErrorLog("submitExamAttempt", error);
+  }
+}
+
+export async function getExamAttempt(attemptId: string): Promise<ExamAttempt | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("exam_attempts")
+    .select("*")
+    .eq("id", attemptId)
+    .maybeSingle();
+
+  if (error) {
+    safeErrorLog("getExamAttempt", error);
+    return null;
+  }
+  return data as ExamAttempt | null;
+}
+
+export async function getCourseConfig(courseId: string): Promise<Course | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("courses")
+    .select("*")
+    .eq("id", courseId)
+    .maybeSingle();
+
+  if (error) {
+    safeErrorLog("getCourseConfig", error);
+    return null;
+  }
+  return data as Course | null;
+}
