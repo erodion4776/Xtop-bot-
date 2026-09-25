@@ -1,21 +1,12 @@
 // supabase/functions/whatsapp-webhook/modules/attendance.ts
-// Phase 4/5 — Student Registration & Daily Attendance Gate
-//
-// RESPONSIBILITY BOUNDARY:
-// This module handles ONLY:
-//   1. Student identification by WhatsApp phone number
-//   2. New student registration (Strictly official academic name)
-//   3. Daily attendance recording
-//   4. Handoff to WAITING_COURSE_CODE (learning.ts takes over from there)
-//
-// This module does NOT handle:
-//   Course authentication, lessons, materials, progress, exams, results.
+// Phase 4/5 — Student Registration & Daily Attendance Gate with Serial Duplication Guards
 
 import {
   Contact, Conversation, updateConversation,
   Student,
   getStudentByPhone, createStudentProfile, updateStudentProfile,
   recordAttendance, getTodayAttendance, isStudentProfileComplete,
+  getSupabaseClient,
 } from "../database.ts";
 import {
   sendListMessage, sendTextMessage,
@@ -23,6 +14,8 @@ import {
 } from "../whatsapp.ts";
 import { normalise, isBack, isExit, isGreeting } from "../utils.ts";
 import { showMainMenu } from "./main-menu.ts";
+
+const supabase = getSupabaseClient();
 
 // ═══════════════════════════════════════════════════════
 // REGISTRATION CONTEXT
@@ -33,6 +26,7 @@ interface RegCtx {
   learningUnlocked?: boolean;
   regName?: string;
   regMatric?: string;
+  regSerial?: string; // New variable
   regDept?: string;
 }
 
@@ -81,6 +75,9 @@ export async function handleRegistration(
     case "WAITING_MATRIC_NUMBER":
       return await processMatricInput(phone, text, contact, conv, ctx);
 
+    case "WAITING_SERIAL_NUMBER":
+      return await processSerialInput(phone, text, contact, conv, ctx);
+
     case "WAITING_DEPARTMENT":
       return await processDeptInput(phone, text, contact, conv, ctx);
 
@@ -103,7 +100,7 @@ async function checkStudentAndRoute(
 
   try {
     student = await getStudentByPhone(phone);
-  } catch (err) {
+  } catch (_) {
     await sendTextMessage(
       phone,
       "⚠️ We could not verify your student record. Please try again later or type *menu* to exit."
@@ -116,7 +113,7 @@ async function checkStudentAndRoute(
     return await handleReturningStudent(phone, student, conv);
   }
 
-  // NEW STUDENT OR INCOMPLETE — Always collect official name first (Do NOT use profile name)
+  // NEW STUDENT OR INCOMPLETE — Always collect official name first
   await updateConversation(conv.id, {
     current_module: "LEARNING",
     current_state: "WAITING_STUDENT_NAME",
@@ -153,7 +150,7 @@ async function handleReturningStudent(
         attendanceRecorded = true;
       }
     }
-  } catch (err) {
+  } catch (_) {
     attendanceRecorded = false;
     attendanceAlreadyExists = false;
   }
@@ -171,9 +168,10 @@ async function handleReturningStudent(
     phone,
     `🎓 *Welcome back, ${student.name}!*\n\n` +
     `${attendanceLine}\n\n` +
+    `*Serial No:* ${student.serial_number || "N/A"}\n` +
     `*Mat No:* ${student.matric_number}\n` +
     `*Department:* ${student.department}\n` +
-    `*Level:* ${student.level}`
+    `*Level:* ${student.level}L`
   );
 
   await transitionToCourseCode(phone, conv);
@@ -247,13 +245,51 @@ async function processMatricInput(
   }
 
   ctx.regMatric = matric.toUpperCase();
+  ctx.step = "WAITING_SERIAL_NUMBER";
+  await updateConversation(conv.id, {
+    current_state: "WAITING_SERIAL_NUMBER",
+    context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
+  });
+
+  await sendTextMessage(phone, `🔢 *Please enter your class Serial Number (e.g. 14, 05, 42):*`);
+  return false;
+}
+
+// ═══════════════════════════════════════════════════════
+// NEW REGISTRATION STEP: SERIAL NUMBER
+// ═══════════════════════════════════════════════════════
+
+async function processSerialInput(
+  phone: string, text: string, _contact: Contact, conv: Conversation, ctx: RegCtx
+): Promise<boolean> {
+  if (isBack(text)) {
+    ctx.step = "WAITING_MATRIC_NUMBER";
+    ctx.regSerial = undefined;
+    await updateConversation(conv.id, {
+      current_state: "WAITING_MATRIC_NUMBER",
+      context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
+    });
+    await sendTextMessage(phone, "🎓 *Please enter your Matriculation Number:*");
+    return false;
+  }
+
+  const serial = text.trim();
+  if (serial.length === 0) {
+    await sendTextMessage(
+      phone,
+      "⚠️ Serial number cannot be empty.\n\n🔢 *Please enter your class Serial Number:*"
+    );
+    return false;
+  }
+
+  ctx.regSerial = serial;
   ctx.step = "WAITING_DEPARTMENT";
   await updateConversation(conv.id, {
     current_state: "WAITING_DEPARTMENT",
     context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
   });
 
-  await sendTextMessage(phone, `🏫 *Please enter your Department:*`);
+  await sendTextMessage(phone, `🏫 *Please enter your Department (e.g. Automobile Workshop):*`);
   return false;
 }
 
@@ -265,13 +301,13 @@ async function processDeptInput(
   phone: string, text: string, _contact: Contact, conv: Conversation, ctx: RegCtx
 ): Promise<boolean> {
   if (isBack(text)) {
-    ctx.step = "WAITING_MATRIC_NUMBER";
+    ctx.step = "WAITING_SERIAL_NUMBER";
     ctx.regDept = undefined;
     await updateConversation(conv.id, {
-      current_state: "WAITING_MATRIC_NUMBER",
+      current_state: "WAITING_SERIAL_NUMBER",
       context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
     });
-    await sendTextMessage(phone, "🎓 *Please enter your Matriculation Number:*");
+    await sendTextMessage(phone, "🔢 *Please enter your class Serial Number:*");
     return false;
   }
 
@@ -296,7 +332,7 @@ async function processDeptInput(
 }
 
 // ═══════════════════════════════════════════════════════
-// REGISTRATION STEP: LEVEL
+// REGISTRATION STEP: LEVEL (with duplicate check)
 // ═══════════════════════════════════════════════════════
 
 async function processLevelInput(
@@ -321,12 +357,39 @@ async function processLevelInput(
     return false;
   }
 
-  // ── DUPLICATE PROTECTION & STRICT DATABASE EXCEPTION GUARD ──
+  // ── STRICT DUPLICATE SERIAL NUMBER VALIDATION GATING ──
+  try {
+    const { data: duplicateCheck } = await supabase
+      .from("students")
+      .select("phone, name")
+      .eq("serial_number", ctx.regSerial?.trim())
+      .eq("department", ctx.regDept?.trim())
+      .eq("level", level)
+      .maybeSingle();
+
+    if (duplicateCheck && duplicateCheck.phone !== phone) {
+      // Revert step back to WAITING_SERIAL_NUMBER
+      ctx.step = "WAITING_SERIAL_NUMBER";
+      ctx.regSerial = undefined;
+      await updateConversation(conv.id, {
+        current_state: "WAITING_SERIAL_NUMBER",
+        context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
+      });
+
+      const conflictMsg =
+        `❌ *REGISTRATION FAILED*\n\n` +
+        `Serial Number *${ctx.regSerial || ""}* is already assigned to another student in the *${ctx.regDept}* department (${level}L).\n\n` +
+        `🔢 *Please enter a different class Serial Number:*`;
+      
+      await sendTextMessage(phone, conflictMsg);
+      return false;
+    }
+  } catch (_) { /* Continue safely on connection loss */ }
+
   let student: Student | null = null;
   try {
     student = await getStudentByPhone(phone);
-  } catch (err) {
-    // Database lookup failure does not skip. It prompts student correctly.
+  } catch (_) {
     await sendTextMessage(
       phone,
       "⚠️ We could not verify your student record right now. Please try again later."
@@ -339,62 +402,48 @@ async function processLevelInput(
   }
 
   if (student && !isStudentProfileComplete(student)) {
-    // Existing incomplete profile — update using collected fields
     try {
       const updated = await updateStudentProfile(student.id, {
         name: ctx.regName || undefined,
         matric_number: ctx.regMatric || undefined,
         department: ctx.regDept || undefined,
         level: level,
+        serial_number: ctx.regSerial || undefined
       });
 
       if (!updated) {
-        await sendTextMessage(
-          phone,
-          "⚠️ Registration could not be completed. Please try again by typing *menu*."
-        );
+        await sendTextMessage(phone, "⚠️ Registration could not be completed. Please try again by typing *menu*.");
         await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
         return false;
       }
       student = updated;
     } catch {
-      await sendTextMessage(
-        phone,
-        "⚠️ Registration could not be completed. Please try again later."
-      );
-      await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
+      await sendTextMessage(phone, "⚠️ Registration could not be completed. Please try again later.");
       return false;
     }
   } else {
-    // Brand new student record — insert
     try {
       student = await createStudentProfile(
         phone,
         ctx.regName || "Student",
         ctx.regMatric || "",
         ctx.regDept || "",
-        level
+        level,
+        ctx.regSerial || ""
       );
 
       if (!student) {
-        await sendTextMessage(
-          phone,
-          "⚠️ Registration could not be completed. Please try again by typing *menu*."
-        );
+        await sendTextMessage(phone, "⚠️ Registration could not be completed. Please try again by typing *menu*.");
         await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
         return false;
       }
     } catch {
-      await sendTextMessage(
-        phone,
-        "⚠️ Registration could not be completed. Please try again later."
-      );
-      await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
+      await sendTextMessage(phone, "⚠️ Registration could not be completed. Please try again later.");
       return false;
     }
   }
 
-  // ── IDEMPOTENT ATTENDANCE RECORDING ──
+  // ── RECORD ATTENDANCE ──
   let attendanceSuccess = false;
   try {
     const existing = await getTodayAttendance(student.id);
@@ -412,18 +461,17 @@ async function processLevelInput(
     ? "✅ Attendance recorded for today."
     : "⚠️ Could not record today's attendance. Please inform your lecturer.";
 
-  // Send formal confirmation message with exact requested variables
   await sendTextMessage(
     phone,
     `✅ *Student registration completed.*\n\n` +
     `👤 *Name:* ${student.name}\n` +
+    `🔢 *Serial No:* ${student.serial_number}\n` +
     `🎓 *Matric No:* ${student.matric_number}\n` +
     `🏫 *Department:* ${student.department}\n` +
-    `📚 *Level:* ${student.level}\n\n` +
+    `📚 *Level:* ${student.level}L\n\n` +
     `${attendanceLine}`
   );
 
-  // Transition conversation cleanly to WA_Course_Code
   await transitionToCourseCode(phone, conv);
   return true;
 }
