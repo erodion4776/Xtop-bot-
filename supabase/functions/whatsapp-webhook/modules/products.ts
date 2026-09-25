@@ -63,11 +63,11 @@ export async function showProductsList(phone: string, conversationId: string): P
   });
 
   const rows = products.map((p, idx) =>
-    makeListRow(`prod_${p.slug}`, `${idx + 1}️⃣ ${p.name}`, p.category)
+    makeListRow(`prod_${p.slug}`, `${idx + 1}️⃣ ${p.name}`.substring(0, 24), p.category.substring(0, 72))
   );
   rows.push(makeListRow("prod_back_menu", "🔙 Main Menu", "Return to home"));
 
-  const body = `📦 *Xtop Retail Technologies — Our Products*\n\nExplore our proprietary platforms engineered for Nigerian businesses and institutions.\n\n👇 *Select a product below for full details:*`;
+  const body = `📦 *Xtop Retail Technologies — Our Products & Platforms*\n\nExplore our proprietary web platforms, AI tools, and applications built for Nigerian businesses and education:\n\n👇 *Select a product below for full details and live links:*`;
 
   await sendListMessage(phone, body, "Choose Product", [
     { title: "Proprietary Platforms", rows },
@@ -123,32 +123,37 @@ export async function showProductDetail(phone: string, conversationId: string, s
     .map((f) => `  • ${f}`)
     .join("\n");
 
-  // Dynamic link overrides for Naijashop & Xtop Edu
-  const isNaijashop = slug.toLowerCase().includes("naijashop");
-  const isXtopEdu = slug.toLowerCase().includes("edu") || slug.toLowerCase().includes("learning");
+  const s = slug.toLowerCase();
+  let directLinks = "";
 
-  const websiteUrl = isNaijashop ? "https://naijashop.com.ng" : (product.website_url || "https://naijashop.com.ng");
-  const demoContactInfo = isXtopEdu
-    ? `📱 *Live WhatsApp Demo:* +2348073158887\n👉 *Direct Link:* https://wa.me/2348073158887?text=Hi%20Engr%20Ero\n`
-    : (isNaijashop ? `🌐 *Live Store Demo:* https://naijashop.com.ng\n` : "");
+  if (s.includes("naijashop")) {
+    directLinks = `🌐 *Website:* https://naijashop.com.ng\n`;
+  } else if (s.includes("edu") || s.includes("learning")) {
+    directLinks = `📱 *WhatsApp Demo:* +2348073158887\n👉 *Direct Link:* https://wa.me/2348073158887?text=Hi%20Engr%20Ero\n`;
+  } else if (s.includes("edvenia") || s.includes("tutorial") || s.includes("jamb")) {
+    directLinks = `🌐 *Platform Website:* https://edvenia.com\n`;
+  } else if (s.includes("barprep") || s.includes("coach") || s.includes("law")) {
+    directLinks = `🌐 *Portal Website:* https://barprep.cybarcoach.com\n`;
+  } else if (product.website_url) {
+    directLinks = `🌐 *Website:* ${product.website_url}\n`;
+  }
 
   const message =
     `🚀 *${product.name.toUpperCase()}*\n` +
     `_${product.category}_\n\n` +
     `📖 *Overview:*\n${product.description}\n\n` +
-    `🎯 *Who It Is For:*\n${product.target_audience}\n\n` +
+    `🎯 *Target Users:*\n${product.target_audience}\n\n` +
     `⚡ *Key Features:*\n${featuresFormatted}\n\n` +
     `💰 *Pricing:* ${product.price_text || "Custom quotation available"}\n` +
-    `🌐 *Website:* ${websiteUrl}\n` +
-    demoContactInfo;
+    directLinks;
 
   await sendButtonMessage(
     phone,
     message,
     [
-      makeButton(`prod_req_${product.slug}`, "Request Product"),
-      makeButton(`prod_demo_${product.slug}`, "View Demo"),
-      makeButton("prod_list_back", "Back to Products"),
+      makeButton(`prod_demo_${product.slug}`, "🔗 Visit / Test Demo"),
+      makeButton(`prod_req_${product.slug}`, "📝 Request Project"),
+      makeButton("prod_list_back", "🔙 All Products"),
     ],
     product.name,
     "Xtop Retail Technologies"
@@ -164,6 +169,7 @@ async function processProductDetailAction(
 ): Promise<void> {
   const n = normalise(text);
   const slug = productSlug || "xtopedu";
+  const s = slug.toLowerCase();
 
   if (n === "prod_list_back" || isBack(text)) {
     await showProductsList(phone, conversation.id);
@@ -174,49 +180,62 @@ async function processProductDetailAction(
     await updateConversation(conversation.id, {
       current_module: "AGENT",
       current_state: "COLLECT_MESSAGE",
-      context_json: { request_type: "START_PROJECT", preset_message: `Interested in purchasing/deploying ${slug.toUpperCase()}` },
+      context_json: { request_type: "START_PROJECT", preset_message: `Inquiry for ${slug.toUpperCase()} development / deployment.` },
     });
     await sendTextMessage(
       phone,
-      `📝 *Requesting ${slug.toUpperCase()}*\n\nPlease type your business/school name and any specific requirements you have:\n\n_(An agent will follow up with complete onboarding details)_`
+      `📝 *Requesting ${slug.toUpperCase()}*\n\nPlease describe your school/business name and required features. An engineer will follow up shortly:`
     );
     return;
   }
 
-  if (n.startsWith("prod_demo_") || n.includes("demo")) {
-    const isEdu = slug.toLowerCase().includes("edu") || slug.toLowerCase().includes("learning");
-    const isNaijashop = slug.toLowerCase().includes("naijashop");
-
-    if (isEdu) {
+  if (n.startsWith("prod_demo_") || n.includes("demo") || n.includes("visit") || n.includes("test")) {
+    if (s.includes("edu") || s.includes("learning")) {
       await sendTextMessage(
         phone,
-        `🎓 *XTOP EDU — LIVE WHATSAPP DEMO*\n\nExperience our interactive automated lecture delivery, CBT exam engine, and attendance system directly:\n\n📱 *WhatsApp Demo Line:* +2348073158887\n👉 *Click to Chat:* https://wa.me/2348073158887?text=Hi%20Engr%20Ero\n\n_Send *Engr Ero* to the number above to start studying instantly!_`
+        `🎓 *XTOP EDU — LIVE WHATSAPP BOT*\n\nExperience automated lecture delivery, attendance, and CBT exams live:\n\n📱 *WhatsApp Demo Line:* +2348073158887\n👉 *Click to Launch:* https://wa.me/2348073158887?text=Hi%20Engr%20Ero\n\n_Send *Engr Ero* to start studying!_`
       );
       await showProductDetail(phone, conversation.id, slug);
       return;
     }
 
-    if (isNaijashop) {
+    if (s.includes("naijashop")) {
       await sendTextMessage(
         phone,
-        `🛒 *NAIJASHOP — LIVE STORE DEMO*\n\nExplore our online e-commerce platform and inventory system live:\n\n🌐 *Visit Store:* https://naijashop.com.ng\n\n_Browse products, test order placements, and experience the checkout flow!_`
+        `🛒 *NAIJASHOP — LIVE STORE*\n\nExplore our e-commerce platform and inventory system:\n\n🌐 *Visit Store:* https://naijashop.com.ng\n\n_Browse categories, test checkout flow, and automated receipts!_`
       );
       await showProductDetail(phone, conversation.id, slug);
       return;
     }
 
-    // Default interactive demo handler
-    const demoSlug = slug === "xtopedu" ? "demo_xtopedu" : "demo_naijashop";
-    await updateConversation(conversation.id, {
-      current_module: "DEMOS",
-      current_state: "RUNNING_STEP",
-      context_json: { selectedDemoSlug: demoSlug, currentStep: 1 },
-    });
-    const { runDemoStep } = await import("./demos.ts");
-    await runDemoStep(phone, conversation.id, demoSlug, 1);
-    return;
+    if (s.includes("edvenia")) {
+      await sendTextMessage(
+        phone,
+        `📚 *EDVENIA — WAEC / NECO / JAMB AI CBT*\n\nPractice past exam questions with instant AI scoring:\n\n🌐 *Visit Edvenia:* https://edvenia.com\n\n_Take full CBT mock exams on web or mobile!_`
+      );
+      await showProductDetail(phone, conversation.id, slug);
+      return;
+    }
+
+    if (s.includes("barprep")) {
+      await sendTextMessage(
+        phone,
+        `⚖️ *CYBERCOACH BARPREP — AI LAW TUTOR*\n\nPrepare for Law School and Bar Examinations:\n\n🌐 *Visit BarPrep:* https://barprep.cybarcoach.com\n\n_Access case law reviews and bar exam simulation drills!_`
+      );
+      await showProductDetail(phone, conversation.id, slug);
+      return;
+    }
+
+    if (s.includes("app")) {
+      await sendTextMessage(
+        phone,
+        `📱 *CUSTOM WEB & MOBILE APP DEVELOPMENT*\n\nWe build and publish custom Android, iOS, and Web platforms for businesses.\n\n🌐 *Learn More:* https://naijashop.com.ng\n\n_Tap *Request Project* below to get a custom architectural quote!_`
+      );
+      await showProductDetail(phone, conversation.id, slug);
+      return;
+    }
   }
 
-  await sendTextMessage(phone, "Please use the buttons below to choose an action:");
+  await sendTextMessage(phone, "Please choose an action below:");
   await showProductDetail(phone, conversation.id, slug);
 }
