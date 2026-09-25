@@ -35,6 +35,7 @@ export interface Contact {
 
 export interface Conversation {
   id: string;
+  contact_id?: string | null;
   phone?: string;
   current_module?: string;
   current_state?: string;
@@ -80,6 +81,18 @@ export interface Service {
   metadata?: Record<string, unknown>;
   created_at?: string;
   updated_at?: string;
+  [key: string]: unknown;
+}
+
+export interface Demo {
+  id?: string;
+  title: string;
+  slug: string;
+  category?: string;
+  description?: string;
+  demo_url?: string;
+  whatsapp_number?: string;
+  is_active?: boolean;
   [key: string]: unknown;
 }
 
@@ -182,32 +195,8 @@ export interface Student {
 }
 
 // ==========================================
-// 3. Conversation & Contact Functions
+// 3. Contact & Conversation Functions
 // ==========================================
-export async function updateConversation(
-  conversationId: string,
-  fields: ConversationUpdate
-): Promise<Conversation | null> {
-  const sb = getSupabaseClient();
-  const updatePayload: Record<string, unknown> = {
-    ...fields,
-    updated_at: new Date().toISOString(),
-  };
-
-  const { data, error } = await sb
-    .from("conversations")
-    .update(updatePayload)
-    .eq("id", conversationId)
-    .select("*")
-    .single();
-
-  if (error) {
-    safeErrorLog("updateConversation", error);
-    return null;
-  }
-  return data as Conversation;
-}
-
 export async function getContactByPhone(phone: string): Promise<Contact | null> {
   const sb = getSupabaseClient();
   const { data, error } = await sb
@@ -236,9 +225,104 @@ export async function getOrCreateContact(phone: string, name?: string | null): P
 
   if (error) {
     safeErrorLog("getOrCreateContact", error);
-    return { phone, name: name || null };
+    return {
+      id: crypto.randomUUID ? crypto.randomUUID() : `CNT-${Date.now()}`,
+      phone,
+      name: name || null,
+    };
   }
   return data as Contact;
+}
+
+export async function getOrCreateConversation(contactId?: string): Promise<Conversation> {
+  const sb = getSupabaseClient();
+  if (contactId) {
+    const { data: existing } = await sb
+      .from("conversations")
+      .select("*")
+      .eq("contact_id", contactId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existing) return existing as Conversation;
+
+    const { data: created, error } = await sb
+      .from("conversations")
+      .insert({
+        contact_id: contactId,
+        current_module: "MAIN_MENU",
+        current_state: "IDLE",
+        context_json: {},
+      })
+      .select("*")
+      .single();
+
+    if (error) {
+      safeErrorLog("getOrCreateConversation (insert)", error);
+    } else if (created) {
+      return created as Conversation;
+    }
+  }
+
+  return {
+    id: crypto.randomUUID ? crypto.randomUUID() : `CONV-${Date.now()}`,
+    current_module: "MAIN_MENU",
+    current_state: "IDLE",
+    context_json: {},
+  } as Conversation;
+}
+
+export async function updateConversation(
+  conversationId: string,
+  fields: ConversationUpdate
+): Promise<Conversation | null> {
+  const sb = getSupabaseClient();
+  const updatePayload: Record<string, unknown> = {
+    ...fields,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await sb
+    .from("conversations")
+    .update(updatePayload)
+    .eq("id", conversationId)
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("updateConversation", error);
+    return null;
+  }
+  return data as Conversation;
+}
+
+export async function storeMessage(
+  contactId?: string,
+  direction: "INBOUND" | "OUTBOUND" = "INBOUND",
+  messageType: string = "text",
+  body?: string | null,
+  whatsappMessageId?: string | null
+): Promise<any> {
+  const sb = getSupabaseClient();
+  try {
+    const { data, error } = await sb.from("messages").insert({
+      contact_id: contactId || null,
+      direction,
+      message_type: messageType,
+      body: body || null,
+      whatsapp_message_id: whatsappMessageId || null,
+      created_at: new Date().toISOString(),
+    }).select("*").maybeSingle();
+
+    if (error) {
+      safeErrorLog("storeMessage", error);
+    }
+    return data;
+  } catch (err) {
+    safeErrorLog("storeMessage catch", err);
+    return null;
+  }
 }
 
 // ==========================================
@@ -338,7 +422,40 @@ export async function getServiceById(serviceId: string): Promise<Service | null>
 }
 
 // ==========================================
-// 6. Pricing Packages & Sales Leads
+// 6. Demos Functions
+// ==========================================
+export async function getActiveDemos(): Promise<Demo[]> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("demos")
+    .select("*")
+    .eq("is_active", true)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    safeErrorLog("getActiveDemos", error);
+    return [];
+  }
+  return (data as Demo[]) || [];
+}
+
+export async function getDemoBySlug(slug: string): Promise<Demo | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("demos")
+    .select("*")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  if (error) {
+    safeErrorLog(`getDemoBySlug(${slug})`, error);
+    return null;
+  }
+  return data as Demo;
+}
+
+// ==========================================
+// 7. Pricing Packages & Sales Leads
 // ==========================================
 export async function getPricingPackages(serviceType?: string): Promise<PricingPackage[]> {
   const sb = getSupabaseClient();
@@ -519,7 +636,7 @@ export async function updateQuotation(
 }
 
 // ==========================================
-// 7. Magazine Functions
+// 8. Magazine Functions
 // ==========================================
 export async function getActiveMagazineConfig(): Promise<MagazineConfig | null> {
   const sb = getSupabaseClient();
@@ -539,7 +656,7 @@ export async function getActiveMagazineConfig(): Promise<MagazineConfig | null> 
 }
 
 // ==========================================
-// 8. Agent & Support Requests
+// 9. Agent & Support Requests
 // ==========================================
 export async function createAgentRequest(
   contactId?: string,
@@ -589,7 +706,7 @@ export async function createAgentRequest(
 }
 
 // ==========================================
-// 9. Student & Attendance Functions
+// 10. Student & Attendance Functions
 // ==========================================
 export function isStudentProfileComplete(student: Student): boolean {
   return !!(
@@ -758,7 +875,7 @@ export async function recordAttendance(studentId: string): Promise<any> {
 }
 
 // ==========================================
-// 10. Course & Exam Functions
+// 11. Course & Exam Functions
 // ==========================================
 export async function getCourseByCode(courseCode: string): Promise<any> {
   const sb = getSupabaseClient();
