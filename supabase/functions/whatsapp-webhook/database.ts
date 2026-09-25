@@ -83,6 +83,18 @@ export interface Service {
   [key: string]: unknown;
 }
 
+export interface MagazineConfig {
+  id?: string;
+  title: string;
+  description: string;
+  file_url: string;
+  is_active?: boolean;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
 export interface Student {
   id: string;
   phone: string;
@@ -220,7 +232,27 @@ export async function getServiceById(serviceId: string): Promise<Service | null>
 }
 
 // ==========================================
-// 6. Student & Attendance Functions
+// 6. Magazine Functions
+// ==========================================
+export async function getActiveMagazineConfig(): Promise<MagazineConfig | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("magazine_config")
+    .select("*")
+    .eq("is_active", true)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    safeErrorLog("getActiveMagazineConfig", error);
+    return null;
+  }
+  return data as MagazineConfig;
+}
+
+// ==========================================
+// 7. Student & Attendance Functions
 // ==========================================
 export function isStudentProfileComplete(student: Student): boolean {
   return !!(
@@ -389,7 +421,7 @@ export async function recordAttendance(studentId: string): Promise<any> {
 }
 
 // ==========================================
-// 7. Course & Exam Functions
+// 8. Course & Exam Functions
 // ==========================================
 export async function getCourseByCode(courseCode: string): Promise<any> {
   const sb = getSupabaseClient();
