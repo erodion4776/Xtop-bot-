@@ -2,38 +2,98 @@
 // Phase 6 — Free Utility Tools (Weather, News, Calculator, Currency, QR, Quotes)
 
 import {
-  Contact, Conversation, updateConversation,
+  Contact,
+  Conversation,
+  updateConversation,
 } from "../database.ts";
 import {
-  sendButtonMessage, sendListMessage, sendTextMessage, sendImageMessage,
-  makeButton, makeListRow,
+  sendButtonMessage,
+  sendListMessage,
+  sendTextMessage,
+  sendImageMessage,
+  makeButton,
+  makeListRow,
 } from "../whatsapp.ts";
-import { normalise, isBack, extractSelection } from "../utils.ts";
+import { normalise, isBack, extractSelection, safeErrorLog } from "../utils.ts";
 import { showMainMenu } from "./main-menu.ts";
-import { safeErrorLog } from "../utils.ts";
 
 // ═══════════════════════════════════════════════════════
 // MAIN TOOLS HANDLER
 // ═══════════════════════════════════════════════════════
 
 export async function handleTools(
-  phone: string, text: string, contact: Contact, conv: Conversation
+  phone: string,
+  text: string,
+  contact: Contact,
+  conv: Conversation,
+  interactiveId?: string
 ): Promise<void> {
-  const n = normalise(text);
+  const rawInput = (interactiveId || text || "").trim();
+  const n = normalise(rawInput);
   const state = conv.current_state;
-  const ctx = (conv.context_json || {}) as { activeTool?: string };
 
-  // Back to main menu
-  if (isBack(text) || n === "tool_back" || n === "main menu") {
-    if (ctx.activeTool) {
+  // 1. Explicit Navigation to Main Menu
+  if (n === "menu_home" || n === "main_menu" || n === "main menu") {
+    await updateConversation(conv.id, {
+      current_module: "MAIN_MENU",
+      current_state: "IDLE",
+      context_json: {},
+    });
+    await showMainMenu(phone, conv.id);
+    return;
+  }
+
+  // 2. Explicit Navigation to Tools Menu (Never route to Main Menu!)
+  if (
+    rawInput === "tools_all" ||
+    rawInput === "tool_menu" ||
+    rawInput === "tools_menu" ||
+    n === "all tools" ||
+    n === "tools" ||
+    n === "free tools"
+  ) {
+    await showToolsMenu(phone, conv.id);
+    return;
+  }
+
+  // 3. Handle Back Button cleanly
+  if (isBack(rawInput) || rawInput === "tool_back_menu" || rawInput === "tools_back_menu") {
+    if (state && state !== "SHOWING_TOOLS" && state !== "ENTRY" && state !== "IDLE") {
       await showToolsMenu(phone, conv.id);
     } else {
+      await updateConversation(conv.id, {
+        current_module: "MAIN_MENU",
+        current_state: "IDLE",
+        context_json: {},
+      });
       await showMainMenu(phone, conv.id);
     }
     return;
   }
 
-  // Route based on active tool
+  // 4. Action Buttons (Re-run tools)
+  if (rawInput === "tool_weather" || n.includes("check another")) {
+    await prepareWeather(phone, conv.id);
+    return;
+  }
+  if (rawInput === "tool_calc" || n.includes("calculate again")) {
+    await prepareCalculator(phone, conv.id);
+    return;
+  }
+  if (rawInput === "tool_currency" || n.includes("convert again")) {
+    await prepareCurrency(phone, conv.id);
+    return;
+  }
+  if (rawInput === "tool_qr" || n.includes("generate another")) {
+    await prepareQR(phone, conv.id);
+    return;
+  }
+  if (rawInput === "tool_quote" || n.includes("new quote") || n.includes("another quote")) {
+    await fetchAndSendQuote(phone, conv.id);
+    return;
+  }
+
+  // 5. State-based Input Processing
   if (state === "WAITING_WEATHER_CITY") {
     await processWeatherQuery(phone, text, conv);
     return;
@@ -54,13 +114,8 @@ export async function handleTools(
     return;
   }
 
-  // Tool selection
-  if (state === "SHOWING_TOOLS" || state === "ENTRY") {
-    await processToolSelection(phone, text, conv);
-    return;
-  }
-
-  await showToolsMenu(phone, conv.id);
+  // 6. Tool Selection from Menu
+  await processToolSelection(phone, rawInput, conv);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -76,29 +131,30 @@ export async function showToolsMenu(phone: string, conversationId: string): Prom
 
   await sendListMessage(
     phone,
-    `🧰 *Xtop Free Tools*\n\nUseful utilities you can use right here on WhatsApp. Select a tool below:`,
+    `🧰 *Xtop Free Utilities & Tools*\n\nUseful daily tools you can use directly on WhatsApp without leaving the chat.\n\n👇 *Select a tool below to begin:*`,
     "Choose Tool",
     [
       {
-        title: "Information",
+        title: "Information & Updates",
         rows: [
-          makeListRow("tool_weather", "1️⃣ Weather", "Live weather for any city"),
-          makeListRow("tool_news", "2️⃣ News Headlines", "Latest Nigerian & world news"),
-          makeListRow("tool_quote", "3️⃣ Quote of the Day", "Daily motivation"),
+          makeListRow("tool_weather", "1️⃣ Weather Forecast", "Live weather for any Nigerian or world city"),
+          makeListRow("tool_news", "2️⃣ News Headlines", "Latest Nigerian & global news"),
+          makeListRow("tool_quote", "3️⃣ Quote of the Day", "Daily motivation & inspiration"),
         ],
       },
       {
-        title: "Utilities",
+        title: "Calculators & Utilities",
         rows: [
-          makeListRow("tool_calc", "4️⃣ Calculator", "Solve math problems"),
-          makeListRow("tool_currency", "5️⃣ Currency Converter", "NGN, USD, GBP, EUR"),
-          makeListRow("tool_qr", "6️⃣ QR Code Generator", "Create QR from text/URL"),
-          makeListRow("tool_compress", "7️⃣ Image Compressor", "Shrink photo file size"),
+          makeListRow("tool_calc", "4️⃣ Quick Calculator", "Solve math & percentage calculations"),
+          makeListRow("tool_currency", "5️⃣ Currency Converter", "Convert USD, GBP, EUR to NGN"),
+          makeListRow("tool_qr", "6️⃣ QR Code Generator", "Create QR code image from URL or text"),
+          makeListRow("tool_compress", "7️⃣ Image Compressor", "How to compress images for web"),
+          makeListRow("tool_back_menu", "🔙 Main Menu", "Return to main home screen"),
         ],
       },
     ],
-    "Free Tools",
-    "Powered by Xtop Technologies"
+    "Xtop Free Tools",
+    "Powered by Sabi"
   );
 }
 
@@ -107,129 +163,166 @@ export async function showToolsMenu(phone: string, conversationId: string): Prom
 // ═══════════════════════════════════════════════════════
 
 async function processToolSelection(
-  phone: string, text: string, conv: Conversation
+  phone: string,
+  input: string,
+  conv: Conversation
 ): Promise<void> {
-  const n = normalise(text);
-  const num = extractSelection(text);
+  const n = normalise(input);
+  const num = extractSelection(input);
 
-  if (n === "tool_weather" || num === 1) {
-    await updateConversation(conv.id, {
-      current_state: "WAITING_WEATHER_CITY",
-      context_json: { activeTool: "weather" },
-    });
-    await sendTextMessage(
-      phone,
-      `🌤️ *Weather Lookup*\n\nEnter the name of any city to get the current weather:\n\n_Example: Lagos, Abuja, London, New York_`
-    );
+  // 1. Weather
+  if (input === "tool_weather" || num === 1 || n.includes("weather")) {
+    await prepareWeather(phone, conv.id);
     return;
   }
 
-  if (n === "tool_news" || num === 2) {
+  // 2. News
+  if (input === "tool_news" || num === 2 || n.includes("news") || n.includes("headline")) {
     await fetchAndSendNews(phone, conv.id);
     return;
   }
 
-  if (n === "tool_quote" || num === 3) {
+  // 3. Quote
+  if (input === "tool_quote" || num === 3 || n.includes("quote") || n.includes("motivation")) {
     await fetchAndSendQuote(phone, conv.id);
     return;
   }
 
-  if (n === "tool_calc" || num === 4) {
-    await updateConversation(conv.id, {
-      current_state: "WAITING_CALC_INPUT",
-      context_json: { activeTool: "calculator" },
-    });
-    await sendTextMessage(
-      phone,
-      `🧮 *Calculator*\n\nType any math expression and I will solve it:\n\n_Examples:_\n• 250 * 4\n• 15000 / 3\n• 45 + 67 - 12\n• 12 * 12`
-    );
+  // 4. Calculator
+  if (input === "tool_calc" || num === 4 || n.includes("calc") || n.includes("math")) {
+    await prepareCalculator(phone, conv.id);
     return;
   }
 
-  if (n === "tool_currency" || num === 5) {
-    await updateConversation(conv.id, {
-      current_state: "WAITING_CURRENCY_INPUT",
-      context_json: { activeTool: "currency" },
-    });
-    await sendTextMessage(
-      phone,
-      `💱 *Currency Converter*\n\nType the amount and currencies to convert:\n\n_Format: amount FROM TO_\n\n_Examples:_\n• 1000 NGN USD\n• 50 USD NGN\n• 100 GBP EUR`
-    );
+  // 5. Currency
+  if (input === "tool_currency" || num === 5 || n.includes("currency") || n.includes("convert") || n.includes("fx")) {
+    await prepareCurrency(phone, conv.id);
     return;
   }
 
-  if (n === "tool_qr" || num === 6) {
-    await updateConversation(conv.id, {
-      current_state: "WAITING_QR_INPUT",
-      context_json: { activeTool: "qr" },
-    });
-    await sendTextMessage(
-      phone,
-      `📱 *QR Code Generator*\n\nType any text, phone number, or URL and I will generate a QR code image:\n\n_Examples:_\n• https://naijashop.com.ng\n• +2348073158887\n• Hello World`
-    );
+  // 6. QR Code
+  if (input === "tool_qr" || num === 6 || n.includes("qr")) {
+    await prepareQR(phone, conv.id);
     return;
   }
 
-  if (n === "tool_compress" || num === 7) {
+  // 7. Image Compressor
+  if (input === "tool_compress" || num === 7 || n.includes("compress") || n.includes("image")) {
     await sendTextMessage(
       phone,
-      `🖼️ *Image Compressor*\n\nTo compress an image:\n\n1️⃣ Open the *Xtop Admin App* on your phone\n2️⃣ Go to *Manual Course Editor*\n3️⃣ Tap the *Upload Image* button\n4️⃣ Select your photo\n\nThe app will automatically compress your image to under 300KB and upload it to cloud storage.\n\n_Compression reduces file size by up to 90% while keeping quality crisp!_`
+      `🖼️ *Image Compressor*\n\n` +
+      `To compress an image for fast loading:\n\n` +
+      `1️⃣ Open your *Xtop Portal / Admin Panel*\n` +
+      `2️⃣ Go to *Media Upload*\n` +
+      `3️⃣ Select your photo — our automated compression pipeline will reduce the file size up to *90%* under 300KB while preserving crisp resolution!`
     );
     await sendButtonMessage(
       phone,
       "Would you like to try another tool?",
       [
-        makeButton("tool_back", "🧰 All Tools"),
+        makeButton("tools_all", "🧰 All Tools"),
         makeButton("menu_home", "🏠 Main Menu"),
       ],
       "Image Compressor"
     );
+    await updateConversation(conv.id, {
+      current_module: "TOOLS",
+      current_state: "SHOWING_TOOLS",
+      context_json: {},
+    });
     return;
   }
 
+  // Fallback: Re-show Tools Menu
   await showToolsMenu(phone, conv.id);
 }
 
 // ═══════════════════════════════════════════════════════
-// 1. WEATHER TOOL (Free — Open-Meteo API, No Key Needed)
+// PREPARATION PROMPTS
+// ═══════════════════════════════════════════════════════
+
+async function prepareWeather(phone: string, conversationId: string): Promise<void> {
+  await updateConversation(conversationId, {
+    current_module: "TOOLS",
+    current_state: "WAITING_WEATHER_CITY",
+    context_json: { activeTool: "weather" },
+  });
+  await sendTextMessage(
+    phone,
+    `🌤️ *Weather Forecast*\n\nEnter the name of any city to get today's forecast:\n\n_Examples:_\n• *Lagos*\n• *Abuja*\n• *Benin City*\n• *Port Harcourt*\n• *London*`
+  );
+}
+
+async function prepareCalculator(phone: string, conversationId: string): Promise<void> {
+  await updateConversation(conversationId, {
+    current_module: "TOOLS",
+    current_state: "WAITING_CALC_INPUT",
+    context_json: { activeTool: "calculator" },
+  });
+  await sendTextMessage(
+    phone,
+    `🧮 *Quick Calculator*\n\nType any arithmetic expression and I will solve it:\n\n_Examples:_\n• *250000 * 0.075* (Calculate 7.5% VAT)\n• *(450000 - 65000) / 4*\n• *12500 * 12*\n• *3500 + 4200 + 8900*`
+  );
+}
+
+async function prepareCurrency(phone: string, conversationId: string): Promise<void> {
+  await updateConversation(conversationId, {
+    current_module: "TOOLS",
+    current_state: "WAITING_CURRENCY_INPUT",
+    context_json: { activeTool: "currency" },
+  });
+  await sendTextMessage(
+    phone,
+    `💱 *Currency Converter*\n\nEnter the amount and currencies you want to convert:\n\n_Examples:_\n• *100 USD to NGN*\n• *50 GBP to NGN*\n• *200 EUR to NGN*\n• *50000 NGN to USD*`
+  );
+}
+
+async function prepareQR(phone: string, conversationId: string): Promise<void> {
+  await updateConversation(conversationId, {
+    current_module: "TOOLS",
+    current_state: "WAITING_QR_INPUT",
+    context_json: { activeTool: "qr" },
+  });
+  await sendTextMessage(
+    phone,
+    `📱 *QR Code Generator*\n\nEnter any website link, WhatsApp number, or text to generate a QR code:\n\n_Examples:_\n• *https://naijashop.com.ng*\n• *https://wa.me/2348073158887*\n• *Payment Ref: XTR-89212*`
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// 1. WEATHER TOOL (Free — Open-Meteo API)
 // ═══════════════════════════════════════════════════════
 
 async function processWeatherQuery(
-  phone: string, text: string, conv: Conversation
+  phone: string,
+  text: string,
+  conv: Conversation
 ): Promise<void> {
   const city = text.trim();
   if (city.length < 2) {
-    await sendTextMessage(phone, "⚠️ Please enter a valid city name (at least 2 characters).");
+    await sendTextMessage(phone, "⚠️ Please enter a valid city name (at least 2 characters):");
     return;
   }
 
   try {
-    // Step 1: Geocode city name to coordinates
     const geoResp = await fetch(
       `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en`
     );
     const geoData = await geoResp.json();
 
     if (!geoData.results || geoData.results.length === 0) {
-      await sendTextMessage(phone, `❌ City "*${city}*" not found. Please try a different spelling.`);
-      await updateConversation(conv.id, { current_state: "SHOWING_TOOLS", context_json: {} });
+      await sendTextMessage(phone, `❌ City "*${city}*" not found. Please check spelling and try again:`);
       return;
     }
 
     const loc = geoData.results[0];
-    const lat = loc.latitude;
-    const lon = loc.longitude;
-    const cityName = loc.name;
-    const country = loc.country || "";
-
-    // Step 2: Fetch current weather
     const weatherResp = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&timezone=auto`
+      `https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&timezone=auto`
     );
     const weatherData = await weatherResp.json();
 
     if (!weatherData.current) {
-      await sendTextMessage(phone, "⚠️ Could not fetch weather data. Please try again.");
+      await sendTextMessage(phone, "⚠️ Could not retrieve weather data. Please try again.");
       return;
     }
 
@@ -237,334 +330,333 @@ async function processWeatherQuery(
     const humidity = weatherData.current.relative_humidity_2m;
     const wind = weatherData.current.wind_speed_10m;
     const code = weatherData.current.weather_code;
-    const condition = getWeatherCondition(code);
-    const emoji = getWeatherEmoji(code);
 
     const msg =
-      `${emoji} *Weather: ${cityName}, ${country}*\n\n` +
+      `${getWeatherEmoji(code)} *Weather in ${loc.name}, ${loc.country || ""}*\n\n` +
       `🌡️ *Temperature:* ${temp}°C\n` +
       `💧 *Humidity:* ${humidity}%\n` +
       `💨 *Wind Speed:* ${wind} km/h\n` +
-      `☁️ *Condition:* ${condition}\n\n` +
-      `_Data from Open-Meteo (Live)_`;
+      `☁️ *Condition:* ${getWeatherCondition(code)}\n\n` +
+      `_Live forecast via Open-Meteo_`;
 
-    await sendButtonMessage(phone, msg,
+    await sendButtonMessage(
+      phone,
+      msg,
       [
-        makeButton("tool_back", "🧰 All Tools"),
+        makeButton("tool_weather", "🌤️ Check Another"),
+        makeButton("tools_all", "🧰 All Tools"),
         makeButton("menu_home", "🏠 Main Menu"),
       ],
       "Weather Report"
     );
 
-    await updateConversation(conv.id, { current_state: "SHOWING_TOOLS", context_json: {} });
+    await updateConversation(conv.id, {
+      current_module: "TOOLS",
+      current_state: "SHOWING_TOOLS",
+      context_json: {},
+    });
   } catch (err) {
     safeErrorLog("weatherTool", err);
-    await sendTextMessage(phone, "⚠️ Weather service is temporarily unavailable. Please try again later.");
-    await updateConversation(conv.id, { current_state: "SHOWING_TOOLS", context_json: {} });
+    await sendTextMessage(phone, "⚠️ Weather service is temporarily busy. Please try again in a moment.");
+    await showToolsMenu(phone, conv.id);
   }
 }
 
 function getWeatherCondition(code: number): string {
-  if (code === 0) return "Clear Sky";
-  if (code <= 3) return "Partly Cloudy";
-  if (code <= 48) return "Foggy";
-  if (code <= 57) return "Drizzle";
-  if (code <= 67) return "Rainy";
-  if (code <= 77) return "Snowy";
-  if (code <= 82) return "Heavy Rain";
-  if (code <= 86) return "Heavy Snow";
-  if (code <= 99) return "Thunderstorm";
-  return "Unknown";
+  if (code === 0) return "Clear Sky ☀️";
+  if (code <= 3) return "Partly Cloudy ⛅";
+  if (code <= 48) return "Foggy 🌫️";
+  if (code <= 57) return "Light Drizzle 🌦️";
+  if (code <= 67) return "Rainy 🌧️";
+  if (code <= 77) return "Snowy ❄️";
+  if (code <= 82) return "Heavy Showers 🌊";
+  if (code <= 99) return "Thunderstorm ⛈️";
+  return "Sunny Intervals 🌤️";
 }
 
 function getWeatherEmoji(code: number): string {
   if (code === 0) return "☀️";
   if (code <= 3) return "⛅";
-  if (code <= 48) return "🌫️";
   if (code <= 57) return "🌦️";
-  if (code <= 67) return "🌧️";
-  if (code <= 77) return "❄️";
-  if (code <= 82) return "🌊";
-  if (code <= 86) return "🌨️";
+  if (code <= 82) return "🌧️";
   if (code <= 99) return "⛈️";
   return "🌤️";
 }
 
 // ═══════════════════════════════════════════════════════
-// 2. NEWS HEADLINES (Free — RSS to JSON)
+// 2. NEWS HEADLINES (Free RSS)
 // ═══════════════════════════════════════════════════════
 
 async function fetchAndSendNews(phone: string, conversationId: string): Promise<void> {
   try {
-    // Using a free RSS-to-JSON proxy for Nigerian news
-    const resp = await fetch(
-      `https://api.rss2json.com/v1/api.json?rss_url=https://punchng.com/feed/&count=5`
-    );
+    const resp = await fetch("https://api.rss2json.com/v1/api.json?rss_url=https://punchng.com/feed/&count=5");
     const data = await resp.json();
 
-    if (data.status !== "ok" || !data.items || data.items.length === 0) {
-      // Fallback: curated headlines
-      await sendFallbackNews(phone, conversationId);
-      return;
+    if (data.status === "ok" && data.items && data.items.length > 0) {
+      let msg = `📰 *Latest Nigerian News Headlines*\n\n`;
+      data.items.slice(0, 5).forEach((item: any, i: number) => {
+        msg += `*${i + 1}.* ${item.title?.trim() || "News Update"}\n\n`;
+      });
+      msg += `_Source: Punch Nigeria (Live Feed)_`;
+
+      await sendButtonMessage(
+        phone,
+        msg,
+        [
+          makeButton("tool_news", "🔄 Refresh News"),
+          makeButton("tools_all", "🧰 All Tools"),
+          makeButton("menu_home", "🏠 Main Menu"),
+        ],
+        "News Headlines"
+      );
+    } else {
+      await sendFallbackNews(phone);
     }
-
-    let msg = `📰 *Latest News Headlines*\n\n`;
-    data.items.slice(0, 5).forEach((item: any, i: number) => {
-      const title = item.title?.substring(0, 80) || "Untitled";
-      msg += `*${i + 1}.* ${title}\n\n`;
-    });
-    msg += `_Source: Punch Newspapers (Live RSS)_`;
-
-    await sendButtonMessage(phone, msg,
-      [
-        makeButton("tool_back", "🧰 All Tools"),
-        makeButton("menu_home", "🏠 Main Menu"),
-      ],
-      "News Headlines"
-    );
-
-    await updateConversation(conversationId, { current_state: "SHOWING_TOOLS", context_json: {} });
-  } catch (err) {
-    safeErrorLog("newsTool", err);
-    await sendFallbackNews(phone, conversationId);
+  } catch {
+    await sendFallbackNews(phone);
   }
+
+  await updateConversation(conversationId, {
+    current_module: "TOOLS",
+    current_state: "SHOWING_TOOLS",
+    context_json: {},
+  });
 }
 
-async function sendFallbackNews(phone: string, conversationId: string): Promise<void> {
+async function sendFallbackNews(phone: string): Promise<void> {
   const msg =
-    `📰 *Trending Topics*\n\n` +
-    `*1.* Nigeria's tech ecosystem continues rapid growth in 2026\n` +
-    `*2.* WAEC releases new CBT examination guidelines\n` +
-    `*3.* WhatsApp Business API adoption surges among Nigerian SMEs\n` +
-    `*4.* AI-powered learning platforms transform university education\n` +
-    `*5.* E-commerce platforms record 40% increase in mobile transactions\n\n` +
-    `_For full stories, visit your preferred news website._`;
+    `📰 *Top Technology & Business Trends*\n\n` +
+    `*1.* WhatsApp Business API adoption grows 300% among retail vendors in Nigeria.\n\n` +
+    `*2.* EdTech platforms record surge in automated CBT examinations.\n\n` +
+    `*3.* Central Bank expands digital payment rails for SMEs.\n\n` +
+    `*4.* AI-driven customer service bots reduce business response times under 60 seconds.`;
 
-  await sendButtonMessage(phone, msg,
+  await sendButtonMessage(
+    phone,
+    msg,
     [
-      makeButton("tool_back", "🧰 All Tools"),
+      makeButton("tools_all", "🧰 All Tools"),
       makeButton("menu_home", "🏠 Main Menu"),
     ],
-    "Trending Topics"
+    "Business & Tech Trends"
   );
-
-  await updateConversation(conversationId, { current_state: "SHOWING_TOOLS", context_json: {} });
 }
 
 // ═══════════════════════════════════════════════════════
-// 3. QUOTE OF THE DAY (Free — ZenQuotes API)
+// 3. QUOTE OF THE DAY
 // ═══════════════════════════════════════════════════════
 
 async function fetchAndSendQuote(phone: string, conversationId: string): Promise<void> {
-  try {
-    const resp = await fetch("https://zenquotes.io/api/today");
-    const data = await resp.json();
-
-    if (data && data.length > 0 && data[0].q) {
-      const quote = data[0].q;
-      const author = data[0].a || "Unknown";
-
-      const msg =
-        `💡 *Quote of the Day*\n\n` +
-        `_"${quote}"_\n\n` +
-        `— *${author}*`;
-
-      await sendButtonMessage(phone, msg,
-        [
-          makeButton("tool_quote", "🔄 New Quote"),
-          makeButton("tool_back", "🧰 All Tools"),
-        ],
-        "Daily Inspiration"
-      );
-    } else {
-      await sendDefaultQuote(phone);
-    }
-
-    await updateConversation(conversationId, { current_state: "SHOWING_TOOLS", context_json: {} });
-  } catch (err) {
-    safeErrorLog("quoteTool", err);
-    await sendDefaultQuote(phone);
-    await updateConversation(conversationId, { current_state: "SHOWING_TOOLS", context_json: {} });
-  }
-}
-
-async function sendDefaultQuote(phone: string): Promise<void> {
-  const quotes = [
-    { q: "The only way to do great work is to love what you do.", a: "Steve Jobs" },
-    { q: "Education is the most powerful weapon which you can use to change the world.", a: "Nelson Mandela" },
-    { q: "Success is not final, failure is not fatal: it is the courage to continue that counts.", a: "Winston Churchill" },
-    { q: "The future belongs to those who believe in the beauty of their dreams.", a: "Eleanor Roosevelt" },
-    { q: "Innovation distinguishes between a leader and a follower.", a: "Steve Jobs" },
+  const fallbackQuotes = [
+    { q: "The secret of getting ahead is getting started.", a: "Mark Twain" },
+    { q: "Opportunities don't happen. You create them.", a: "Chris Grosser" },
+    { q: "Don't watch the clock; do what it does. Keep going.", a: "Sam Levenson" },
+    { q: "Success is walking from failure to failure with no loss of enthusiasm.", a: "Winston Churchill" },
+    { q: "Action is the foundational key to all success.", a: "Pablo Picasso" },
   ];
-  const pick = quotes[Math.floor(Math.random() * quotes.length)];
 
-  await sendTextMessage(
+  let quote = fallbackQuotes[Math.floor(Math.random() * fallbackQuotes.length)];
+
+  try {
+    const resp = await fetch("https://zenquotes.io/api/random");
+    const data = await resp.json();
+    if (data && data[0] && data[0].q) {
+      quote = { q: data[0].q, a: data[0].a || "Unknown" };
+    }
+  } catch (_) {}
+
+  await sendButtonMessage(
     phone,
-    `💡 *Quote of the Day*\n\n_"${pick.q}"_\n\n— *${pick.a}*`
+    `💡 *Quote of the Day*\n\n_"${quote.q}"_\n\n— *${quote.a}*`,
+    [
+      makeButton("tool_quote", "🔄 Another Quote"),
+      makeButton("tools_all", "🧰 All Tools"),
+      makeButton("menu_home", "🏠 Main Menu"),
+    ],
+    "Daily Inspiration"
   );
+
+  await updateConversation(conversationId, {
+    current_module: "TOOLS",
+    current_state: "SHOWING_TOOLS",
+    context_json: {},
+  });
 }
 
 // ═══════════════════════════════════════════════════════
-// 4. CALCULATOR (No API — Pure JavaScript Math)
+// 4. CALCULATOR
 // ═══════════════════════════════════════════════════════
 
 async function processCalculation(
-  phone: string, text: string, conv: Conversation
+  phone: string,
+  text: string,
+  conv: Conversation
 ): Promise<void> {
   const input = text.trim();
+  let sanitized = input
+    .replace(/x/gi, "*")
+    .replace(/%/g, "/100*")
+    .replace(/of/gi, "*")
+    .replace(/,/g, "");
 
-  // Strict safety: only allow digits, operators, spaces, dots, and parentheses
-  if (!/^[\d\s\+\-\*\/\.\(\)\%]+$/.test(input)) {
+  if (!/^[\d\s\+\-\*\/\.\(\)]+$/.test(sanitized)) {
     await sendTextMessage(
       phone,
-      "⚠️ Invalid expression. Please use only numbers and operators (+, -, *, /).\n\n_Example: 250 * 4_"
+      "⚠️ Invalid expression. Please enter numbers and operators (+, -, *, /):\n\n_Example: 5000 * 12 or (250000 - 45000) / 4_"
     );
     return;
   }
 
   try {
-    // Safe evaluation using Function constructor (no eval)
-    const sanitized = input.replace(/[^0-9\+\-\*\/\.\(\)\%\s]/g, "");
-    if (sanitized.length === 0) throw new Error("Empty");
-
-    const result = new Function(`"use strict"; return (${sanitized})`)();
+    const result = Function(`"use strict"; return (${sanitized})`)();
 
     if (typeof result !== "number" || !isFinite(result)) {
-      throw new Error("Invalid result");
+      throw new Error("Math error");
     }
 
     const formatted = Number.isInteger(result)
       ? result.toLocaleString("en-NG")
-      : result.toLocaleString("en-NG", { maximumFractionDigits: 6 });
+      : result.toLocaleString("en-NG", { maximumFractionDigits: 4 });
 
-    const msg =
-      `🧮 *Calculation Result*\n\n` +
-      `*Expression:* ${input}\n` +
-      `*Answer:* ${formatted}`;
-
-    await sendButtonMessage(phone, msg,
+    await sendButtonMessage(
+      phone,
+      `🧮 *Calculation Result:*\n\n*Expression:* \`${input}\`\n*Answer:* *${formatted}*`,
       [
         makeButton("tool_calc", "🧮 Calculate Again"),
-        makeButton("tool_back", "🧰 All Tools"),
+        makeButton("tools_all", "🧰 All Tools"),
+        makeButton("menu_home", "🏠 Main Menu"),
       ],
-      "Calculator"
+      "Quick Calculator"
     );
 
-    await updateConversation(conv.id, { current_state: "SHOWING_TOOLS", context_json: {} });
-  } catch (err) {
+    await updateConversation(conv.id, {
+      current_module: "TOOLS",
+      current_state: "SHOWING_TOOLS",
+      context_json: {},
+    });
+  } catch {
     await sendTextMessage(
       phone,
-      "❌ Could not solve that expression. Please check your math and try again.\n\n_Example: (250 + 150) * 4_"
+      "❌ Could not solve that expression. Please try a calculation like *5000 * 12* or *15000 / 3*:"
     );
   }
 }
 
 // ═══════════════════════════════════════════════════════
-// 5. CURRENCY CONVERTER (Free — ExchangeRate API)
+// 5. CURRENCY CONVERTER
 // ═══════════════════════════════════════════════════════
 
 async function processCurrencyConversion(
-  phone: string, text: string, conv: Conversation
+  phone: string,
+  text: string,
+  conv: Conversation
 ): Promise<void> {
   const input = text.trim().toUpperCase();
-  const parts = input.split(/\s+/);
+  const numMatch = input.match(/\d+(\.\d+)?/);
+  const amount = numMatch ? parseFloat(numMatch[0]) : 100;
 
-  if (parts.length < 3) {
-    await sendTextMessage(
-      phone,
-      "⚠️ Please use this format: *amount FROM TO*\n\n_Example: 1000 NGN USD_"
-    );
-    return;
-  }
+  let from = "USD";
+  let to = "NGN";
 
-  const amount = parseFloat(parts[0]);
-  const fromCurrency = parts[1];
-  const toCurrency = parts[2];
-
-  if (isNaN(amount) || amount <= 0) {
-    await sendTextMessage(phone, "⚠️ Please enter a valid amount greater than 0.");
-    return;
-  }
-
-  const validCurrencies = ["NGN", "USD", "GBP", "EUR", "GHS", "KES", "ZAR", "CAD", "INR"];
-  if (!validCurrencies.includes(fromCurrency) || !validCurrencies.includes(toCurrency)) {
-    await sendTextMessage(
-      phone,
-      `⚠️ Supported currencies: ${validCurrencies.join(", ")}\n\n_Example: 5000 NGN USD_`
-    );
-    return;
+  if (input.includes("GBP") || input.includes("£") || input.includes("POUND")) from = "GBP";
+  else if (input.includes("EUR") || input.includes("€") || input.includes("EURO")) from = "EUR";
+  else if (input.includes("NGN") && (input.includes("TO USD") || input.includes("IN USD"))) {
+    from = "NGN";
+    to = "USD";
   }
 
   try {
-    const resp = await fetch(
-      `https://open.er-api.com/v6/latest/${fromCurrency}`
-    );
+    const resp = await fetch(`https://open.er-api.com/v6/latest/${from}`);
     const data = await resp.json();
 
-    if (data.result !== "success" || !data.rates || !data.rates[toCurrency]) {
-      await sendTextMessage(phone, "⚠️ Could not fetch exchange rates. Please try again later.");
-      return;
-    }
+    if (data.result === "success" && data.rates && data.rates[to]) {
+      const rate = data.rates[to];
+      const converted = amount * rate;
 
-    const rate = data.rates[toCurrency];
+      await sendButtonMessage(
+        phone,
+        `💱 *Live Currency Conversion*\n\n` +
+        `• *Amount:* ${amount.toLocaleString()} ${from}\n` +
+        `• *Exchange Rate:* 1 ${from} = ${rate.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${to}\n` +
+        `• *Converted Total:* *${converted.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${to}*\n\n` +
+        `_Rates updated: ${new Date().toLocaleDateString("en-GB")}_`,
+        [
+          makeButton("tool_currency", "💱 Convert Again"),
+          makeButton("tools_all", "🧰 All Tools"),
+          makeButton("menu_home", "🏠 Main Menu"),
+        ],
+        "Currency Converter"
+      );
+    } else {
+      throw new Error("FX API issue");
+    }
+  } catch {
+    const fallbackRates: Record<string, number> = { USD: 1485, GBP: 1920, EUR: 1615 };
+    const rate = fallbackRates[from] || 1485;
     const converted = amount * rate;
 
-    const msg =
-      `💱 *Currency Conversion*\n\n` +
-      `*Amount:* ${amount.toLocaleString("en-NG")} ${fromCurrency}\n` +
-      `*Rate:* 1 ${fromCurrency} = ${rate.toFixed(4)} ${toCurrency}\n` +
-      `*Result:* ${converted.toLocaleString("en-NG", { maximumFractionDigits: 2 })} ${toCurrency}\n\n` +
-      `_Rates updated: ${data.time_last_update_utc || "Live"}_`;
-
-    await sendButtonMessage(phone, msg,
+    await sendButtonMessage(
+      phone,
+      `💱 *Indicative FX Conversion*\n\n` +
+      `• *Amount:* ${amount.toLocaleString()} ${from}\n` +
+      `• *Indicative Rate:* 1 ${from} ≈ ₦${rate.toLocaleString()} NGN\n` +
+      `• *Estimated Total:* *₦${converted.toLocaleString()} NGN*`,
       [
         makeButton("tool_currency", "💱 Convert Again"),
-        makeButton("tool_back", "🧰 All Tools"),
+        makeButton("tools_all", "🧰 All Tools"),
+        makeButton("menu_home", "🏠 Main Menu"),
       ],
       "Currency Converter"
     );
-
-    await updateConversation(conv.id, { current_state: "SHOWING_TOOLS", context_json: {} });
-  } catch (err) {
-    safeErrorLog("currencyTool", err);
-    await sendTextMessage(phone, "⚠️ Currency service is temporarily unavailable. Please try again later.");
-    await updateConversation(conv.id, { current_state: "SHOWING_TOOLS", context_json: {} });
   }
+
+  await updateConversation(conv.id, {
+    current_module: "TOOLS",
+    current_state: "SHOWING_TOOLS",
+    context_json: {},
+  });
 }
 
 // ═══════════════════════════════════════════════════════
-// 6. QR CODE GENERATOR (Free — QR Server API)
+// 6. QR CODE GENERATOR
 // ═══════════════════════════════════════════════════════
 
 async function processQRGeneration(
-  phone: string, text: string, conv: Conversation
+  phone: string,
+  text: string,
+  conv: Conversation
 ): Promise<void> {
   const input = text.trim();
-  if (input.length < 1) {
-    await sendTextMessage(phone, "⚠️ Please enter text or a URL to generate a QR code.");
+  if (!input) {
+    await sendTextMessage(phone, "⚠️ Please enter a URL or text to generate a QR code:");
     return;
   }
 
   try {
-    const encoded = encodeURIComponent(input);
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=512x512&data=${encoded}&format=png`;
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=512x512&data=${encodeURIComponent(input)}`;
 
-    await sendTextMessage(phone, `📱 *Generating QR Code for:*\n_${input.substring(0, 60)}${input.length > 60 ? "..." : ""}_`);
+    await sendTextMessage(phone, `⏳ *Generating QR Code for:* \`${input.substring(0, 50)}\`...`);
+    await sendImageMessage(phone, qrUrl, `QR Code: ${input.substring(0, 30)}`);
 
-    await sendImageMessage(phone, qrUrl, `QR Code: ${input.substring(0, 40)}`);
-
-    await sendButtonMessage(phone, "QR Code generated successfully! Scan with any camera app.",
+    await sendButtonMessage(
+      phone,
+      "✅ QR code generated! Scan using any smartphone camera.",
       [
         makeButton("tool_qr", "📱 Generate Another"),
-        makeButton("tool_back", "🧰 All Tools"),
+        makeButton("tools_all", "🧰 All Tools"),
+        makeButton("menu_home", "🏠 Main Menu"),
       ],
       "QR Generator"
     );
 
-    await updateConversation(conv.id, { current_state: "SHOWING_TOOLS", context_json: {} });
+    await updateConversation(conv.id, {
+      current_module: "TOOLS",
+      current_state: "SHOWING_TOOLS",
+      context_json: {},
+    });
   } catch (err) {
     safeErrorLog("qrTool", err);
-    await sendTextMessage(phone, "⚠️ QR generation failed. Please try again later.");
-    await updateConversation(conv.id, { current_state: "SHOWING_TOOLS", context_json: {} });
+    await sendTextMessage(phone, "⚠️ Failed to generate QR code. Please try again.");
+    await showToolsMenu(phone, conv.id);
   }
 }
