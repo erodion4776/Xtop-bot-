@@ -1,5 +1,5 @@
 // supabase/functions/whatsapp-webhook/modules/demos.ts
-// Phase 3 — Interactive Demo Centre (Routes "Get an Estimate" into Phase 3 Sales Qualification)
+// Phase 3 — Interactive Demo Centre (Directs Xtop Edu and Naijashop to live platforms)
 
 import {
   Contact,
@@ -156,6 +156,33 @@ export async function runDemoStep(
   demoSlug: string,
   stepNumber: number
 ): Promise<void> {
+  // ── REDIRECT XTOP EDU TO LIVE BOT (+2348073158887) ──
+  if (demoSlug.toLowerCase().includes("edu") || demoSlug.toLowerCase().includes("learning") || demoSlug === "demo_xtopedu") {
+    await sendTextMessage(
+      phone,
+      `🎓 *XTOP EDU — LIVE WHATSAPP DEMO*\n\n` +
+      `Experience our full, interactive automated lecture delivery system, attendance tracking, and CBT exam engine live on our official edu line:\n\n` +
+      `📱 *WhatsApp Line:* +2348073158887\n` +
+      `👉 *Direct Link:* https://wa.me/2348073158887?text=Hi%20Engr%20Ero\n\n` +
+      `_Tap the link above and send *Engr Ero* to start studying instantly!_`
+    );
+    await showDemoCompletion(phone, conversationId, demoSlug);
+    return;
+  }
+
+  // ── REDIRECT NAIJASHOP TO LIVE E-COMMERCE STORE ──
+  if (demoSlug.toLowerCase().includes("naijashop") || demoSlug === "demo_naijashop") {
+    await sendTextMessage(
+      phone,
+      `🛒 *NAIJASHOP — LIVE STORE DEMO*\n\n` +
+      `Explore our optimized e-commerce, automated ordering, and checkout experience live on our official domain:\n\n` +
+      `🌐 *Visit Store:* https://naijashop.com.ng\n\n` +
+      `_Add products to your cart, test order submissions, and explore the layout!_`
+    );
+    await showDemoCompletion(phone, conversationId, demoSlug);
+    return;
+  }
+
   const demo = await getDemoBySlug(demoSlug);
   if (!demo || !demo.steps_json) {
     await sendTextMessage(phone, "Demo not found.");
@@ -231,8 +258,8 @@ export async function showDemoCompletion(
   });
 
   const body =
-    `🎉 *Demo Simulation Complete!*\n\n` +
-    `Would you like an automated system like this built and deployed for your business?`;
+    `🎉 *Demo Completed!*\n\n` +
+    `Would you like a custom automated WhatsApp bot or online store deployed for your business/school?`;
 
   await sendButtonMessage(
     phone,
@@ -265,7 +292,6 @@ async function processDemoCompletedAction(
     return;
   }
 
-  // 1. GET AN ESTIMATE → Launch Phase 3 Structured Qualification
   if (
     n === "demo_act_estimate" ||
     n.includes("estimate") ||
@@ -283,7 +309,6 @@ async function processDemoCompletedAction(
     return;
   }
 
-  // 2. TALK TO AN AGENT → Genuine human escalation (Collect free text message)
   if (
     n === "demo_act_agent" ||
     n.includes("agent") ||
