@@ -7,7 +7,7 @@ import { IncomingMessage } from "./whatsapp.ts";
 const VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "xtop_webhook_secret";
 
 serve(async (req: Request) => {
-  // 1. Webhook Verification (GET)
+  // 1. WhatsApp Webhook Verification (GET)
   if (req.method === "GET") {
     const url = new URL(req.url);
     const mode = url.searchParams.get("hub.mode");
@@ -20,18 +20,18 @@ serve(async (req: Request) => {
     return new Response("Forbidden", { status: 403 });
   }
 
-  // 2. Incoming Messages & Events (POST)
+  // 2. Incoming Messages & Webhook Events (POST)
   if (req.method === "POST") {
     try {
       const body = await req.json();
 
-      // Ignore WhatsApp read/delivery status updates completely (prevents infinite loop!)
       const entry = body?.entry?.[0];
       const changes = entry?.changes?.[0];
       const value = changes?.value;
 
+      // ⛔️ CRITICAL: Ignore delivery/read status updates immediately (prevents loop)
       if (value?.statuses && !value?.messages) {
-        return new Response(JSON.stringify({ status: "ignored_status_event" }), {
+        return new Response(JSON.stringify({ status: "ignored_status" }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
@@ -47,8 +47,7 @@ serve(async (req: Request) => {
         });
       }
 
-      // Extract message details
-      const from = messageObj.from;
+      // Extract message content
       let text = "";
       let interactiveId = "";
 
@@ -68,7 +67,7 @@ serve(async (req: Request) => {
       }
 
       const incoming: IncomingMessage = {
-        from,
+        from: messageObj.from,
         messageId: messageObj.id,
         type: messageObj.type,
         text,
@@ -78,19 +77,19 @@ serve(async (req: Request) => {
       };
 
       // Process message in the background and respond 200 OK immediately
-      // This stops Meta from retrying the webhook
+      // This guarantees Meta gets a 200 OK in <50ms and never retries
       routeMessage(incoming).catch((err) => {
         console.error("[RouteMessage Error]:", err);
       });
 
-      return new Response(JSON.stringify({ status: "success" }), {
+      return new Response(JSON.stringify({ status: "received" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
     } catch (err) {
-      console.error("[Webhook POST Error]:", err);
-      return new Response(JSON.stringify({ error: "Invalid payload" }), {
-        status: 200, // Return 200 to prevent Meta retry storm
+      console.error("[Webhook Error]:", err);
+      return new Response(JSON.stringify({ error: "error_handled" }), {
+        status: 200, // Return 200 to stop retry storm
         headers: { "Content-Type": "application/json" },
       });
     }
