@@ -19,6 +19,7 @@ import { handleAgent, showAgentCategories } from "./modules/agents.ts";
 import { handleLearning } from "./modules/learning.ts";
 import { handleSales, showServiceTypeSelector } from "./modules/sales.ts";
 import { handleExams } from "./modules/exams.ts";
+import { handleTools, showToolsMenu } from "./modules/tools.ts"; // Added Tools module
 
 export async function routeMessage(incoming: IncomingMessage): Promise<void> {
   const phone = incoming.from;
@@ -32,8 +33,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     // If message is empty (e.g., status callback or unhandled interactive event)
     if (!text && !interactiveId) {
       if (conversation.current_module === "LEARNING") {
-        // Do NOT send the Xtop Retail menu to a learning student!
-        return;
+        return; // Ignore silently to avoid interrupting active classroom
       }
       await sendTextMessage(phone,
         "👋 Hello! Please send a text message or choose an option from the menu.\n\nType *menu* to view all services."
@@ -74,12 +74,12 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     // 3. GLOBAL INTERRUPTS (RETAIL STORE ONLY)
     // ══════════════════════════════════════════════════════
     if ((isGreeting(text) || isHelp(text) || text === "menu_home")
-        && !["SALES", "EXAMS", "LEARNING"].includes(conversation.current_module)) {
+        && !["SALES", "EXAMS", "LEARNING", "TOOLS"].includes(conversation.current_module)) {
       await showMainMenu(phone, conversation.id);
       return;
     }
 
-    if (isExit(text) && !["SALES", "EXAMS", "LEARNING"].includes(conversation.current_module)) {
+    if (isExit(text) && !["SALES", "EXAMS", "LEARNING", "TOOLS"].includes(conversation.current_module)) {
       await updateConversation(conversation.id, {
         current_module: "MAIN_MENU", current_state: "IDLE", context_json: {},
       });
@@ -90,7 +90,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     }
 
     if (isAgentRequest(text)
-        && !["AGENT", "SALES", "EXAMS", "LEARNING"].includes(conversation.current_module)) {
+        && !["AGENT", "SALES", "EXAMS", "LEARNING", "TOOLS"].includes(conversation.current_module)) {
       await showAgentCategories(phone, conversation.id);
       return;
     }
@@ -106,6 +106,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
         if (intent === "PRODUCTS") await showProductsList(phone, conversation.id);
         else if (intent === "SERVICES") await showServicesList(phone, conversation.id);
         else if (intent === "DEMOS") await showDemosList(phone, conversation.id);
+        else if (intent === "TOOLS") await showToolsMenu(phone, conversation.id);
         else if (intent === "MAGAZINE") await displayMagazine(phone, conversation.id);
         else if (intent === "AGENT") await showAgentCategories(phone, conversation.id);
         else if (intent === "SALES") await showServiceTypeSelector(phone, conversation.id);
@@ -127,6 +128,10 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
 
       case "DEMOS":
         await handleDemos(phone, text, contact, conversation);
+        break;
+
+      case "TOOLS":
+        await handleTools(phone, text, contact, conversation);
         break;
 
       case "MAGAZINE":
