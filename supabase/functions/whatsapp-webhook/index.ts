@@ -1,126 +1,100 @@
 // supabase/functions/whatsapp-webhook/index.ts
-// Complete Upgraded Webhook Gateway with Background Status Filtering & Rate Limiting
 
-import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { parseWebhookPayload, markAsRead } from "./whatsapp.ts";
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { routeMessage } from "./router.ts";
-import { safeErrorLog } from "./utils.ts";
+import { IncomingMessage } from "./whatsapp.ts";
 
-/**
- * Simple in-memory rate limiter.
- * Limits each phone number to MAX_REQUESTS within WINDOW_MS.
- * Edge Functions are stateless per invocation in production,
- * so this only protects within a single instance lifetime.
- * For production, consider a database-backed rate limiter.
- */
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_MAX = 30;       // max messages
-const RATE_LIMIT_WINDOW = 60000; // per 60 seconds
+const VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "xtop_webhook_secret";
 
-function isRateLimited(phone: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(phone);
-
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(phone, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
-    return false;
-  }
-
-  entry.count++;
-  if (entry.count > RATE_LIMIT_MAX) {
-    return true;
-  }
-  return false;
-}
-
-// Periodically clean up rate limit map (every 5 minutes)
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, val] of rateLimitMap.entries()) {
-    if (now > val.resetAt) {
-      rateLimitMap.delete(key);
-    }
-  }
-}, 300000);
-
-serve(async (req: Request): Promise<Response> => {
-  try {
+serve(async (req: Request) => {
+  // 1. Webhook Verification (GET)
+  if (req.method === "GET") {
     const url = new URL(req.url);
+    const mode = url.searchParams.get("hub.mode");
+    const token = url.searchParams.get("hub.verify_token");
+    const challenge = url.searchParams.get("hub.challenge");
 
-    // ══════════════════════════════════════════════════
-    // GET — Meta Webhook Verification
-    // ══════════════════════════════════════════════════
-    if (req.method === "GET") {
-      const mode = url.searchParams.get("hub.mode");
-      const token = url.searchParams.get("hub.verify_token");
-      const challenge = url.searchParams.get("hub.challenge");
+    if (mode === "subscribe" && token === VERIFY_TOKEN) {
+      return new Response(challenge, { status: 200 });
+    }
+    return new Response("Forbidden", { status: 403 });
+  }
 
-      const verifyToken = Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "xtop_verify_token";
+  // 2. Incoming Messages & Events (POST)
+  if (req.method === "POST") {
+    try {
+      const body = await req.json();
 
-      if (mode === "subscribe" && token === verifyToken) {
-        console.log("[webhook] Verification successful");
-        return new Response(challenge, {
+      // Ignore WhatsApp read/delivery status updates completely (prevents infinite loop!)
+      const entry = body?.entry?.[0];
+      const changes = entry?.changes?.[0];
+      const value = changes?.value;
+
+      if (value?.statuses && !value?.messages) {
+        return new Response(JSON.stringify({ status: "ignored_status_event" }), {
           status: 200,
-          headers: { "Content-Type": "text/plain" },
+          headers: { "Content-Type": "application/json" },
         });
       }
 
-      console.warn("[webhook] Verification failed — token mismatch");
-      return new Response("Forbidden", { status: 403 });
+      const messageObj = value?.messages?.[0];
+      const contactObj = value?.contacts?.[0];
+
+      if (!messageObj) {
+        return new Response(JSON.stringify({ status: "no_message" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      // Extract message details
+      const from = messageObj.from;
+      let text = "";
+      let interactiveId = "";
+
+      if (messageObj.type === "text") {
+        text = messageObj.text?.body || "";
+      } else if (messageObj.type === "interactive") {
+        if (messageObj.interactive?.type === "button_reply") {
+          interactiveId = messageObj.interactive.button_reply?.id || "";
+          text = messageObj.interactive.button_reply?.title || "";
+        } else if (messageObj.interactive?.type === "list_reply") {
+          interactiveId = messageObj.interactive.list_reply?.id || "";
+          text = messageObj.interactive.list_reply?.title || "";
+        }
+      } else if (messageObj.type === "button") {
+        interactiveId = messageObj.button?.payload || "";
+        text = messageObj.button?.text || "";
+      }
+
+      const incoming: IncomingMessage = {
+        from,
+        messageId: messageObj.id,
+        type: messageObj.type,
+        text,
+        interactiveId,
+        profileName: contactObj?.profile?.name || "Customer",
+        timestamp: messageObj.timestamp,
+      };
+
+      // Process message in the background and respond 200 OK immediately
+      // This stops Meta from retrying the webhook
+      routeMessage(incoming).catch((err) => {
+        console.error("[RouteMessage Error]:", err);
+      });
+
+      return new Response(JSON.stringify({ status: "success" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (err) {
+      console.error("[Webhook POST Error]:", err);
+      return new Response(JSON.stringify({ error: "Invalid payload" }), {
+        status: 200, // Return 200 to prevent Meta retry storm
+        headers: { "Content-Type": "application/json" },
+      });
     }
-
-    // ══════════════════════════════════════════════════
-    // POST — Incoming WhatsApp Messages & Events
-    // ══════════════════════════════════════════════════
-    if (req.method === "POST") {
-      // Parse body safely
-      let body: Record<string, unknown>;
-      try {
-        body = await req.json();
-      } catch {
-        return new Response("Bad Request", { status: 400 });
-      }
-
-      // Validate this is a WhatsApp webhook event
-      const objectType = body.object as string;
-      if (objectType !== "whatsapp_business_account") {
-        // Could be a status update or other event — acknowledge to prevent retries
-        return new Response("OK", { status: 200 });
-      }
-
-      // Parse the message
-      const incoming = parseWebhookPayload(body);
-
-      // CRITICAL: Safely ignore background delivery/read receipts, status callbacks,
-      // and empty events to prevent the bot from trigger-looping or sending menu links on idle!
-      if (!incoming || !incoming.from) {
-        return new Response("OK", { status: 200 });
-      }
-
-      // Rate limiting
-      if (isRateLimited(incoming.from)) {
-        console.warn(`[rate-limit] Phone ${incoming.from.slice(-4)} exceeded rate limit`);
-        return new Response("OK", { status: 200 });
-      }
-
-      // Mark as read (fire and forget)
-      markAsRead(incoming.messageId).catch(() => {});
-
-      // Route the message to our main router (with priorities for classroom isolation)
-      await routeMessage(incoming);
-
-      // Always return 200 to Meta to prevent retries
-      return new Response("OK", { status: 200 });
-    }
-
-    // ══════════════════════════════════════════════════
-    // Other methods
-    // ══════════════════════════════════════════════════
-    return new Response("Method Not Allowed", { status: 405 });
-
-  } catch (err) {
-    safeErrorLog("index:toplevel", err);
-    // Always return 200 to Meta to prevent retries
-    return new Response("OK", { status: 200 });
   }
+
+  return new Response("Method not allowed", { status: 405 });
 });
