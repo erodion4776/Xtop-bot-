@@ -65,10 +65,14 @@ export function isAgentRequest(text: string): boolean {
 
 /**
  * Detects the private Learning Centre access keyword.
- * Recognises: "engr ero", "engr. ero", "engr.ero", "engrero"
+ * Recognises: "engr ero", "engr. ero", "engr.ero", "engrero", "engr_ero"
  */
 export function isLearningKeyword(text: string): boolean {
-  const n = normalise(text).replace(/\./g, "").replace(/\s+/g, " ").trim();
+  const n = normalise(text)
+    .replace(/\./g, "")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   return n === "engr ero" || n === "engrero";
 }
 
@@ -116,13 +120,42 @@ export function detectIntent(text: string, interactiveId?: string): DetectedInte
   return "UNKNOWN";
 }
 
+/**
+ * Robust selection extractor that parses normal digits, prefix patterns,
+ * and WhatsApp's native Unicode emoji numbers (e.g. 1️⃣ to 🔟) globally.
+ */
 export function extractSelection(text: string): number | null {
-  const n = normalise(text);
-  const directMatch = n.match(/^#?(\d{1,2})$/);
-  if (directMatch) return parseInt(directMatch[1], 10);
+  if (!text) return null;
 
+  // Normalize Unicode emoji numbers to standard ASCII digits
+  const cleaned = text
+    .replace(/1️⃣|1\uFE0F\u20E3/g, "1")
+    .replace(/2️⃣|2\uFE0F\u20E3/g, "2")
+    .replace(/3️⃣|3\uFE0F\u20E3/g, "3")
+    .replace(/4️⃣|4\uFE0F\u20E3/g, "4")
+    .replace(/5️⃣|5\uFE0F\u20E3/g, "5")
+    .replace(/6️⃣|6\uFE0F\u20E3/g, "6")
+    .replace(/7️⃣|7\uFE0F\u20E3/g, "7")
+    .replace(/8️⃣|8\uFE0F\u20E3/g, "8")
+    .replace(/9️⃣|9\uFE0F\u20E3/g, "9")
+    .replace(/🔟/g, "10");
+
+  const n = normalise(cleaned);
+
+  // Match absolute standalone numbers (e.g. "1", "#2")
+  const directMatch = n.match(/^#?(\d{1,2})$/);
+  if (directMatch) {
+    const val = parseInt(directMatch[1], 10);
+    return isNaN(val) ? null : val;
+  }
+
+  // Match descriptive text patterns (e.g. "Option 3", "Select #4", "Option 4️⃣")
   const wordMatch = n.match(/(?:option|select|choose|number)\s*#?(\d{1,2})/);
-  if (wordMatch) return parseInt(wordMatch[1], 10);
+  if (wordMatch) {
+    const val = parseInt(wordMatch[1], 10);
+    return isNaN(val) ? null : val;
+  }
+
   return null;
 }
 
