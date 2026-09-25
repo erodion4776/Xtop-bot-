@@ -101,6 +101,9 @@ export interface AgentRequest {
   request_type: string;
   message: string;
   priority?: string;
+  lead_id?: string | null;
+  quotation_id?: string | null;
+  summary?: string | null;
   status?: string;
   created_at?: string;
   updated_at?: string | null;
@@ -108,12 +111,14 @@ export interface AgentRequest {
 }
 
 export interface PricingPackage {
-  id?: string;
+  id: string;
   service_type: string;
-  name: string;
+  package_name: string;
+  name?: string;
+  package_code: string;
   slug?: string;
   min_price: number;
-  max_price?: number;
+  max_price: number;
   features: string[];
   description?: string;
   delivery_timeline?: string;
@@ -121,6 +126,45 @@ export interface PricingPackage {
   metadata?: Record<string, unknown>;
   created_at?: string;
   updated_at?: string;
+  [key: string]: unknown;
+}
+
+export interface Lead {
+  id: string;
+  contact_id?: string | null;
+  service_type?: string | null;
+  business_name?: string | null;
+  industry?: string | null;
+  features?: string[] | null;
+  budget_range?: string | null;
+  bot_required?: boolean | null;
+  website_required?: boolean | null;
+  whatsapp_number_available?: string | null;
+  domain_available?: string | null;
+  hosting_available?: string | null;
+  estimated_min_price?: number | null;
+  estimated_max_price?: number | null;
+  selected_package_id?: string | null;
+  status?: string | null;
+  requirements_json?: Record<string, unknown> | null;
+  created_at?: string;
+  updated_at?: string | null;
+  [key: string]: unknown;
+}
+
+export interface Quotation {
+  id: string;
+  quotation_number: string;
+  lead_id?: string | null;
+  package_id?: string | null;
+  title?: string | null;
+  description?: string | null;
+  deliverables?: string[] | null;
+  min_price?: number | null;
+  max_price?: number | null;
+  status?: string | null;
+  created_at?: string;
+  updated_at?: string | null;
   [key: string]: unknown;
 }
 
@@ -294,7 +338,7 @@ export async function getServiceById(serviceId: string): Promise<Service | null>
 }
 
 // ==========================================
-// 6. Pricing Packages Functions
+// 6. Pricing Packages & Sales Leads
 // ==========================================
 export async function getPricingPackages(serviceType?: string): Promise<PricingPackage[]> {
   const sb = getSupabaseClient();
@@ -310,7 +354,168 @@ export async function getPricingPackages(serviceType?: string): Promise<PricingP
     safeErrorLog("getPricingPackages", error);
     return [];
   }
-  return (data as PricingPackage[]) || [];
+
+  return ((data || []).map((pkg: any) => ({
+    ...pkg,
+    package_name: pkg.package_name || pkg.name || "Standard Package",
+    package_code: pkg.package_code || pkg.slug?.toUpperCase() || "PKG-STD",
+  })) as PricingPackage[]);
+}
+
+export async function createLead(
+  contactId?: string,
+  serviceType?: string,
+  fields: Partial<Lead> = {}
+): Promise<Lead | null> {
+  const sb = getSupabaseClient();
+  const payload: Record<string, unknown> = {
+    contact_id: contactId,
+    service_type: serviceType,
+    status: "QUALIFYING",
+    ...fields,
+    created_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await sb
+    .from("leads")
+    .insert(payload)
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("createLead", error);
+    return {
+      id: crypto.randomUUID ? crypto.randomUUID() : `LEAD-${Date.now()}`,
+      contact_id: contactId || null,
+      service_type: serviceType || null,
+      ...fields,
+    } as Lead;
+  }
+  return data as Lead;
+}
+
+export async function updateLead(
+  leadId: string,
+  fields: Partial<Lead>
+): Promise<Lead | null> {
+  const sb = getSupabaseClient();
+  const payload: Record<string, unknown> = {
+    ...fields,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await sb
+    .from("leads")
+    .update(payload)
+    .eq("id", leadId)
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("updateLead", error);
+    return null;
+  }
+  return data as Lead;
+}
+
+export async function getActiveLeadForContact(
+  contactId?: string,
+  serviceType?: string
+): Promise<Lead | null> {
+  if (!contactId) return null;
+  const sb = getSupabaseClient();
+  let query = sb
+    .from("leads")
+    .select("*")
+    .eq("contact_id", contactId)
+    .in("status", ["QUALIFYING", "QUOTED", "PACKAGE_SELECTED"]);
+
+  if (serviceType) {
+    query = query.eq("service_type", serviceType);
+  }
+
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    safeErrorLog("getActiveLeadForContact", error);
+    return null;
+  }
+  return data as Lead;
+}
+
+export async function createQuotation(
+  leadId: string,
+  packageId?: string,
+  title?: string,
+  description?: string,
+  deliverables?: string[],
+  minPrice?: number,
+  maxPrice?: number
+): Promise<Quotation | null> {
+  const sb = getSupabaseClient();
+  const quoteNumber = `XTR-${Date.now().toString().slice(-6)}`;
+  const payload: Record<string, unknown> = {
+    quotation_number: quoteNumber,
+    lead_id: leadId || null,
+    package_id: packageId || null,
+    title,
+    description,
+    deliverables: deliverables || [],
+    min_price: minPrice,
+    max_price: maxPrice,
+    status: "DRAFT",
+    created_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await sb
+    .from("quotations")
+    .insert(payload)
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("createQuotation", error);
+    return {
+      id: crypto.randomUUID ? crypto.randomUUID() : `QUO-${Date.now()}`,
+      quotation_number: quoteNumber,
+      lead_id: leadId,
+      package_id: packageId,
+      title,
+      description,
+      deliverables,
+      min_price: minPrice,
+      max_price: maxPrice,
+      status: "DRAFT",
+    } as Quotation;
+  }
+  return data as Quotation;
+}
+
+export async function updateQuotation(
+  quotationId: string,
+  fields: Partial<Quotation>
+): Promise<Quotation | null> {
+  const sb = getSupabaseClient();
+  const payload: Record<string, unknown> = {
+    ...fields,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await sb
+    .from("quotations")
+    .update(payload)
+    .eq("id", quotationId)
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("updateQuotation", error);
+    return null;
+  }
+  return data as Quotation;
 }
 
 // ==========================================
@@ -340,7 +545,10 @@ export async function createAgentRequest(
   contactId?: string,
   requestType: string = "GENERAL_ENQUIRY",
   message: string = "",
-  priority: string = "NORMAL"
+  priority: string = "NORMAL",
+  leadId?: string,
+  quotationId?: string,
+  summary?: string
 ): Promise<AgentRequest | null> {
   const sb = getSupabaseClient();
   const payload: Record<string, unknown> = {
@@ -350,9 +558,10 @@ export async function createAgentRequest(
     status: "PENDING",
   };
 
-  if (contactId) {
-    payload.contact_id = contactId;
-  }
+  if (contactId) payload.contact_id = contactId;
+  if (leadId) payload.lead_id = leadId;
+  if (quotationId) payload.quotation_id = quotationId;
+  if (summary) payload.summary = summary;
 
   const { data, error } = await sb
     .from("agent_requests")
@@ -368,6 +577,9 @@ export async function createAgentRequest(
       request_type: requestType,
       message,
       priority,
+      lead_id: leadId || null,
+      quotation_id: quotationId || null,
+      summary: summary || null,
       status: "PENDING",
       created_at: new Date().toISOString(),
       updated_at: null,
