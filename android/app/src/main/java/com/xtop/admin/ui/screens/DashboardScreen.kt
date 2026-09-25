@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.xtop.admin.data.models.AuditLog
 import com.xtop.admin.data.repository.AdminRepository
@@ -40,8 +41,9 @@ fun DashboardScreen(navController: NavController) {
     var recentLogs by remember { mutableStateOf<List<AuditLog>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
 
-    LaunchedEffect(Unit) {
+    fun refreshDashboard() {
         scope.launch {
+            loading = true
             try {
                 val stats = DashboardRawStats(
                     studentCount = repo.getStudentCount(),
@@ -60,22 +62,34 @@ fun DashboardScreen(navController: NavController) {
         }
     }
 
+    LaunchedEffect(Unit) {
+        refreshDashboard()
+    }
+
     val navItems = listOf(
-        DashboardNavEntry("Courses & Content", "Manage courses, modules, lessons & materials", Icons.Default.MenuBook, "courses"),
-        DashboardNavEntry("Students", "Student profiles, registration & history", Icons.Default.People, "students"),
-        DashboardNavEntry("Attendance", "Record & view daily attendance", Icons.Default.EventAvailable, "attendance"),
-        DashboardNavEntry("Course Access", "Grant, block & manage student access", Icons.Default.Key, "course_access"),
-        DashboardNavEntry("Exams & CBT", "Create exams, question bank & CBT settings", Icons.Default.Quiz, "exams"),
-        DashboardNavEntry("Results", "View scores, calculate & release results", Icons.Default.Assessment, "results"),
-        DashboardNavEntry("AI Generator", "Generate lessons & CBT with AI (draft mode)", Icons.Default.AutoAwesome, "ai_generator"),
-        DashboardNavEntry("Manual Editor", "Create courses manually with image upload", Icons.Default.EditNote, "manual_course_editor"),
-        DashboardNavEntry("CSV Import", "Bulk import students, courses & questions", Icons.Default.UploadFile, "csv_import"),
-        DashboardNavEntry("Media Library", "Upload & manage images, PDFs & materials", Icons.Default.PhotoLibrary, "media_library"),
-        DashboardNavEntry("Bot Activity", "WhatsApp bot event logs & interactions", Icons.Default.SmartToy, "bot_activity"),
-        DashboardNavEntry("Analytics", "Academic performance & engagement stats", Icons.Default.BarChart, "analytics"),
-        DashboardNavEntry("Admin Users", "Manage admin roles & permissions", Icons.Default.AdminPanelSettings, "admin_users"),
-        DashboardNavEntry("Audit Logs", "Track all administrative actions", Icons.Default.ReceiptLong, "audit_logs"),
-        DashboardNavEntry("Settings", "System, WhatsApp, database & security", Icons.Default.Settings, "settings")
+        // RETAIL AUTOMATION / CRM
+        DashboardNavEntry("Retail CRM", "Clients, leads, quotes & live help tickets", Icons.Default.Storefront, "retail_dashboard"),
+        
+        // CORE E-LEARNING
+        DashboardNavEntry("Courses & Content", "Manage course modules, lessons & materials", Icons.Default.MenuBook, "courses"),
+        DashboardNavEntry("Students", "Student academic profiles & history records", Icons.Default.People, "students"),
+        DashboardNavEntry("Attendance", "Record, query & filter daily attendance", Icons.Default.EventAvailable, "attendance"),
+        DashboardNavEntry("Course Access", "Grant, block & manage student access codes", Icons.Default.Key, "course_access"),
+        DashboardNavEntry("Exams & CBT", "Exams, question banks & CBT configuration", Icons.Default.Quiz, "exams"),
+        DashboardNavEntry("Results", "Calculate, lock & release official grades", Icons.Default.Assessment, "results"),
+        
+        // AUTHORING TOOLS
+        DashboardNavEntry("AI Generator", "Draft course outlines, lessons & CBT with AI", Icons.Default.AutoAwesome, "ai_generator"),
+        DashboardNavEntry("Manual Course Editor", "Create academic modules & lessons manually", Icons.Default.EditNote, "manual_course_editor"),
+        DashboardNavEntry("CSV Bulk Import", "Import students, courses & questions from CSV", Icons.Default.UploadFile, "csv_import"),
+        DashboardNavEntry("Media Library", "Upload & host diagrams, PDFs & slides", Icons.Default.PhotoLibrary, "media_library"),
+        
+        // SYSTEM LOGS & CONFIGURATIONS
+        DashboardNavEntry("Bot Activity", "View live WhatsApp bot interaction logs", Icons.Default.SmartToy, "bot_activity"),
+        DashboardNavEntry("Analytics", "Academic progress & CBT pass statistics", Icons.Default.BarChart, "analytics"),
+        DashboardNavEntry("Admin Users", "Assign administrative roles & permissions", Icons.Default.AdminPanelSettings, "admin_users"),
+        DashboardNavEntry("Audit Logs", "Immutable trail of all administrative actions", Icons.Default.ReceiptLong, "audit_logs"),
+        DashboardNavEntry("Settings", "Configure API keys, WhatsApp, RLS & DB", Icons.Default.Settings, "settings")
     )
 
     Scaffold(
@@ -83,12 +97,17 @@ fun DashboardScreen(navController: NavController) {
             TopAppBar(
                 title = {
                     Column {
-                        Text("Xtop Bot Admin", fontWeight = FontWeight.Bold)
+                        Text("Xtop Bot Admin", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                         Text(
-                            "Engr. Ero E-Learning Hub",
+                            "Engr. Ero E-Learning & Retail Hub",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { refreshDashboard() }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
                 }
             )
@@ -102,7 +121,7 @@ fun DashboardScreen(navController: NavController) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                Text("Dashboard Overview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("E-Learning Overview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
 
             if (loading) {
@@ -113,7 +132,7 @@ fun DashboardScreen(navController: NavController) {
                 }
             } else {
                 val statCards = listOf(
-                    Triple("Students", "${rawStats.studentCount}", Icons.Default.People),
+                    Triple("Total Students", "${rawStats.studentCount}", Icons.Default.People),
                     Triple("Active Courses", "${rawStats.activeCourseCount}", Icons.Default.MenuBook),
                     Triple("Attendance Today", "${rawStats.todayAttendanceCount}", Icons.Default.EventAvailable),
                     Triple("CBT Attempts", "${rawStats.cbtAttemptCount}", Icons.Default.Quiz),
@@ -142,11 +161,11 @@ fun DashboardScreen(navController: NavController) {
 
             item {
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                Text("Recent Activity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Recent System Activity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
 
             if (recentLogs.isEmpty()) {
-                item { Text("No recent activity yet.", style = MaterialTheme.typography.bodySmall) }
+                item { Text("No administrative action logs registered yet.", style = MaterialTheme.typography.bodySmall) }
             } else {
                 items(recentLogs) { log ->
                     Card(modifier = Modifier.fillMaxWidth()) {
@@ -168,7 +187,7 @@ fun DashboardScreen(navController: NavController) {
 
             item {
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                Text("Modules", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Admin Modules", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
 
             items(navItems) { item ->
