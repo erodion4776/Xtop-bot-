@@ -53,7 +53,12 @@ class MainActivity : ComponentActivity() {
                         DashboardScreen(navController)
                     }
 
-                    // 2. COURSE GENERATION & CONTENT CREATION
+                    // 2. RETAIL & SALES CRM MODULES
+                    composable("retail_dashboard") {
+                        RetailDashboardScreen(navController)
+                    }
+
+                    // 3. COURSE GENERATION & CONTENT CREATION
                     composable("ai_generator") {
                         CourseAiGeneratorScreen(navController)
                     }
@@ -67,7 +72,7 @@ class MainActivity : ComponentActivity() {
                         MediaLibraryScreen(navController)
                     }
 
-                    // 3. COURSES & LESSON MANAGEMENT
+                    // 4. COURSES & LESSON MANAGEMENT
                     composable("courses") {
                         CourseListScreen(navController)
                     }
@@ -82,7 +87,7 @@ class MainActivity : ComponentActivity() {
                         CourseDetailScreen(navController, courseId)
                     }
 
-                    // 4. QUESTIONS & CBT EXAM CONFIGURATION
+                    // 5. QUESTIONS & CBT EXAM CONFIGURATION
                     composable("questions/{courseId}") { backStack ->
                         val courseId = backStack.arguments?.getString("courseId") ?: ""
                         QuestionBankScreen(navController, courseId)
@@ -99,7 +104,7 @@ class MainActivity : ComponentActivity() {
                         ExamsScreen(navController)
                     }
 
-                    // 5. ACADEMIC RECORDS & MANAGEMENT
+                    // 6. ACADEMIC RECORDS & MANAGEMENT
                     composable("students") {
                         StudentListScreen(navController)
                     }
@@ -113,7 +118,7 @@ class MainActivity : ComponentActivity() {
                         ResultsScreen(navController)
                     }
 
-                    // 6. LOGS, ANALYTICS & ADMIN CONTROLS
+                    // 7. LOGS, ANALYTICS & ADMIN CONTROLS
                     composable("bot_activity") {
                         BotActivityScreen(navController)
                     }
