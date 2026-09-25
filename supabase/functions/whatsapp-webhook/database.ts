@@ -247,6 +247,35 @@ export async function getStudentByPhone(phone: string): Promise<Student | null> 
   return data as Student;
 }
 
+export async function getOrCreateStudent(phone: string, fallbackName?: string | null): Promise<Student> {
+  const sb = getSupabaseClient();
+  const existing = await getStudentByPhone(phone);
+  if (existing) return existing;
+
+  const defaultName = fallbackName?.trim() || "Student";
+  const names = defaultName.split(" ");
+  const firstName = names[0] || "";
+  const lastName = names.slice(1).join(" ") || "";
+
+  const { data, error } = await sb
+    .from("students")
+    .insert({
+      phone,
+      name: defaultName,
+      first_name: firstName,
+      last_name: lastName,
+      status: "ACTIVE",
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("getOrCreateStudent", error);
+    throw error;
+  }
+  return data as Student;
+}
+
 export async function createStudentProfile(
   phone: string,
   name: string,
@@ -357,4 +386,130 @@ export async function recordAttendance(studentId: string): Promise<any> {
     return null;
   }
   return data;
+}
+
+// ==========================================
+// 7. Course & Exam Functions
+// ==========================================
+export async function getCourseByCode(courseCode: string): Promise<any> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("courses")
+    .select("*")
+    .eq("course_code", courseCode.trim().toUpperCase())
+    .maybeSingle();
+
+  if (error) {
+    safeErrorLog("getCourseByCode", error);
+    return null;
+  }
+  return data;
+}
+
+export async function getStudentCourseAccess(
+  studentId: string,
+  courseId: string,
+  courseStatus?: string
+): Promise<any> {
+  const sb = getSupabaseClient();
+
+  let { data, error } = await sb
+    .from("student_courses")
+    .select("*")
+    .eq("student_id", studentId)
+    .eq("course_id", courseId)
+    .maybeSingle();
+
+  if (error) {
+    safeErrorLog("getStudentCourseAccess (fetch)", error);
+    return null;
+  }
+
+  // Auto-enroll if missing
+  if (!data) {
+    const { data: inserted, error: insertError } = await sb
+      .from("student_courses")
+      .insert({
+        student_id: studentId,
+        course_id: courseId,
+        access_status: "ACTIVE",
+        progress: {
+          completed_lessons: [],
+          last_lesson_order: 0,
+        },
+      })
+      .select("*")
+      .single();
+
+    if (insertError) {
+      safeErrorLog("getStudentCourseAccess (insert)", insertError);
+      return null;
+    }
+    data = inserted;
+  }
+
+  return data;
+}
+
+export async function markLessonComplete(
+  studentCourseId: string,
+  lessonId: string,
+  lastLessonOrder: number
+): Promise<any> {
+  const sb = getSupabaseClient();
+
+  const { data: record, error: fetchErr } = await sb
+    .from("student_courses")
+    .select("progress")
+    .eq("id", studentCourseId)
+    .single();
+
+  if (fetchErr || !record) {
+    safeErrorLog("markLessonComplete (fetch)", fetchErr);
+    return null;
+  }
+
+  const progress = record.progress || { completed_lessons: [], last_lesson_order: 0 };
+  const completed = Array.isArray(progress.completed_lessons) ? progress.completed_lessons : [];
+
+  if (!completed.includes(lessonId)) {
+    completed.push(lessonId);
+  }
+
+  const updatedProgress = {
+    completed_lessons: completed,
+    last_lesson_order: Math.max(progress.last_lesson_order || 0, lastLessonOrder),
+  };
+
+  const { data, error } = await sb
+    .from("student_courses")
+    .update({
+      progress: updatedProgress,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", studentCourseId)
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("markLessonComplete (update)", error);
+    return null;
+  }
+  return data;
+}
+
+export async function getStudentExamAttempts(studentId: string, courseId: string): Promise<any[]> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("exam_attempts")
+    .select("*")
+    .eq("student_id", studentId)
+    .eq("course_id", courseId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    safeErrorLog("getStudentExamAttempts", error);
+    return [];
+  }
+  return data || [];
 }
