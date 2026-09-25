@@ -1,4 +1,5 @@
 // supabase/functions/whatsapp-webhook/modules/services.ts
+// Phase 2 — Services Portfolio & Direct Quotation Routing
 
 import {
   Contact,
@@ -63,11 +64,11 @@ export async function showServicesList(phone: string, conversationId: string): P
   });
 
   const rows = services.map((s, idx) =>
-    makeListRow(`srv_${s.slug}`, `${idx + 1}️⃣ ${s.name}`, s.price_range || "Custom Pricing")
+    makeListRow(`srv_${s.slug}`, `${idx + 1}️⃣ ${s.name}`.substring(0, 24), (s.price_range || "Custom Pricing").substring(0, 72))
   );
   rows.push(makeListRow("srv_back_menu", "🔙 Main Menu", "Return to home"));
 
-  const body = `🛠️ *Xtop Retail Technologies — Our Services*\n\nWe design, develop, and deploy enterprise-grade digital automation systems for businesses.\n\n👇 *Select a service to view deliverables and pricing:*`;
+  const body = `🛠️ *Xtop Retail Technologies — Our Services*\n\nWe design, develop, and deploy enterprise-grade digital automation systems for businesses and academic institutions.\n\n👇 *Select a service to view deliverables and pricing:*`;
 
   await sendListMessage(phone, body, "View Services", [
     { title: "Engineering & Automation", rows },
@@ -133,9 +134,9 @@ export async function showServiceDetail(phone: string, conversationId: string, s
     phone,
     message,
     [
-      makeButton(`srv_req_${service.slug}`, "Request Service"),
-      makeButton("srv_list_back", "All Services"),
-      makeButton("srv_menu_home", "Main Menu"),
+      makeButton(`srv_quote_${service.slug}`, "⚡ Instant Estimate"),
+      makeButton(`srv_req_${service.slug}`, "👤 Custom Proposal"),
+      makeButton("srv_list_back", "🔙 All Services"),
     ],
     service.name,
     "Xtop Retail Technologies"
@@ -157,12 +158,20 @@ async function processServiceDetailAction(
     return;
   }
 
-  if (n === "srv_menu_home" || n.includes("menu")) {
+  if (n === "srv_menu_home" || n.includes("main menu")) {
     await showMainMenu(phone, conversation.id);
     return;
   }
 
-  if (n.startsWith("srv_req_") || n.includes("request")) {
+  // 1. Instant Quote -> Launch Sales Calculator
+  if (n.startsWith("srv_quote_") || n.includes("estimate") || n.includes("quote")) {
+    const { showServiceTypeSelector } = await import("./sales.ts");
+    await showServiceTypeSelector(phone, conversation.id);
+    return;
+  }
+
+  // 2. Custom Proposal -> Route to Agent Request
+  if (n.startsWith("srv_req_") || n.includes("proposal") || n.includes("request")) {
     await updateConversation(conversation.id, {
       current_module: "AGENT",
       current_state: "COLLECT_MESSAGE",
@@ -170,7 +179,7 @@ async function processServiceDetailAction(
     });
     await sendTextMessage(
       phone,
-      `📋 *Quotation Request: ${slug.toUpperCase()}*\n\nPlease describe your business type and the key features you need built:\n\n_(An agent will prepare a structured proposal)_`
+      `📋 *Quotation Request: ${slug.toUpperCase()}*\n\nPlease describe your business type, timeline, and key requirements:\n\n_(An engineering consultant will prepare a tailored proposal)_`
     );
     return;
   }
