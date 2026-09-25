@@ -220,8 +220,33 @@ export async function getServiceById(serviceId: string): Promise<Service | null>
 }
 
 // ==========================================
-// 6. Student Functions
+// 6. Student & Attendance Functions
 // ==========================================
+export function isStudentProfileComplete(student: Student): boolean {
+  return !!(
+    student.name &&
+    student.matric_number &&
+    student.department &&
+    student.level &&
+    student.serial_number
+  );
+}
+
+export async function getStudentByPhone(phone: string): Promise<Student | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("students")
+    .select("*")
+    .eq("phone", phone)
+    .maybeSingle();
+
+  if (error) {
+    safeErrorLog("getStudentByPhone", error);
+    return null;
+  }
+  return data as Student;
+}
+
 export async function createStudentProfile(
   phone: string,
   name: string,
@@ -296,4 +321,40 @@ export async function updateStudentProfile(
     return null;
   }
   return data as Student;
+}
+
+export async function getTodayAttendance(studentId: string): Promise<any> {
+  const sb = getSupabaseClient();
+  const todayStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+
+  const { data, error } = await sb
+    .from("attendance")
+    .select("*")
+    .eq("student_id", studentId)
+    .gte("created_at", `${todayStr}T00:00:00.000Z`)
+    .lte("created_at", `${todayStr}T23:59:59.999Z`)
+    .maybeSingle();
+
+  if (error) {
+    safeErrorLog("getTodayAttendance", error);
+    return null;
+  }
+  return data;
+}
+
+export async function recordAttendance(studentId: string): Promise<any> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("attendance")
+    .insert({
+      student_id: studentId,
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("recordAttendance", error);
+    return null;
+  }
+  return data;
 }
