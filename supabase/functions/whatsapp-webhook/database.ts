@@ -107,6 +107,23 @@ export interface AgentRequest {
   [key: string]: unknown;
 }
 
+export interface PricingPackage {
+  id?: string;
+  service_type: string;
+  name: string;
+  slug?: string;
+  min_price: number;
+  max_price?: number;
+  features: string[];
+  description?: string;
+  delivery_timeline?: string;
+  is_active?: boolean;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
 export interface Student {
   id: string;
   phone: string;
@@ -277,7 +294,27 @@ export async function getServiceById(serviceId: string): Promise<Service | null>
 }
 
 // ==========================================
-// 6. Magazine Functions
+// 6. Pricing Packages Functions
+// ==========================================
+export async function getPricingPackages(serviceType?: string): Promise<PricingPackage[]> {
+  const sb = getSupabaseClient();
+  let query = sb.from("pricing_packages").select("*").eq("is_active", true);
+
+  if (serviceType) {
+    query = query.ilike("service_type", `%${serviceType}%`);
+  }
+
+  const { data, error } = await query.order("min_price", { ascending: true });
+
+  if (error) {
+    safeErrorLog("getPricingPackages", error);
+    return [];
+  }
+  return (data as PricingPackage[]) || [];
+}
+
+// ==========================================
+// 7. Magazine Functions
 // ==========================================
 export async function getActiveMagazineConfig(): Promise<MagazineConfig | null> {
   const sb = getSupabaseClient();
@@ -297,7 +334,7 @@ export async function getActiveMagazineConfig(): Promise<MagazineConfig | null> 
 }
 
 // ==========================================
-// 7. Agent & Support Requests
+// 8. Agent & Support Requests
 // ==========================================
 export async function createAgentRequest(
   contactId?: string,
@@ -325,7 +362,6 @@ export async function createAgentRequest(
 
   if (error) {
     safeErrorLog("createAgentRequest", error);
-    // Return fallback ticket so the user receives a confirmation
     return {
       id: crypto.randomUUID ? crypto.randomUUID() : `REQ-${Date.now()}`,
       contact_id: contactId || null,
@@ -341,7 +377,7 @@ export async function createAgentRequest(
 }
 
 // ==========================================
-// 8. Student & Attendance Functions
+// 9. Student & Attendance Functions
 // ==========================================
 export function isStudentProfileComplete(student: Student): boolean {
   return !!(
@@ -510,7 +546,7 @@ export async function recordAttendance(studentId: string): Promise<any> {
 }
 
 // ==========================================
-// 9. Course & Exam Functions
+// 10. Course & Exam Functions
 // ==========================================
 export async function getCourseByCode(courseCode: string): Promise<any> {
   const sb = getSupabaseClient();
@@ -546,7 +582,6 @@ export async function getStudentCourseAccess(
     return null;
   }
 
-  // Auto-enroll if missing
   if (!data) {
     const { data: inserted, error: insertError } = await sb
       .from("student_courses")
