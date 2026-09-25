@@ -1,5 +1,5 @@
 // supabase/functions/whatsapp-webhook/utils.ts
-// Complete Utility Layer (Phases 1–5)
+// Complete Utility Layer (Phases 1–6)
 // Deterministic NLU, sanitization, private keyword detection, safe logging
 
 // ═══════════════════════════════════════════════════════
@@ -82,13 +82,14 @@ export function isLearningKeyword(text: string): boolean {
 
 export type DetectedIntent =
   | "PRODUCTS" | "SERVICES" | "DEMOS" | "MAGAZINE"
-  | "AGENT" | "LEARNING" | "SALES" | "UNKNOWN";
+  | "AGENT" | "LEARNING" | "SALES" | "TOOLS" | "UNKNOWN";
 
 export function detectIntent(text: string, interactiveId?: string): DetectedIntent {
   if (interactiveId) {
     if (interactiveId === "menu_products" || interactiveId.startsWith("prod_")) return "PRODUCTS";
     if (interactiveId === "menu_services" || interactiveId.startsWith("srv_")) return "SERVICES";
     if (interactiveId === "menu_demos" || interactiveId.startsWith("demo_")) return "DEMOS";
+    if (interactiveId === "menu_tools" || interactiveId.startsWith("tool_")) return "TOOLS";
     if (interactiveId === "menu_magazine" || interactiveId.startsWith("mag_")) return "MAGAZINE";
     if (interactiveId === "menu_agent" || interactiveId.startsWith("agt_")) return "AGENT";
     if (interactiveId === "menu_learning") return "LEARNING";
@@ -101,8 +102,9 @@ export function detectIntent(text: string, interactiveId?: string): DetectedInte
       1: "PRODUCTS",
       2: "SERVICES",
       3: "DEMOS",
-      4: "MAGAZINE",
-      5: "AGENT",
+      4: "TOOLS",
+      5: "MAGAZINE",
+      6: "AGENT",
     };
     if (numMap[num]) return numMap[num];
   }
@@ -114,6 +116,7 @@ export function detectIntent(text: string, interactiveId?: string): DetectedInte
   if (n.includes("product") || n.includes("xtopedu") || n.includes("naijashop")) return "PRODUCTS";
   if (n.includes("service") || n.includes("website") || n.includes("bot") || n.includes("erp") || n.includes("automation")) return "SERVICES";
   if (n.includes("demo") || n.includes("sample") || n.includes("test")) return "DEMOS";
+  if (n.includes("tool") || n.includes("weather") || n.includes("calculator") || n.includes("news") || n.includes("currency") || n.includes("qr")) return "TOOLS";
   if (n.includes("magazine") || n.includes("catalog") || n.includes("brochure") || n.includes("pdf")) return "MAGAZINE";
   if (isAgentRequest(text)) return "AGENT";
 
