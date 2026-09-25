@@ -68,6 +68,21 @@ export interface Product {
   [key: string]: unknown;
 }
 
+export interface Service {
+  id?: string;
+  name: string;
+  slug: string;
+  description?: string;
+  price_range?: string;
+  features?: string[];
+  category?: string;
+  is_active?: boolean;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
 export interface Student {
   id: string;
   phone: string;
@@ -157,7 +172,55 @@ export async function getProductById(productId: string): Promise<Product | null>
 }
 
 // ==========================================
-// 5. Student Functions
+// 5. Services Functions
+// ==========================================
+export async function getActiveServices(): Promise<Service[]> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("services")
+    .select("*")
+    .eq("is_active", true)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    safeErrorLog("getActiveServices", error);
+    return [];
+  }
+  return (data as Service[]) || [];
+}
+
+export async function getServiceBySlug(slug: string): Promise<Service | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("services")
+    .select("*")
+    .eq("slug", slug)
+    .single();
+
+  if (error) {
+    safeErrorLog(`getServiceBySlug(${slug})`, error);
+    return null;
+  }
+  return data as Service;
+}
+
+export async function getServiceById(serviceId: string): Promise<Service | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("services")
+    .select("*")
+    .eq("id", serviceId)
+    .single();
+
+  if (error) {
+    safeErrorLog("getServiceById", error);
+    return null;
+  }
+  return data as Service;
+}
+
+// ==========================================
+// 6. Student Functions
 // ==========================================
 export async function createStudentProfile(
   phone: string,
