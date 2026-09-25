@@ -297,6 +297,9 @@ export async function updateConversation(
   return data as Conversation;
 }
 
+// ==========================================
+// 4. Message Storage (Fixed for missing 'body' column)
+// ==========================================
 export async function storeMessage(
   contactId?: string,
   direction: "INBOUND" | "OUTBOUND" = "INBOUND",
@@ -306,17 +309,57 @@ export async function storeMessage(
 ): Promise<any> {
   const sb = getSupabaseClient();
   try {
-    const { data, error } = await sb.from("messages").insert({
-      contact_id: contactId || null,
+    // First attempt: try inserting with all known column names
+    const payload: Record<string, unknown> = {
       direction,
       message_type: messageType,
       body: body || null,
+      content: body || null,
+      text: body || null,
       whatsapp_message_id: whatsappMessageId || null,
       created_at: new Date().toISOString(),
-    }).select("*").maybeSingle();
+    };
+
+    if (contactId) {
+      payload.contact_id = contactId;
+    }
+
+    const { data, error } = await sb
+      .from("messages")
+      .insert(payload)
+      .select("*")
+      .maybeSingle();
 
     if (error) {
+      // If PGRST204 (column not found), retry with minimal safe columns
+      if (error.code === "PGRST204") {
+        const minimalPayload: Record<string, unknown> = {
+          contact_id: contactId || null,
+          direction,
+          message_type: messageType,
+          whatsapp_message_id: whatsappMessageId || null,
+        };
+
+        // Try each possible text column name
+        const textColumns = ["body", "content", "text", "message"];
+        for (const col of textColumns) {
+          minimalPayload[col] = body || null;
+        }
+
+        const { data: retryData, error: retryError } = await sb
+          .from("messages")
+          .insert(minimalPayload)
+          .select("*")
+          .maybeSingle();
+
+        if (retryError) {
+          safeErrorLog("storeMessage (retry)", retryError);
+          return null;
+        }
+        return retryData;
+      }
       safeErrorLog("storeMessage", error);
+      return null;
     }
     return data;
   } catch (err) {
@@ -326,7 +369,7 @@ export async function storeMessage(
 }
 
 // ==========================================
-// 4. Products Functions
+// 5. Products Functions
 // ==========================================
 export async function getActiveProducts(): Promise<Product[]> {
   const sb = getSupabaseClient();
@@ -374,7 +417,7 @@ export async function getProductById(productId: string): Promise<Product | null>
 }
 
 // ==========================================
-// 5. Services Functions
+// 6. Services Functions
 // ==========================================
 export async function getActiveServices(): Promise<Service[]> {
   const sb = getSupabaseClient();
@@ -422,7 +465,7 @@ export async function getServiceById(serviceId: string): Promise<Service | null>
 }
 
 // ==========================================
-// 6. Demos Functions
+// 7. Demos Functions
 // ==========================================
 export async function getActiveDemos(): Promise<Demo[]> {
   const sb = getSupabaseClient();
@@ -455,7 +498,7 @@ export async function getDemoBySlug(slug: string): Promise<Demo | null> {
 }
 
 // ==========================================
-// 7. Pricing Packages & Sales Leads
+// 8. Pricing Packages & Sales Leads
 // ==========================================
 export async function getPricingPackages(serviceType?: string): Promise<PricingPackage[]> {
   const sb = getSupabaseClient();
@@ -636,7 +679,7 @@ export async function updateQuotation(
 }
 
 // ==========================================
-// 8. Magazine Functions
+// 9. Magazine Functions
 // ==========================================
 export async function getActiveMagazineConfig(): Promise<MagazineConfig | null> {
   const sb = getSupabaseClient();
@@ -656,7 +699,7 @@ export async function getActiveMagazineConfig(): Promise<MagazineConfig | null> 
 }
 
 // ==========================================
-// 9. Agent & Support Requests
+// 10. Agent & Support Requests
 // ==========================================
 export async function createAgentRequest(
   contactId?: string,
@@ -706,7 +749,7 @@ export async function createAgentRequest(
 }
 
 // ==========================================
-// 10. Student & Attendance Functions
+// 11. Student & Attendance Functions
 // ==========================================
 export function isStudentProfileComplete(student: Student): boolean {
   return !!(
@@ -840,7 +883,7 @@ export async function updateStudentProfile(
 
 export async function getTodayAttendance(studentId: string): Promise<any> {
   const sb = getSupabaseClient();
-  const todayStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+  const todayStr = new Date().toISOString().split("T")[0];
 
   const { data, error } = await sb
     .from("attendance")
@@ -875,7 +918,7 @@ export async function recordAttendance(studentId: string): Promise<any> {
 }
 
 // ==========================================
-// 11. Course & Exam Functions
+// 12. Course & Exam Functions
 // ==========================================
 export async function getCourseByCode(courseCode: string): Promise<any> {
   const sb = getSupabaseClient();
