@@ -1,332 +1,450 @@
-// supabase/functions/whatsapp-webhook/modules/demos.ts
-// Phase 3 — Interactive Demo Centre (Directs all demos to live platforms & WhatsApp lines)
+// supabase/functions/whatsapp-webhook/modules/exams.ts
+// Complete CBT Examination Module with timed session tracking & 3-Attempt Retake Limits
 
 import {
-  Contact,
-  Conversation,
-  getActiveDemos,
-  getDemoBySlug,
-  updateConversation,
+  Contact, Conversation, updateConversation,
+  getSupabaseClient,
 } from "../database.ts";
 import {
-  sendButtonMessage,
-  sendListMessage,
-  sendTextMessage,
+  sendButtonMessage, sendTextMessage,
   makeButton,
-  makeListRow,
 } from "../whatsapp.ts";
-import { extractSelection, normalise, isBack } from "../utils.ts";
-import { showMainMenu } from "./main-menu.ts";
-import { showServiceTypeSelector } from "./sales.ts";
+import { normalise, isBack } from "../utils.ts";
+import { showCourseMenu, LearningCtx } from "./learning.ts";
+import { initializeExamPayment, verifyExamPayment } from "../paystack.ts";
 
-export async function handleDemos(
-  phone: string,
-  text: string,
-  contact: Contact,
-  conversation: Conversation
+const supabase = getSupabaseClient();
+
+export interface ExamCtx extends LearningCtx {
+  examId?: string;
+  paymentReference?: string;
+  questions?: any[];
+  currentExamQIndex?: number;
+  examScore?: number;
+  examAnswers?: Array<{ question_id: string; selected_option: string; correct_option: string; is_correct: boolean }>;
+  attemptId?: string;
+  examDurationMinutes?: number;
+  examStartTime?: string;
+  attemptsCount?: number;
+}
+
+function getExamCtx(conv: Conversation): ExamCtx {
+  return (conv.context_json || {}) as ExamCtx;
+}
+
+async function saveExamCtx(convId: string, ctx: ExamCtx, state: string): Promise<void> {
+  await updateConversation(convId, {
+    current_module: "EXAMS",
+    current_state: state,
+    context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// 1. EXAM ENTRY, RETAKE CHECK, & ATTEMPT LIMITS
+// ═══════════════════════════════════════════════════════
+
+export async function startExamEntry(
+  phone: string, conversationId: string, learningCtx: LearningCtx
 ): Promise<void> {
-  const state = conversation.current_state;
-  const context = (conversation.context_json || {}) as {
-    selectedDemoSlug?: string;
-    currentStep?: number;
+  const studentId = learningCtx.studentId;
+  const courseId = learningCtx.courseId;
+  const courseCode = learningCtx.courseCode || "Course";
+
+  if (!studentId || !courseId) {
+    await sendTextMessage(phone, "⚠️ Unable to load exam. Please enter your course code again.");
+    await showCourseMenu(phone, conversationId, learningCtx);
+    return;
+  }
+
+  // 1. Fetch CBT Questions
+  const { data: questions } = await supabase
+    .from("course_questions")
+    .select("*")
+    .eq("course_id", courseId)
+    .eq("status", "ACTIVE")
+    .order("question_order", { ascending: true });
+
+  if (!questions || questions.length === 0) {
+    await sendTextMessage(phone, `📝 No CBT exam questions have been published for *${courseCode}* yet.`);
+    await showCourseMenu(phone, conversationId, learningCtx);
+    return;
+  }
+
+  // 2. Fetch Completed Attempts Count
+  const { data: attempts } = await supabase
+    .from("exam_attempts")
+    .select("*")
+    .eq("student_id", studentId)
+    .eq("course_id", courseId)
+    .not("submitted_at", "is", null);
+
+  const attemptsCount = attempts?.length || 0;
+
+  // Rule: Strict 3 Attempt Maximum Limit
+  if (attemptsCount >= 3) {
+    const limitMessage =
+      `⚠️ *EXAM ATTEMPT LIMIT REACHED*\n\n` +
+      `Course: *${courseCode}*\n` +
+      `You have already attempted this exam *3 times* (the maximum allowable limit).\n\n` +
+      `To request an additional attempt override, please contact *Engr. Ero* directly:\n\n` +
+      `📞 *Call/WhatsApp:* +2348073158887\n` +
+      `👉 *Direct Link:* https://wa.me/2348073158887?text=Hi%20Engr%20Ero,%20I%20have%20reached%20my%20CBT%20limit%20for%20${courseCode}`;
+
+    await sendTextMessage(phone, limitMessage);
+    await showCourseMenu(phone, conversationId, learningCtx);
+    return;
+  }
+
+  const examCtx: ExamCtx = {
+    ...learningCtx,
+    questions,
+    attemptsCount,
+    examDurationMinutes: 30 // 30-minute exam timer
   };
 
-  if (isBack(text) && state !== "SHOWING_LIST") {
-    await showDemosList(phone, conversation.id);
+  // 3. Handle Retake Warning (Attempt 2 or 3)
+  if (attemptsCount > 0) {
+    await saveExamCtx(conversationId, examCtx, "WAITING_RETAKE_CONFIRMATION");
+
+    const retakeWarning =
+      `⚠️ *EXAM RETAKE WARNING (Attempt ${attemptsCount + 1} of 3)*\n\n` +
+      `Retaking this exam will *CANCEL & OVERWRITE* your current score. Only your most recent score will stand.\n\n` +
+      `Each new attempt requires a new *₦1,000.00* access fee payment.\n\n` +
+      `Are you sure you want to proceed and generate a new payment link?`;
+
+    await sendButtonMessage(
+      phone,
+      retakeWarning,
+      [
+        makeButton("cbt_accept_retake", "Yes, I Accept"),
+        makeButton("cbt_cancel_pay", "No, Cancel")
+      ],
+      "Retake Confirmation"
+    );
+    return;
+  }
+
+  // First attempt flow (no retake warning)
+  await handlePaywallGate(phone, conversationId, examCtx);
+}
+
+// ═══════════════════════════════════════════════════════
+// 2. INCREMENTAL ATTEMPT PAYWALL GATE
+// ═══════════════════════════════════════════════════════
+
+async function handlePaywallGate(
+  phone: string, conversationId: string, ctx: ExamCtx
+): Promise<void> {
+  const studentId = ctx.studentId!;
+  const courseId = ctx.courseId!;
+  const courseCode = ctx.courseCode || "Course";
+  const attemptsCount = ctx.attemptsCount || 0;
+
+  // Count successful payment transactions
+  const { data: payments } = await supabase
+    .from("payment_transactions")
+    .select("id")
+    .eq("student_id", studentId)
+    .eq("course_id", courseId)
+    .eq("status", "SUCCESSFUL");
+
+  const paymentsCount = payments?.length || 0;
+
+  // If paymentsCount <= attemptsCount, a new payment is required for this attempt
+  if (paymentsCount <= attemptsCount) {
+    const payment = await initializeExamPayment(studentId, courseId, courseCode, phone);
+
+    if (!payment) {
+      await sendTextMessage(phone, "⚠️ Payment gateway is temporarily busy. Please try again shortly.");
+      await showCourseMenu(phone, conversationId, ctx);
+      return;
+    }
+
+    const updatedCtx = {
+      ...ctx,
+      step: "WAITING_PAYMENT_VERIFICATION",
+      paymentReference: payment.reference
+    };
+
+    await saveExamCtx(conversationId, updatedCtx, "WAITING_PAYMENT_VERIFICATION");
+
+    const payMessage =
+      `💳 *CBT EXAM ACCESS FEE (Attempt ${attemptsCount + 1}/3)*\n\n` +
+      `Course: *${courseCode} — ${ctx.courseName || ""}*\n` +
+      `Access Fee: *₦1,000.00*\n\n` +
+      `👇 *Click the secure link below to make payment:* \n` +
+      `${payment.paymentUrl}\n\n` +
+      `_After completing payment, tap *Verify Payment* below to unlock your exam immediately:_`;
+
+    await sendButtonMessage(
+      phone,
+      payMessage,
+      [
+        makeButton("cbt_verify_pay", "✅ Verify Payment"),
+        makeButton("cbt_cancel_pay", "📋 Back to Course")
+      ],
+      "Paystack Secure Checkout"
+    );
+    return;
+  }
+
+  // Already paid for this current attempt -> proceed
+  await launchExam(phone, conversationId, ctx);
+}
+
+// ═══════════════════════════════════════════════════════
+// 3. EXAM MODULE EVENT ROUTER
+// ═══════════════════════════════════════════════════════
+
+export async function handleExams(
+  phone: string, text: string, contact: Contact, conv: Conversation
+): Promise<void> {
+  const n = normalise(text);
+  const state = conv.current_state;
+  const ctx = getExamCtx(conv);
+
+  // Global cancel/back handlers
+  if (n === "cbt_cancel_pay" || isBack(text)) {
+    await updateConversation(conv.id, { current_module: "LEARNING", current_state: "COURSE_MENU" });
+    await showCourseMenu(phone, conv.id, ctx);
     return;
   }
 
   switch (state) {
-    case "ENTRY":
-    case "SHOWING_LIST":
-      await processDemoSelection(phone, text, conversation);
+    case "WAITING_RETAKE_CONFIRMATION":
+      if (n === "cbt_accept_retake" || n.includes("accept") || n.includes("yes")) {
+        await handlePaywallGate(phone, conv.id, ctx);
+      } else {
+        await showCourseMenu(phone, conv.id, ctx);
+      }
       break;
 
-    case "RUNNING_STEP":
-      await processDemoStepProgression(phone, text, contact, conversation, context);
+    case "WAITING_PAYMENT_VERIFICATION":
+      await handlePaymentVerification(phone, text, conv, ctx);
       break;
 
-    case "DEMO_COMPLETED":
-      await processDemoCompletedAction(phone, text, contact, conversation, context.selectedDemoSlug);
+    case "IN_EXAM":
+      await handleExamAnswer(phone, text, conv, ctx);
       break;
 
     default:
-      await showDemosList(phone, conversation.id);
+      await showCourseMenu(phone, conv.id, ctx);
       break;
   }
 }
 
-export async function showDemosList(phone: string, conversationId: string): Promise<void> {
-  const demos = await getActiveDemos();
+// ═══════════════════════════════════════════════════════
+// 4. PAYMENT VERIFICATION HANDLER
+// ═══════════════════════════════════════════════════════
 
-  if (demos.length === 0) {
-    await sendTextMessage(phone, "🎮 Demos are currently being updated. Please check back shortly.");
-    await showMainMenu(phone, conversationId);
-    return;
-  }
-
-  await updateConversation(conversationId, {
-    current_module: "DEMOS",
-    current_state: "SHOWING_LIST",
-    context_json: {},
-  });
-
-  const section1Demos = demos.slice(0, 5);
-  const section2Demos = demos.slice(5, 10);
-
-  const shortTitles: Record<string, string> = {
-    demo_xtopedu: "1️⃣ XtopEdu Bot",
-    demo_naijashop: "2️⃣ NaijaShop Store",
-    demo_tutorial: "3️⃣ Edvenia (WAEC/JAMB)",
-    demo_custom_bot: "4️⃣ BarPrep AI Tutor",
-    demo_customer_service: "5️⃣ Customer Support",
-    demo_sales_bot: "6️⃣ Sales & Deals Bot",
-    demo_booking: "7️⃣ Appointment Bot",
-    demo_real_estate: "8️⃣ Real Estate Bot",
-    demo_quotation: "9️⃣ Instant Quote Bot",
-    demo_ngo: "🔟 Custom App Dev",
-  };
-
-  const section1Rows = section1Demos.map((d) =>
-    makeListRow(`demo_sel_${d.slug}`, (shortTitles[d.slug] || d.name).substring(0, 24), d.description.substring(0, 70))
-  );
-
-  const section2Rows = section2Demos.map((d) =>
-    makeListRow(`demo_sel_${d.slug}`, (shortTitles[d.slug] || d.name).substring(0, 24), d.description.substring(0, 70))
-  );
-
-  const body =
-    `🎮 *Xtop Retail Technologies — Live Demos & Products*\n\n` +
-    `Experience our live web platforms, AI bots, and custom applications:\n\n` +
-    `_Select any platform below to test or launch:_`;
-
-  await sendListMessage(phone, body, "Choose Demo", [
-    { title: "Live Platforms & Education", rows: section1Rows },
-    { title: "Commercial & Custom Solutions", rows: section2Rows },
-  ]);
-}
-
-async function processDemoSelection(
-  phone: string,
-  text: string,
-  conversation: Conversation
+async function handlePaymentVerification(
+  phone: string, text: string, conv: Conversation, ctx: ExamCtx
 ): Promise<void> {
   const n = normalise(text);
+  const ref = ctx.paymentReference;
 
-  if (n === "demo_back_menu" || n.includes("main menu")) {
-    await showMainMenu(phone, conversation.id);
+  if (n === "cbt_verify_pay" || n.includes("verify") || n.includes("paid") || n.includes("retry")) {
+    if (!ref) {
+      await sendTextMessage(phone, "No active payment session found. Restarting exam entry...");
+      await startExamEntry(phone, conv.id, ctx);
+      return;
+    }
+
+    await sendTextMessage(phone, "⏳ Verifying payment with Paystack, please wait...");
+    const verified = await verifyExamPayment(ref);
+
+    if (verified) {
+      await sendTextMessage(phone, "🎉 *Payment Confirmed!* Access unlocked.");
+      await launchExam(phone, conv.id, ctx);
+    } else {
+      await sendButtonMessage(
+        phone,
+        "⚠️ *Payment Not Confirmed*\n\nIf you just completed the payment, please wait 5 seconds and tap *Verify Payment* again.",
+        [
+          makeButton("cbt_verify_pay", "🔄 Retry Verification"),
+          makeButton("cbt_cancel_pay", "📋 Back to Course")
+        ],
+        "Paystack Verification"
+      );
+    }
     return;
   }
 
-  const demos = await getActiveDemos();
-  let selected = demos.find((d) => n === `demo_sel_${d.slug}` || n.includes(d.slug) || n.includes(normalise(d.name)));
+  await sendTextMessage(phone, "Please tap *Verify Payment* once your ₦1,000 checkout transaction is completed.");
+}
 
-  if (!selected) {
-    const num = extractSelection(text);
-    if (num && num >= 1 && num <= demos.length) {
-      selected = demos[num - 1];
+// ═══════════════════════════════════════════════════════
+// 5. CBT EXAM ENGINE WITH TIMER VALIDATION
+// ═══════════════════════════════════════════════════════
+
+async function launchExam(
+  phone: string, conversationId: string, ctx: ExamCtx
+): Promise<void> {
+  const studentId = ctx.studentId!;
+  const courseId = ctx.courseId!;
+  const questions = ctx.questions || [];
+  const attemptsCount = ctx.attemptsCount || 0;
+
+  // Insert Attempt Record with Start Time
+  const startTime = new Date().toISOString();
+  const { data: attempt } = await supabase.from("exam_attempts").insert({
+    student_id: studentId,
+    course_id: courseId,
+    score: 0,
+    total_marks: questions.length,
+    percentage: 0,
+    pass_status: "PENDING",
+    is_locked: false,
+    started_at: startTime
+  }).select().single();
+
+  const examCtx: ExamCtx = {
+    ...ctx,
+    step: "IN_EXAM",
+    attemptId: attempt?.id,
+    currentExamQIndex: 0,
+    examScore: 0,
+    examAnswers: [],
+    examStartTime: startTime
+  };
+
+  await saveExamCtx(conversationId, examCtx, "IN_EXAM");
+
+  await sendTextMessage(
+    phone,
+    `⏱️ *CBT EXAMINATION STARTED: ${ctx.courseCode}*\n` +
+    `Attempt: *${attemptsCount + 1} of 3*\n` +
+    `Time Limit: *${ctx.examDurationMinutes} Minutes*\n` +
+    `Total Questions: *${questions.length}*\n\n` +
+    `_Answer carefully. If the timer exceeds ${ctx.examDurationMinutes} minutes, your exam will auto-submit._`
+  );
+
+  await sendExamQuestionPrompt(phone, questions[0], 0, questions.length);
+}
+
+async function handleExamAnswer(
+  phone: string, text: string, conv: Conversation, ctx: ExamCtx
+): Promise<void> {
+  const questions = ctx.questions || [];
+  const qIdx = ctx.currentExamQIndex || 0;
+  const activeQ = questions[qIdx];
+
+  if (!activeQ) {
+    await completeAndSubmitExam(phone, conv.id, ctx);
+    return;
+  }
+
+  // 1. ENFORCE TIMEOUT CHECKS (E.g. 30 Minutes)
+  if (ctx.examStartTime) {
+    const startTimeMs = new Date(ctx.examStartTime).getTime();
+    const nowMs = Date.now();
+    const limitMs = (ctx.examDurationMinutes || 30) * 60 * 1000;
+
+    if (nowMs > startTimeMs + limitMs) {
+      await sendTextMessage(phone, "⏳ *TIME EXPIRED!*\nThe 30-minute exam time limit has been exceeded. Grading what you have completed...");
+      await completeAndSubmitExam(phone, conv.id, ctx);
+      return;
     }
   }
 
-  if (!selected) {
-    await sendTextMessage(phone, "Please select one of the available demo bots from the list.");
-    await showDemosList(phone, conversation.id);
+  // 2. Evaluate Answer
+  const rawLetter = text.trim().toUpperCase().replace(/[^A-D]/g, "");
+  const selectedAns = rawLetter.length > 0 ? rawLetter.charAt(0) : text.trim().toUpperCase().charAt(0);
+
+  if (!["A", "B", "C", "D"].includes(selectedAns)) {
+    await sendTextMessage(phone, "⚠️ Please reply with a valid option letter: *A*, *B*, *C*, or *D*");
     return;
   }
 
-  await runDemoStep(phone, conversation.id, selected.slug, 1);
-}
+  const isCorrect = selectedAns === activeQ.correct_answer.trim().toUpperCase();
+  const currentScore = (ctx.examScore || 0) + (isCorrect ? (activeQ.marks || 1) : 0);
+  const answersList = ctx.examAnswers || [];
 
-export async function runDemoStep(
-  phone: string,
-  conversationId: string,
-  demoSlug: string,
-  stepNumber: number
-): Promise<void> {
-  const s = demoSlug.toLowerCase();
-
-  // 1. Xtop Edu -> WhatsApp Demo
-  if (s.includes("edu") || s.includes("learning") || s === "demo_xtopedu") {
-    await sendTextMessage(
-      phone,
-      `🎓 *XTOP EDU — LIVE WHATSAPP CLASSROOM*\n\nExperience lecture delivery, attendance, and CBT exams live:\n\n📱 *WhatsApp Line:* +2348073158887\n👉 *Direct Link:* https://wa.me/2348073158887?text=Hi%20Engr%20Ero\n\n_Send *Engr Ero* to the number above to start studying!_`
-    );
-    await showDemoCompletion(phone, conversationId, demoSlug);
-    return;
-  }
-
-  // 2. Naijashop -> Live Store
-  if (s.includes("naijashop") || s === "demo_naijashop") {
-    await sendTextMessage(
-      phone,
-      `🛒 *NAIJASHOP — LIVE STORE*\n\nExplore our e-commerce platform and inventory system:\n\n🌐 *Visit Store:* https://naijashop.com.ng\n\n_Browse products, test order placements, and experience the checkout flow!_`
-    );
-    await showDemoCompletion(phone, conversationId, demoSlug);
-    return;
-  }
-
-  // 3. Edvenia -> WAEC / JAMB CBT Platform
-  if (s.includes("tutorial") || s.includes("edvenia") || s.includes("jamb")) {
-    await sendTextMessage(
-      phone,
-      `📚 *EDVENIA — WAEC, NECO & JAMB AI CBT*\n\nPractice thousands of past questions with AI mock scoring:\n\n🌐 *Visit Platform:* https://edvenia.com\n\n_Available on web and mobile for students and tutorial centres!_`
-    );
-    await showDemoCompletion(phone, conversationId, demoSlug);
-    return;
-  }
-
-  // 4. BarPrep -> AI Law School Tutor
-  if (s.includes("custom_bot") || s.includes("barprep") || s.includes("law")) {
-    await sendTextMessage(
-      phone,
-      `⚖️ *CYBERCOACH BARPREP — AI LAW TUTOR*\n\nAutomated legal preparation for Law School and Bar Exams:\n\n🌐 *Visit Portal:* https://barprep.cybarcoach.com\n\n_Access practice bar drills, legal research checks, and AI tutoring!_`
-    );
-    await showDemoCompletion(phone, conversationId, demoSlug);
-    return;
-  }
-
-  // Fallback for simulated bot steps
-  const demo = await getDemoBySlug(demoSlug);
-  if (!demo || !demo.steps_json) {
-    await sendTextMessage(phone, "Demo not found.");
-    await showDemosList(phone, conversationId);
-    return;
-  }
-
-  const stepData = demo.steps_json.find((st) => st.step === stepNumber);
-  if (!stepData) {
-    await showDemoCompletion(phone, conversationId, demoSlug);
-    return;
-  }
-
-  await updateConversation(conversationId, {
-    current_module: "DEMOS",
-    current_state: "RUNNING_STEP",
-    context_json: { selectedDemoSlug: demoSlug, currentStep: stepNumber },
+  answersList.push({
+    question_id: activeQ.id,
+    selected_option: selectedAns,
+    correct_option: activeQ.correct_answer,
+    is_correct: isCorrect
   });
 
-  const buttons = (stepData.options || ["Continue", "Exit Demo"])
-    .slice(0, 3)
-    .map((opt, i) => makeButton(`demo_step_btn_${i}`, opt));
+  const nextQIdx = qIdx + 1;
+  const updatedCtx: ExamCtx = {
+    ...ctx,
+    currentExamQIndex: nextQIdx,
+    examScore: currentScore,
+    examAnswers: answersList
+  };
 
-  await sendButtonMessage(
-    phone,
-    stepData.bot_message,
-    buttons,
-    `Demo: ${demo.name.substring(0, 20)}`,
-    `Step ${stepNumber} of ${demo.steps_json.length}`
-  );
-}
-
-async function processDemoStepProgression(
-  phone: string,
-  text: string,
-  contact: Contact,
-  conversation: Conversation,
-  context: { selectedDemoSlug?: string; currentStep?: number }
-): Promise<void> {
-  const n = normalise(text);
-  const currentStep = context.currentStep || 1;
-  const demoSlug = context.selectedDemoSlug || "demo_xtopedu";
-
-  if (n.includes("exit") || isBack(text)) {
-    await showDemosList(phone, conversation.id);
-    return;
-  }
-
-  const nextStep = currentStep + 1;
-  const demo = await getDemoBySlug(demoSlug);
-
-  if (demo && demo.steps_json && nextStep <= demo.steps_json.length) {
-    await runDemoStep(phone, conversation.id, demoSlug, nextStep);
+  if (nextQIdx < questions.length) {
+    await saveExamCtx(conv.id, updatedCtx, "IN_EXAM");
+    await sendExamQuestionPrompt(phone, questions[nextQIdx], nextQIdx, questions.length);
   } else {
-    await showDemoCompletion(phone, conversation.id, demoSlug);
+    await completeAndSubmitExam(phone, conv.id, updatedCtx);
   }
 }
 
-export async function showDemoCompletion(
-  phone: string,
-  conversationId: string,
-  demoSlug: string
+async function completeAndSubmitExam(
+  phone: string, conversationId: string, ctx: ExamCtx
 ): Promise<void> {
+  const score = ctx.examScore || 0;
+  const totalQuestions = ctx.questions?.length || 1;
+  const percentage = Math.round((score / totalQuestions) * 100);
+  const passed = percentage >= 50;
+  const attemptsCount = ctx.attemptsCount || 0;
+
+  // 1. Submit Attempt to database
+  if (ctx.attemptId) {
+    try {
+      await supabase.from("exam_attempts").update({
+        score,
+        percentage,
+        pass_status: passed ? "PASS" : "FAIL",
+        submitted_at: new Date().toISOString(),
+        answers_json: ctx.examAnswers
+      }).eq("id", ctx.attemptId);
+    } catch (_) {}
+  }
+
+  // 2. Overwrite / Upsert final Results table (always keeps the most recent attempt)
+  if (ctx.studentId && ctx.courseId) {
+    try {
+      await supabase.from("results").upsert({
+        student_id: ctx.studentId,
+        course_id: ctx.courseId,
+        cbt_score: percentage,
+        total_score: percentage,
+        percentage,
+        status: "RELEASED",
+        released_at: new Date().toISOString()
+      });
+    } catch (_) {}
+  }
+
+  // 3. Move back to Learning context
   await updateConversation(conversationId, {
-    current_module: "DEMOS",
-    current_state: "DEMO_COMPLETED",
-    context_json: { selectedDemoSlug: demoSlug },
+    current_module: "LEARNING",
+    current_state: "COURSE_MENU"
   });
 
-  const body =
-    `🎉 *Platform Overview Complete!*\n\n` +
-    `Would you like us to build or deploy a custom automated WhatsApp bot, e-learning platform, or mobile app for your business?`;
+  const resultMsg =
+    `🏁 *CBT EXAM COMPLETED*\n\n` +
+    `Course: *${ctx.courseCode} — ${ctx.courseName || ""}*\n` +
+    `Attempt: *${attemptsCount + 1} of 3*\n` +
+    `Score: *${score} / ${totalQuestions}*\n` +
+    `Percentage: *${percentage}%*\n` +
+    `Grade Status: *${passed ? "✅ PASSED" : "❌ FAILED"}*\n\n` +
+    (attemptsCount + 1 < 3
+      ? `_If you are unsatisfied with this score, you can retake the exam from the Course Menu (up to 3 attempts total)._`
+      : `_You have completed all 3 available attempts. For assistance, contact Engr. Ero._`);
 
   await sendButtonMessage(
     phone,
-    body,
+    resultMsg,
     [
-      makeButton("demo_act_estimate", "✅ Get an Estimate"),
-      makeButton("demo_act_agent", "👤 Talk to an Agent"),
-      makeButton("demo_act_back", "🔙 All Demos"),
+      makeButton("cm_result", "📊 View Results"),
+      makeButton("cm_menu", "📋 Course Menu")
     ],
-    "Xtop Retail Technologies",
-    "Turnaround time: 5-7 days"
+    "Official CBT Results"
   );
-}
-
-async function processDemoCompletedAction(
-  phone: string,
-  text: string,
-  contact: Contact,
-  conversation: Conversation,
-  demoSlug?: string
-): Promise<void> {
-  const n = normalise(text);
-
-  if (n === "demo_act_back" || isBack(text)) {
-    await showDemosList(phone, conversation.id);
-    return;
-  }
-
-  if (
-    n === "demo_act_estimate" ||
-    n.includes("estimate") ||
-    n.includes("quotation") ||
-    n.includes("quote") ||
-    n.includes("build") ||
-    n === "1"
-  ) {
-    await sendTextMessage(
-      phone,
-      `📋 *Let's prepare your estimate*\n\n` +
-      `We'll ask a few quick questions to generate a tailored preliminary quotation based on your requirements.`
-    );
-    await showServiceTypeSelector(phone, conversation.id);
-    return;
-  }
-
-  if (
-    n === "demo_act_agent" ||
-    n.includes("agent") ||
-    n.includes("human") ||
-    n === "2"
-  ) {
-    await updateConversation(conversation.id, {
-      current_module: "AGENT",
-      current_state: "COLLECT_MESSAGE",
-      context_json: {
-        request_type: "START_PROJECT",
-        source: "DEMO",
-        demoSlug: demoSlug || "GENERAL",
-        preset_message: `Inquiry after reviewing portfolio: ${demoSlug || "General"}`,
-      },
-    });
-
-    await sendTextMessage(
-      phone,
-      `👤 *Talk to an Agent*\n\n` +
-      `Please send a brief message describing your project requirements. A technical consultant will review and follow up with you directly:`
-    );
-    return;
-  }
-
-  await showDemosList(phone, conversation.id);
 }
