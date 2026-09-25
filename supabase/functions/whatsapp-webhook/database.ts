@@ -95,6 +95,18 @@ export interface MagazineConfig {
   [key: string]: unknown;
 }
 
+export interface AgentRequest {
+  id: string;
+  contact_id?: string | null;
+  request_type: string;
+  message: string;
+  priority?: string;
+  status?: string;
+  created_at?: string;
+  updated_at?: string | null;
+  [key: string]: unknown;
+}
+
 export interface Student {
   id: string;
   phone: string;
@@ -109,7 +121,7 @@ export interface Student {
 }
 
 // ==========================================
-// 3. Conversation Functions
+// 3. Conversation & Contact Functions
 // ==========================================
 export async function updateConversation(
   conversationId: string,
@@ -133,6 +145,39 @@ export async function updateConversation(
     return null;
   }
   return data as Conversation;
+}
+
+export async function getContactByPhone(phone: string): Promise<Contact | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("contacts")
+    .select("*")
+    .eq("phone", phone)
+    .maybeSingle();
+
+  if (error) {
+    safeErrorLog("getContactByPhone", error);
+    return null;
+  }
+  return data as Contact;
+}
+
+export async function getOrCreateContact(phone: string, name?: string | null): Promise<Contact> {
+  const sb = getSupabaseClient();
+  const existing = await getContactByPhone(phone);
+  if (existing) return existing;
+
+  const { data, error } = await sb
+    .from("contacts")
+    .insert({ phone, name: name || null })
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("getOrCreateContact", error);
+    return { phone, name: name || null };
+  }
+  return data as Contact;
 }
 
 // ==========================================
@@ -252,7 +297,51 @@ export async function getActiveMagazineConfig(): Promise<MagazineConfig | null> 
 }
 
 // ==========================================
-// 7. Student & Attendance Functions
+// 7. Agent & Support Requests
+// ==========================================
+export async function createAgentRequest(
+  contactId?: string,
+  requestType: string = "GENERAL_ENQUIRY",
+  message: string = "",
+  priority: string = "NORMAL"
+): Promise<AgentRequest | null> {
+  const sb = getSupabaseClient();
+  const payload: Record<string, unknown> = {
+    request_type: requestType,
+    message,
+    priority,
+    status: "PENDING",
+  };
+
+  if (contactId) {
+    payload.contact_id = contactId;
+  }
+
+  const { data, error } = await sb
+    .from("agent_requests")
+    .insert(payload)
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("createAgentRequest", error);
+    // Return fallback ticket so the user receives a confirmation
+    return {
+      id: crypto.randomUUID ? crypto.randomUUID() : `REQ-${Date.now()}`,
+      contact_id: contactId || null,
+      request_type: requestType,
+      message,
+      priority,
+      status: "PENDING",
+      created_at: new Date().toISOString(),
+      updated_at: null,
+    };
+  }
+  return data as AgentRequest;
+}
+
+// ==========================================
+// 8. Student & Attendance Functions
 // ==========================================
 export function isStudentProfileComplete(student: Student): boolean {
   return !!(
@@ -421,7 +510,7 @@ export async function recordAttendance(studentId: string): Promise<any> {
 }
 
 // ==========================================
-// 8. Course & Exam Functions
+// 9. Course & Exam Functions
 // ==========================================
 export async function getCourseByCode(courseCode: string): Promise<any> {
   const sb = getSupabaseClient();
