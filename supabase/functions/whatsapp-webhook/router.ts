@@ -26,14 +26,14 @@ const supabase = getSupabaseClient();
 export async function routeMessage(incoming: IncomingMessage): Promise<void> {
   const phone = incoming.from;
   const text = sanitizeInput(incoming.text);
-  const interactiveId = incoming.interactiveId;
+  const interactiveId = incoming.interactiveId || "";
 
-  // ⛔️ 1. Ignore completely empty payloads
+  // 1. Ignore empty inputs
   if (!text && !interactiveId) {
     return;
   }
 
-  // ⛔️ 2. MESSAGE DEDUPLICATION (Stops Meta retries from triggering duplicate messages)
+  // 2. Message Deduplication
   if (incoming.messageId) {
     const { data: existingMsg } = await supabase
       .from("messages")
@@ -42,7 +42,6 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       .maybeSingle();
 
     if (existingMsg) {
-      console.log(`[Deduplication] Message ${incoming.messageId} already processed. Ignoring.`);
       return;
     }
   }
@@ -51,14 +50,13 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     const contact = await getOrCreateContact(phone, incoming.profileName);
     const conversation = await getOrCreateConversation(contact.id);
 
-    // Save message record
     await storeMessage(
       contact.id, "INBOUND", incoming.type,
       text || interactiveId || null, incoming.messageId
     );
 
     // ══════════════════════════════════════════════════════
-    // 1. ACTIVE LEARNING MODULE ISOLATION (PRIORITY)
+    // 1. ACTIVE LEARNING MODULE ISOLATION
     // ══════════════════════════════════════════════════════
     if (conversation.current_module === "LEARNING") {
       await handleLearning(phone, text, contact, conversation);
@@ -80,15 +78,23 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     }
 
     // ══════════════════════════════════════════════════════
-    // 3. GLOBAL INTERRUPTS (RETAIL STORE ONLY)
+    // 3. DIRECT TOOLS INTENT OVERRIDE
+    // ══════════════════════════════════════════════════════
+    if (interactiveId.startsWith("tool_") || interactiveId.startsWith("tools_")) {
+      await handleTools(phone, text, contact, conversation, interactiveId);
+      return;
+    }
+
+    // ══════════════════════════════════════════════════════
+    // 4. GLOBAL INTERRUPTS (RETAIL STORE ONLY)
     // ══════════════════════════════════════════════════════
     if ((isGreeting(text) || isHelp(text) || text === "menu_home" || interactiveId === "menu_home")
-        && !["SALES", "EXAMS", "LEARNING"].includes(conversation.current_module || "")) {
+        && !["SALES", "EXAMS", "LEARNING", "TOOLS"].includes(conversation.current_module || "")) {
       await showMainMenu(phone, conversation.id);
       return;
     }
 
-    if (isExit(text) && !["SALES", "EXAMS", "LEARNING"].includes(conversation.current_module || "")) {
+    if (isExit(text) && !["SALES", "EXAMS", "LEARNING", "TOOLS"].includes(conversation.current_module || "")) {
       await updateConversation(conversation.id, {
         current_module: "MAIN_MENU", current_state: "IDLE", context_json: {},
       });
@@ -99,13 +105,13 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     }
 
     if (isAgentRequest(text)
-        && !["AGENT", "SALES", "EXAMS", "LEARNING"].includes(conversation.current_module || "")) {
+        && !["AGENT", "SALES", "EXAMS", "LEARNING", "TOOLS"].includes(conversation.current_module || "")) {
       await showAgentCategories(phone, conversation.id);
       return;
     }
 
     // ══════════════════════════════════════════════════════
-    // 4. MODULE ROUTER
+    // 5. MODULE ROUTER
     // ══════════════════════════════════════════════════════
     const currentModule = conversation.current_module;
 
@@ -115,7 +121,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
         if (intent === "PRODUCTS" || interactiveId === "menu_products") await showProductsList(phone, conversation.id);
         else if (intent === "SERVICES" || interactiveId === "menu_services") await showServicesList(phone, conversation.id);
         else if (intent === "DEMOS" || interactiveId === "menu_demos") await showDemosList(phone, conversation.id);
-        else if (intent === "TOOLS" || interactiveId === "menu_tools" || text.toLowerCase().includes("free tools")) await showToolsMenu(phone, conversation.id);
+        else if (intent === "TOOLS" || interactiveId === "menu_tools" || text.toLowerCase().includes("free tools") || text.toLowerCase().includes("tools")) await showToolsMenu(phone, conversation.id);
         else if (intent === "MAGAZINE" || interactiveId === "menu_magazine") await displayMagazine(phone, conversation.id);
         else if (intent === "AGENT" || interactiveId === "menu_agent") await showAgentCategories(phone, conversation.id);
         else if (intent === "SALES" || interactiveId === "menu_sales") await showServiceTypeSelector(phone, conversation.id);
@@ -140,7 +146,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
         break;
 
       case "TOOLS":
-        await handleTools(phone, text, contact, conversation);
+        await handleTools(phone, text, contact, conversation, interactiveId);
         break;
 
       case "MAGAZINE":
