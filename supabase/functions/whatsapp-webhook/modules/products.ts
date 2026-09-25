@@ -123,6 +123,15 @@ export async function showProductDetail(phone: string, conversationId: string, s
     .map((f) => `  • ${f}`)
     .join("\n");
 
+  // Dynamic link overrides for Naijashop & Xtop Edu
+  const isNaijashop = slug.toLowerCase().includes("naijashop");
+  const isXtopEdu = slug.toLowerCase().includes("edu") || slug.toLowerCase().includes("learning");
+
+  const websiteUrl = isNaijashop ? "https://naijashop.com.ng" : (product.website_url || "https://naijashop.com.ng");
+  const demoContactInfo = isXtopEdu
+    ? `📱 *Live WhatsApp Demo:* +2348073158887\n👉 *Direct Link:* https://wa.me/2348073158887?text=Hi%20Engr%20Ero\n`
+    : (isNaijashop ? `🌐 *Live Store Demo:* https://naijashop.com.ng\n` : "");
+
   const message =
     `🚀 *${product.name.toUpperCase()}*\n` +
     `_${product.category}_\n\n` +
@@ -130,7 +139,8 @@ export async function showProductDetail(phone: string, conversationId: string, s
     `🎯 *Who It Is For:*\n${product.target_audience}\n\n` +
     `⚡ *Key Features:*\n${featuresFormatted}\n\n` +
     `💰 *Pricing:* ${product.price_text || "Custom quotation available"}\n` +
-    (product.website_url ? `🌐 *Website:* ${product.website_url}\n` : "");
+    `🌐 *Website:* ${websiteUrl}\n` +
+    demoContactInfo;
 
   await sendButtonMessage(
     phone,
@@ -161,7 +171,6 @@ async function processProductDetailAction(
   }
 
   if (n.startsWith("prod_req_") || n.includes("request")) {
-    // Route to Agent module with context
     await updateConversation(conversation.id, {
       current_module: "AGENT",
       current_state: "COLLECT_MESSAGE",
@@ -175,7 +184,28 @@ async function processProductDetailAction(
   }
 
   if (n.startsWith("prod_demo_") || n.includes("demo")) {
-    // Jump straight into the corresponding demo
+    const isEdu = slug.toLowerCase().includes("edu") || slug.toLowerCase().includes("learning");
+    const isNaijashop = slug.toLowerCase().includes("naijashop");
+
+    if (isEdu) {
+      await sendTextMessage(
+        phone,
+        `🎓 *XTOP EDU — LIVE WHATSAPP DEMO*\n\nExperience our interactive automated lecture delivery, CBT exam engine, and attendance system directly:\n\n📱 *WhatsApp Demo Line:* +2348073158887\n👉 *Click to Chat:* https://wa.me/2348073158887?text=Hi%20Engr%20Ero\n\n_Send *Engr Ero* to the number above to start studying instantly!_`
+      );
+      await showProductDetail(phone, conversation.id, slug);
+      return;
+    }
+
+    if (isNaijashop) {
+      await sendTextMessage(
+        phone,
+        `🛒 *NAIJASHOP — LIVE STORE DEMO*\n\nExplore our online e-commerce platform and inventory system live:\n\n🌐 *Visit Store:* https://naijashop.com.ng\n\n_Browse products, test order placements, and experience the checkout flow!_`
+      );
+      await showProductDetail(phone, conversation.id, slug);
+      return;
+    }
+
+    // Default interactive demo handler
     const demoSlug = slug === "xtopedu" ? "demo_xtopedu" : "demo_naijashop";
     await updateConversation(conversation.id, {
       current_module: "DEMOS",
