@@ -80,14 +80,18 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-    // ══════════════════════════════════════════════════════
+        // ══════════════════════════════════════════════════════
     // 3. DIRECT GAMES INTENT OVERRIDE
     // ══════════════════════════════════════════════════════
     if (
       interactiveId.startsWith("game_") ||
       interactiveId.startsWith("trivia_") ||
       interactiveId.startsWith("math_") ||
-      interactiveId.startsWith("diff_")
+      interactiveId.startsWith("diff_") ||
+      interactiveId.startsWith("ng_") ||          // Number Guess
+      interactiveId.startsWith("riddle_") ||       // Riddles
+      interactiveId.startsWith("rps_") ||          // Rock Paper Scissors
+      interactiveId.startsWith("word_")            // Word Scramble
     ) {
       await handleGames(phone, text, contact, conversation, interactiveId);
       return;
