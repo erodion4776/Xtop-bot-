@@ -20,6 +20,7 @@ import { handleLearning } from "./modules/learning.ts";
 import { handleSales, showServiceTypeSelector } from "./modules/sales.ts";
 import { handleExams } from "./modules/exams.ts";
 import { handleTools, showToolsMenu } from "./modules/tools.ts";
+import { handleGames, showGamesMenu } from "./modules/games/index.ts";
 
 const supabase = getSupabaseClient();
 
@@ -28,12 +29,12 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
   const text = sanitizeInput(incoming.text);
   const interactiveId = incoming.interactiveId || "";
 
-  // 1. Ignore empty inputs
+  // ⛔️ 1. Ignore completely empty payloads
   if (!text && !interactiveId) {
     return;
   }
 
-  // 2. Message Deduplication
+  // ⛔️ 2. MESSAGE DEDUPLICATION (Stops Meta retries from triggering duplicate messages)
   if (incoming.messageId) {
     const { data: existingMsg } = await supabase
       .from("messages")
@@ -42,6 +43,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       .maybeSingle();
 
     if (existingMsg) {
+      console.log(`[Deduplication] Message ${incoming.messageId} already processed. Ignoring.`);
       return;
     }
   }
@@ -50,13 +52,14 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     const contact = await getOrCreateContact(phone, incoming.profileName);
     const conversation = await getOrCreateConversation(contact.id);
 
+    // Save message record
     await storeMessage(
       contact.id, "INBOUND", incoming.type,
       text || interactiveId || null, incoming.messageId
     );
 
     // ══════════════════════════════════════════════════════
-    // 1. ACTIVE LEARNING MODULE ISOLATION
+    // 1. ACTIVE LEARNING MODULE ISOLATION (PRIORITY #1)
     // ══════════════════════════════════════════════════════
     if (conversation.current_module === "LEARNING") {
       await handleLearning(phone, text, contact, conversation);
@@ -64,7 +67,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     }
 
     // ══════════════════════════════════════════════════════
-    // 2. PRIVATE LEARNING CENTRE TRIGGER
+    // 2. PRIVATE LEARNING CENTRE KEYWORD TRIGGER
     // ══════════════════════════════════════════════════════
     if (isLearningKeyword(text)) {
       const existingCtx = conversation.context_json || {};
@@ -78,7 +81,20 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     }
 
     // ══════════════════════════════════════════════════════
-    // 3. DIRECT TOOLS INTENT OVERRIDE
+    // 3. DIRECT GAMES INTENT OVERRIDE
+    // ══════════════════════════════════════════════════════
+    if (
+      interactiveId.startsWith("game_") ||
+      interactiveId.startsWith("trivia_") ||
+      interactiveId.startsWith("math_") ||
+      interactiveId.startsWith("diff_")
+    ) {
+      await handleGames(phone, text, contact, conversation, interactiveId);
+      return;
+    }
+
+    // ══════════════════════════════════════════════════════
+    // 4. DIRECT TOOLS INTENT OVERRIDE
     // ══════════════════════════════════════════════════════
     if (interactiveId.startsWith("tool_") || interactiveId.startsWith("tools_")) {
       await handleTools(phone, text, contact, conversation, interactiveId);
@@ -86,15 +102,20 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     }
 
     // ══════════════════════════════════════════════════════
-    // 4. GLOBAL INTERRUPTS (RETAIL STORE ONLY)
+    // 5. GLOBAL INTERRUPTS (RETAIL STORE ONLY)
     // ══════════════════════════════════════════════════════
-    if ((isGreeting(text) || isHelp(text) || text === "menu_home" || interactiveId === "menu_home")
-        && !["SALES", "EXAMS", "LEARNING", "TOOLS"].includes(conversation.current_module || "")) {
+    if (
+      (isGreeting(text) || isHelp(text) || text === "menu_home" || interactiveId === "menu_home")
+      && !["SALES", "EXAMS", "LEARNING", "TOOLS", "GAMES"].includes(conversation.current_module || "")
+    ) {
       await showMainMenu(phone, conversation.id);
       return;
     }
 
-    if (isExit(text) && !["SALES", "EXAMS", "LEARNING", "TOOLS"].includes(conversation.current_module || "")) {
+    if (
+      isExit(text)
+      && !["SALES", "EXAMS", "LEARNING", "TOOLS", "GAMES"].includes(conversation.current_module || "")
+    ) {
       await updateConversation(conversation.id, {
         current_module: "MAIN_MENU", current_state: "IDLE", context_json: {},
       });
@@ -104,29 +125,41 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-    if (isAgentRequest(text)
-        && !["AGENT", "SALES", "EXAMS", "LEARNING", "TOOLS"].includes(conversation.current_module || "")) {
+    if (
+      isAgentRequest(text)
+      && !["AGENT", "SALES", "EXAMS", "LEARNING", "TOOLS", "GAMES"].includes(conversation.current_module || "")
+    ) {
       await showAgentCategories(phone, conversation.id);
       return;
     }
 
     // ══════════════════════════════════════════════════════
-    // 5. MODULE ROUTER
+    // 6. MODULE ROUTER
     // ══════════════════════════════════════════════════════
     const currentModule = conversation.current_module;
 
     switch (currentModule) {
       case "MAIN_MENU": {
         const intent = detectIntent(text, interactiveId);
-        if (intent === "PRODUCTS" || interactiveId === "menu_products") await showProductsList(phone, conversation.id);
-        else if (intent === "SERVICES" || interactiveId === "menu_services") await showServicesList(phone, conversation.id);
-        else if (intent === "DEMOS" || interactiveId === "menu_demos") await showDemosList(phone, conversation.id);
-        else if (intent === "TOOLS" || interactiveId === "menu_tools" || text.toLowerCase().includes("free tools") || text.toLowerCase().includes("tools")) await showToolsMenu(phone, conversation.id);
-        else if (intent === "MAGAZINE" || interactiveId === "menu_magazine") await displayMagazine(phone, conversation.id);
-        else if (intent === "AGENT" || interactiveId === "menu_agent") await showAgentCategories(phone, conversation.id);
-        else if (intent === "SALES" || interactiveId === "menu_sales") await showServiceTypeSelector(phone, conversation.id);
-        else if (isBack(text)) await showMainMenu(phone, conversation.id);
-        else {
+        if (intent === "PRODUCTS" || interactiveId === "menu_products") {
+          await showProductsList(phone, conversation.id);
+        } else if (intent === "SERVICES" || interactiveId === "menu_services") {
+          await showServicesList(phone, conversation.id);
+        } else if (intent === "DEMOS" || interactiveId === "menu_demos") {
+          await showDemosList(phone, conversation.id);
+        } else if (interactiveId === "menu_games" || text.toLowerCase().includes("games") || text.toLowerCase().includes("xtop games")) {
+          await showGamesMenu(phone, conversation.id);
+        } else if (intent === "TOOLS" || interactiveId === "menu_tools" || text.toLowerCase().includes("free tools") || text.toLowerCase().includes("tools")) {
+          await showToolsMenu(phone, conversation.id);
+        } else if (intent === "MAGAZINE" || interactiveId === "menu_magazine") {
+          await displayMagazine(phone, conversation.id);
+        } else if (intent === "AGENT" || interactiveId === "menu_agent") {
+          await showAgentCategories(phone, conversation.id);
+        } else if (intent === "SALES" || interactiveId === "menu_sales") {
+          await showServiceTypeSelector(phone, conversation.id);
+        } else if (isBack(text)) {
+          await showMainMenu(phone, conversation.id);
+        } else {
           await sendTextMessage(phone, "Please select an option from the menu below:");
           await showMainMenu(phone, conversation.id);
         }
@@ -147,6 +180,10 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
 
       case "TOOLS":
         await handleTools(phone, text, contact, conversation, interactiveId);
+        break;
+
+      case "GAMES":
+        await handleGames(phone, text, contact, conversation, interactiveId);
         break;
 
       case "MAGAZINE":
@@ -175,5 +212,8 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     }
   } catch (err) {
     safeErrorLog("routeMessage", err);
+    await sendTextMessage(phone,
+      "Sorry, an error occurred. Type *menu* to return to the home screen."
+    );
   }
 }
