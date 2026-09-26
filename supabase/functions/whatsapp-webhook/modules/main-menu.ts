@@ -26,8 +26,8 @@ export async function showMainMenu(phone: string, conversationId: string): Promi
         rows: [
           makeListRow("menu_products", "1️⃣ Our Products", "NaijaShop, Edvenia & more"),
           makeListRow("menu_services", "2️⃣ Our Services", "WhatsApp Bots & App Dev"),
-          makeListRow("menu_demos", "3️⃣ View Live Demos", "Test our interactive bots"),
-          makeListRow("menu_games", "4️⃣ 🎮 Xtop Games", "Play trivia, math & more!"),
+          makeListRow("menu_demos", "3️⃣ 🎮 Demo Centre", "Try live automation demos"),
+          makeListRow("menu_games", "4️⃣ Xtop Games", "Play trivia, math & more"),
         ],
       },
       {
