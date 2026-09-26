@@ -1309,3 +1309,120 @@ export async function awardAchievement(
     .insert({ phone_number: phone, achievement_code: code, name, icon });
   return !error;
 }
+// ==========================================
+// 14. Demo Centre Functions
+// ==========================================
+
+export interface DemoSession {
+  id: string;
+  phone_number: string;
+  contact_id?: string | null;
+  demo_id: string;
+  demo_category?: string | null;
+  current_step: string;
+  session_data: Record<string, any>;
+  status: "ACTIVE" | "COMPLETED" | "ABANDONED" | "EXPIRED";
+  started_at: string;
+  expires_at: string;
+  completed_at?: string | null;
+}
+
+export async function getActiveDemoSession(phone: string): Promise<DemoSession | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("demo_sessions")
+    .select("*")
+    .eq("phone_number", phone)
+    .eq("status", "ACTIVE")
+    .gt("expires_at", new Date().toISOString())
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) { safeErrorLog("getActiveDemoSession", error); return null; }
+  return data as DemoSession;
+}
+
+export async function createDemoSession(
+  phone: string,
+  demoId: string,
+  category?: string,
+  initialData: Record<string, any> = {}
+): Promise<DemoSession | null> {
+  const sb = getSupabaseClient();
+  await sb.from("demo_sessions")
+    .update({ status: "ABANDONED", completed_at: new Date().toISOString() })
+    .eq("phone_number", phone).eq("status", "ACTIVE");
+
+  const { data, error } = await sb.from("demo_sessions").insert({
+    phone_number: phone,
+    demo_id: demoId,
+    demo_category: category,
+    current_step: "ENTRY",
+    session_data: initialData,
+    status: "ACTIVE",
+    started_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  }).select("*").single();
+  if (error) { safeErrorLog("createDemoSession", error); return null; }
+  return data as DemoSession;
+}
+
+export async function updateDemoSession(
+  sessionId: string,
+  fields: Partial<DemoSession>
+): Promise<DemoSession | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb.from("demo_sessions")
+    .update(fields).eq("id", sessionId).select("*").single();
+  if (error) { safeErrorLog("updateDemoSession", error); return null; }
+  return data as DemoSession;
+}
+
+export async function completeDemoSession(sessionId: string): Promise<void> {
+  const sb = getSupabaseClient();
+  await sb.from("demo_sessions")
+    .update({ status: "COMPLETED", completed_at: new Date().toISOString() })
+    .eq("id", sessionId);
+}
+
+export async function createDemoLead(
+  phone: string,
+  contactName: string,
+  businessName: string,
+  industry: string,
+  demoId: string,
+  demoName: string,
+  requirements: string
+): Promise<any> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb.from("demo_leads").insert({
+    phone_number: phone,
+    contact_name: contactName,
+    business_name: businessName,
+    industry,
+    demo_id: demoId,
+    demo_name: demoName,
+    requirements,
+    status: "NEW",
+    source: "DEMO_CENTRE",
+  }).select("*").single();
+  if (error) { safeErrorLog("createDemoLead", error); return null; }
+
+  // Also create in main leads table for CRM integration
+  await sb.from("leads").insert({
+    contact_id: null,
+    service_type: "DEMO_CONVERSION",
+    business_name: businessName,
+    industry,
+    status: "QUALIFYING",
+    requirements_json: {
+      source: "DEMO_CENTRE",
+      demo_id: demoId,
+      demo_name: demoName,
+      requirements,
+      contact_name: contactName,
+    },
+  });
+
+  return data;
+}
