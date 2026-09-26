@@ -3,7 +3,7 @@
 import {
   Contact, Conversation,
   getOrCreateContact, getOrCreateConversation,
-  updateConversation, storeMessage, getSupabaseClient
+  updateConversation, storeMessage, logBotActivity, getSupabaseClient
 } from "./database.ts";
 import { IncomingMessage, sendTextMessage } from "./whatsapp.ts";
 import {
@@ -55,22 +55,18 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       text || interactiveId || null, incoming.messageId
     );
 
-    // Log to Dashboard Activity Feed
-    const { logBotActivity } = await import("./database.ts");
+    // Log to Dashboard Activity Feed safely (Direct top-level export)
     logBotActivity(
       phone, "INBOUND", incoming.type,
       conversation.current_module || "MAIN_MENU",
       text || interactiveId || "",
       contact.name || incoming.profileName,
       interactiveId, incoming.messageId
-    ).catch(() => {});
+    ).catch((e) => console.error("logBotActivity error:", e));
 
     // ══════════════════════════════════════════════════════
     // ACTIVE WORKFLOW ROUTING (WORKFLOW LOCK)
     // ══════════════════════════════════════════════════════
-    // Once a user is inside an active workflow, that workflow
-    // owns the conversation until completion or explicit exit.
-
     const currentModule = conversation.current_module || "MAIN_MENU";
 
     // Explicit Home/Menu button always exits any workflow
