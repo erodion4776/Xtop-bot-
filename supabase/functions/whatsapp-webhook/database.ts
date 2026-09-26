@@ -1041,3 +1041,271 @@ export async function getStudentExamAttempts(studentId: string, courseId: string
   }
   return data || [];
 }
+// ==========================================
+// 13. Games Engine Functions
+// ==========================================
+
+export interface GameSession {
+  id: string;
+  user_id?: string | null;
+  phone_number: string;
+  game_type: string;
+  difficulty: string;
+  current_question: number;
+  current_round: number;
+  score: number;
+  correct_answers: number;
+  wrong_answers: number;
+  streak: number;
+  max_streak: number;
+  lives: number;
+  status: "ACTIVE" | "COMPLETED" | "ABANDONED" | "EXPIRED";
+  metadata: Record<string, any>;
+  started_at: string;
+  expires_at: string;
+  completed_at?: string | null;
+}
+
+export interface GameQuestion {
+  id: string;
+  game_type: string;
+  category: string;
+  difficulty: string;
+  question: string;
+  option_a?: string;
+  option_b?: string;
+  option_c?: string;
+  option_d?: string;
+  correct_answer: string;
+  explanation?: string;
+  is_active: boolean;
+}
+
+// ── Session Management ──
+
+export async function getActiveGameSession(phone: string): Promise<GameSession | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("game_sessions")
+    .select("*")
+    .eq("phone_number", phone)
+    .eq("status", "ACTIVE")
+    .gt("expires_at", new Date().toISOString())
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    safeErrorLog("getActiveGameSession", error);
+    return null;
+  }
+  return data as GameSession;
+}
+
+export async function createGameSession(
+  phone: string,
+  gameType: string,
+  difficulty: string = "EASY",
+  metadata: Record<string, any> = {},
+  lives: number = 3
+): Promise<GameSession | null> {
+  const sb = getSupabaseClient();
+  await abandonActiveSessions(phone);
+
+  const { data, error } = await sb
+    .from("game_sessions")
+    .insert({
+      phone_number: phone,
+      game_type: gameType,
+      difficulty,
+      lives,
+      metadata,
+      status: "ACTIVE",
+      started_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("createGameSession", error);
+    return null;
+  }
+  return data as GameSession;
+}
+
+export async function updateGameSession(
+  sessionId: string,
+  fields: Partial<GameSession>
+): Promise<GameSession | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("game_sessions")
+    .update(fields)
+    .eq("id", sessionId)
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("updateGameSession", error);
+    return null;
+  }
+  return data as GameSession;
+}
+
+export async function abandonActiveSessions(phone: string): Promise<void> {
+  const sb = getSupabaseClient();
+  await sb
+    .from("game_sessions")
+    .update({ status: "ABANDONED", completed_at: new Date().toISOString() })
+    .eq("phone_number", phone)
+    .eq("status", "ACTIVE");
+}
+
+export async function completeGameSession(sessionId: string): Promise<GameSession | null> {
+  return await updateGameSession(sessionId, {
+    status: "COMPLETED",
+    completed_at: new Date().toISOString(),
+  } as any);
+}
+
+// ── Question Fetch ──
+
+export async function getRandomQuestions(
+  gameType: string,
+  difficulty: string,
+  count: number
+): Promise<GameQuestion[]> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("game_questions")
+    .select("*")
+    .eq("game_type", gameType)
+    .eq("difficulty", difficulty)
+    .eq("is_active", true);
+
+  if (error) {
+    safeErrorLog("getRandomQuestions", error);
+    return [];
+  }
+  const shuffled = (data || []).sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, count) as GameQuestion[];
+}
+
+// ── Answer Logging ──
+
+export async function logGameAnswer(
+  sessionId: string,
+  questionId: string | null,
+  questionIndex: number,
+  selected: string,
+  correct: string,
+  isCorrect: boolean,
+  points: number
+): Promise<void> {
+  const sb = getSupabaseClient();
+  await sb.from("game_answers").insert({
+    session_id: sessionId,
+    question_id: questionId,
+    question_index: questionIndex,
+    selected_answer: selected,
+    correct_answer: correct,
+    is_correct: isCorrect,
+    points_awarded: points,
+  });
+}
+
+// ── Scores ──
+
+export async function recordGameScore(
+  session: GameSession,
+  xp: number
+): Promise<void> {
+  const sb = getSupabaseClient();
+  await sb.from("game_scores").insert({
+    session_id: session.id,
+    phone_number: session.phone_number,
+    user_id: session.user_id,
+    game_type: session.game_type,
+    difficulty: session.difficulty,
+    score: session.score,
+    correct_answers: session.correct_answers,
+    wrong_answers: session.wrong_answers,
+    max_streak: session.max_streak,
+    xp_earned: xp,
+  });
+}
+
+// ── User Stats ──
+
+export async function updateUserGameStats(
+  phone: string,
+  scoreDelta: number,
+  xpDelta: number,
+  isWin: boolean,
+  maxStreak: number,
+  displayName?: string
+): Promise<void> {
+  const sb = getSupabaseClient();
+
+  const { data: existing } = await sb
+    .from("user_game_stats")
+    .select("*")
+    .eq("phone_number", phone)
+    .maybeSingle();
+
+  if (existing) {
+    const newXp = (existing.total_xp || 0) + xpDelta;
+    const newLevel = Math.max(1, Math.floor(newXp / 500) + 1);
+    await sb
+      .from("user_game_stats")
+      .update({
+        total_games: (existing.total_games || 0) + 1,
+        total_wins: (existing.total_wins || 0) + (isWin ? 1 : 0),
+        total_score: (existing.total_score || 0) + scoreDelta,
+        total_xp: newXp,
+        current_level: newLevel,
+        best_streak: Math.max(existing.best_streak || 0, maxStreak),
+        last_played_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("phone_number", phone);
+  } else {
+    await sb.from("user_game_stats").insert({
+      phone_number: phone,
+      display_name: displayName || null,
+      total_games: 1,
+      total_wins: isWin ? 1 : 0,
+      total_score: scoreDelta,
+      total_xp: xpDelta,
+      current_level: Math.max(1, Math.floor(xpDelta / 500) + 1),
+      best_streak: maxStreak,
+      last_played_at: new Date().toISOString(),
+    });
+  }
+}
+
+export async function getUserGameStats(phone: string): Promise<any> {
+  const sb = getSupabaseClient();
+  const { data } = await sb
+    .from("user_game_stats")
+    .select("*")
+    .eq("phone_number", phone)
+    .maybeSingle();
+  return data;
+}
+
+// ── Achievements ──
+
+export async function awardAchievement(
+  phone: string,
+  code: string,
+  name: string,
+  icon: string = "🏆"
+): Promise<boolean> {
+  const sb = getSupabaseClient();
+  const { error } = await sb
+    .from("game_achievements")
+    .insert({ phone_number: phone, achievement_code: code, name, icon });
+  return !error;
+}
