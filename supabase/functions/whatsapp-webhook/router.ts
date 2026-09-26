@@ -134,7 +134,16 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     // ══════════════════════════════════════════════════════
     // 7. GLOBAL INTERRUPTS
     // ══════════════════════════════════════════════════════
-    const activeModules = ["SALES", "EXAMS", "LEARNING", "TOOLS", "GAMES", "DEMOS", "ABOUT"];
+    const activeModules = [
+  "SALES",
+  "AGENT",
+  "EXAMS",
+  "LEARNING",
+  "TOOLS",
+  "GAMES",
+  "DEMOS",
+  "ABOUT"
+];
 
     if (
       (isGreeting(text) || isHelp(text) || text === "menu_home" || interactiveId === "menu_home")
