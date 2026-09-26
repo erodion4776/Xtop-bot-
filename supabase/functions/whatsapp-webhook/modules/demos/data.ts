@@ -1,10 +1,10 @@
 // supabase/functions/whatsapp-webhook/modules/demos/data.ts
-// All Demo Configurations + Fictional Data
+// All Demo Configurations + Fictional Data (26 Complete Demos)
 
 import { DemoConfig } from "./engine.ts";
 
 // ═══════════════════════════════════════════════════════
-// FICTIONAL DEMO DATA
+// FICTIONAL DEMO DATA SETS
 // ═══════════════════════════════════════════════════════
 
 const STORE_PRODUCTS = [
@@ -40,19 +40,52 @@ const AUTO_SERVICES = [
   { id: "a5", name: "AC Repair", price: "₦15,000 – ₦40,000", duration: "2–4 hours" },
 ];
 
+const CLINIC_DEPARTMENTS = [
+  { id: "cd1", name: "General Consultation", fee: "₦5,000" },
+  { id: "cd2", name: "Dental", fee: "₦10,000" },
+  { id: "cd3", name: "Eye / Optometry", fee: "₦8,000" },
+  { id: "cd4", name: "Paediatrics", fee: "₦6,000" },
+  { id: "cd5", name: "Antenatal / Maternity", fee: "₦7,000" },
+];
+
+const LAW_SERVICES = [
+  { id: "ls1", name: "Business Registration", fee: "₦50,000 – ₦150,000" },
+  { id: "ls2", name: "Contract Drafting", fee: "₦30,000 – ₦100,000" },
+  { id: "ls3", name: "Property / Conveyancing", fee: "₦100,000 – ₦500,000" },
+  { id: "ls4", name: "Family Law / Estate", fee: "₦80,000 – ₦300,000" },
+  { id: "ls5", name: "Corporate Retainer", fee: "₦150,000+/mo" },
+];
+
+const JOB_VACANCIES = [
+  { id: "jv1", title: "Frontend Developer", dept: "Engineering", type: "Full-time", salary: "₦400K – ₦700K" },
+  { id: "jv2", title: "Sales Executive", dept: "Business", type: "Full-time", salary: "₦250K – ₦400K" },
+  { id: "jv3", title: "Customer Support Agent", dept: "Operations", type: "Remote", salary: "₦150K – ₦250K" },
+  { id: "jv4", title: "Graphic Designer", dept: "Creative", type: "Contract", salary: "₦200K – ₦350K" },
+];
+
+const EVENTS_LIST = [
+  { id: "ev1", name: "Tech Summit Lagos 2026", date: "Oct 15, 2026", venue: "Eko Convention Centre", price: "₦10,000" },
+  { id: "ev2", name: "SME Business Workshop", date: "Oct 22, 2026", venue: "Landmark Centre", price: "₦5,000" },
+  { id: "ev3", name: "AI & Automation Conference", date: "Nov 5, 2026", venue: "Virtual", price: "Free" },
+  { id: "ev4", name: "Startup Pitch Night", date: "Nov 12, 2026", venue: "Co-Creation Hub", price: "₦3,000" },
+];
+
 // ═══════════════════════════════════════════════════════
-// DEMO CONFIGURATIONS
+// DEMO CONFIGURATIONS (All 26 Demos)
 // ═══════════════════════════════════════════════════════
 
 const DEMO_CONFIGS: DemoConfig[] = [
 
-  // ── SALES & COMMERCE ──
+  // ─────────────────────────────────────────────────────
+  // 1. SALES & COMMERCE
+  // ─────────────────────────────────────────────────────
+
   {
     id: "online_store",
     name: "Online Store",
     icon: "🛒",
     category: "Sales & Commerce",
-    description: "Experience a full e-commerce flow: browse products, add to cart, checkout, and receive order confirmation.",
+    description: "Browse products, add to cart, choose delivery, simulate checkout, and receive instant confirmation.",
     steps: [
       { id: "ENTRY", type: "message", body: "🛒 *Welcome to NaijaShop Demo Store!*\n\nBrowse our fictional product catalogue and experience a complete shopping flow.", nextStep: "BROWSE" },
       { id: "BROWSE", type: "list", title: "Browse Products", body: "🛍️ *Select a category to browse:*", options: [
@@ -61,42 +94,38 @@ const DEMO_CONFIGS: DemoConfig[] = [
         { id: "cat_all", label: "📦 All Products", description: "View everything" },
       ], captureField: "category", nextStep: "PRODUCT_LIST" },
       { id: "PRODUCT_LIST", type: "list", title: "Products", body: (ctx) => {
-        const filtered = ctx.category_id === "cat_all" ? STORE_PRODUCTS : STORE_PRODUCTS.filter((p) => p.category.toLowerCase() === (ctx.category || "").replace(/📱|🎒/g, "").trim().toLowerCase());
-        return `📦 *Available Products:*\n\n${(filtered.length > 0 ? filtered : STORE_PRODUCTS).map((p, i) => `${i + 1}. *${p.name}* — ₦${p.price.toLocaleString()}`).join("\n")}`;
-      }, options: (ctx) => {
-        const filtered = ctx.category_id === "cat_all" ? STORE_PRODUCTS : STORE_PRODUCTS.filter((p) => p.category.toLowerCase() === (ctx.category || "").replace(/📱|🎒/g, "").trim().toLowerCase());
-        return (filtered.length > 0 ? filtered : STORE_PRODUCTS).slice(0, 5).map((p) => ({ id: p.id, label: `${p.name}`, description: `₦${p.price.toLocaleString()}` }));
-      }, captureField: "product", nextStep: "PRODUCT_DETAIL" },
+        const items = ctx.category_id === "cat_all" ? STORE_PRODUCTS : STORE_PRODUCTS.filter((p) => p.category.toLowerCase().includes((ctx.category || "").replace(/[^a-zA-Z]/g, "").toLowerCase().substring(0, 4)));
+        const list = items.length > 0 ? items : STORE_PRODUCTS;
+        return `📦 *Products:*\n\n${list.map((p, i) => `${i + 1}. *${p.name}* — ₦${p.price.toLocaleString()}`).join("\n")}`;
+      }, options: () => STORE_PRODUCTS.slice(0, 5).map((p) => ({ id: p.id, label: p.name, description: `₦${p.price.toLocaleString()}` })), captureField: "product", nextStep: "PRODUCT_DETAIL" },
       { id: "PRODUCT_DETAIL", type: "buttons", body: (ctx) => {
         const p = STORE_PRODUCTS.find((x) => x.id === ctx.product_id) || STORE_PRODUCTS[0];
-        return `📋 *${p.name}*\n\n💰 *Price:* ₦${p.price.toLocaleString()}\n📦 *In Stock:* ${p.stock} units\n🏷️ *Category:* ${p.category}\n\n_Add to cart or continue browsing?_`;
+        return `📋 *${p.name}*\n\n💰 ₦${p.price.toLocaleString()}\n📦 In Stock: ${p.stock} units\n🏷️ Category: ${p.category}`;
       }, options: [
         { id: "add_cart", label: "🛒 Add to Cart" },
         { id: "browse_more", label: "🔙 Browse More" },
         { id: "checkout", label: "💳 Checkout" },
       ], captureField: "action", nextStep: (input) => input === "add_cart" ? "QUANTITY" : input === "checkout" ? "CHECKOUT" : "BROWSE" },
-      { id: "QUANTITY", type: "input", body: (ctx) => `🔢 *How many ${ctx.product || "items"} would you like?*\n\n_(Type a number, e.g. 2)_`, captureField: "quantity", validation: (v) => isNaN(parseInt(v)) ? "⚠️ Please enter a valid number." : null, nextStep: "CHECKOUT" },
+      { id: "QUANTITY", type: "input", body: (ctx) => `🔢 *How many ${ctx.product || "items"}?*\n_(Type a number, e.g. 2)_`, captureField: "quantity", validation: (v) => isNaN(parseInt(v)) ? "⚠️ Enter a valid number." : null, nextStep: "CHECKOUT" },
       { id: "CHECKOUT", type: "input", body: (ctx) => {
         const p = STORE_PRODUCTS.find((x) => x.id === ctx.product_id) || STORE_PRODUCTS[0];
         const qty = parseInt(ctx.quantity) || 1;
-        const total = p.price * qty;
-        return `🧾 *ORDER SUMMARY*\n\n• ${p.name} × ${qty}\n• *Total: ₦${total.toLocaleString()}*\n\n📍 *Enter your delivery address:*\n_(e.g. 12 Admiralty Way, Lekki, Lagos)_`;
+        return `🧾 *ORDER SUMMARY*\n\n• ${p.name} × ${qty}\n• *Total: ₦${(p.price * qty).toLocaleString()}*\n\n📍 *Enter delivery address:*`;
       }, captureField: "address", nextStep: "DELIVERY_METHOD" },
       { id: "DELIVERY_METHOD", type: "buttons", body: "🚚 *Choose delivery method:*", options: [
         { id: "delivery", label: "🚚 Home Delivery (₦2,000)" },
         { id: "pickup", label: "🏪 Store Pickup (Free)" },
       ], captureField: "delivery", nextStep: "PAYMENT" },
-      { id: "PAYMENT", type: "buttons", body: "💳 *Select payment method:*\n\n⚠️ _DEMO MODE — No real payment will be processed._", options: [
+      { id: "PAYMENT", type: "buttons", body: "💳 *Select payment method:*\n\n⚠️ _DEMO MODE — No real payment processed._", options: [
         { id: "transfer", label: "🏦 Bank Transfer" },
         { id: "card", label: "💳 Card Payment" },
         { id: "ussd", label: "📱 USSD" },
       ], captureField: "payment", nextStep: "CONFIRM" },
       { id: "CONFIRM", type: "confirmation", body: (ctx) => {
         const p = STORE_PRODUCTS.find((x) => x.id === ctx.product_id) || STORE_PRODUCTS[0];
-        const qty = parseInt(ctx.quantity) || 1;
-        return `✅ *CONFIRM ORDER?*\n\n🛒 ${p.name} × ${qty}\n💰 ₦${(p.price * qty).toLocaleString()}\n📍 ${ctx.address || "N/A"}\n🚚 ${ctx.delivery || "N/A"}\n💳 ${ctx.payment || "N/A"}`;
+        return `✅ *Confirm Order?*\n\n🛒 ${p.name} × ${ctx.quantity || 1}\n💰 ₦${(p.price * (parseInt(ctx.quantity) || 1)).toLocaleString()}\n📍 ${ctx.address || "N/A"}`;
       }, nextStep: "COMPLETE" },
-      { id: "COMPLETE", type: "message", body: (ctx) => `🎉 *ORDER CONFIRMED!*\n\n📋 *Order #:* XTR-${Date.now().toString().slice(-6)}\n📦 *Status:* Processing\n🚚 *Estimated Delivery:* 2–3 business days\n\n_Thank you for shopping at NaijaShop Demo!_\n\n⚠️ _This was a demo. No real order was placed._`, nextStep: "DONE" },
+      { id: "COMPLETE", type: "message", body: `🎉 *ORDER CONFIRMED!*\n\n📋 Order #: XTR-${Date.now().toString().slice(-6)}\n📦 Status: Processing\n🚚 Delivery: 2–3 business days\n\n⚠️ _Demo mode — no real order placed._`, nextStep: "DONE" },
     ],
   },
 
@@ -105,26 +134,25 @@ const DEMO_CONFIGS: DemoConfig[] = [
     name: "Restaurant Ordering",
     icon: "🍽️",
     category: "Sales & Commerce",
-    description: "Experience a restaurant ordering flow: browse menu, add items, choose pickup/delivery, and confirm.",
+    description: "Browse menu, select dishes, customize portions, choose pickup/delivery, and get receipts.",
     steps: [
-      { id: "ENTRY", type: "message", body: "🍽️ *Welcome to Mama Put Demo Kitchen!*\n\nBrowse our fictional menu and place a demo order.", nextStep: "MENU" },
-      { id: "MENU", type: "list", title: "Our Menu", body: "📋 *Select a category:*", options: [
-        { id: "mains", label: "🍛 Main Dishes", description: "Jollof, Egusi, Fried Rice" },
+      { id: "ENTRY", type: "message", body: "🍽️ *Mama Put Demo Kitchen!*\n\nBrowse our fictional menu and place a demo food order.", nextStep: "MENU" },
+      { id: "MENU", type: "list", title: "Menu", body: "📋 *Select a category:*", options: [
+        { id: "mains", label: "🍛 Main Dishes", description: "Jollof, Egusi, Pounded Yam" },
         { id: "soups", label: "🥣 Soups", description: "Pepper Soup, Ogbono" },
         { id: "drinks", label: "🥤 Drinks & Snacks", description: "Chapman, Meat Pie" },
-      ], captureField: "foodCategory", nextStep: "SELECT_FOOD" },
-      { id: "SELECT_FOOD", type: "list", title: "Select Dish", body: (ctx) => `🍛 *${ctx.foodCategory || "Menu"}:*\n\n${RESTAURANT_MENU.map((f, i) => `${i + 1}. *${f.name}* — ₦${f.price.toLocaleString()}`).join("\n")}`, options: RESTAURANT_MENU.map((f) => ({ id: f.id, label: f.name, description: `₦${f.price.toLocaleString()}` })), captureField: "food", nextStep: "FOOD_QTY" },
-      { id: "FOOD_QTY", type: "input", body: (ctx) => `🔢 *How many portions of ${ctx.food || "this dish"}?*\n\n_(Type a number)_`, captureField: "foodQty", validation: (v) => isNaN(parseInt(v)) ? "⚠️ Enter a valid number." : null, nextStep: "FOOD_METHOD" },
+      ], captureField: "foodCat", nextStep: "SELECT_FOOD" },
+      { id: "SELECT_FOOD", type: "list", title: "Dishes", body: "🍛 *Select your dish:*", options: RESTAURANT_MENU.map((f) => ({ id: f.id, label: f.name, description: `₦${f.price.toLocaleString()}` })), captureField: "food", nextStep: "FOOD_QTY" },
+      { id: "FOOD_QTY", type: "input", body: (ctx) => `🔢 *How many portions of ${ctx.food || "this dish"}?*\n_(Type a number)_`, captureField: "foodQty", validation: (v) => isNaN(parseInt(v)) ? "⚠️ Enter a valid number." : null, nextStep: "FOOD_METHOD" },
       { id: "FOOD_METHOD", type: "buttons", body: "🚗 *Pickup or Delivery?*", options: [
         { id: "pickup", label: "🏪 Pickup" },
         { id: "delivery", label: "🚚 Delivery (₦1,500)" },
       ], captureField: "foodMethod", nextStep: "FOOD_CONFIRM" },
       { id: "FOOD_CONFIRM", type: "confirmation", body: (ctx) => {
         const f = RESTAURANT_MENU.find((x) => x.id === ctx.food_id) || RESTAURANT_MENU[0];
-        const qty = parseInt(ctx.foodQty) || 1;
-        return `✅ *Confirm Order?*\n\n🍛 ${f.name} × ${qty}\n💰 ₦${(f.price * qty).toLocaleString()}\n🚗 ${ctx.foodMethod || "Pickup"}`;
+        return `✅ *Confirm Food Order?*\n\n🍛 ${f.name} × ${ctx.foodQty || 1}\n💰 Total: ₦${(f.price * (parseInt(ctx.foodQty) || 1)).toLocaleString()}\n🚗 Method: ${ctx.foodMethod || "Pickup"}`;
       }, nextStep: "FOOD_DONE" },
-      { id: "FOOD_DONE", type: "message", body: `🎉 *Order Received!*\n\n📋 *Order #:* MP-${Date.now().toString().slice(-5)}\n⏱️ *Estimated Time:* 25–35 minutes\n\n_Your food is being prepared!_\n\n⚠️ _Demo mode — no real order placed._`, nextStep: "DONE" },
+      { id: "FOOD_DONE", type: "message", body: `🎉 *Kitchen Order Received!*\n\n📋 Order #: MP-${Date.now().toString().slice(-5)}\n⏱️ Est. Preparation: 25–35 mins\n\n⚠️ _Demo mode — no real food ordered._`, nextStep: "DONE" },
     ],
   },
 
@@ -133,21 +161,20 @@ const DEMO_CONFIGS: DemoConfig[] = [
     name: "Real Estate",
     icon: "🏠",
     category: "Sales & Commerce",
-    description: "Browse properties, view details, and book inspections.",
+    description: "Browse verified properties, check prices and locations, request info, and book physical inspections.",
     steps: [
-      { id: "ENTRY", type: "message", body: "🏠 *Welcome to Xtop Properties Demo!*\n\nBrowse our fictional property listings.", nextStep: "LISTINGS" },
-      { id: "LISTINGS", type: "list", title: "Properties", body: "🏘️ *Available Properties:*\n\n" + PROPERTIES.map((p, i) => `${i + 1}. *${p.name}*\n   ${p.type} • ${p.price} • ${p.location}`).join("\n\n"), options: PROPERTIES.map((p) => ({ id: p.id, label: p.name, description: `${p.price} • ${p.location}` })), captureField: "property", nextStep: "PROPERTY_DETAIL" },
-      { id: "PROPERTY_DETAIL", type: "buttons", body: (ctx) => {
+      { id: "ENTRY", type: "message", body: "🏠 *Xtop Properties Demo!*\nBrowse fictional property listings across Nigeria.", nextStep: "LISTINGS" },
+      { id: "LISTINGS", type: "list", title: "Properties", body: "🏘️ *Available Listings:*\n\n" + PROPERTIES.map((p, i) => `${i + 1}. *${p.name}*\n   ${p.type} • ${p.price}`).join("\n\n"), options: PROPERTIES.map((p) => ({ id: p.id, label: p.name, description: `${p.price} • ${p.location}` })), captureField: "property", nextStep: "PROP_DETAIL" },
+      { id: "PROP_DETAIL", type: "buttons", body: (ctx) => {
         const p = PROPERTIES.find((x) => x.id === ctx.property_id) || PROPERTIES[0];
-        return `🏠 *${p.name}*\n\n📍 *Location:* ${p.location}\n💰 *Price:* ${p.price}\n📋 *Type:* ${p.type}\n🛏️ *Bedrooms:* 3\n🚗 *Parking:* Yes\n🔒 *Security:* 24/7\n\n_What would you like to do?_`;
+        return `🏠 *${p.name}*\n\n📍 Location: ${p.location}\n💰 Price: ${p.price}\n📋 Type: ${p.type}\n🛏️ 3 Bedrooms • 🚗 Parking • 🔒 24/7 Security`;
       }, options: [
         { id: "inspect", label: "📅 Book Inspection" },
         { id: "info", label: "ℹ️ More Info" },
         { id: "back", label: "🔙 All Properties" },
-      ], captureField: "propertyAction", nextStep: (input) => input === "inspect" ? "INSPECT_BOOK" : input === "back" ? "LISTINGS" : "PROPERTY_DETAIL" },
-      { id: "INSPECT_BOOK", type: "input", body: "📅 *Enter your preferred inspection date:*\n\n_(e.g. Monday 2pm)_", captureField: "inspectDate", nextStep: "INSPECT_CONFIRM" },
-      { id: "INSPECT_CONFIRM", type: "confirmation", body: (ctx) => `✅ *Confirm Inspection?*\n\n🏠 ${ctx.property || "Property"}\n📅 ${ctx.inspectDate || "TBD"}\n\n_An agent will confirm your slot._`, nextStep: "INSPECT_DONE" },
-      { id: "INSPECT_DONE", type: "message", body: `✅ *Inspection Booked!*\n\n📋 *Ref:* XPR-${Date.now().toString().slice(-5)}\n📅 *Date:* ${"Pending confirmation"}\n📞 *Agent:* +234 800 DEMO\n\n⚠️ _Demo mode._`, nextStep: "DONE" },
+      ], captureField: "propAction", nextStep: (input) => input === "inspect" ? "INSPECT" : input === "back" ? "LISTINGS" : "PROP_DETAIL" },
+      { id: "INSPECT", type: "input", body: "📅 *Enter preferred inspection date and time:*\n_(e.g. Saturday 2:00 PM)_", captureField: "inspectDate", nextStep: "INSPECT_DONE" },
+      { id: "INSPECT_DONE", type: "message", body: (ctx) => `✅ *Inspection Booked!*\n\n📋 Ref: XPR-${Date.now().toString().slice(-5)}\n🏠 Property: ${ctx.property || "Selected Property"}\n📅 Scheduled: ${ctx.inspectDate || "Pending confirmation"}\n📞 Assigned Agent: +234 800 DEMO\n\n⚠️ _Demo mode._`, nextStep: "DONE" },
     ],
   },
 
@@ -156,38 +183,65 @@ const DEMO_CONFIGS: DemoConfig[] = [
     name: "Automobile Workshop",
     icon: "🔧",
     category: "Sales & Commerce",
-    description: "Book vehicle services, get quotations, and track job status.",
+    description: "Book vehicle services, get maintenance quotations, track workshop job status, and set service history.",
     steps: [
-      { id: "ENTRY", type: "message", body: "🔧 *Welcome to Xtop Auto Care Demo!*\n\nBook a vehicle service or request a quotation.", nextStep: "SERVICE_LIST" },
-      { id: "SERVICE_LIST", type: "list", title: "Services", body: "🛠️ *Select a service:*", options: AUTO_SERVICES.map((s) => ({ id: s.id, label: s.name, description: s.price })), captureField: "service", nextStep: "VEHICLE_INFO" },
-      { id: "VEHICLE_INFO", type: "input", body: "🚗 *Enter your vehicle details:*\n\n_(e.g. Toyota Camry 2018, ABC-123-XY)_", captureField: "vehicle", nextStep: "BOOK_CONFIRM" },
-      { id: "BOOK_CONFIRM", type: "confirmation", body: (ctx) => `✅ *Confirm Booking?*\n\n🛠️ ${ctx.service || "Service"}\n🚗 ${ctx.vehicle || "Vehicle"}\n💰 ${AUTO_SERVICES.find((s) => s.id === ctx.service_id)?.price || "TBD"}`, nextStep: "BOOK_DONE" },
-      { id: "BOOK_DONE", type: "message", body: `✅ *Service Booked!*\n\n📋 *Job #:* XAC-${Date.now().toString().slice(-5)}\n📊 *Status:* Queued\n⏱️ *Est. Duration:* ${AUTO_SERVICES[0]?.duration || "2 hours"}\n\n⚠️ _Demo mode._`, nextStep: "DONE" },
+      { id: "ENTRY", type: "message", body: "🔧 *Xtop Auto Care Workshop Demo!*\nBook maintenance services or request diagnostic estimates.", nextStep: "SERVICES" },
+      { id: "SERVICES", type: "list", title: "Services", body: "🛠️ *Select a service:*", options: AUTO_SERVICES.map((s) => ({ id: s.id, label: s.name, description: s.price })), captureField: "service", nextStep: "VEHICLE" },
+      { id: "VEHICLE", type: "input", body: "🚗 *Enter vehicle details:*\n_(e.g. Toyota Camry 2018, ABC-123-XY)_", captureField: "vehicle", nextStep: "AUTO_CONFIRM" },
+      { id: "AUTO_CONFIRM", type: "confirmation", body: (ctx) => `✅ *Confirm Booking?*\n\n🛠️ Service: ${ctx.service || "Service"}\n🚗 Vehicle: ${ctx.vehicle || "N/A"}\n💰 Estimate: ${AUTO_SERVICES.find((s) => s.id === ctx.service_id)?.price || "TBD"}`, nextStep: "AUTO_DONE" },
+      { id: "AUTO_DONE", type: "message", body: `✅ *Service Job Created!*\n\n📋 Job Card #: XAC-${Date.now().toString().slice(-5)}\n📊 Status: Queued in Workshop\n🔔 Automated stage notifications: Active\n\n⚠️ _Demo mode._`, nextStep: "DONE" },
     ],
   },
 
-  // ── CUSTOMER MANAGEMENT ──
+  {
+    id: "lead_quotation",
+    name: "Lead-to-Quotation",
+    icon: "📝",
+    category: "Sales & Commerce",
+    description: "Capture inbound leads, qualify requirements, generate automated PDF quotes, and trigger follow-ups.",
+    steps: [
+      { id: "ENTRY", type: "message", body: "📝 *Lead-to-Quotation Automation Demo*\nExperience rapid qualification and instant quotation generation.", nextStep: "LQ_CAPTURE" },
+      { id: "LQ_CAPTURE", type: "input", body: "👤 *Enter prospect name:*\n_(e.g. John Adeyemi)_", captureField: "prospectName", nextStep: "LQ_BUSINESS" },
+      { id: "LQ_BUSINESS", type: "input", body: "🏢 *Enter business name and industry:*\n_(e.g. Adeyemi Stores, Retail)_", captureField: "prospectBiz", nextStep: "LQ_NEED" },
+      { id: "LQ_NEED", type: "list", title: "Prospect Need", body: "Select requirement:", options: [
+        { id: "website", label: "🌐 Business Website" },
+        { id: "bot", label: "🤖 WhatsApp Chatbot" },
+        { id: "crm", label: "👥 CRM Integration" },
+        { id: "ecommerce", label: "🛒 E-Commerce Platform" },
+      ], captureField: "prospectNeed", nextStep: "LQ_BUDGET" },
+      { id: "LQ_BUDGET", type: "buttons", body: "💰 *Planned Budget Range:*", options: [
+        { id: "low", label: "₦150K – ₦300K" },
+        { id: "mid", label: "₦300K – ₦700K" },
+        { id: "high", label: "₦700K – ₦2M" },
+      ], captureField: "prospectBudget", nextStep: "LQ_DONE" },
+      { id: "LQ_DONE", type: "message", body: (ctx) => `✅ *Quotation Generated & Dispatched!*\n\n📋 Quote #: XTR-Q-${Date.now().toString().slice(-5)}\n👤 Client: ${ctx.prospectName || "Prospect"}\n🏢 Business: ${ctx.prospectBiz || "N/A"}\n📌 Scope: ${ctx.prospectNeed || "N/A"}\n💰 Estimate: ${ctx.prospectBudget || "TBD"}\n🔔 48-hour follow-up automation: Scheduled\n\n⚠️ _Demo mode._`, nextStep: "DONE" },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────
+  // 2. CUSTOMER MANAGEMENT
+  // ─────────────────────────────────────────────────────
+
   {
     id: "crm",
     name: "CRM / Customer Management",
     icon: "👥",
     category: "Customer Management",
-    description: "Demonstrate lead capture, customer registration, follow-up, and sales pipeline tracking.",
+    description: "Lead capture, customer profiles, pipeline stages, activity history, and task assignments.",
     steps: [
-      { id: "ENTRY", type: "message", body: "👥 *Xtop CRM Demo*\n\nExperience customer relationship management automation.", nextStep: "CRM_MENU" },
-      { id: "CRM_MENU", type: "list", title: "CRM Features", body: "Select a CRM feature to demo:", options: [
-        { id: "lead_capture", label: "📝 Lead Capture", description: "Register a new lead" },
-        { id: "pipeline", label: "📊 Sales Pipeline", description: "View pipeline stages" },
-        { id: "followup", label: "📞 Follow-up", description: "Schedule follow-up" },
-        { id: "history", label: "📋 Customer History", description: "View interaction log" },
+      { id: "ENTRY", type: "message", body: "👥 *Xtop CRM Automation Demo*\nCentralized contact database and pipeline management.", nextStep: "CRM_MENU" },
+      { id: "CRM_MENU", type: "list", title: "CRM Actions", body: "Select a CRM feature to test:", options: [
+        { id: "lead", label: "📝 Lead Capture" },
+        { id: "pipeline", label: "📊 Sales Pipeline" },
+        { id: "followup", label: "📞 Schedule Follow-up" },
+        { id: "history", label: "📋 Customer History Log" },
       ], captureField: "crmFeature", nextStep: "CRM_ACTION" },
-      { id: "CRM_ACTION", type: "input", body: (ctx) => {
-        if (ctx.crmFeature_id === "lead_capture") return "📝 *Enter lead name and phone:*\n\n_(e.g. John Doe, 08012345678)_";
-        if (ctx.crmFeature_id === "pipeline") return "📊 *DEMO SALES PIPELINE*\n\n🟢 *New Leads:* 12\n🟡 *Contacted:* 8\n🟠 *Proposal Sent:* 5\n🔴 *Negotiation:* 3\n✅ *Closed Won:* 7\n💰 *Total Value:* ₦4.2M";
-        if (ctx.crmFeature_id === "followup") return "📞 *Enter customer name to schedule follow-up:*\n\n_(e.g. Jane Smith)_";
-        return "📋 *DEMO CUSTOMER HISTORY*\n\n• 2026-09-20: Initial enquiry via WhatsApp\n• 2026-09-22: Product demo scheduled\n• 2026-09-24: Quotation sent (₦250,000)\n• 2026-09-25: Follow-up call completed\n• 2026-09-26: Deal closed ✅";
-      }, captureField: "crmInput", nextStep: "CRM_DONE" },
-      { id: "CRM_DONE", type: "message", body: (ctx) => `✅ *CRM Action Completed!*\n\n${ctx.crmFeature_id === "lead_capture" ? "📝 Lead registered successfully.\n📊 Pipeline stage: NEW\n🔔 Auto follow-up scheduled for 48 hours." : ctx.crmFeature_id === "followup" ? `📞 Follow-up scheduled for ${ctx.crmInput || "customer"}.\n🔔 Reminder set for tomorrow 9am.` : "CRM demo action completed."}\n\n⚠️ _Demo mode._`, nextStep: "DONE" },
+      { id: "CRM_ACTION", type: "message", body: (ctx) => {
+        if (ctx.crmFeature_id === "lead") return "📝 *DEMO: Lead Captured!*\n\n👤 Name: Jane Smith\n📞 Phone: +234-800-DEMO-001\n🏢 Company: Smith Global\n📊 Status: NEW LEAD\n🔔 Next Action: Auto-introduction sent";
+        if (ctx.crmFeature_id === "pipeline") return "📊 *DEMO SALES PIPELINE*\n\n🟢 New Leads: 18\n🟡 Qualified: 11\n🟠 Proposal Sent: 6\n🔴 Negotiation: 3\n✅ Won: 9\n💰 Pipeline Value: ₦6.8M";
+        if (ctx.crmFeature_id === "followup") return "📞 *DEMO FOLLOW-UP*\n\n📅 Scheduled: Tomorrow 10:00 AM\n👤 Contact: Chuka Eze\n📋 Notes: Review quotation terms\n🔔 WhatsApp reminder: Active";
+        return "📋 *DEMO CUSTOMER TIMELINE*\n\n• Sep 20: Inbound WhatsApp enquiry\n• Sep 21: Auto-brochure delivered\n• Sep 23: Demo session held\n• Sep 25: Quotation accepted\n• Sep 26: Deposit confirmed ✅";
+      }, nextStep: "DONE" },
     ],
   },
 
@@ -196,43 +250,258 @@ const DEMO_CONFIGS: DemoConfig[] = [
     name: "Customer Support",
     icon: "🎧",
     category: "Customer Management",
-    description: "FAQs, support tickets, complaint handling, and escalation to human agents.",
+    description: "Automated FAQs, ticket creation, SLA monitoring, and live human agent escalations.",
     steps: [
-      { id: "ENTRY", type: "message", body: "🎧 *Xtop Customer Support Demo*\n\nExperience automated support ticket creation and resolution.", nextStep: "SUPPORT_MENU" },
-      { id: "SUPPORT_MENU", type: "list", title: "Support Options", body: "How can we help?", options: [
-        { id: "faq", label: "❓ FAQs", description: "Common questions" },
-        { id: "ticket", label: "🎫 Create Ticket", description: "Report an issue" },
-        { id: "status", label: "📊 Check Ticket", description: "Track existing ticket" },
-        { id: "escalate", label: "👤 Talk to Agent", description: "Human escalation" },
-      ], captureField: "supportType", nextStep: "SUPPORT_ACTION" },
-      { id: "SUPPORT_ACTION", type: "input", body: (ctx) => {
-        if (ctx.supportType_id === "faq") return "❓ *DEMO FAQs*\n\n*Q: How do I reset my password?*\nA: Go to Settings > Security > Reset Password.\n\n*Q: What are your business hours?*\nA: Mon–Fri, 8am–6pm WAT.\n\n*Q: How do I request a refund?*\nA: Submit a ticket with your order number.";
-        if (ctx.supportType_id === "ticket") return "🎫 *Describe your issue:*\n\n_(e.g. My order hasn't arrived)_";
-        if (ctx.supportType_id === "status") return "📊 *DEMO TICKET STATUS*\n\n🎫 *Ticket #XTR-8842*\n📋 *Subject:* Order delivery delay\n📊 *Status:* In Progress\n👤 *Agent:* Sarah\n⏱️ *Est. Resolution:* 24 hours";
-        return "👤 *Connecting you to a demo agent...*\n\n⏳ _In a real deployment, this would route to a live human agent._";
-      }, captureField: "supportInput", nextStep: "SUPPORT_DONE" },
-      { id: "SUPPORT_DONE", type: "message", body: (ctx) => `✅ *Support Action Complete!*\n\n${ctx.supportType_id === "ticket" ? `🎫 *Ticket Created:* XTR-${Date.now().toString().slice(-4)}\n📊 *Status:* Open\n⏱️ *Expected Response:* < 2 hours` : "Demo support action completed."}\n\n⚠️ _Demo mode._`, nextStep: "DONE" },
+      { id: "ENTRY", type: "message", body: "🎧 *Xtop Support Desk Demo*\nInstant resolution workflows and automated ticketing.", nextStep: "SUP_MENU" },
+      { id: "SUP_MENU", type: "list", title: "Support", body: "How can we assist you today?", options: [
+        { id: "faq", label: "❓ Instant FAQs" },
+        { id: "ticket", label: "🎫 Open Support Ticket" },
+        { id: "status", label: "📊 Track Existing Ticket" },
+        { id: "escalate", label: "👤 Human Agent Handoff" },
+      ], captureField: "supType", nextStep: "SUP_ACTION" },
+      { id: "SUP_ACTION", type: "input", body: (ctx) => {
+        if (ctx.supType_id === "faq") return "❓ *DEMO KNOWLEDGE BASE*\n\n*Q: How do I update delivery address?*\nA: Reply with 'address' and your order number.\n\n*Q: What are your operational hours?*\nA: Mon–Sat, 8:00 AM – 7:00 PM WAT.";
+        if (ctx.supType_id === "ticket") return "🎫 *Describe your technical or billing issue:*";
+        if (ctx.supType_id === "status") return "📊 *TICKET STATUS: #XTR-4491*\n\n📋 Issue: Delayed dispatch\n📊 Status: IN PROGRESS\n👤 Handler: Agent Michael\n⏱️ Resolution Target: < 4 hours";
+        return "👤 *Connecting you to a representative...*\n\n_In production, this initiates a live dashboard agent handoff._";
+      }, captureField: "supInput", nextStep: "SUP_DONE" },
+      { id: "SUP_DONE", type: "message", body: (ctx) => `✅ *${ctx.supType_id === "ticket" ? `Ticket Created: #XTR-${Date.now().toString().slice(-4)}\n📊 Priority: Medium\n⏱️ First response SLA: 30 mins` : "Support request logged."}*\n\n⚠️ _Demo mode._`, nextStep: "DONE" },
     ],
   },
 
-  // ── PAYMENTS & FINANCE ──
+  {
+    id: "survey_feedback",
+    name: "Survey & Feedback",
+    icon: "📊",
+    category: "Customer Management",
+    description: "Collect CSAT ratings, NPS scores, open-ended feedback, and aggregated metrics.",
+    steps: [
+      { id: "ENTRY", type: "message", body: "📊 *Xtop Survey & CSAT Demo*\nGather customer insights directly on WhatsApp.", nextStep: "SURVEY_Q1" },
+      { id: "SURVEY_Q1", type: "buttons", body: "⭐ *Q1/3: How would you rate your overall experience?*", options: [
+        { id: "5", label: "⭐⭐⭐⭐⭐ 5 Stars" },
+        { id: "3", label: "⭐⭐⭐ 3 Stars" },
+        { id: "1", label: "⭐ 1 Star" },
+      ], captureField: "rating", nextStep: "SURVEY_Q2" },
+      { id: "SURVEY_Q2", type: "buttons", body: "👍 *Q2/3: Would you recommend our services?*", options: [
+        { id: "yes", label: "✅ Definitely" },
+        { id: "maybe", label: "🤔 Maybe" },
+        { id: "no", label: "❌ No" },
+      ], captureField: "recommend", nextStep: "SURVEY_Q3" },
+      { id: "SURVEY_Q3", type: "input", body: "💬 *Q3/3: What is one thing we could improve?*\n_(Type your suggestions)_", captureField: "comments", nextStep: "SURVEY_DONE" },
+      { id: "SURVEY_DONE", type: "message", body: (ctx) => `✅ *Feedback Logged!*\n\n⭐ Rating: ${ctx.rating || "5"}/5\n👍 Recommendation: ${ctx.recommend || "Yes"}\n💬 Feedback: "${ctx.comments || "No comments"}"\n\n📊 _Aggregated into real-time BI reports._\n\n⚠️ _Demo mode._`, nextStep: "DONE" },
+    ],
+  },
+
+  {
+    id: "recruitment",
+    name: "Recruitment & Hiring",
+    icon: "💼",
+    category: "Customer Management",
+    description: "Browse job openings, candidate screening, CV ingestion, and interview bookings.",
+    steps: [
+      { id: "ENTRY", type: "message", body: "💼 *Xtop Recruitment Automation Demo*\nEnd-to-end applicant screening and management.", nextStep: "JOBS" },
+      { id: "JOBS", type: "list", title: "Open Positions", body: "📋 *Current Openings:*\n\n" + JOB_VACANCIES.map((j) => `• *${j.title}*\n  ${j.dept} • ${j.type} • ${j.salary}`).join("\n\n"), options: JOB_VACANCIES.map((j) => ({ id: j.id, label: j.title, description: `${j.salary} • ${j.type}` })), captureField: "job", nextStep: "APPLY_INFO" },
+      { id: "APPLY_INFO", type: "input", body: (ctx) => `📝 *Applying for: ${ctx.job || "Position"}*\n\nEnter your full name and email address:`, captureField: "applicantInfo", nextStep: "APPLY_CV" },
+      { id: "APPLY_CV", type: "buttons", body: "📄 *CV / Resume Submission*\n\n_Candidates can upload PDF or DOCX files directly in WhatsApp._", options: [
+        { id: "uploaded", label: "✅ CV Uploaded (Demo)" },
+        { id: "later", label: "⏳ Provide Later" },
+      ], captureField: "cvStatus", nextStep: "APPLY_DONE" },
+      { id: "APPLY_DONE", type: "message", body: (ctx) => `✅ *Application Registered!*\n\n📋 Ref: XHR-${Date.now().toString().slice(-5)}\n💼 Role: ${ctx.job || "Position"}\n👤 Candidate: ${ctx.applicantInfo || "Applicant"}\n📊 Status: Screening / Pending Review\n\n⚠️ _Demo mode._`, nextStep: "DONE" },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────
+  // 3. OPERATIONS
+  // ─────────────────────────────────────────────────────
+
+  {
+    id: "inventory",
+    name: "Inventory Management",
+    icon: "📦",
+    category: "Operations",
+    description: "Warehouse stock management, stock-in/out logs, SKU thresholds, and low-stock alerts.",
+    steps: [
+      { id: "ENTRY", type: "message", body: "📦 *Xtop Inventory Control Demo*\nReal-time stock auditing and reorder notifications.", nextStep: "INV_MENU" },
+      { id: "INV_MENU", type: "list", title: "Inventory", body: "Select inventory operation:", options: [
+        { id: "levels", label: "📊 Current Stock Levels" },
+        { id: "stockin", label: "📥 Record Stock-In" },
+        { id: "stockout", label: "📤 Record Stock-Out" },
+        { id: "alerts", label: "🔔 Low Stock Warnings" },
+      ], captureField: "invAction", nextStep: "INV_RESULT" },
+      { id: "INV_RESULT", type: "message", body: (ctx) => {
+        if (ctx.invAction_id === "levels") return "📊 *DEMO WAREHOUSE LEVELS*\n\n• Wireless Earbuds: 24 units\n• Phone Cases: 150 units\n• 65W Chargers: 45 units\n• Laptop Stands: 18 units ⚠️\n• Screen Protectors: 200 units";
+        if (ctx.invAction_id === "alerts") return "🔔 *LOW STOCK WARNINGS*\n\n⚠️ Laptop Stands: 18 left (Threshold: 20)\n⚠️ Bluetooth Speakers: 30 left (Threshold: 35)\n\n🔔 Automatic supplier reorder draft triggered.";
+        if (ctx.invAction_id === "stockin") return "📥 *STOCK-IN REGISTERED*\n\n✅ +50 Fast Chargers added\n📦 New SKU Total: 95\n👤 Operator: Warehouse Admin\n🕐 Timestamp: Just now";
+        return "📤 *STOCK-OUT REGISTERED*\n\n✅ -10 Earbuds dispatched\n📦 Remaining SKU Total: 14\n📋 Order Ref: #ORD-9981\n🕐 Timestamp: Just now";
+      }, nextStep: "DONE" },
+    ],
+  },
+
+  {
+    id: "delivery_logistics",
+    name: "Delivery & Logistics",
+    icon: "🚚",
+    category: "Operations",
+    description: "Waybill creation, distance fare calculators, rider dispatch, and live milestone tracking.",
+    steps: [
+      { id: "ENTRY", type: "message", body: "🚚 *Xtop Logistics & Dispatch Demo*\nManage pickup, delivery, and real-time parcel tracking.", nextStep: "DEL_TYPE" },
+      { id: "DEL_TYPE", type: "buttons", body: "📦 *Choose operation:*", options: [
+        { id: "send", label: "📤 Dispatch Parcel" },
+        { id: "track", label: "🔍 Track Waybill" },
+      ], captureField: "delType", nextStep: (input) => input === "send" ? "DEL_SENDER" : "DEL_TRACK" },
+      { id: "DEL_SENDER", type: "input", body: "👤 *Enter Sender Name & Pickup Address:*\n_(e.g. Tunde, 14 Admiralty Way, Lekki)_", captureField: "sender", nextStep: "DEL_RECEIVER" },
+      { id: "DEL_RECEIVER", type: "input", body: "📍 *Enter Receiver Name & Drop-off Address:*\n_(e.g. Mary, 8 Allen Avenue, Ikeja)_", captureField: "receiver", nextStep: "DEL_PACKAGE" },
+      { id: "DEL_PACKAGE", type: "list", title: "Package Size", body: "Select weight category:", options: [
+        { id: "small", label: "📦 Small (< 2kg)", description: "₦1,500 Base" },
+        { id: "medium", label: "📦 Medium (2–10kg)", description: "₦3,000 Base" },
+        { id: "large", label: "📦 Large (10–30kg)", description: "₦5,500 Base" },
+      ], captureField: "package", nextStep: "DEL_FEE" },
+      { id: "DEL_FEE", type: "buttons", body: (ctx) => `💰 *Calculated Delivery Fee: ₦${ctx.package_id === "medium" ? "3,000" : ctx.package_id === "large" ? "5,500" : "1,500"}*\n\n📍 Route: Lekki ➔ Ikeja\n⏱️ Est. Transit: 2–3 Hours\n\n*Confirm dispatch booking?*`, options: [
+        { id: "confirm", label: "✅ Confirm Dispatch" },
+        { id: "cancel", label: "❌ Cancel" },
+      ], captureField: "delConfirm", nextStep: "DEL_DONE" },
+      { id: "DEL_TRACK", type: "message", body: "🔍 *DEMO WAYBILL TRACKING*\n\n📋 Waybill: #XDL-88201\n📦 Status: *OUT FOR DELIVERY* 🛵\n📍 Current Location: Maryland Junction\n👤 Rider: Musa (080-DEMO-RIDER)\n⏱️ Estimated Drop-off: 25 mins\n\n⚠️ _Demo mode._", nextStep: "DONE" },
+      { id: "DEL_DONE", type: "message", body: `✅ *Dispatch Booking Confirmed!*\n\n📋 Waybill: #XDL-${Date.now().toString().slice(-5)}\n🛵 Rider Assigned: En-route to pickup\n🔔 Automated SMS/WhatsApp milestones: Enabled\n\n⚠️ _Demo mode._`, nextStep: "DONE" },
+    ],
+  },
+
+  {
+    id: "hr_automation",
+    name: "HR Automation",
+    icon: "👔",
+    category: "Operations",
+    description: "Employee self-service, leave applications, attendance logs, announcements, and payroll slips.",
+    steps: [
+      { id: "ENTRY", type: "message", body: "👔 *Xtop Employee Self-Service Demo*\nStreamline internal HR workflows and approvals.", nextStep: "HR_MENU" },
+      { id: "HR_MENU", type: "list", title: "HR Portal", body: "Select self-service action:", options: [
+        { id: "leave", label: "🏖️ Apply for Leave" },
+        { id: "attendance", label: "✅ Check-In Attendance" },
+        { id: "announce", label: "📢 Company Broadcasts" },
+        { id: "payslip", label: "📄 Request Payslip" },
+      ], captureField: "hrAction", nextStep: "HR_ACTION" },
+      { id: "HR_ACTION", type: "input", body: (ctx) => {
+        if (ctx.hrAction_id === "leave") return "🏖️ *Leave Application*\n\nEnter leave category and duration:\n_(e.g. Annual Leave, 5 days, Oct 10–15)_";
+        if (ctx.hrAction_id === "attendance") return "✅ *DEMO ATTENDANCE LOG*\n\n🟢 Timestamp: 08:14 AM\n📍 Location: HQ Office (GPS Verified)\n📊 Status: On-Time\n\n_Have a productive workday!_";
+        if (ctx.hrAction_id === "announce") return "📢 *COMPANY BROADCASTS*\n\n• 🏢 Q4 Strategy All-Hands: Thursday 2:00 PM\n• 🌴 Public Holiday Notice: Oct 1\n• 🏆 Employee of the Month: Emmanuel O.";
+        return "📄 *DEMO PAYSLIP DISPATCH*\n\n📋 Period: August 2026\n💼 Basic Salary: Confirmed\n🏛️ Pension & Tax: Deducted\n\n_In production, encrypted PDF payslips are delivered instantly via WhatsApp._";
+      }, captureField: "hrInput", nextStep: "HR_DONE" },
+      { id: "HR_DONE", type: "message", body: (ctx) => `✅ *${ctx.hrAction_id === "leave" ? "Leave Application Forwarded!\n📊 Status: Pending Line Manager Sign-off\n🔔 Notification dispatched to supervisor." : "HR request processed."}*\n\n⚠️ _Demo mode._`, nextStep: "DONE" },
+    ],
+  },
+
+  {
+    id: "document_collection",
+    name: "Document Collection",
+    icon: "📄",
+    category: "Operations",
+    description: "Automated KYC checklist, file validation, OCR status, missing item prompts, and approval notices.",
+    steps: [
+      { id: "ENTRY", type: "message", body: "📄 *Xtop KYC & Document Verification Demo*\nAutomate document collection and onboarding checks.", nextStep: "DOC_LIST" },
+      { id: "DOC_LIST", type: "message", body: "📋 *Onboarding Checklist Status:*\n\n1. ✅ *Valid National ID / Passport* — Verified\n2. ✅ *Proof of Residential Address* — Verified\n3. ⏳ *Bank Statement (6 Months)* — Pending Upload\n4. ❌ *Tax Identification Form* — Missing\n5. 🔴 *CAC Certificate* — Rejected (Blurry Scan)\n\n_Choose next action below:_", nextStep: "DOC_ACTION" },
+      { id: "DOC_ACTION", type: "list", title: "Action", body: "Select document action:", options: [
+        { id: "upload", label: "📤 Submit Missing File" },
+        { id: "status", label: "📊 Detailed Checklist Status" },
+        { id: "resubmit", label: "🔄 Replace Rejected Document" },
+      ], captureField: "docAction", nextStep: "DOC_RESULT" },
+      { id: "DOC_RESULT", type: "message", body: (ctx) => {
+        if (ctx.docAction_id === "upload") return "📤 *DOCUMENT RECEIVED*\n\n✅ 6-Month Bank Statement uploaded.\n🔍 Automated OCR & Compliance Check: Running\n⏱️ Est. Review Time: < 30 minutes";
+        if (ctx.docAction_id === "resubmit") return "🔄 *RESUBMISSION PORTAL*\n\n🔴 File: CAC Certificate\n❌ Rejection Reason: Signature page was illegible.\n📤 Please provide a clear, high-resolution scan.";
+        return "📊 *COMPLIANCE OVERVIEW*\n\n• Verified Files: 2/5\n• Pending Items: 1/5\n• Action Required: 2/5\n📈 *Onboarding Progress: 40%*";
+      }, nextStep: "DONE" },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────
+  // 4. PAYMENTS & FINANCE
+  // ─────────────────────────────────────────────────────
+
   {
     id: "payment_collection",
     name: "Payment Collection",
     icon: "💳",
     category: "Payments & Finance",
-    description: "Generate payment requests, verify payments, and issue receipts.",
+    description: "Dynamic payment links, Paystack checkout integration, anti-cheat verification, and receipts.",
     steps: [
-      { id: "ENTRY", type: "message", body: "💳 *Xtop Payment Collection Demo*\n\nExperience automated payment request and verification.", nextStep: "PAY_AMOUNT" },
-      { id: "PAY_AMOUNT", type: "input", body: "💰 *Enter the amount to collect:*\n\n_(e.g. 50000)_", captureField: "payAmount", validation: (v) => isNaN(parseInt(v)) ? "⚠️ Enter a valid amount." : null, nextStep: "PAY_PURPOSE" },
-      { id: "PAY_PURPOSE", type: "input", body: "📋 *What is this payment for?*\n\n_(e.g. Invoice #1234, Monthly subscription)_", captureField: "payPurpose", nextStep: "PAY_REQUEST" },
-      { id: "PAY_REQUEST", type: "buttons", body: (ctx) => `💳 *PAYMENT REQUEST*\n\n💰 *Amount:* ₦${parseInt(ctx.payAmount || "0").toLocaleString()}\n📋 *Purpose:* ${ctx.payPurpose || "N/A"}\n\n⚠️ _DEMO MODE — No real payment link generated._`, options: [
-        { id: "generate", label: "🔗 Generate Pay Link" },
-        { id: "verify", label: "✅ Verify Payment" },
+      { id: "ENTRY", type: "message", body: "💳 *Xtop Payment Collection Demo*\nSecure checkout generation and webhook-based verification.", nextStep: "PAY_AMOUNT" },
+      { id: "PAY_AMOUNT", type: "input", body: "💰 *Enter amount to collect (NGN):*\n_(e.g. 75000)_", captureField: "payAmount", validation: (v) => isNaN(parseInt(v)) ? "⚠️ Enter numbers only." : null, nextStep: "PAY_PURPOSE" },
+      { id: "PAY_PURPOSE", type: "input", body: "📋 *Specify purpose or invoice reference:*\n_(e.g. Web Hosting Renewal #442)_", captureField: "payPurpose", nextStep: "PAY_REQUEST" },
+      { id: "PAY_REQUEST", type: "buttons", body: (ctx) => `💳 *PAYMENT REQUEST SUMMARY*\n\n💰 Amount: ₦${parseInt(ctx.payAmount || "0").toLocaleString()}\n📋 Reference: ${ctx.payPurpose || "Direct Payment"}\n\n⚠️ _DEMO MODE — Fictional gateway simulator._`, options: [
+        { id: "generate", label: "🔗 Generate Payment Link" },
+        { id: "verify", label: "✅ Verify Transaction" },
       ], captureField: "payAction", nextStep: "PAY_RESULT" },
       { id: "PAY_RESULT", type: "message", body: (ctx) => {
-        if (ctx.payAction_id === "generate") return `🔗 *DEMO PAYMENT LINK*\n\n💰 ₦${parseInt(ctx.payAmount || "0").toLocaleString()}\n🔗 https://paystack.demo/pay/XTR-${Date.now().toString().slice(-6)}\n\n⚠️ _This is a fictional link. In production, this connects to Paystack/Flutterwave._`;
-        return `⚠️ *DEMO PAYMENT VERIFICATION*\n\n🔍 Checking payment status...\n\n❌ *No payment found.*\n\n_In production, this would verify the transaction via Paystack API before confirming._\n\n🔒 *Xtop never marks payments as successful based on user messages alone.*`;
+        if (ctx.payAction_id === "generate") return `🔗 *SECURE PAYMENT LINK*\n\n💰 Amount: ₦${parseInt(ctx.payAmount || "0").toLocaleString()}\n👉 https://paystack.demo/checkout/XTR-${Date.now().toString().slice(-6)}\n\n🔒 Supports Cards, Bank Transfer, Apple Pay, & USSD.`;
+        return `⚠️ *PAYMENT STATUS VERIFICATION*\n\n🔍 Querying gateway webhooks...\n❌ *No settled transaction detected yet.*\n\n🔒 *Security Note: Xtop never marks invoices paid based on manual user claims.*`;
+      }, nextStep: "DONE" },
+    ],
+  },
+
+  {
+    id: "invoice_quotation",
+    name: "Invoice & Quotation",
+    icon: "🧾",
+    category: "Payments & Finance",
+    description: "Automated billing, itemized sub-totals, discounts, VAT calculation, and PDF dispatch.",
+    steps: [
+      { id: "ENTRY", type: "message", body: "🧾 *Xtop Invoicing & Quotation Engine*\nGenerate professional, itemized commercial documents.", nextStep: "IQ_TYPE" },
+      { id: "IQ_TYPE", type: "buttons", body: "📋 *Select document to generate:*", options: [
+        { id: "quote", label: "📄 Commercial Quotation" },
+        { id: "invoice", label: "🧾 Final Tax Invoice" },
+      ], captureField: "iqType", nextStep: "IQ_CUSTOMER" },
+      { id: "IQ_CUSTOMER", type: "input", body: "👤 *Enter Client / Company Name:*\n_(e.g. Horizon Logistics Ltd)_", captureField: "iqCustomer", nextStep: "IQ_ITEMS" },
+      { id: "IQ_ITEMS", type: "message", body: "📦 *DEMO BILLING BREAKDOWN:*\n\n1. WhatsApp Automation Suite — ₦250,000\n2. Custom CRM Dashboard — ₦150,000\n3. Dedicated Server Setup — ₦50,000\n\n• *Subtotal:* ₦450,000\n• *Special Discount (5%):* -₦22,500\n• *VAT (7.5%):* +₦32,062.50\n\n*TOTAL DUE: ₦459,562.50*", nextStep: "IQ_SEND" },
+      { id: "IQ_SEND", type: "buttons", body: (ctx) => `📤 *Ready to dispatch ${ctx.iqType === "invoice" ? "Invoice" : "Quotation"}?*\n\n👤 Recipient: ${ctx.iqCustomer || "Client"}\n💰 Payable: ₦459,562.50\n📅 Validity: 14 Calendar Days`, options: [
+        { id: "send", label: "📤 Send to WhatsApp" },
+        { id: "pdf", label: "📄 Export PDF" },
+      ], captureField: "iqSend", nextStep: "IQ_DONE" },
+      { id: "IQ_DONE", type: "message", body: (ctx) => `✅ *${ctx.iqType === "invoice" ? "Tax Invoice" : "Commercial Quotation"} Generated!*\n\n📋 Document #: XTR-${ctx.iqType === "invoice" ? "INV" : "QTO"}-${Date.now().toString().slice(-5)}\n👤 Client: ${ctx.iqCustomer || "Client"}\n💰 Balance: ₦459,562.50\n🔔 Automated due reminder: Set for +7 days\n\n⚠️ _Demo mode._`, nextStep: "DONE" },
+    ],
+  },
+
+  {
+    id: "loan_application",
+    name: "Loan Application",
+    icon: "🏦",
+    category: "Payments & Finance",
+    description: "Credit intake, tenor calculations, KYC uploads, risk verification, and underwriting queues.",
+    steps: [
+      { id: "ENTRY", type: "message", body: "🏦 *Xtop Micro-Credit & Loan Portal*\nStructured applicant evaluation workflow.\n\n⚠️ _Loans undergo manual underwriting and are never auto-approved._", nextStep: "LOAN_AMOUNT" },
+      { id: "LOAN_AMOUNT", type: "input", body: "💰 *Enter requested loan principal (NGN):*\n_(e.g. 500000)_", captureField: "loanAmount", validation: (v) => isNaN(parseInt(v)) ? "⚠️ Enter valid numbers." : null, nextStep: "LOAN_PURPOSE" },
+      { id: "LOAN_PURPOSE", type: "list", title: "Loan Purpose", body: "Select capital purpose:", options: [
+        { id: "business", label: "💼 Inventory & Working Capital" },
+        { id: "equipment", label: "🔧 Heavy Equipment Purchase" },
+        { id: "emergency", label: "🚨 Business Emergency Facility" },
+        { id: "project", label: "🏗️ Contract Execution" },
+      ], captureField: "loanPurpose", nextStep: "LOAN_TERM" },
+      { id: "LOAN_TERM", type: "buttons", body: "📅 *Select repayment tenor:*", options: [
+        { id: "3m", label: "3 Months (4.5%)" },
+        { id: "6m", label: "6 Months (4.0%)" },
+        { id: "12m", label: "12 Months (3.5%)" },
+      ], captureField: "loanTerm", nextStep: "LOAN_SUBMIT" },
+      { id: "LOAN_SUBMIT", type: "confirmation", body: (ctx) => `📋 *Confirm Credit Submission?*\n\n💰 Principal: ₦${parseInt(ctx.loanAmount || "0").toLocaleString()}\n📌 Purpose: ${ctx.loanPurpose || "Working Capital"}\n📅 Tenor: ${ctx.loanTerm || "6 Months"}\n\n⚠️ _Application will be queued for credit officer appraisal._`, nextStep: "LOAN_DONE" },
+      { id: "LOAN_DONE", type: "message", body: `✅ *Loan Dossier Logged!*\n\n📋 Application ID: #XLN-${Date.now().toString().slice(-5)}\n📊 Status: Underwriting Review\n⏱️ SLA Decision Window: 48–72 Hours\n🔔 Status updates dispatched via WhatsApp\n\n⚠️ _Demo mode — no credit facility issued._`, nextStep: "DONE" },
+    ],
+  },
+
+  {
+    id: "cooperative_savings",
+    name: "Cooperative / Savings",
+    icon: "🏛️",
+    category: "Payments & Finance",
+    description: "Thrift collections, Ajo/Esusu contribution ledgers, balance statements, and payout rosters.",
+    steps: [
+      { id: "ENTRY", type: "message", body: "🏛️ *Xtop Thrift & Cooperative Automation*\nManage recurring contributions, dividend shares, and balances.", nextStep: "COOP_MENU" },
+      { id: "COOP_MENU", type: "list", title: "Cooperative", body: "Select member service:", options: [
+        { id: "register", label: "📝 Member Enrollment" },
+        { id: "contribute", label: "💰 Log Contribution" },
+        { id: "balance", label: "📊 Balance & Dividends" },
+        { id: "statement", label: "📋 Full Statement of Account" },
+      ], captureField: "coopAction", nextStep: "COOP_ACTION" },
+      { id: "COOP_ACTION", type: "message", body: (ctx) => {
+        if (ctx.coopAction_id === "register") return "📝 *MEMBER ENROLLMENT CONFIRMED*\n\n👤 Member: Chinedu Okonkwo\n🏛️ Society: Premier SME Multi-Purpose Co-Op\n💰 Monthly Share: ₦25,000\n📅 Next Remittance: 1st of Month";
+        if (ctx.coopAction_id === "contribute") return "💰 *CONTRIBUTION SETTLED*\n\n✅ Remittance: ₦25,000 (September Batch)\n📊 Cumulative Thrift Balance: ₦275,000\n🧾 Automated receipt generated.";
+        if (ctx.coopAction_id === "balance") return "📊 *MEMBER STATEMENT SUMMARY*\n\n👤 Member: Chinedu Okonkwo\n💰 Total Savings: ₦275,000\n📈 Accrued Dividends: ₦18,450\n🛡️ Loan Eligibility: Up to ₦550,000 (2x)";
+        return "📋 *HISTORICAL THRIFT LEDGER*\n\n• May 2026: +₦25,000\n• Jun 2026: +₦25,000\n• Jul 2026: +₦25,000\n• Aug 2026: +₦25,000\n• Sep 2026: +₦25,000\n\n*Net Balance: ₦275,000*";
       }, nextStep: "DONE" },
     ],
   },
@@ -242,146 +511,268 @@ const DEMO_CONFIGS: DemoConfig[] = [
     name: "Business Calculator",
     icon: "🧮",
     category: "Payments & Finance",
-    description: "Profit, markup, discount, VAT, commission, loan, and break-even calculators.",
+    description: "Instant formulas for gross margins, markup pricing, VAT, commissions, and loan amortizations.",
     steps: [
-      { id: "ENTRY", type: "message", body: "🧮 *Xtop Business Calculator Demo*\n\nPowerful calculators for Nigerian businesses.", nextStep: "CALC_MENU" },
-      { id: "CALC_MENU", type: "list", title: "Calculators", body: "Select a calculator:", options: [
-        { id: "profit", label: "💰 Profit Calculator", description: "Revenue - Cost = Profit" },
-        { id: "markup", label: "📈 Markup Calculator", description: "Set your profit margin" },
-        { id: "vat", label: "🏛️ VAT Calculator", description: "7.5% Nigerian VAT" },
-        { id: "discount", label: "🏷️ Discount Calculator", description: "Calculate savings" },
-        { id: "commission", label: "🤝 Commission Calculator", description: "Agent commissions" },
-        { id: "loan", label: "🏦 Loan Calculator", description: "Monthly repayments" },
+      { id: "ENTRY", type: "message", body: "🧮 *Xtop Commercial Business Calculators*\nInstant mathematical computations for financial planning.", nextStep: "CALC_MENU" },
+      { id: "CALC_MENU", type: "list", title: "Calculators", body: "Choose calculation model:", options: [
+        { id: "profit", label: "💰 Profit Margin" },
+        { id: "markup", label: "📈 Selling Price Markup" },
+        { id: "vat", label: "🏛️ Statutory VAT (7.5%)" },
+        { id: "discount", label: "🏷️ Promotional Discount" },
+        { id: "commission", label: "🤝 Broker Commission" },
+        { id: "loan", label: "🏦 Amortization Schedule" },
       ], captureField: "calcType", nextStep: "CALC_INPUT" },
       { id: "CALC_INPUT", type: "input", body: (ctx) => {
         const prompts: Record<string, string> = {
-          profit: "💰 *Profit Calculator*\n\nEnter: cost_price selling_price\n_(e.g. 5000 8000)_",
-          markup: "📈 *Markup Calculator*\n\nEnter: cost_price markup_percentage\n_(e.g. 5000 30)_",
-          vat: "🏛️ *VAT Calculator (7.5%)*\n\nEnter the amount:\n_(e.g. 100000)_",
-          discount: "🏷️ *Discount Calculator*\n\nEnter: original_price discount_percentage\n_(e.g. 15000 20)_",
-          commission: "🤝 *Commission Calculator*\n\nEnter: sale_amount commission_percentage\n_(e.g. 500000 10)_",
-          loan: "🏦 *Loan Calculator*\n\nEnter: principal monthly_rate months\n_(e.g. 1000000 2 12)_",
+          profit: "💰 *Profit Calculator*\nEnter: cost_price selling_price\n_(e.g. 6000 9500)_",
+          markup: "📈 *Markup Calculator*\nEnter: cost_price markup_percentage\n_(e.g. 8000 35)_",
+          vat: "🏛️ *VAT Calculator (7.5%)*\nEnter subtotal amount:\n_(e.g. 240000)_",
+          discount: "🏷️ *Discount Calculator*\nEnter: original_price discount_percent\n_(e.g. 50000 15)_",
+          commission: "🤝 *Commission Calculator*\nEnter: transaction_value commission_percent\n_(e.g. 1200000 5)_",
+          loan: "🏦 *Loan Schedule*\nEnter: principal monthly_interest_percent months\n_(e.g. 2000000 2.5 12)_",
         };
-        return prompts[ctx.calcType_id || "profit"] || "Enter values:";
+        return prompts[ctx.calcType_id || "profit"] || "Enter formula parameters:";
       }, captureField: "calcInput", nextStep: "CALC_RESULT" },
       { id: "CALC_RESULT", type: "message", body: (ctx) => {
-        const parts = (ctx.calcInput || "0 0").split(/\s+/).map(Number);
-        const type = ctx.calcType_id;
-        if (type === "profit") { const cost = parts[0] || 5000; const sell = parts[1] || 8000; return `💰 *Profit Result*\n\nCost: ₦${cost.toLocaleString()}\nRevenue: ₦${sell.toLocaleString()}\n*Profit: ₦${(sell - cost).toLocaleString()}*\nMargin: ${(((sell - cost) / sell) * 100).toFixed(1)}%`; }
-        if (type === "markup") { const cost = parts[0] || 5000; const pct = parts[1] || 30; const price = cost * (1 + pct / 100); return `📈 *Markup Result*\n\nCost: ₦${cost.toLocaleString()}\nMarkup: ${pct}%\n*Selling Price: ₦${Math.round(price).toLocaleString()}*`; }
-        if (type === "vat") { const amt = parts[0] || 100000; return `🏛️ *VAT Result (7.5%)*\n\nAmount: ₦${amt.toLocaleString()}\nVAT: ₦${Math.round(amt * 0.075).toLocaleString()}\n*Total: ₦${Math.round(amt * 1.075).toLocaleString()}*`; }
-        if (type === "discount") { const orig = parts[0] || 15000; const pct = parts[1] || 20; return `🏷️ *Discount Result*\n\nOriginal: ₦${orig.toLocaleString()}\nDiscount: ${pct}% (₦${Math.round(orig * pct / 100).toLocaleString()})\n*Final Price: ₦${Math.round(orig * (1 - pct / 100)).toLocaleString()}*`; }
-        if (type === "commission") { const sale = parts[0] || 500000; const pct = parts[1] || 10; return `🤝 *Commission Result*\n\nSale: ₦${sale.toLocaleString()}\nRate: ${pct}%\n*Commission: ₦${Math.round(sale * pct / 100).toLocaleString()}*`; }
-        if (type === "loan") { const p = parts[0] || 1000000; const r = (parts[1] || 2) / 100; const n = parts[2] || 12; const monthly = Math.round(p * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1)); return `🏦 *Loan Result*\n\nPrincipal: ₦${p.toLocaleString()}\nRate: ${(r * 100).toFixed(1)}% monthly\nTerm: ${n} months\n*Monthly Payment: ₦${monthly.toLocaleString()}*\n*Total Repayment: ₦${(monthly * n).toLocaleString()}*`; }
-        return "🧮 Calculation complete.";
+        const v = (ctx.calcInput || "0 0").split(/\s+/).map(Number);
+        const t = ctx.calcType_id;
+        if (t === "profit") { const c = v[0] || 6000; const s = v[1] || 9500; return `💰 *PROFIT ANALYSIS*\n\nCost: ₦${c.toLocaleString()}\nSelling Price: ₦${s.toLocaleString()}\n*Net Profit: ₦${(s - c).toLocaleString()}*\nMargin: ${(((s - c) / s) * 100).toFixed(1)}%`; }
+        if (t === "markup") { const c = v[0] || 8000; const m = v[1] || 35; return `📈 *MARKUP ANALYSIS*\n\nBase Cost: ₦${c.toLocaleString()}\nTarget Markup: ${m}%\n*Recommended Price: ₦${Math.round(c * (1 + m / 100)).toLocaleString()}*`; }
+        if (t === "vat") { const a = v[0] || 240000; return `🏛️ *VAT COMPUTATION (7.5%)*\n\nSubtotal: ₦${a.toLocaleString()}\nVAT Amount: ₦${Math.round(a * 0.075).toLocaleString()}\n*Gross Invoiced: ₦${Math.round(a * 1.075).toLocaleString()}*`; }
+        if (t === "discount") { const p = v[0] || 50000; const d = v[1] || 15; return `🏷️ *PROMOTION COMPUTATION*\n\nRegular Price: ₦${p.toLocaleString()}\nDiscount: ${d}% (-₦${Math.round(p * d / 100).toLocaleString()})\n*Discounted Price: ₦${Math.round(p * (1 - d / 100)).toLocaleString()}*`; }
+        if (t === "commission") { const val = v[0] || 1200000; const r = v[1] || 5; return `🤝 *COMMISSION VALUATION*\n\nDeal Value: ₦${val.toLocaleString()}\nCommission Rate: ${r}%\n*Agent Payout: ₦${Math.round(val * r / 100).toLocaleString()}*`; }
+        if (t === "loan") { const p = v[0] || 2000000; const r = (v[1] || 2.5) / 100; const n = v[2] || 12; const emi = Math.round(p * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1)); return `🏦 *AMORTIZATION SCHEDULE*\n\nPrincipal: ₦${p.toLocaleString()}\nRate: ${(r * 100).toFixed(1)}%/mo\nTenor: ${n} Months\n*Monthly Repayment: ₦${emi.toLocaleString()}*\n*Total Repayable: ₦${(emi * n).toLocaleString()}*`; }
+        return "🧮 Computation complete.";
       }, nextStep: "DONE" },
     ],
   },
 
-  // ── BOOKING & SERVICES ──
+  // ─────────────────────────────────────────────────────
+  // 5. BOOKING & SERVICES
+  // ─────────────────────────────────────────────────────
+
   {
     id: "appointment_booking",
     name: "Appointment Booking",
     icon: "📅",
     category: "Booking & Services",
-    description: "Book appointments, view available slots, confirm, cancel, and reschedule.",
+    description: "Calendar availability, automated slot reservation, reschedules, and sync reminders.",
     steps: [
-      { id: "ENTRY", type: "message", body: "📅 *Xtop Appointment Booking Demo*\n\nExperience automated scheduling and reminders.", nextStep: "BOOK_SERVICE" },
-      { id: "BOOK_SERVICE", type: "list", title: "Services", body: "Select a service to book:", options: [
-        { id: "consult", label: "💼 Business Consultation", description: "60 mins" },
-        { id: "demo", label: "🎮 Product Demo", description: "30 mins" },
-        { id: "audit", label: "📊 System Audit", description: "90 mins" },
-      ], captureField: "bookService", nextStep: "BOOK_DATE" },
-      { id: "BOOK_DATE", type: "input", body: "📅 *Enter preferred date:*\n\n_(e.g. Monday 10am)_", captureField: "bookDate", nextStep: "BOOK_TIME" },
-      { id: "BOOK_TIME", type: "buttons", body: (ctx) => `⏰ *Available slots for ${ctx.bookDate || "your date"}:*\n\n_(Demo fictional availability)_`, options: [
-        { id: "9am", label: "9:00 AM" },
-        { id: "11am", label: "11:00 AM" },
-        { id: "2pm", label: "2:00 PM" },
+      { id: "ENTRY", type: "message", body: "📅 *Xtop Appointment Scheduling Demo*\nAutomated calendar reservation and reminder workflows.", nextStep: "BOOK_SVC" },
+      { id: "BOOK_SVC", type: "list", title: "Select Service", body: "Choose consultation category:", options: [
+        { id: "strategy", label: "💼 Business Strategy Review", description: "60 mins • Lead Consultant" },
+        { id: "tech", label: "🛠️ Technical Architecture Audit", description: "90 mins • Solution Architect" },
+        { id: "product", label: "📱 Product Feature Demo", description: "30 mins • Sales Engineer" },
+      ], captureField: "bookSvc", nextStep: "BOOK_DATE" },
+      { id: "BOOK_DATE", type: "input", body: "📅 *Enter preferred appointment date:*\n_(e.g. Next Tuesday)_", captureField: "bookDate", nextStep: "BOOK_TIME" },
+      { id: "BOOK_TIME", type: "buttons", body: "⏰ *Select open calendar slot:*", options: [
+        { id: "10am", label: "10:00 AM" },
+        { id: "1:30pm", label: "1:30 PM" },
+        { id: "4:00pm", label: "4:00 PM" },
       ], captureField: "bookTime", nextStep: "BOOK_CONFIRM" },
-      { id: "BOOK_CONFIRM", type: "confirmation", body: (ctx) => `✅ *Confirm Appointment?*\n\n💼 ${ctx.bookService || "Service"}\n📅 ${ctx.bookDate || "TBD"}\n⏰ ${ctx.bookTime || "TBD"}`, nextStep: "BOOK_DONE" },
-      { id: "BOOK_DONE", type: "message", body: `✅ *Appointment Confirmed!*\n\n📋 *Ref:* XAB-${Date.now().toString().slice(-5)}\n🔔 *Reminder:* 24 hours before\n📧 *Confirmation:* Sent via WhatsApp\n\n⚠️ _Demo mode._`, nextStep: "DONE" },
+      { id: "BOOK_CONFIRM", type: "confirmation", body: (ctx) => `✅ *Confirm Calendar Booking?*\n\n📌 Service: ${ctx.bookSvc || "Consultation"}\n📅 Date: ${ctx.bookDate || "Selected Date"}\n⏰ Slot: ${ctx.bookTime || "10:00 AM"}`, nextStep: "BOOK_DONE" },
+      { id: "BOOK_DONE", type: "message", body: `✅ *Session Confirmed!*\n\n📋 Booking Ref: #XAB-${Date.now().toString().slice(-5)}\n🔔 Automated Calendar Reminders: Set for T-24h & T-1h\n📍 Location: Virtual Google Meet Link dispatched via WhatsApp\n\n⚠️ _Demo mode._`, nextStep: "DONE" },
     ],
   },
 
-  // ── COMMUNITY & EVENTS ──
+  {
+    id: "clinic",
+    name: "Clinic & Healthcare",
+    icon: "🏥",
+    category: "Booking & Services",
+    description: "Triage registration, doctor appointments, department routing, and prescription reminders.",
+    steps: [
+      { id: "ENTRY", type: "message", body: "🏥 *St. Jude Clinic Patient Portal Demo*\nAutomated hospital triage and consultation scheduling.\n\n⚠️ _DEMO SYSTEM — Does not provide real medical care._", nextStep: "CLINIC_MENU" },
+      { id: "CLINIC_MENU", type: "list", title: "Clinic Portal", body: "Select patient service:", options: [
+        { id: "book", label: "📅 Book Doctor Consultation" },
+        { id: "register", label: "📝 New Patient Registration" },
+        { id: "departments", label: "🏥 Specialties & Tariffs" },
+        { id: "reminders", label: "🔔 Prescription Reminders" },
+      ], captureField: "clinicAction", nextStep: "CLINIC_ACTION" },
+      { id: "CLINIC_ACTION", type: "input", body: (ctx) => {
+        if (ctx.clinicAction_id === "departments") return "🏥 *CLINIC SPECIALTIES & TARIFFS*\n\n" + CLINIC_DEPARTMENTS.map((d) => `• ${d.name} — Consultation: ${d.fee}`).join("\n");
+        if (ctx.clinicAction_id === "register") return "📝 *NEW PATIENT INTAKE*\n\nEnter Full Name, Age, and Blood Group:\n_(e.g. Obioma Adeleke, 32, O+)_";
+        if (ctx.clinicAction_id === "reminders") return "🔔 *ACTIVE PRESCRIPTION SCHEDULE*\n\n• 💊 Amoxicillin (500mg): 8:00 AM & 8:00 PM\n• 💧 Paracetamol: As required for fever\n• 📅 Follow-up Vitals Check: Friday, 10:00 AM";
+        return "📅 *BOOK CONSULTATION*\n\nSelect department and preferred day:\n\n" + CLINIC_DEPARTMENTS.map((d) => `• ${d.name} (${d.fee})`).join("\n");
+      }, captureField: "clinicInput", nextStep: "CLINIC_DONE" },
+      { id: "CLINIC_DONE", type: "message", body: `✅ *Patient Record Updated!*\n\n📋 Hospital File #: #XCL-${Date.now().toString().slice(-5)}\n🔔 Automated SMS/WhatsApp care alerts: Activated\n\n⚠️ _Demo mode — not medical advice._`, nextStep: "DONE" },
+    ],
+  },
+
+  {
+    id: "law_firm",
+    name: "Law Firm & Legal",
+    icon: "⚖️",
+    category: "Booking & Services",
+    description: "Confidential client intake, practice retainers, attorney consultation booking, and NDAs.",
+    steps: [
+      { id: "ENTRY", type: "message", body: "⚖️ *Sterling Chambers Legal Practice Demo*\nStreamline client intake, consultation briefs, and retainers.\n\n⚠️ _DEMO SYSTEM — Does not constitute attorney-client privilege or legal advice._", nextStep: "LAW_MENU" },
+      { id: "LAW_MENU", type: "list", title: "Practice Areas", body: "Select practice area:", options: LAW_SERVICES.map((s) => ({ id: s.id, label: s.name, description: s.fee })), captureField: "lawService", nextStep: "LAW_INTAKE" },
+      { id: "LAW_INTAKE", type: "input", body: (ctx) => `📝 *Client Brief: ${ctx.lawService || "Legal Matter"}*\n\nEnter your full legal name and brief overview of the matter:\n_(e.g. Samuel Kalu, Commercial lease contract review)_`, captureField: "lawIntake", nextStep: "LAW_APPOINT" },
+      { id: "LAW_APPOINT", type: "buttons", body: "📅 *Choose consultation session:*", options: [
+        { id: "morning", label: "🌅 In-Chambers (Morning)" },
+        { id: "afternoon", label: "☀️ In-Chambers (Afternoon)" },
+        { id: "virtual", label: "💻 Encrypted Video Call" },
+      ], captureField: "lawTime", nextStep: "LAW_DONE" },
+      { id: "LAW_DONE", type: "message", body: (ctx) => `✅ *Intake Brief Logged!*\n\n📋 Matter Ref: #XLW-${Date.now().toString().slice(-5)}\n⚖️ Area: ${ctx.lawService || "Commercial"}\n📅 Scheduled Session: ${ctx.lawTime || "Confirmed"}\n📄 Non-Disclosure Agreement (NDA): Draft dispatched via email\n\n⚠️ _Demo mode — not legal advice._`, nextStep: "DONE" },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────
+  // 6. COMMUNITY & EVENTS
+  // ─────────────────────────────────────────────────────
+
   {
     id: "church_management",
     name: "Church Management",
     icon: "⛪",
     category: "Community & Events",
-    description: "Church info, services, events, registration, announcements, and donations.",
+    description: "Worship schedules, online tithes/pledges, prayer requests, and member directory.",
     steps: [
-      { id: "ENTRY", type: "message", body: "⛪ *Grace Community Church Demo*\n\nExperience church management automation.", nextStep: "CHURCH_MENU" },
-      { id: "CHURCH_MENU", type: "list", title: "Church Portal", body: "Welcome! How can we serve you?", options: [
-        { id: "services", label: "🙏 Service Times", description: "Sunday & midweek" },
-        { id: "events", label: "📅 Upcoming Events", description: "Programmes & retreats" },
-        { id: "announce", label: "📢 Announcements", description: "Latest church news" },
-        { id: "donate", label: "💝 Give / Donate", description: "Tithes & offerings" },
-        { id: "register", label: "📝 New Member", description: "Join our church" },
+      { id: "ENTRY", type: "message", body: "⛪ *Grace Community Church Portal Demo*\nMinistry communication, event updates, and giving.", nextStep: "CHURCH_MENU" },
+      { id: "CHURCH_MENU", type: "list", title: "Church Portal", body: "Welcome to our fellowship! Select an option:", options: [
+        { id: "services", label: "🙏 Service & Fellowship Times" },
+        { id: "events", label: "📅 Upcoming Ministry Events" },
+        { id: "prayer", label: "🕊️ Submit Prayer Request" },
+        { id: "donate", label: "💝 Tithes, Offering & Pledges" },
+        { id: "register", label: "📝 New Member Welcome Card" },
       ], captureField: "churchAction", nextStep: "CHURCH_RESULT" },
       { id: "CHURCH_RESULT", type: "message", body: (ctx) => {
         const results: Record<string, string> = {
-          services: "🙏 *Service Times*\n\n🌅 *Sunday:* 8:00 AM & 10:30 AM\n🌙 *Wednesday (Bible Study):* 6:00 PM\n🙌 *Friday (Prayer):* 7:00 PM\n\n📍 *Address:* 12 Grace Avenue, Lekki, Lagos",
-          events: "📅 *Upcoming Events*\n\n• *Oct 5:* Youth Conference\n• *Oct 12:* Marriage Seminar\n• *Oct 20:* Community Outreach\n• *Nov 1:* Thanksgiving Service",
-          announce: "📢 *Announcements*\n\n• Cell groups resume next week\n• Choir audition Saturday 4pm\n• Building fund target: 80% reached\n• Volunteer registration now open",
-          donate: "💝 *Giving Portal*\n\n🏦 *Bank:* First Bank\n📋 *Account:* 0123456789\n📛 *Name:* Grace Community Church\n\n⚠️ _Demo mode — no real account._",
-          register: "📝 *New Member Registration*\n\nWelcome! In production, this would collect your name, phone, address, and assign you to a cell group.",
+          services: "🙏 *SERVICE & FELLOWSHIP SCHEDULE*\n\n🌅 *Sunday Celebration:* 8:00 AM & 10:30 AM\n🌙 *Wednesday Midweek Word:* 6:00 PM\n🙌 *Friday Deliverance Vigil:* 11:00 PM\n📍 Sanctuary: 12 Grace Boulevard, Lekki Phase 1",
+          events: "📅 *UPCOMING CONFERENCES*\n\n• *Oct 14–16:* Annual Kingdom Breakthrough Summit\n• *Oct 28:* Couples & Family Enrichment Dinner\n• *Nov 12:* Community Youth Medical Outreach",
+          prayer: "🕊️ *PRAYER REQUEST SUBMISSION*\n\n_Your petition has been forwarded to the Pastoral Intercession Team. God bless you!_",
+          donate: "💝 *KINGDOM GIVING PORTAL*\n\n🏦 *Bank:* First Bank Nigeria\n📋 *Account:* 0123456789 (Fictional Demo Account)\n📛 *Account Name:* Grace Community Assembly\n\n🔒 Automated receipt generated on confirmation.",
+          register: "📝 *NEW CONVERT / FIRST-TIMER INTAKE*\n\n_We welcome you into our family! A follow-up minister will reach out shortly._",
         };
-        return results[ctx.churchAction_id || "services"] || "Church demo.";
+        return results[ctx.churchAction_id || "services"] || "Church portal session logged.";
       }, nextStep: "DONE" },
     ],
   },
 
-  // ── OPERATIONS ──
   {
-    id: "inventory",
-    name: "Inventory Management",
-    icon: "📦",
-    category: "Operations",
-    description: "Track stock levels, stock-in, stock-out, low-stock alerts, and reports.",
+    id: "event_registration",
+    name: "Event Registration & Tickets",
+    icon: "🎟️",
+    category: "Community & Events",
+    description: "Conference ticketing, QR check-in badges, attendee rosters, and reminder broadcasts.",
     steps: [
-      { id: "ENTRY", type: "message", body: "📦 *Xtop Inventory Demo*\n\nExperience warehouse and stock management automation.", nextStep: "INV_MENU" },
-      { id: "INV_MENU", type: "list", title: "Inventory", body: "Select an action:", options: [
-        { id: "levels", label: "📊 Stock Levels", description: "Current inventory" },
-        { id: "stockin", label: "📥 Stock In", description: "Add new stock" },
-        { id: "stockout", label: "📤 Stock Out", description: "Record sale/dispatch" },
-        { id: "alerts", label: "🔔 Low Stock Alerts", description: "Items below threshold" },
-      ], captureField: "invAction", nextStep: "INV_RESULT" },
-      { id: "INV_RESULT", type: "message", body: (ctx) => {
-        if (ctx.invAction_id === "levels") return "📊 *DEMO STOCK LEVELS*\n\n• Wireless Earbuds: *24 units*\n• Phone Cases: *150 units*\n• USB-C Chargers: *45 units*\n• Laptop Stands: *18 units* ⚠️\n• Screen Protectors: *200 units*";
-        if (ctx.invAction_id === "alerts") return "🔔 *LOW STOCK ALERTS*\n\n⚠️ Laptop Stands: *18 units* (threshold: 20)\n⚠️ Bluetooth Speakers: *30 units* (threshold: 35)\n\n🔔 _Auto-notification sent to procurement manager._";
-        return `✅ *DEMO ${ctx.invAction || "Action"} COMPLETED*\n\n📦 Stock updated successfully.\n🔔 Relevant notifications triggered.\n\n⚠️ _Demo mode._`;
+      { id: "ENTRY", type: "message", body: "🎟️ *Xtop Event Ticketing & Registration Demo*\nAutomated ticket generation and event check-in passes.", nextStep: "EVENTS" },
+      { id: "EVENTS", type: "list", title: "Featured Events", body: "Select an event to register:", options: EVENTS_LIST.map((e) => ({ id: e.id, label: e.name, description: `${e.date} • ${e.price}` })), captureField: "event", nextStep: "TICKET_TIER" },
+      { id: "TICKET_TIER", type: "buttons", body: "🎫 *Select Ticket Access Category:*", options: [
+        { id: "regular", label: "🎟️ Regular Pass" },
+        { id: "vip", label: "⭐ VIP Delegate Pass" },
+        { id: "table", label: "👑 Corporate Table" },
+      ], captureField: "ticketTier", nextStep: "ATTENDEE_INFO" },
+      { id: "ATTENDEE_INFO", type: "input", body: "👤 *Enter Attendee Full Name & Badge Title:*\n_(e.g. David Alabi, Head of Growth)_", captureField: "attendee", nextStep: "EVENT_DONE" },
+      { id: "EVENT_DONE", type: "message", body: (ctx) => `🎉 *REGISTRATION CONFIRMED!*\n\n🎫 Event: ${ctx.event || "Tech Summit"}\n⭐ Access: ${ctx.ticketTier || "Regular"}\n👤 Attendee: ${ctx.attendee || "Guest"}\n📲 Digital QR Badge: #TKT-${Date.now().toString().slice(-6)}\n\n_Show your WhatsApp QR badge at the registration desk for instant badging._\n\n⚠️ _Demo mode._`, nextStep: "DONE" },
+    ],
+  },
+
+  {
+    id: "news_information",
+    name: "News & Information Broadcast",
+    icon: "📰",
+    category: "Community & Events",
+    description: "Subscription categories, daily digests, breaking alerts, and preference management.",
+    steps: [
+      { id: "ENTRY", type: "message", body: "📰 *Xtop News & Information Alert Demo*\nAutomated broadcast channels and category subscriptions.", nextStep: "NEWS_MENU" },
+      { id: "NEWS_MENU", type: "list", title: "News Channels", body: "Select digest category:", options: [
+        { id: "biz", label: "💼 Business & Economy" },
+        { id: "tech", label: "🚀 Tech & Innovation" },
+        { id: "crypto", label: "🪙 Web3 & Fintech" },
+        { id: "sports", label: "⚽ Sports & Entertainment" },
+        { id: "sub", label: "🔔 Manage Subscriptions" },
+      ], captureField: "newsChannel", nextStep: "NEWS_RESULT" },
+      { id: "NEWS_RESULT", type: "message", body: (ctx) => {
+        if (ctx.newsChannel_id === "biz") return "💼 *BUSINESS DIGEST (TOP HEADLINES)*\n\n1. CBN expands cross-border settlement rails for regional trade.\n2. Non-oil exports rise 18% in Q3 commercial performance.\n3. Manufacturing PMI indicates steady industrial expansion.";
+        if (ctx.newsChannel_id === "tech") return "🚀 *TECH & INNOVATION WIRE*\n\n1. Nigerian AI startups secure $45M seed investments.\n2. Telecom operators deploy expanded 5G fibre rings in state capitals.\n3. Local developer ecosystem hits 200,000 active builders.";
+        if (ctx.newsChannel_id === "sub") return "🔔 *SUBSCRIPTION PREFERENCES*\n\n✅ Morning 8:00 AM Daily Brief: ACTIVE\n✅ Real-time Breaking Alerts: ACTIVE\n\n_Reply 'UNSUB' anytime to pause broadcasts._";
+        return "📰 *TOP GENERAL HEADLINES*\n\n1. Federal Infrastructure Highway upgrades reach 75% completion.\n2. National energy grid records improved continuous uptime.\n3. Regional agricultural harvest yields outpace forecasts.";
       }, nextStep: "DONE" },
     ],
   },
 
-  // ── CUSTOM AUTOMATION ──
+  // ─────────────────────────────────────────────────────
+  // 7. BUSINESS INTELLIGENCE
+  // ─────────────────────────────────────────────────────
+
+  {
+    id: "business_reporting",
+    name: "Business Reporting & Analytics",
+    icon: "📈",
+    category: "Business Intelligence",
+    description: "Automated executive KPI dashboards, revenue summaries, order volumes, and expense trends.",
+    steps: [
+      { id: "ENTRY", type: "message", body: "📈 *Xtop Executive BI Reporting Demo*\nReceive automated performance metric snapshots on WhatsApp.", nextStep: "REPORT_MENU" },
+      { id: "REPORT_MENU", type: "list", title: "Analytics", body: "Select report view:", options: [
+        { id: "daily", label: "📊 Daily Sales Snapshot" },
+        { id: "monthly", label: "📈 Monthly Revenue Breakdown" },
+        { id: "inventory", label: "📦 SKU Velocity & Turnover" },
+        { id: "cac", label: "🎯 Customer Acquisition Costs" },
+      ], captureField: "reportType", nextStep: "REPORT_RESULT" },
+      { id: "REPORT_RESULT", type: "message", body: (ctx) => {
+        if (ctx.reportType_id === "daily") return "📊 *DAILY PERFORMANCE SNAPSHOT*\n\n• Gross Revenue: *₦842,500* (+14% vs yesterday)\n• Orders Completed: *38 Transactions*\n• Average Order Value (AOV): *₦22,170*\n• Top Product: Wireless Earbuds (14 units)\n• Failed Payments: 0";
+        if (ctx.reportType_id === "monthly") return "📈 *MONTH-TO-DATE EXECUTIVE METRICS*\n\n• Total Revenue: *₦18,450,000*\n• Gross Margin: *34.2%*\n• Operating Overhead: *₦4,200,000*\n• Net Profit: *₦2,109,900*\n• Active Customer Base: *1,420*";
+        if (ctx.reportType_id === "inventory") return "📦 *SKU VELOCITY & TURNOVER*\n\n• Fast Movers: Chargers (Turnover: 4.2 days)\n• Slow Movers: Heavy Laptop Stands (Turnover: 28 days)\n• Capital Locked in Stock: ₦3,400,000";
+        return "🎯 *MARKETING & ACQUISITION METRICS*\n\n• Inbound Leads: 148\n• Conversion Rate: 24.3%\n• Cost Per Acquisition (CPA): ₦1,850\n• Customer Lifetime Value (LTV): ₦115,000";
+      }, nextStep: "DONE" },
+    ],
+  },
+
+  {
+    id: "reminder_notification",
+    name: "Reminder & Notification Engine",
+    icon: "🔔",
+    category: "Business Intelligence",
+    description: "Automated customer nudges for debts, recurring renewals, deliveries, and bookings.",
+    steps: [
+      { id: "ENTRY", type: "message", body: "🔔 *Xtop Automated Nudge & Notification Demo*\nTrigger scheduled, multi-channel customer reminders.", nextStep: "NUDGE_MENU" },
+      { id: "NUDGE_MENU", type: "list", title: "Reminders", body: "Select notification template:", options: [
+        { id: "debt", label: "💵 Outstanding Debt Reminder" },
+        { id: "sub", label: "🔄 Subscription Renewal Due" },
+        { id: "booking", label: "📅 Service Appointment T-24h" },
+        { id: "delivery", label: "🚚 Live Delivery Arrival Alert" },
+      ], captureField: "nudgeType", nextStep: "NUDGE_RESULT" },
+      { id: "NUDGE_RESULT", type: "message", body: (ctx) => {
+        if (ctx.nudgeType_id === "debt") return "💵 *TEMPLATE: OUTSTANDING DEBT NUDGE*\n\n_\"Dear Customer, this is a friendly reminder that Invoice #INV-8821 for ₦45,000 was due on Sep 20. Tap here to settle securely via Paystack: https://paystack.demo/pay/8821\"_";
+        if (ctx.nudgeType_id === "sub") return "🔄 *TEMPLATE: RENEWAL ALERT*\n\n_\"Hello! Your Annual Domain & Hosting plan renews in 3 days. Your card ending in 4102 will be charged ₦35,000 on Oct 1. Reply 'UPDATE' to change payment method.\"_";
+        if (ctx.nudgeType_id === "booking") return "📅 *TEMPLATE: APPOINTMENT CONFIRMATION*\n\n_\"Reminder: Your consultation with Dr. Adeyemi is scheduled for tomorrow at 10:00 AM. Reply '1' to Confirm or '2' to Reschedule.\"_";
+        return "🚚 *TEMPLATE: DISPATCH MILESTONE*\n\n_\"Your courier rider Musa is 5 minutes away with Parcel #XDL-9912. Please have your verification PIN: 4892 ready at the gate.\"_";
+      }, nextStep: "DONE" },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────
+  // 8. CUSTOM AUTOMATION
+  // ─────────────────────────────────────────────────────
+
   {
     id: "custom_automation",
     name: "Custom Business Automation",
     icon: "⚙️",
     category: "Custom Automation",
-    description: "Tell us what you want to automate and we'll show you how Xtop can build it.",
+    description: "Design bespoke WhatsApp business engines tailored to your unique operational workflow.",
     steps: [
-      { id: "ENTRY", type: "message", body: "⚙️ *Custom Automation Demo*\n\nXtop can automate virtually any business workflow. Tell us what you need!", nextStep: "CUSTOM_AREA" },
-      { id: "CUSTOM_AREA", type: "list", title: "What to Automate?", body: "Which area of your business needs automation?", options: [
-        { id: "sales", label: "💰 Sales & Orders", description: "Order processing" },
-        { id: "customers", label: "👥 Customer Mgmt", description: "CRM & support" },
-        { id: "payments", label: "💳 Payments", description: "Invoicing & collection" },
-        { id: "bookings", label: "📅 Bookings", description: "Appointments & scheduling" },
-        { id: "inventory", label: "📦 Inventory", description: "Stock management" },
-        { id: "notifications", label: "🔔 Notifications", description: "Reminders & alerts" },
-        { id: "leads", label: "📝 Lead Gen", description: "Capture & qualify" },
-        { id: "other", label: "🔧 Other", description: "Custom workflow" },
+      { id: "ENTRY", type: "message", body: "⚙️ *Xtop Custom Architecture Engine*\nWe design and deploy tailored enterprise workflows.", nextStep: "CUSTOM_AREA" },
+      { id: "CUSTOM_AREA", type: "list", title: "Target Area", body: "What workflow do you want to automate?", options: [
+        { id: "sales", label: "💰 Sales, Orders & POS" },
+        { id: "customers", label: "👥 Inbound CRM & Tickets" },
+        { id: "payments", label: "💳 Automated Billing & Paystack" },
+        { id: "bookings", label: "📅 Appointments & Schedules" },
+        { id: "inventory", label: "📦 Warehousing & Stocks" },
+        { id: "notifications", label: "🔔 Scheduled Push Reminders" },
+        { id: "leads", label: "📝 Lead Generation Funnels" },
+        { id: "other", label: "🔧 Bespoke Proprietary Flow" },
       ], captureField: "customArea", nextStep: "CUSTOM_DESC" },
-      { id: "CUSTOM_DESC", type: "input", body: (ctx) => `📝 *Great choice! ${ctx.customArea || "Custom"} automation.*\n\nDescribe what you want to automate in your own words:\n\n_(e.g. "I want to automatically send payment reminders to customers who owe me money")_`, captureField: "customDesc", nextStep: "CUSTOM_DONE" },
-      { id: "CUSTOM_DONE", type: "message", body: (ctx) => `✅ *Requirement Captured!*\n\n⚙️ *Area:* ${ctx.customArea || "Custom"}\n📝 *Description:* ${ctx.customDesc || "N/A"}\n\n🏗️ *What Xtop Can Build:*\n\n• Automated WhatsApp workflows\n• Database-backed state management\n• Payment integrations (Paystack)\n• CRM & lead tracking\n• Scheduled notifications\n• Admin dashboard\n\n💼 _Tap "Build This For My Business" to get a custom quote!_`, nextStep: "DONE" },
+      { id: "CUSTOM_DESC", type: "input", body: (ctx) => `📝 *Designing: ${ctx.customArea || "Bespoke"} Automation*\n\nDescribe your ideal workflow in a few sentences:\n_(e.g. "I want customers to send bank transfer receipts and have our database automatically verify and update their order status")_`, captureField: "customDesc", nextStep: "CUSTOM_DONE" },
+      { id: "CUSTOM_DONE", type: "message", body: (ctx) => `✅ *Custom Architecture Blueprint Formulated!*\n\n⚙️ Functional Domain: ${ctx.customArea || "Bespoke"}\n📝 Specified Workflow: "${ctx.customDesc || "Custom Engine"}"\n\n🏗️ *Xtop Production Deliverables:*\n• Fully managed WhatsApp Edge Runtime\n• PostgreSQL database schema & API endpoints\n• Webhook payment integrations\n• Real-time operator dashboard\n\n💼 _Tap "Build This For My Business" below to speak with an engineer._`, nextStep: "DONE" },
     ],
   },
 ];
 
 // ═══════════════════════════════════════════════════════
-// EXPORTS
+// EXPORTS & QUERY HELPERS
 // ═══════════════════════════════════════════════════════
 
 export function getAllDemos(): DemoConfig[] {
