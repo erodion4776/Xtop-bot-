@@ -39,6 +39,12 @@ export async function showMainMenu(phone: string, conversationId: string): Promi
           makeListRow("menu_sales", "8️⃣ Build a Project", "Get instant price quote"),
         ],
       },
+      {
+        title: "Company",
+        rows: [
+          makeListRow("menu_about", "🏢 About XTOP", "Company info, mission & registration"),
+        ],
+      },
     ],
     "Xtop Retail Technologies",
     "Sabi Digital Assistant"
