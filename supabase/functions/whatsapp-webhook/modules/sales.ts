@@ -1,6 +1,5 @@
 // supabase/functions/whatsapp-webhook/modules/sales.ts
-// Phase 3 — Strict Structured Qualification with Full Validation
-// NO AI API. All validation is deterministic.
+// Phase 3 — Strict Structured Qualification with Full Validation & Client Details
 
 import {
   Contact, Conversation, updateConversation,
@@ -17,7 +16,7 @@ import {
   mapFeaturesToCodes,
 } from "./pricing.ts";
 import {
-  normalise, isBack, isExit, isGreeting, extractSelection,
+  normalise, isBack, isExit, extractSelection,
 } from "../utils.ts";
 import { showMainMenu } from "./main-menu.ts";
 
@@ -25,41 +24,62 @@ import { showMainMenu } from "./main-menu.ts";
 // CONTEXT
 // ═══════════════════════════════════════════════════════
 
-interface SalesCtx {
+export interface SalesCtx {
   flow: "BOT" | "WEB" | "COMBO" | "AUTO";
   step: string;
+
   leadId?: string;
   quotationId?: string;
   quotationNumber?: string;
+
+  // CLIENT DETAILS
+  clientName?: string;
+  clientEmail?: string;
+  clientPhone?: string;
+
   businessName?: string;
   industry?: string;
+
   features: string[];
   featureCodes: string[];
+
   waBiz?: string;
   needWebsite?: string;
   webType?: string;
   webFeatures: string[];
+
   domain?: string;
   hosting?: string;
   waIntegration?: string;
+
   autoActivities: string[];
   autoProcess?: string;
   autoUsers?: string;
   autoIntegrations: string[];
+
   budget?: string;
+
   serviceType?: string;
   selectedPackageId?: string;
   selectedPackageCode?: string;
+
   estimatedMin?: number;
   estimatedMax?: number;
 }
 
 function defaultCtx(flow: SalesCtx["flow"]): SalesCtx {
   return {
-    flow, step: "ENTRY",
-    features: [], featureCodes: [],
-    webFeatures: [], autoActivities: [], autoIntegrations: [],
+    flow,
+    step: "ENTRY",
+    features: [],
+    featureCodes: [],
+    webFeatures: [],
+    autoActivities: [],
+    autoIntegrations: [],
     serviceType: flowToServiceType(flow),
+    clientName: undefined,
+    clientEmail: undefined,
+    clientPhone: undefined,
   };
 }
 
@@ -71,7 +91,11 @@ function flowToServiceType(flow: string): string {
 }
 
 async function saveCtx(id: string, ctx: SalesCtx): Promise<void> {
-  await updateConversation(id, { context_json: ctx as unknown as Record<string, unknown> });
+  await updateConversation(id, {
+    current_module: "SALES",
+    current_state: ctx.step,
+    context_json: ctx as unknown as Record<string, unknown>,
+  });
 }
 
 // ═══════════════════════════════════════════════════════
@@ -404,35 +428,89 @@ async function sendAutoIntegrationsQuestion(phone: string, selected: string[]): 
 // ═══════════════════════════════════════════════════════
 
 export async function handleSales(
-  phone: string, text: string, contact: Contact, conv: Conversation
+  phone: string,
+  text: string,
+  contact: Contact,
+  conv: Conversation
 ): Promise<void> {
   const n = normalise(text);
 
-  if (isGreeting(text)) { await showMainMenu(phone, conv.id); return; }
-  if (isExit(text) || n === "cancel") {
-    await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
-    await sendTextMessage(phone, "Your quotation process has been paused. Type *menu* to continue later.");
+  // Allow the customer to cancel the quotation process
+  if (isExit(text) || n === "cancel" || n === "exit") {
+    await updateConversation(conv.id, {
+      current_module: "MAIN_MENU",
+      current_state: "IDLE",
+      context_json: {},
+    });
+
+    await sendTextMessage(
+      phone,
+      "Your quotation process has been paused.\n\nType *menu* whenever you want to continue."
+    );
     return;
   }
+
+  // Back navigation handled by Sales
   if (isBack(text)) {
-    const ctx = (conv.context_json as SalesCtx) || defaultCtx("BOT");
-    if (!ctx.step || ctx.step === "ENTRY" || ctx.step === "ASK_SERVICE_TYPE") {
-      await showMainMenu(phone, conv.id); return;
+    const ctx = (conv.context_json as SalesCtx) || null;
+
+    if (!ctx?.step || ctx.step === "ENTRY" || ctx.step === "ASK_SERVICE_TYPE") {
+      await showMainMenu(phone, conv.id);
+      return;
     }
-    await showServiceTypeSelector(phone, conv.id); return;
+
+    await showServiceTypeSelector(phone, conv.id);
+    return;
   }
 
-  const ctx = (conv.context_json as SalesCtx) || defaultCtx("BOT");
-  if (!ctx.step || ctx.step === "ENTRY" || ctx.step === "ASK_SERVICE_TYPE") {
-    await processServiceTypeSelection(phone, text, conv); return;
+  const ctx = conv.context_json as SalesCtx | null;
+
+  // Protect against corrupted or missing Sales state
+  if (!ctx?.flow || !ctx?.step) {
+    console.error(
+      "[SALES STATE ERROR]",
+      JSON.stringify({
+        conversationId: conv.id,
+        phone,
+        context: conv.context_json,
+      })
+    );
+    await showServiceTypeSelector(phone, conv.id);
+    return;
+  }
+
+  if (ctx.step === "ENTRY" || ctx.step === "ASK_SERVICE_TYPE") {
+    await processServiceTypeSelection(phone, text, conv);
+    return;
   }
 
   switch (ctx.flow) {
-    case "BOT": await handleBotFlow(phone, text, contact, conv, ctx); break;
-    case "WEB": await handleWebFlow(phone, text, contact, conv, ctx); break;
-    case "COMBO": await handleComboFlow(phone, text, contact, conv, ctx); break;
-    case "AUTO": await handleAutoFlow(phone, text, contact, conv, ctx); break;
-    default: await showServiceTypeSelector(phone, conv.id);
+    case "BOT":
+      await handleBotFlow(phone, text, contact, conv, ctx);
+      break;
+
+    case "WEB":
+      await handleWebFlow(phone, text, contact, conv, ctx);
+      break;
+
+    case "COMBO":
+      await handleComboFlow(phone, text, contact, conv, ctx);
+      break;
+
+    case "AUTO":
+      await handleAutoFlow(phone, text, contact, conv, ctx);
+      break;
+
+    default:
+      console.error(
+        "[SALES INVALID FLOW]",
+        JSON.stringify({
+          conversationId: conv.id,
+          context: conv.context_json,
+        })
+      );
+      await showServiceTypeSelector(phone, conv.id);
+      break;
   }
 }
 
@@ -442,7 +520,8 @@ export async function handleSales(
 
 export async function showServiceTypeSelector(phone: string, convId: string): Promise<void> {
   await updateConversation(convId, {
-    current_module: "SALES", current_state: "ASK_SERVICE_TYPE",
+    current_module: "SALES",
+    current_state: "ASK_SERVICE_TYPE",
     context_json: defaultCtx("BOT") as unknown as Record<string, unknown>,
   });
   await sendListMessage(phone,
@@ -469,7 +548,8 @@ async function processServiceTypeSelection(phone: string, text: string, conv: Co
   const ctx = defaultCtx(flow);
   ctx.step = "ASK_BIZ_NAME";
   await updateConversation(conv.id, {
-    current_module: "SALES", current_state: "QUALIFYING",
+    current_module: "SALES",
+    current_state: "QUALIFYING",
     context_json: ctx as unknown as Record<string, unknown>,
   });
 
@@ -651,6 +731,44 @@ async function handleBotFlow(
         return;
       }
       ctx.budget = r;
+      ctx.step = "ASK_CLIENT_NAME";
+      await saveCtx(conv.id, ctx);
+      await sendTextMessage(
+        phone,
+        `👤 *Client Details*\n\nAlmost done! Please enter your full name:`
+      );
+      break;
+    }
+
+    case "ASK_CLIENT_NAME": {
+      const name = text.trim();
+      if (name.length < 2) {
+        await sendTextMessage(phone, "⚠️ Please enter your full name (at least 2 characters):");
+        return;
+      }
+      ctx.clientName = name;
+      ctx.clientPhone = contact.phone;
+      ctx.step = "ASK_CLIENT_EMAIL";
+      await saveCtx(conv.id, ctx);
+      await sendTextMessage(
+        phone,
+        `📧 *Email Address*\n\nPlease enter your email address to receive your quotation copy:`
+      );
+      break;
+    }
+
+    case "ASK_CLIENT_EMAIL": {
+      const email = text.trim().toLowerCase();
+      const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      if (!emailValid) {
+        await sendTextMessage(
+          phone,
+          "⚠️ That doesn't look like a valid email address.\n\nPlease enter a valid email (e.g. name@domain.com):"
+        );
+        return;
+      }
+      ctx.clientEmail = email;
+      ctx.clientPhone = contact.phone;
       await saveCtx(conv.id, ctx);
       await generateAndShowQuotation(phone, contact, conv, ctx);
       break;
@@ -872,6 +990,44 @@ async function handleWebFlow(
         await sendBudgetQuestion(phone); return;
       }
       ctx.budget = r;
+      ctx.step = "ASK_CLIENT_NAME";
+      await saveCtx(conv.id, ctx);
+      await sendTextMessage(
+        phone,
+        `👤 *Client Details*\n\nAlmost done! Please enter your full name:`
+      );
+      break;
+    }
+
+    case "ASK_CLIENT_NAME": {
+      const name = text.trim();
+      if (name.length < 2) {
+        await sendTextMessage(phone, "⚠️ Please enter your full name (at least 2 characters):");
+        return;
+      }
+      ctx.clientName = name;
+      ctx.clientPhone = contact.phone;
+      ctx.step = "ASK_CLIENT_EMAIL";
+      await saveCtx(conv.id, ctx);
+      await sendTextMessage(
+        phone,
+        `📧 *Email Address*\n\nPlease enter your email address to receive your quotation copy:`
+      );
+      break;
+    }
+
+    case "ASK_CLIENT_EMAIL": {
+      const email = text.trim().toLowerCase();
+      const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      if (!emailValid) {
+        await sendTextMessage(
+          phone,
+          "⚠️ That doesn't look like a valid email address.\n\nPlease enter a valid email (e.g. name@domain.com):"
+        );
+        return;
+      }
+      ctx.clientEmail = email;
+      ctx.clientPhone = contact.phone;
       await saveCtx(conv.id, ctx);
       await generateAndShowQuotation(phone, contact, conv, ctx);
       break;
@@ -920,8 +1076,45 @@ async function handleComboFlow(
       await sendBudgetQuestion(phone); return;
     }
     ctx.budget = r;
+    ctx.step = "ASK_CLIENT_NAME";
     await saveCtx(conv.id, ctx);
-    await generateAndShowQuotation(phone, contact, conv, ctx); return;
+    await sendTextMessage(
+      phone,
+      `👤 *Client Details*\n\nAlmost done! Please enter your full name:`
+    );
+    return;
+  }
+  if (ctx.step === "ASK_CLIENT_NAME") {
+    const name = text.trim();
+    if (name.length < 2) {
+      await sendTextMessage(phone, "⚠️ Please enter your full name (at least 2 characters):");
+      return;
+    }
+    ctx.clientName = name;
+    ctx.clientPhone = contact.phone;
+    ctx.step = "ASK_CLIENT_EMAIL";
+    await saveCtx(conv.id, ctx);
+    await sendTextMessage(
+      phone,
+      `📧 *Email Address*\n\nPlease enter your email address to receive your quotation copy:`
+    );
+    return;
+  }
+  if (ctx.step === "ASK_CLIENT_EMAIL") {
+    const email = text.trim().toLowerCase();
+    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (!emailValid) {
+      await sendTextMessage(
+        phone,
+        "⚠️ That doesn't look like a valid email address.\n\nPlease enter a valid email (e.g. name@domain.com):"
+      );
+      return;
+    }
+    ctx.clientEmail = email;
+    ctx.clientPhone = contact.phone;
+    await saveCtx(conv.id, ctx);
+    await generateAndShowQuotation(phone, contact, conv, ctx);
+    return;
   }
   if (ctx.step === "SHOWING_QUOTE") {
     await handlePostQuoteAction(phone, text, contact, conv, ctx); return;
@@ -1134,6 +1327,44 @@ async function handleAutoFlow(
         await sendBudgetQuestion(phone); return;
       }
       ctx.budget = r;
+      ctx.step = "ASK_CLIENT_NAME";
+      await saveCtx(conv.id, ctx);
+      await sendTextMessage(
+        phone,
+        `👤 *Client Details*\n\nAlmost done! Please enter your full name:`
+      );
+      break;
+    }
+
+    case "ASK_CLIENT_NAME": {
+      const name = text.trim();
+      if (name.length < 2) {
+        await sendTextMessage(phone, "⚠️ Please enter your full name (at least 2 characters):");
+        return;
+      }
+      ctx.clientName = name;
+      ctx.clientPhone = contact.phone;
+      ctx.step = "ASK_CLIENT_EMAIL";
+      await saveCtx(conv.id, ctx);
+      await sendTextMessage(
+        phone,
+        `📧 *Email Address*\n\nPlease enter your email address to receive your quotation copy:`
+      );
+      break;
+    }
+
+    case "ASK_CLIENT_EMAIL": {
+      const email = text.trim().toLowerCase();
+      const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      if (!emailValid) {
+        await sendTextMessage(
+          phone,
+          "⚠️ That doesn't look like a valid email address.\n\nPlease enter a valid email (e.g. name@domain.com):"
+        );
+        return;
+      }
+      ctx.clientEmail = email;
+      ctx.clientPhone = contact.phone;
       await saveCtx(conv.id, ctx);
       await generateAndShowQuotation(phone, contact, conv, ctx);
       break;
@@ -1149,7 +1380,7 @@ async function handleAutoFlow(
 }
 
 // ═══════════════════════════════════════════════════════
-// QUOTATION GENERATOR (Combo Mismatch Fixed)
+// QUOTATION GENERATOR
 // ═══════════════════════════════════════════════════════
 
 async function generateAndShowQuotation(
@@ -1179,7 +1410,7 @@ async function generateAndShowQuotation(
     await saveCtx(conv.id, ctx);
     await sendButtonMessage(phone,
       "Thank you! An Xtop agent will prepare a custom quotation.\n\nWhat next?",
-      [makeButton("q_agent", "👤 Talk to Agent"), makeButton("q_menu", "🏠 Main Menu")], "Next Steps");
+      [makeButton("q_agent", "👤 Talk to Agent"), makeButton("menu_home", "🏠 Main Menu")], "Next Steps");
     return;
   }
 
@@ -1210,8 +1441,13 @@ async function generateAndShowQuotation(
   const delivBullets = deliverables.slice(0, 8).map((d) => `  • ${d.replace(/_/g, " ")}`).join("\n");
   const msg =
     `━━━━━━━━━━━━━━━━\n📋 *PRELIMINARY QUOTATION*\n━━━━━━━━━━━━━━━━\n\n` +
-    `*Business:* ${ctx.businessName}\n*Industry:* ${ctx.industry}\n*Project:* ${serviceLabel}\n` +
-    `*Package:* ${pkg.package_code} — ${pkg.package_name}\n*Ref:* ${ctx.quotationNumber || "PENDING"}\n\n` +
+    `*Client:* ${ctx.clientName || contact.name || "Customer"}\n` +
+    `*Email:* ${ctx.clientEmail || "Provided"}\n` +
+    `*Business:* ${ctx.businessName || "N/A"}\n` +
+    `*Industry:* ${ctx.industry || "N/A"}\n` +
+    `*Project:* ${serviceLabel}\n` +
+    `*Package:* ${pkg.package_code} — ${pkg.package_name}\n` +
+    `*Ref:* ${ctx.quotationNumber || "PENDING"}\n\n` +
     `*Estimated Investment:*\n${formatNaira(pkg.min_price)} – ${formatNaira(pkg.max_price)}\n\n` +
     `*Includes:*\n${delivBullets}\n\n` +
     `⚠️ _This is a preliminary estimate. Final pricing will be confirmed after reviewing your complete requirements._`;
@@ -1240,20 +1476,36 @@ function buildLeadFields(
     selected_package_id: pkg?.id || null,
     status: pkg ? "QUOTED" : "QUALIFYING",
     requirements_json: {
-      botFeatures: ctx.features,
-      botFeatureCodes: ctx.featureCodes,
-      webType: ctx.webType,
-      webFeatures: ctx.webFeatures,
+      client_name: ctx.clientName || null,
+      client_email: ctx.clientEmail || null,
+      client_phone: ctx.clientPhone || null,
+
+      flow: ctx.flow,
+      service_type: ctx.serviceType,
+
+      business_name: ctx.businessName,
+      industry: ctx.industry,
+
+      bot_features: ctx.features,
+      bot_feature_codes: ctx.featureCodes,
+
+      web_features: ctx.webFeatures,
+      web_type: ctx.webType,
+
+      whatsapp_business: ctx.waBiz,
+      need_website: ctx.needWebsite,
+
       domain: ctx.domain,
       hosting: ctx.hosting,
-      whatsappBusiness: ctx.waBiz,
-      whatsappIntegration: ctx.waIntegration,
-      automationAreas: ctx.autoActivities,
-      automationProcess: ctx.autoProcess,
-      automationUsers: ctx.autoUsers,
-      automationIntegrations: ctx.autoIntegrations,
+      whatsapp_integration: ctx.waIntegration,
+
+      automation_activities: ctx.autoActivities,
+      automation_process: ctx.autoProcess,
+      automation_users: ctx.autoUsers,
+      automation_integrations: ctx.autoIntegrations,
+
       budget: ctx.budget,
-    } as Record<string, unknown>,
+    },
   };
 }
 
@@ -1285,6 +1537,9 @@ async function handlePostQuoteAction(
     if (ctx.leadId) await updateLead(ctx.leadId, { status: "AGENT_REQUESTED" });
     if (ctx.quotationId) await updateQuotation(ctx.quotationId, { status: "AGENT_REVIEW" });
     const summary =
+      `Client: ${ctx.clientName || contact.name || "N/A"}\n` +
+      `Email: ${ctx.clientEmail || "N/A"}\n` +
+      `Phone: ${ctx.clientPhone || phone}\n` +
       `Business: ${ctx.businessName || "N/A"}\n` +
       `Industry: ${ctx.industry || "N/A"}\n` +
       `Service: ${ctx.serviceType || "N/A"}\n` +
@@ -1296,25 +1551,20 @@ async function handlePostQuoteAction(
 
     await createAgentRequest(
       contact.id, "QUOTATION",
-      `Quotation review request from ${contact.name || contact.phone}`,
+      `Quotation review request from ${ctx.clientName || contact.name || contact.phone}`,
       "HIGH", ctx.leadId, ctx.quotationId, summary
     );
 
     await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
     await sendButtonMessage(phone,
-      `✅ *Your requirements and quotation have been sent to our team.*\n\n` +
+      `✅ *Your requirements and quotation have been sent to our engineering team.*\n\n` +
       `*Ref:* ${ctx.quotationNumber || "XTR-PENDING"}\n\n` +
-      `An Xtop agent will follow up with you shortly.`,
+      `An Xtop consultant will reach out on WhatsApp shortly.`,
       [makeButton("menu_home", "🏠 Main Menu")],
       "Agent Notified", "Xtop Retail Technologies"
     );
     return;
   }
 
-  if (n === "menu_home" || isGreeting(text)) {
-    await showMainMenu(phone, conv.id);
-    return;
-  }
-
-  await sendTextMessage(phone, "Please choose one of the options below.");
+  await sendTextMessage(phone, "Please choose one of the options below:");
 }
