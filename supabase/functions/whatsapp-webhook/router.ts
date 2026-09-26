@@ -1,5 +1,5 @@
 // supabase/functions/whatsapp-webhook/router.ts
-
+import { handleAbout, showAboutMenu } from "./modules/about.ts";
 import {
   Contact, Conversation,
   getOrCreateContact, getOrCreateConversation,
@@ -113,7 +113,13 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       await handleTools(phone, text, contact, conversation, interactiveId);
       return;
     }
-
+    // ══════════════════════════════════════════════════════
+    // DIRECT ABOUT INTENT OVERRIDE
+    // ══════════════════════════════════════════════════════
+    if (interactiveId.startsWith("about_")) {
+      await handleAbout(phone, text, contact, conversation, interactiveId);
+      return;
+    }
     // ══════════════════════════════════════════════════════
     // 6. GLOBAL INTERRUPTS
     // ══════════════════════════════════════════════════════
@@ -220,7 +226,9 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       case "EXAMS":
         await handleExams(phone, text, contact, conversation);
         break;
-
+      case "ABOUT":
+        await handleAbout(phone, text, contact, conversation, interactiveId);
+        break;
       default:
         await showMainMenu(phone, conversation.id);
         break;
