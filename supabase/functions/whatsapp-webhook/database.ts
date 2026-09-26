@@ -424,7 +424,7 @@ export async function getActiveServices(): Promise<Service[]> {
   const { data, error } = await sb
     .from("services")
     .select("*")
-    .eq("is_active", true)
+    .eq("status", "ACTIVE")
     .order("created_at", { ascending: true });
 
   if (error) {
