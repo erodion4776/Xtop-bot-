@@ -13,7 +13,7 @@ import {
 import { showMainMenu } from "./modules/main-menu.ts";
 import { handleProducts, showProductsList } from "./modules/products.ts";
 import { handleServices, showServicesList } from "./modules/services.ts";
-import { handleDemos, showDemosList } from "./modules/demos.ts";
+import { handleDemos, showDemosList, showDemoCentreMenu } from "./modules/demos/index.ts";
 import { handleMagazine, displayMagazine } from "./modules/magazine.ts";
 import { handleAgent, showAgentCategories } from "./modules/agents.ts";
 import { handleLearning } from "./modules/learning.ts";
@@ -29,37 +29,30 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
   const text = sanitizeInput(incoming.text);
   const interactiveId = incoming.interactiveId || "";
 
-  // ⛔️ 1. Ignore completely empty payloads
-  if (!text && !interactiveId) {
-    return;
-  }
+  // 1. Ignore empty payloads
+  if (!text && !interactiveId) return;
 
-  // ⛔️ 2. MESSAGE DEDUPLICATION (Stops Meta retries from triggering duplicate messages)
+  // 2. Message Deduplication
   if (incoming.messageId) {
     const { data: existingMsg } = await supabase
       .from("messages")
       .select("id")
       .eq("whatsapp_message_id", incoming.messageId)
       .maybeSingle();
-
-    if (existingMsg) {
-      console.log(`[Deduplication] Message ${incoming.messageId} already processed. Ignoring.`);
-      return;
-    }
+    if (existingMsg) return;
   }
 
   try {
     const contact = await getOrCreateContact(phone, incoming.profileName);
     const conversation = await getOrCreateConversation(contact.id);
 
-    // Save message record
     await storeMessage(
       contact.id, "INBOUND", incoming.type,
       text || interactiveId || null, incoming.messageId
     );
 
     // ══════════════════════════════════════════════════════
-    // 1. ACTIVE LEARNING MODULE ISOLATION (PRIORITY #1)
+    // 1. ACTIVE LEARNING MODULE ISOLATION
     // ══════════════════════════════════════════════════════
     if (conversation.current_module === "LEARNING") {
       await handleLearning(phone, text, contact, conversation);
@@ -67,7 +60,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     }
 
     // ══════════════════════════════════════════════════════
-    // 2. PRIVATE LEARNING CENTRE KEYWORD TRIGGER
+    // 2. LEARNING KEYWORD TRIGGER
     // ══════════════════════════════════════════════════════
     if (isLearningKeyword(text)) {
       const existingCtx = conversation.context_json || {};
@@ -80,7 +73,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-        // ══════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════
     // 3. DIRECT GAMES INTENT OVERRIDE
     // ══════════════════════════════════════════════════════
     if (
@@ -88,17 +81,33 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       interactiveId.startsWith("trivia_") ||
       interactiveId.startsWith("math_") ||
       interactiveId.startsWith("diff_") ||
-      interactiveId.startsWith("ng_") ||          // Number Guess
-      interactiveId.startsWith("riddle_") ||       // Riddles
-      interactiveId.startsWith("rps_") ||          // Rock Paper Scissors
-      interactiveId.startsWith("word_")            // Word Scramble
+      interactiveId.startsWith("ng_") ||
+      interactiveId.startsWith("riddle_") ||
+      interactiveId.startsWith("rps_") ||
+      interactiveId.startsWith("word_") ||
+      interactiveId.startsWith("ttt_") ||
+      interactiveId.startsWith("emoji_") ||
+      interactiveId.startsWith("dice_")
     ) {
       await handleGames(phone, text, contact, conversation, interactiveId);
       return;
     }
 
     // ══════════════════════════════════════════════════════
-    // 4. DIRECT TOOLS INTENT OVERRIDE
+    // 4. DIRECT DEMO CENTRE INTENT OVERRIDE
+    // ══════════════════════════════════════════════════════
+    if (
+      interactiveId.startsWith("demo_") ||
+      interactiveId.startsWith("democat_") ||
+      interactiveId.startsWith("demostart_") ||
+      interactiveId.startsWith("demo_lead_")
+    ) {
+      await handleDemos(phone, text, contact, conversation, interactiveId);
+      return;
+    }
+
+    // ══════════════════════════════════════════════════════
+    // 5. DIRECT TOOLS INTENT OVERRIDE
     // ══════════════════════════════════════════════════════
     if (interactiveId.startsWith("tool_") || interactiveId.startsWith("tools_")) {
       await handleTools(phone, text, contact, conversation, interactiveId);
@@ -106,11 +115,13 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     }
 
     // ══════════════════════════════════════════════════════
-    // 5. GLOBAL INTERRUPTS (RETAIL STORE ONLY)
+    // 6. GLOBAL INTERRUPTS
     // ══════════════════════════════════════════════════════
+    const activeModules = ["SALES", "EXAMS", "LEARNING", "TOOLS", "GAMES", "DEMOS"];
+
     if (
       (isGreeting(text) || isHelp(text) || text === "menu_home" || interactiveId === "menu_home")
-      && !["SALES", "EXAMS", "LEARNING", "TOOLS", "GAMES"].includes(conversation.current_module || "")
+      && !activeModules.includes(conversation.current_module || "")
     ) {
       await showMainMenu(phone, conversation.id);
       return;
@@ -118,7 +129,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
 
     if (
       isExit(text)
-      && !["SALES", "EXAMS", "LEARNING", "TOOLS", "GAMES"].includes(conversation.current_module || "")
+      && !activeModules.includes(conversation.current_module || "")
     ) {
       await updateConversation(conversation.id, {
         current_module: "MAIN_MENU", current_state: "IDLE", context_json: {},
@@ -131,14 +142,14 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
 
     if (
       isAgentRequest(text)
-      && !["AGENT", "SALES", "EXAMS", "LEARNING", "TOOLS", "GAMES"].includes(conversation.current_module || "")
+      && !activeModules.includes(conversation.current_module || "")
     ) {
       await showAgentCategories(phone, conversation.id);
       return;
     }
 
     // ══════════════════════════════════════════════════════
-    // 6. MODULE ROUTER
+    // 7. MODULE ROUTER
     // ══════════════════════════════════════════════════════
     const currentModule = conversation.current_module;
 
@@ -149,11 +160,11 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
           await showProductsList(phone, conversation.id);
         } else if (intent === "SERVICES" || interactiveId === "menu_services") {
           await showServicesList(phone, conversation.id);
-        } else if (intent === "DEMOS" || interactiveId === "menu_demos") {
-          await showDemosList(phone, conversation.id);
-        } else if (interactiveId === "menu_games" || text.toLowerCase().includes("games") || text.toLowerCase().includes("xtop games")) {
+        } else if (interactiveId === "menu_demos" || text.toLowerCase().includes("demo")) {
+          await showDemoCentreMenu(phone, conversation.id);
+        } else if (interactiveId === "menu_games" || text.toLowerCase().includes("games")) {
           await showGamesMenu(phone, conversation.id);
-        } else if (intent === "TOOLS" || interactiveId === "menu_tools" || text.toLowerCase().includes("free tools") || text.toLowerCase().includes("tools")) {
+        } else if (intent === "TOOLS" || interactiveId === "menu_tools" || text.toLowerCase().includes("tools")) {
           await showToolsMenu(phone, conversation.id);
         } else if (intent === "MAGAZINE" || interactiveId === "menu_magazine") {
           await displayMagazine(phone, conversation.id);
@@ -179,7 +190,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
         break;
 
       case "DEMOS":
-        await handleDemos(phone, text, contact, conversation);
+        await handleDemos(phone, text, contact, conversation, interactiveId);
         break;
 
       case "TOOLS":
