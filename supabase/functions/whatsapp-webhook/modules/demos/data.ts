@@ -71,6 +71,46 @@ const EVENTS_LIST = [
 ];
 
 // ═══════════════════════════════════════════════════════
+// CART HELPERS (shared by any demo that needs a real
+// multi-item cart/order — online_store, restaurant, and
+// any future demo that reuses the same pattern)
+// ═══════════════════════════════════════════════════════
+
+interface CartLine {
+  id: string;
+  name: string;
+  price: number;
+  qty: number;
+}
+
+function cartTotal(cart?: CartLine[]): number {
+  return (cart || []).reduce((sum, item) => sum + item.price * item.qty, 0);
+}
+
+function formatCartLines(cart?: CartLine[]): string {
+  if (!cart || cart.length === 0) return "_Nothing added yet._";
+  return cart
+    .map((item, i) => `${i + 1}. *${item.name}* × ${item.qty} — ₦${(item.price * item.qty).toLocaleString()}`)
+    .join("\n");
+}
+
+// Mutates ctx.cart in place — merges quantity if the item is already there.
+function addToCart(
+  ctx: Record<string, any>,
+  product: { id: string; name: string; price: number },
+  qty: number
+): void {
+  const cart: CartLine[] = ctx.cart || [];
+  const existing = cart.find((c) => c.id === product.id);
+  if (existing) {
+    existing.qty += qty;
+  } else {
+    cart.push({ id: product.id, name: product.name, price: product.price, qty });
+  }
+  ctx.cart = cart;
+}
+
+// ═══════════════════════════════════════════════════════
 // DEMO CONFIGURATIONS (All 26 Demos)
 // ═══════════════════════════════════════════════════════
 
@@ -85,47 +125,103 @@ const DEMO_CONFIGS: DemoConfig[] = [
     name: "Online Store",
     icon: "🛒",
     category: "Sales & Commerce",
-    description: "Browse products, add to cart, choose delivery, simulate checkout, and receive instant confirmation.",
+    description: "Browse products, add multiple items to a real cart, edit or remove items, choose delivery, and complete a full checkout.",
     steps: [
-      { id: "ENTRY", type: "message", body: "🛒 *Welcome to NaijaShop Demo Store!*\n\nBrowse our fictional product catalogue and experience a complete shopping flow.", nextStep: "BROWSE" },
-      { id: "BROWSE", type: "list", title: "Browse Products", body: "🛍️ *Select a category to browse:*", options: [
+      { id: "ENTRY", type: "message", body: "🛒 *Welcome to NaijaShop Demo Store!*\n\nBrowse our fictional product catalogue and build a real shopping cart, just like a live store.", nextStep: "BROWSE" },
+
+      { id: "BROWSE", type: "list", title: "Browse Products", body: (ctx) => `🛍️ *Select a category to browse:*${(ctx.cart && ctx.cart.length) ? `\n\n🧺 _${ctx.cart.length} item(s) already in your cart_` : ""}`, options: [
         { id: "cat_electronics", label: "📱 Electronics", description: "Earbuds, chargers, speakers" },
         { id: "cat_accessories", label: "🎒 Accessories", description: "Cases, stands, protectors" },
         { id: "cat_all", label: "📦 All Products", description: "View everything" },
       ], captureField: "category", nextStep: "PRODUCT_LIST" },
+
       { id: "PRODUCT_LIST", type: "list", title: "Products", body: (ctx) => {
-        const items = ctx.category_id === "cat_all" ? STORE_PRODUCTS : STORE_PRODUCTS.filter((p) => p.category.toLowerCase().includes((ctx.category || "").replace(/[^a-zA-Z]/g, "").toLowerCase().substring(0, 4)));
-        const list = items.length > 0 ? items : STORE_PRODUCTS;
-        return `📦 *Products:*\n\n${list.map((p, i) => `${i + 1}. *${p.name}* — ₦${p.price.toLocaleString()}`).join("\n")}`;
-      }, options: () => STORE_PRODUCTS.slice(0, 5).map((p) => ({ id: p.id, label: p.name, description: `₦${p.price.toLocaleString()}` })), captureField: "product", nextStep: "PRODUCT_DETAIL" },
+        const catName = ctx.category_id === "cat_electronics" ? "Electronics" : ctx.category_id === "cat_accessories" ? "Accessories" : null;
+        const items = catName ? STORE_PRODUCTS.filter((p) => p.category === catName) : STORE_PRODUCTS;
+        return `📦 *${ctx.category || "All Products"}:*\n\n${items.map((p, i) => `${i + 1}. *${p.name}* — ₦${p.price.toLocaleString()}`).join("\n")}`;
+      }, options: (ctx) => {
+        const catName = ctx.category_id === "cat_electronics" ? "Electronics" : ctx.category_id === "cat_accessories" ? "Accessories" : null;
+        const items = catName ? STORE_PRODUCTS.filter((p) => p.category === catName) : STORE_PRODUCTS;
+        return items.map((p) => ({ id: p.id, label: p.name, description: `₦${p.price.toLocaleString()} • ${p.stock} in stock` }));
+      }, captureField: "product", nextStep: "PRODUCT_DETAIL" },
+
       { id: "PRODUCT_DETAIL", type: "buttons", body: (ctx) => {
         const p = STORE_PRODUCTS.find((x) => x.id === ctx.product_id) || STORE_PRODUCTS[0];
         return `📋 *${p.name}*\n\n💰 ₦${p.price.toLocaleString()}\n📦 In Stock: ${p.stock} units\n🏷️ Category: ${p.category}`;
       }, options: [
         { id: "add_cart", label: "🛒 Add to Cart" },
         { id: "browse_more", label: "🔙 Browse More" },
+        { id: "view_cart", label: "🧺 View Cart" },
+      ], nextStep: (input) => input === "add_cart" ? "QUANTITY" : input === "view_cart" ? "VIEW_CART" : "BROWSE" },
+
+      { id: "QUANTITY", type: "input", body: (ctx) => `🔢 *How many ${ctx.product || "items"}?*\n_(Type a number, e.g. 2)_`, captureField: "quantity", validation: (v) => (isNaN(parseInt(v)) || parseInt(v) < 1) ? "⚠️ Enter a valid number (1 or more)." : null,
+        onSelect: (input, ctx) => {
+          const product = STORE_PRODUCTS.find((p) => p.id === ctx.product_id);
+          if (product) addToCart(ctx, product, parseInt(input) || 1);
+        }, nextStep: "ITEM_ADDED" },
+
+      { id: "ITEM_ADDED", type: "message", body: (ctx) => `✅ *Added to cart!*\n\n${formatCartLines(ctx.cart)}\n\n💰 *Cart Total: ₦${cartTotal(ctx.cart).toLocaleString()}*`, nextStep: "CART_MENU" },
+
+      { id: "CART_MENU", type: "buttons", body: "🧺 *What would you like to do next?*", options: [
+        { id: "addmore", label: "➕ Add More Items" },
+        { id: "editcart", label: "✏️ View / Edit Cart" },
         { id: "checkout", label: "💳 Checkout" },
-      ], captureField: "action", nextStep: (input) => input === "add_cart" ? "QUANTITY" : input === "checkout" ? "CHECKOUT" : "BROWSE" },
-      { id: "QUANTITY", type: "input", body: (ctx) => `🔢 *How many ${ctx.product || "items"}?*\n_(Type a number, e.g. 2)_`, captureField: "quantity", validation: (v) => isNaN(parseInt(v)) ? "⚠️ Enter a valid number." : null, nextStep: "CHECKOUT" },
-      { id: "CHECKOUT", type: "input", body: (ctx) => {
-        const p = STORE_PRODUCTS.find((x) => x.id === ctx.product_id) || STORE_PRODUCTS[0];
-        const qty = parseInt(ctx.quantity) || 1;
-        return `🧾 *ORDER SUMMARY*\n\n• ${p.name} × ${qty}\n• *Total: ₦${(p.price * qty).toLocaleString()}*\n\n📍 *Enter delivery address:*`;
-      }, captureField: "address", nextStep: "DELIVERY_METHOD" },
+      ], nextStep: (input) => input === "checkout" ? "CHECKOUT_ADDRESS" : input === "editcart" ? "VIEW_CART" : "BROWSE" },
+
+      { id: "VIEW_CART", type: "list", title: "Your Cart", body: (ctx) => (ctx.cart && ctx.cart.length)
+        ? `🧺 *Your Cart:*\n\n${formatCartLines(ctx.cart)}\n\n💰 *Total: ₦${cartTotal(ctx.cart).toLocaleString()}*\n\n_Tap an item below to remove it, or choose an action._`
+        : "🧺 _Your cart is empty. Add something first!_",
+        options: (ctx) => {
+          const removeRows = (ctx.cart || []).map((item: CartLine, i: number) => ({
+            id: `remove_${i}`,
+            label: `❌ Remove ${item.name}`.substring(0, 24),
+            description: `${item.qty} × ₦${item.price.toLocaleString()}`,
+          }));
+          return [
+            ...removeRows,
+            { id: "addmore", label: "➕ Add More Items" },
+            ...((ctx.cart && ctx.cart.length) ? [{ id: "checkout", label: "💳 Checkout" }] : []),
+          ];
+        },
+        onSelect: (input, ctx) => {
+          if (input.startsWith("remove_")) {
+            const idx = parseInt(input.replace("remove_", ""));
+            if (!isNaN(idx) && ctx.cart) ctx.cart.splice(idx, 1);
+          }
+        },
+        nextStep: (input) => input.startsWith("remove_") ? "VIEW_CART" : input === "checkout" ? "CHECKOUT_ADDRESS" : "BROWSE" },
+
+      { id: "CHECKOUT_ADDRESS", type: "input", body: (ctx) => (!ctx.cart || ctx.cart.length === 0)
+        ? "🧺 _Your cart is empty — let's add something first!_"
+        : `🧾 *ORDER SUMMARY*\n\n${formatCartLines(ctx.cart)}\n\n*Subtotal: ₦${cartTotal(ctx.cart).toLocaleString()}*\n\n📍 *Enter delivery address:*`,
+        captureField: "address", nextStep: (input, ctx) => (!ctx.cart || ctx.cart.length === 0) ? "BROWSE" : "DELIVERY_METHOD" },
+
       { id: "DELIVERY_METHOD", type: "buttons", body: "🚚 *Choose delivery method:*", options: [
         { id: "delivery", label: "🚚 Home Delivery (₦2,000)" },
         { id: "pickup", label: "🏪 Store Pickup (Free)" },
       ], captureField: "delivery", nextStep: "PAYMENT" },
+
       { id: "PAYMENT", type: "buttons", body: "💳 *Select payment method:*\n\n⚠️ _DEMO MODE — No real payment processed._", options: [
         { id: "transfer", label: "🏦 Bank Transfer" },
         { id: "card", label: "💳 Card Payment" },
         { id: "ussd", label: "📱 USSD" },
       ], captureField: "payment", nextStep: "CONFIRM" },
+
       { id: "CONFIRM", type: "confirmation", body: (ctx) => {
-        const p = STORE_PRODUCTS.find((x) => x.id === ctx.product_id) || STORE_PRODUCTS[0];
-        return `✅ *Confirm Order?*\n\n🛒 ${p.name} × ${ctx.quantity || 1}\n💰 ₦${(p.price * (parseInt(ctx.quantity) || 1)).toLocaleString()}\n📍 ${ctx.address || "N/A"}`;
-      }, nextStep: "COMPLETE" },
-      { id: "COMPLETE", type: "message", body: `🎉 *ORDER CONFIRMED!*\n\n📋 Order #: XTR-${Date.now().toString().slice(-6)}\n📦 Status: Processing\n🚚 Delivery: 2–3 business days\n\n⚠️ _Demo mode — no real order placed._`, nextStep: "DONE" },
+        const deliveryFee = ctx.delivery_id === "delivery" ? 2000 : 0;
+        const grandTotal = cartTotal(ctx.cart) + deliveryFee;
+        return `✅ *Confirm Order?*\n\n${formatCartLines(ctx.cart)}\n\n💰 Subtotal: ₦${cartTotal(ctx.cart).toLocaleString()}\n🚚 Delivery: ₦${deliveryFee.toLocaleString()}\n*Grand Total: ₦${grandTotal.toLocaleString()}*\n\n📍 ${ctx.address || "N/A"}\n💳 ${ctx.payment || "N/A"}`;
+      }, nextStep: "ORDER_DONE" },
+
+      // NOTE: this used to be named "COMPLETE" and its receipt never actually
+      // rendered — the engine intercepts the literal string "COMPLETE" as a
+      // shortcut straight to the generic post-demo menu. Renamed so this
+      // message step actually executes before that menu appears.
+      { id: "ORDER_DONE", type: "message", body: (ctx) => {
+        const deliveryFee = ctx.delivery_id === "delivery" ? 2000 : 0;
+        const grandTotal = cartTotal(ctx.cart) + deliveryFee;
+        return `🎉 *ORDER CONFIRMED!*\n\n📋 Order #: XTR-${Date.now().toString().slice(-6)}\n\n${formatCartLines(ctx.cart)}\n\n*Total Paid: ₦${grandTotal.toLocaleString()}*\n📦 Status: Processing\n🚚 ${ctx.delivery || "Delivery"}: 2–3 business days\n\n⚠️ _Demo mode — no real order placed._`;
+      }, nextStep: "DONE" },
     ],
   },
 
@@ -134,25 +230,79 @@ const DEMO_CONFIGS: DemoConfig[] = [
     name: "Restaurant Ordering",
     icon: "🍽️",
     category: "Sales & Commerce",
-    description: "Browse menu, select dishes, customize portions, choose pickup/delivery, and get receipts.",
+    description: "Browse the menu, add multiple dishes to a real order, edit or remove items, then complete pickup or delivery checkout.",
     steps: [
-      { id: "ENTRY", type: "message", body: "🍽️ *Mama Put Demo Kitchen!*\n\nBrowse our fictional menu and place a demo food order.", nextStep: "MENU" },
-      { id: "MENU", type: "list", title: "Menu", body: "📋 *Select a category:*", options: [
+      { id: "ENTRY", type: "message", body: "🍽️ *Mama Put Demo Kitchen!*\n\nBrowse our fictional menu and build a full order, just like on a live ordering platform.", nextStep: "MENU" },
+
+      { id: "MENU", type: "list", title: "Menu", body: (ctx) => `📋 *Select a category:*${(ctx.cart && ctx.cart.length) ? `\n\n🧺 _${ctx.cart.length} item(s) already in your order_` : ""}`, options: [
         { id: "mains", label: "🍛 Main Dishes", description: "Jollof, Egusi, Pounded Yam" },
-        { id: "soups", label: "🥣 Soups", description: "Pepper Soup, Ogbono" },
+        { id: "soups", label: "🥣 Soups", description: "Pepper Soup" },
         { id: "drinks", label: "🥤 Drinks & Snacks", description: "Chapman, Meat Pie" },
       ], captureField: "foodCat", nextStep: "SELECT_FOOD" },
-      { id: "SELECT_FOOD", type: "list", title: "Dishes", body: "🍛 *Select your dish:*", options: RESTAURANT_MENU.map((f) => ({ id: f.id, label: f.name, description: `₦${f.price.toLocaleString()}` })), captureField: "food", nextStep: "FOOD_QTY" },
-      { id: "FOOD_QTY", type: "input", body: (ctx) => `🔢 *How many portions of ${ctx.food || "this dish"}?*\n_(Type a number)_`, captureField: "foodQty", validation: (v) => isNaN(parseInt(v)) ? "⚠️ Enter a valid number." : null, nextStep: "FOOD_METHOD" },
-      { id: "FOOD_METHOD", type: "buttons", body: "🚗 *Pickup or Delivery?*", options: [
-        { id: "pickup", label: "🏪 Pickup" },
-        { id: "delivery", label: "🚚 Delivery (₦1,500)" },
-      ], captureField: "foodMethod", nextStep: "FOOD_CONFIRM" },
+
+      { id: "SELECT_FOOD", type: "list", title: "Dishes", body: "🍛 *Select your dish:*", options: (ctx) => {
+        const filterMap: Record<string, string[]> = { mains: ["Mains"], soups: ["Soups"], drinks: ["Drinks", "Snacks"] };
+        const cats = filterMap[ctx.foodCat_id] || [];
+        const items = cats.length ? RESTAURANT_MENU.filter((f) => cats.includes(f.category)) : RESTAURANT_MENU;
+        return items.map((f) => ({ id: f.id, label: f.name, description: `₦${f.price.toLocaleString()}` }));
+      }, captureField: "food", nextStep: "FOOD_QTY" },
+
+      { id: "FOOD_QTY", type: "input", body: (ctx) => `🔢 *How many portions of ${ctx.food || "this dish"}?*\n_(Type a number)_`, captureField: "foodQty", validation: (v) => (isNaN(parseInt(v)) || parseInt(v) < 1) ? "⚠️ Enter a valid number (1 or more)." : null,
+        onSelect: (input, ctx) => {
+          const dish = RESTAURANT_MENU.find((f) => f.id === ctx.food_id);
+          if (dish) addToCart(ctx, dish, parseInt(input) || 1);
+        }, nextStep: "DISH_ADDED" },
+
+      { id: "DISH_ADDED", type: "message", body: (ctx) => `✅ *Added to your order!*\n\n${formatCartLines(ctx.cart)}\n\n💰 *Order Total: ₦${cartTotal(ctx.cart).toLocaleString()}*`, nextStep: "ORDER_MENU" },
+
+      { id: "ORDER_MENU", type: "buttons", body: "🧺 *What next?*", options: [
+        { id: "addmore", label: "➕ Add Another Dish" },
+        { id: "editorder", label: "✏️ View / Edit Order" },
+        { id: "checkout", label: "💳 Checkout" },
+      ], nextStep: (input) => input === "checkout" ? "FOOD_METHOD" : input === "editorder" ? "VIEW_ORDER" : "MENU" },
+
+      { id: "VIEW_ORDER", type: "list", title: "Your Order", body: (ctx) => (ctx.cart && ctx.cart.length)
+        ? `🧺 *Your Order:*\n\n${formatCartLines(ctx.cart)}\n\n💰 *Total: ₦${cartTotal(ctx.cart).toLocaleString()}*`
+        : "🧺 _Your order is empty. Add a dish first!_",
+        options: (ctx) => {
+          const removeRows = (ctx.cart || []).map((item: CartLine, i: number) => ({
+            id: `remove_${i}`,
+            label: `❌ Remove ${item.name}`.substring(0, 24),
+            description: `${item.qty} × ₦${item.price.toLocaleString()}`,
+          }));
+          return [
+            ...removeRows,
+            { id: "addmore", label: "➕ Add Another Dish" },
+            ...((ctx.cart && ctx.cart.length) ? [{ id: "checkout", label: "💳 Checkout" }] : []),
+          ];
+        },
+        onSelect: (input, ctx) => {
+          if (input.startsWith("remove_")) {
+            const idx = parseInt(input.replace("remove_", ""));
+            if (!isNaN(idx) && ctx.cart) ctx.cart.splice(idx, 1);
+          }
+        },
+        nextStep: (input) => input.startsWith("remove_") ? "VIEW_ORDER" : input === "checkout" ? "FOOD_METHOD" : "MENU" },
+
+      { id: "FOOD_METHOD", type: "buttons", body: (ctx) => (!ctx.cart || ctx.cart.length === 0)
+        ? "🧺 _Your order is empty — add a dish first!_"
+        : `🧾 *ORDER SUMMARY*\n\n${formatCartLines(ctx.cart)}\n\n*Subtotal: ₦${cartTotal(ctx.cart).toLocaleString()}*\n\n🚗 *Pickup or Delivery?*`,
+        options: [
+          { id: "pickup", label: "🏪 Pickup" },
+          { id: "delivery", label: "🚚 Delivery (₦1,500)" },
+        ], captureField: "foodMethod", nextStep: (input, ctx) => (!ctx.cart || ctx.cart.length === 0) ? "MENU" : "FOOD_CONFIRM" },
+
       { id: "FOOD_CONFIRM", type: "confirmation", body: (ctx) => {
-        const f = RESTAURANT_MENU.find((x) => x.id === ctx.food_id) || RESTAURANT_MENU[0];
-        return `✅ *Confirm Food Order?*\n\n🍛 ${f.name} × ${ctx.foodQty || 1}\n💰 Total: ₦${(f.price * (parseInt(ctx.foodQty) || 1)).toLocaleString()}\n🚗 Method: ${ctx.foodMethod || "Pickup"}`;
+        const deliveryFee = ctx.foodMethod_id === "delivery" ? 1500 : 0;
+        const grandTotal = cartTotal(ctx.cart) + deliveryFee;
+        return `✅ *Confirm Order?*\n\n${formatCartLines(ctx.cart)}\n\n💰 Subtotal: ₦${cartTotal(ctx.cart).toLocaleString()}\n🚗 ${ctx.foodMethod || "Pickup"}: ₦${deliveryFee.toLocaleString()}\n*Grand Total: ₦${grandTotal.toLocaleString()}*`;
       }, nextStep: "FOOD_DONE" },
-      { id: "FOOD_DONE", type: "message", body: `🎉 *Kitchen Order Received!*\n\n📋 Order #: MP-${Date.now().toString().slice(-5)}\n⏱️ Est. Preparation: 25–35 mins\n\n⚠️ _Demo mode — no real food ordered._`, nextStep: "DONE" },
+
+      { id: "FOOD_DONE", type: "message", body: (ctx) => {
+        const deliveryFee = ctx.foodMethod_id === "delivery" ? 1500 : 0;
+        const grandTotal = cartTotal(ctx.cart) + deliveryFee;
+        return `🎉 *Kitchen Order Received!*\n\n📋 Order #: MP-${Date.now().toString().slice(-5)}\n\n${formatCartLines(ctx.cart)}\n\n*Total: ₦${grandTotal.toLocaleString()}*\n⏱️ Est. Preparation: 25–35 mins\n\n⚠️ _Demo mode — no real food ordered._`;
+      }, nextStep: "DONE" },
     ],
   },
 
