@@ -27,14 +27,15 @@ const supabase = getSupabaseClient();
 
 export async function routeMessage(incoming: IncomingMessage): Promise<void> {
   const phone = incoming.from;
-  const text = sanitizeInput(incoming.text);
+  const rawInput = incoming.interactiveId || incoming.text || "";
+  const text = sanitizeInput(rawInput);
   const interactiveId = incoming.interactiveId || "";
   const lowerText = text.toLowerCase();
 
-  // 1. Ignore empty payloads
+  // 1. Ignore completely empty payloads
   if (!text && !interactiveId) return;
 
-  // 2. Message Deduplication
+  // 2. Message Deduplication (Prevents Meta webhook retries)
   if (incoming.messageId) {
     const { data: existingMsg } = await supabase
       .from("messages")
@@ -48,22 +49,48 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     const contact = await getOrCreateContact(phone, incoming.profileName);
     const conversation = await getOrCreateConversation(contact.id);
 
+    // Save message record
     await storeMessage(
       contact.id, "INBOUND", incoming.type,
       text || interactiveId || null, incoming.messageId
     );
 
+    // Log to Dashboard Activity Feed
+    const { logBotActivity } = await import("./database.ts");
+    logBotActivity(
+      phone, "INBOUND", incoming.type,
+      conversation.current_module || "MAIN_MENU",
+      text || interactiveId || "",
+      contact.name || incoming.profileName,
+      interactiveId, incoming.messageId
+    ).catch(() => {});
+
     // ══════════════════════════════════════════════════════
-    // 1. ACTIVE LEARNING MODULE ISOLATION (PRIORITY #1)
+    // ACTIVE WORKFLOW ROUTING (WORKFLOW LOCK)
     // ══════════════════════════════════════════════════════
-    if (conversation.current_module === "LEARNING") {
+    // Once a user is inside an active workflow, that workflow
+    // owns the conversation until completion or explicit exit.
+
+    const currentModule = conversation.current_module || "MAIN_MENU";
+
+    // Explicit Home/Menu button always exits any workflow
+    if (interactiveId === "menu_home" || lowerText === "menu_home") {
+      await updateConversation(conversation.id, {
+        current_module: "MAIN_MENU",
+        current_state: "IDLE",
+        context_json: {},
+      });
+      await showMainMenu(phone, conversation.id);
+      return;
+    }
+
+    // 1. LEARNING workflow
+    if (currentModule === "LEARNING") {
       await handleLearning(phone, text, contact, conversation);
       return;
     }
 
-    // ══════════════════════════════════════════════════════
-    // 2. LEARNING KEYWORD TRIGGER
-    // ══════════════════════════════════════════════════════
+    // 2. Keyword trigger for Learning Centre
     if (isLearningKeyword(text)) {
       const existingCtx = conversation.context_json || {};
       await updateConversation(conversation.id, {
@@ -75,24 +102,81 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
+    // 3. SALES workflow
+    if (currentModule === "SALES") {
+      await handleSales(phone, text, contact, conversation);
+      return;
+    }
+
+    // 4. AGENT workflow
+    if (currentModule === "AGENT") {
+      await handleAgent(phone, text, contact, conversation);
+      return;
+    }
+
+    // 5. EXAMS workflow
+    if (currentModule === "EXAMS") {
+      await handleExams(phone, text, contact, conversation);
+      return;
+    }
+
+    // 6. TOOLS workflow
+    if (currentModule === "TOOLS") {
+      await handleTools(phone, text, contact, conversation, interactiveId);
+      return;
+    }
+
+    // 7. GAMES workflow
+    if (currentModule === "GAMES") {
+      await handleGames(phone, text, contact, conversation, interactiveId);
+      return;
+    }
+
+    // 8. DEMOS workflow
+    if (currentModule === "DEMOS") {
+      await handleDemos(phone, text, contact, conversation, interactiveId);
+      return;
+    }
+
+    // 9. ABOUT workflow
+    if (currentModule === "ABOUT") {
+      await handleAbout(phone, text, contact, conversation, interactiveId);
+      return;
+    }
+
+    // 10. PRODUCTS workflow
+    if (currentModule === "PRODUCTS") {
+      await handleProducts(phone, text, contact, conversation);
+      return;
+    }
+
+    // 11. SERVICES workflow
+    if (currentModule === "SERVICES") {
+      await handleServices(phone, text, contact, conversation);
+      return;
+    }
+
+    // 12. MAGAZINE workflow
+    if (currentModule === "MAGAZINE") {
+      await handleMagazine(phone, text, contact, conversation);
+      return;
+    }
+
     // ══════════════════════════════════════════════════════
-    // 3. DIRECT ABOUT XTOP INTENT OVERRIDE (HIGH PRIORITY)
+    // DIRECT INTENT OVERRIDES (FROM IDLE / MAIN MENU)
     // ══════════════════════════════════════════════════════
+
     if (
       interactiveId === "menu_about" ||
       interactiveId.startsWith("about_") ||
       lowerText.includes("about xtop") ||
       lowerText.includes("about us") ||
-      lowerText === "about" ||
-      lowerText.includes("company info")
+      lowerText === "about"
     ) {
       await handleAbout(phone, text, contact, conversation, interactiveId || "menu_about");
       return;
     }
 
-    // ══════════════════════════════════════════════════════
-    // 4. DIRECT GAMES INTENT OVERRIDE
-    // ══════════════════════════════════════════════════════
     if (
       interactiveId.startsWith("game_") ||
       interactiveId.startsWith("trivia_") ||
@@ -110,9 +194,6 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-    // ══════════════════════════════════════════════════════
-    // 5. DIRECT DEMO CENTRE INTENT OVERRIDE
-    // ══════════════════════════════════════════════════════
     if (
       interactiveId.startsWith("demo_") ||
       interactiveId.startsWith("democat_") ||
@@ -123,42 +204,25 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-    // ══════════════════════════════════════════════════════
-    // 6. DIRECT TOOLS INTENT OVERRIDE
-    // ══════════════════════════════════════════════════════
     if (interactiveId.startsWith("tool_") || interactiveId.startsWith("tools_")) {
       await handleTools(phone, text, contact, conversation, interactiveId);
       return;
     }
 
     // ══════════════════════════════════════════════════════
-    // 7. GLOBAL INTERRUPTS
+    // GLOBAL COMMANDS (ONLY ACTIVE WHEN IN MAIN_MENU / IDLE)
     // ══════════════════════════════════════════════════════
-    const activeModules = [
-  "SALES",
-  "AGENT",
-  "EXAMS",
-  "LEARNING",
-  "TOOLS",
-  "GAMES",
-  "DEMOS",
-  "ABOUT"
-];
 
-    if (
-      (isGreeting(text) || isHelp(text) || text === "menu_home" || interactiveId === "menu_home")
-      && !activeModules.includes(conversation.current_module || "")
-    ) {
+    if (isGreeting(text) || isHelp(text)) {
       await showMainMenu(phone, conversation.id);
       return;
     }
 
-    if (
-      isExit(text)
-      && !activeModules.includes(conversation.current_module || "")
-    ) {
+    if (isExit(text)) {
       await updateConversation(conversation.id, {
-        current_module: "MAIN_MENU", current_state: "IDLE", context_json: {},
+        current_module: "MAIN_MENU",
+        current_state: "IDLE",
+        context_json: {},
       });
       await sendTextMessage(phone,
         `👋 Thank you for contacting *Xtop Retail Technologies*, ${contact.name || ""}.\n\nType *hi* or *menu* to return anytime.`
@@ -166,96 +230,39 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-    if (
-      isAgentRequest(text)
-      && !activeModules.includes(conversation.current_module || "")
-    ) {
+    if (isAgentRequest(text)) {
       await showAgentCategories(phone, conversation.id);
       return;
     }
 
     // ══════════════════════════════════════════════════════
-    // 8. MODULE ROUTER
+    // MAIN MENU DISPATCH
     // ══════════════════════════════════════════════════════
-    const currentModule = conversation.current_module;
+    const intent = detectIntent(text, interactiveId);
 
-    switch (currentModule) {
-      case "MAIN_MENU": {
-        const intent = detectIntent(text, interactiveId);
-        if (intent === "PRODUCTS" || interactiveId === "menu_products") {
-          await showProductsList(phone, conversation.id);
-        } else if (intent === "SERVICES" || interactiveId === "menu_services") {
-          await showServicesList(phone, conversation.id);
-        } else if (interactiveId === "menu_demos" || lowerText.includes("demo")) {
-          await showDemoCentreMenu(phone, conversation.id);
-        } else if (interactiveId === "menu_games" || lowerText.includes("games")) {
-          await showGamesMenu(phone, conversation.id);
-        } else if (intent === "TOOLS" || interactiveId === "menu_tools" || lowerText.includes("tools")) {
-          await showToolsMenu(phone, conversation.id);
-        } else if (intent === "MAGAZINE" || interactiveId === "menu_magazine") {
-          await displayMagazine(phone, conversation.id);
-        } else if (intent === "AGENT" || interactiveId === "menu_agent") {
-          await showAgentCategories(phone, conversation.id);
-        } else if (intent === "SALES" || interactiveId === "menu_sales") {
-          await showServiceTypeSelector(phone, conversation.id);
-        } else if (interactiveId === "menu_about" || lowerText.includes("about")) {
-          await showAboutMenu(phone, conversation.id);
-        } else if (isBack(text)) {
-          await showMainMenu(phone, conversation.id);
-        } else {
-          await sendTextMessage(phone, "Please select an option from the menu below:");
-          await showMainMenu(phone, conversation.id);
-        }
-        break;
-      }
-
-      case "ABOUT":
-        await handleAbout(phone, text, contact, conversation, interactiveId);
-        break;
-
-      case "PRODUCTS":
-        await handleProducts(phone, text, contact, conversation);
-        break;
-
-      case "SERVICES":
-        await handleServices(phone, text, contact, conversation);
-        break;
-
-      case "DEMOS":
-        await handleDemos(phone, text, contact, conversation, interactiveId);
-        break;
-
-      case "TOOLS":
-        await handleTools(phone, text, contact, conversation, interactiveId);
-        break;
-
-      case "GAMES":
-        await handleGames(phone, text, contact, conversation, interactiveId);
-        break;
-
-      case "MAGAZINE":
-        await handleMagazine(phone, text, contact, conversation);
-        break;
-
-      case "AGENT":
-        await handleAgent(phone, text, contact, conversation);
-        break;
-
-      case "LEARNING":
-        await handleLearning(phone, text, contact, conversation);
-        break;
-
-      case "SALES":
-        await handleSales(phone, text, contact, conversation);
-        break;
-
-      case "EXAMS":
-        await handleExams(phone, text, contact, conversation);
-        break;
-
-      default:
-        await showMainMenu(phone, conversation.id);
-        break;
+    if (intent === "PRODUCTS" || interactiveId === "menu_products") {
+      await showProductsList(phone, conversation.id);
+    } else if (intent === "SERVICES" || interactiveId === "menu_services") {
+      await showServicesList(phone, conversation.id);
+    } else if (interactiveId === "menu_demos" || lowerText.includes("demo")) {
+      await showDemoCentreMenu(phone, conversation.id);
+    } else if (interactiveId === "menu_games" || lowerText.includes("games")) {
+      await showGamesMenu(phone, conversation.id);
+    } else if (intent === "TOOLS" || interactiveId === "menu_tools" || lowerText.includes("tools")) {
+      await showToolsMenu(phone, conversation.id);
+    } else if (intent === "MAGAZINE" || interactiveId === "menu_magazine") {
+      await displayMagazine(phone, conversation.id);
+    } else if (intent === "AGENT" || interactiveId === "menu_agent") {
+      await showAgentCategories(phone, conversation.id);
+    } else if (intent === "SALES" || interactiveId === "menu_sales") {
+      await showServiceTypeSelector(phone, conversation.id);
+    } else if (interactiveId === "menu_about" || lowerText.includes("about")) {
+      await showAboutMenu(phone, conversation.id);
+    } else if (isBack(text)) {
+      await showMainMenu(phone, conversation.id);
+    } else {
+      await sendTextMessage(phone, "Please select an option from the menu below:");
+      await showMainMenu(phone, conversation.id);
     }
   } catch (err) {
     safeErrorLog("routeMessage", err);
