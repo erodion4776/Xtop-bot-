@@ -1,207 +1,522 @@
 package com.xtop.admin.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.xtop.admin.data.models.AuditLog
-import com.xtop.admin.data.repository.AdminRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 
-data class DashboardNavEntry(val title: String, val subtitle: String, val icon: ImageVector, val route: String)
-
-data class DashboardRawStats(
-    val studentCount: Int = 0,
-    val activeCourseCount: Int = 0,
-    val todayAttendanceCount: Int = 0,
-    val cbtAttemptCount: Int = 0,
-    val avgCbtScore: Double = 0.0,
-    val passRate: Double = 0.0,
-    val publishedLessonCount: Int = 0,
-    val activeAccessCount: Int = 0
+data class DashboardStats(
+    val totalContacts: Int = 0,
+    val todayMessages: Int = 0,
+    val totalOrders: Int = 0,
+    val openOrders: Int = 0
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(navController: NavController) {
-    val repo = remember { AdminRepository() }
     val scope = rememberCoroutineScope()
+    var stats by remember { mutableStateOf(DashboardStats()) }
+    var isRefreshing by remember { mutableStateOf(false) }
 
-    var rawStats by remember { mutableStateOf(DashboardRawStats()) }
-    var recentLogs by remember { mutableStateOf<List<AuditLog>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
-
-    fun refreshDashboard() {
+    fun fetchStats() {
         scope.launch {
-            loading = true
+            isRefreshing = true
             try {
-                val stats = DashboardRawStats(
-                    studentCount = repo.getStudentCount(),
-                    activeCourseCount = repo.getActiveCourseCount(),
-                    todayAttendanceCount = repo.getTodayAttendanceCount(),
-                    cbtAttemptCount = repo.getCbtAttemptCount(),
-                    avgCbtScore = repo.getAverageCbtScore(),
-                    passRate = repo.getPassRate(),
-                    publishedLessonCount = repo.getPublishedLessonCount(),
-                    activeAccessCount = repo.getActiveAccessCount()
-                )
-                rawStats = stats
-                recentLogs = repo.getRecentAuditLogs()
-            } catch (_: Exception) {}
-            loading = false
+                val url = URL("https://mldywarnnwjitfvqpgis.supabase.co/functions/v1/xtop-dashboard?action=stats")
+                withContext(Dispatchers.IO) {
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.connectTimeout = 5000
+                    conn.readTimeout = 5000
+                    if (conn.responseCode == 200) {
+                        val response = conn.inputStream.bufferedReader().readText()
+                        val json = JSONObject(response).optJSONObject("data")
+                        if (json != null) {
+                            stats = DashboardStats(
+                                totalContacts = json.optInt("totalContacts", 0),
+                                todayMessages = json.optInt("todayMessages", 0),
+                                totalOrders = json.optInt("totalOrders", 0),
+                                openOrders = json.optInt("openOrders", 0)
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                isRefreshing = false
+            }
         }
     }
 
     LaunchedEffect(Unit) {
-        refreshDashboard()
+        fetchStats()
     }
-
-    val navItems = listOf(
-        // RETAIL AUTOMATION / CRM
-        DashboardNavEntry("Retail CRM", "Clients, leads, quotes & live help tickets", Icons.Default.Storefront, "retail_dashboard"),
-        
-        // CORE E-LEARNING
-        DashboardNavEntry("Courses & Content", "Manage course modules, lessons & materials", Icons.Default.MenuBook, "courses"),
-        DashboardNavEntry("Students", "Student academic profiles & history records", Icons.Default.People, "students"),
-        DashboardNavEntry("Attendance", "Record, query & filter daily attendance", Icons.Default.EventAvailable, "attendance"),
-        DashboardNavEntry("Course Access", "Grant, block & manage student access codes", Icons.Default.Key, "course_access"),
-        DashboardNavEntry("Exams & CBT", "Exams, question banks & CBT configuration", Icons.Default.Quiz, "exams"),
-        DashboardNavEntry("Results", "Calculate, lock & release official grades", Icons.Default.Assessment, "results"),
-        
-        // AUTHORING TOOLS
-        DashboardNavEntry("AI Generator", "Draft course outlines, lessons & CBT with AI", Icons.Default.AutoAwesome, "ai_generator"),
-        DashboardNavEntry("Manual Course Editor", "Create academic modules & lessons manually", Icons.Default.EditNote, "manual_course_editor"),
-        DashboardNavEntry("CSV Bulk Import", "Import students, courses & questions from CSV", Icons.Default.UploadFile, "csv_import"),
-        DashboardNavEntry("Media Library", "Upload & host diagrams, PDFs & slides", Icons.Default.PhotoLibrary, "media_library"),
-        
-        // SYSTEM LOGS & CONFIGURATIONS
-        DashboardNavEntry("Bot Activity", "View live WhatsApp bot interaction logs", Icons.Default.SmartToy, "bot_activity"),
-        DashboardNavEntry("Analytics", "Academic progress & CBT pass statistics", Icons.Default.BarChart, "analytics"),
-        DashboardNavEntry("Admin Users", "Assign administrative roles & permissions", Icons.Default.AdminPanelSettings, "admin_users"),
-        DashboardNavEntry("Audit Logs", "Immutable trail of all administrative actions", Icons.Default.ReceiptLong, "audit_logs"),
-        DashboardNavEntry("Settings", "Configure API keys, WhatsApp, RLS & DB", Icons.Default.Settings, "settings")
-    )
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text("Xtop Bot Admin", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(Color(0xFF10B981), shape = CircleShape)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "XTOP Admin Console",
+                                color = Color(0xFF38BDF8),
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                         Text(
-                            "Engr. Ero E-Learning & Retail Hub",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            "Sabi WhatsApp Assistant Live",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 11.sp
                         )
                     }
                 },
                 actions = {
-                    IconButton(onClick = { refreshDashboard() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                    IconButton(onClick = { fetchStats() }) {
+                        if (isRefreshing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = Color(0xFF38BDF8),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Refresh",
+                                tint = Color(0xFF38BDF8)
+                            )
+                        }
                     }
-                }
+                    IconButton(onClick = { navController.navigate("settings") }) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = Color(0xFF94A3B8)
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1E293B))
             )
-        }
+        },
+        containerColor = Color(0xFF0F172A)
     ) { padding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            item { Spacer(modifier = Modifier.height(4.dp)) }
+
+            // ══════════════════════════════════════════════════
+            // 1. STATS METRICS GRID
+            // ══════════════════════════════════════════════════
             item {
-                Text("E-Learning Overview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "REAL-TIME BOT METRICS",
+                    color = Color(0xFF94A3B8),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    MetricCard(
+                        title = "Today's Msgs",
+                        value = stats.todayMessages.toString(),
+                        sub = "Inbound + Outbound",
+                        icon = Icons.Default.Send,
+                        color = Color(0xFF38BDF8),
+                        modifier = Modifier.weight(1f)
+                    )
+                    MetricCard(
+                        title = "Open Tickets",
+                        value = stats.openOrders.toString(),
+                        sub = "Action required",
+                        icon = Icons.Default.Warning,
+                        color = Color(0xFFFBBF24),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    MetricCard(
+                        title = "Total Clients",
+                        value = stats.totalContacts.toString(),
+                        sub = "Unique WhatsApp users",
+                        icon = Icons.Default.Person,
+                        color = Color(0xFF10B981),
+                        modifier = Modifier.weight(1f)
+                    )
+                    MetricCard(
+                        title = "Total Orders",
+                        value = stats.totalOrders.toString(),
+                        sub = "Bot build requests",
+                        icon = Icons.Default.ShoppingCart,
+                        color = Color(0xFFA855F7),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
 
-            if (loading) {
-                item {
-                    Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-                }
-            } else {
-                val statCards = listOf(
-                    Triple("Total Students", "${rawStats.studentCount}", Icons.Default.People),
-                    Triple("Active Courses", "${rawStats.activeCourseCount}", Icons.Default.MenuBook),
-                    Triple("Attendance Today", "${rawStats.todayAttendanceCount}", Icons.Default.EventAvailable),
-                    Triple("CBT Attempts", "${rawStats.cbtAttemptCount}", Icons.Default.Quiz),
-                    Triple("Avg CBT Score", "%.1f%%".format(rawStats.avgCbtScore), Icons.Default.TrendingUp),
-                    Triple("Pass Rate", "%.1f%%".format(rawStats.passRate), Icons.Default.CheckCircle),
-                    Triple("Published Lessons", "${rawStats.publishedLessonCount}", Icons.Default.AutoStories),
-                    Triple("Active Access", "${rawStats.activeAccessCount}", Icons.Default.Key)
+            // ══════════════════════════════════════════════════
+            // 2. CLIENT MANAGEMENT & LIVE BOT CRM
+            // ══════════════════════════════════════════════════
+            item {
+                Text(
+                    "CLIENT MANAGEMENT & BOT OPERATIONS",
+                    color = Color(0xFF94A3B8),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Highlight Card: Opens the full Retail CRM & Sabi Chat
+                HighlightActionCard(
+                    title = "Retail CRM & Sabi Live Chat",
+                    subtitle = "View all clients, leads, quotes, tickets and chat directly via Sabi",
+                    badge = if (stats.openOrders > 0) "${stats.openOrders} OPEN" else "ACTIVE",
+                    badgeColor = if (stats.openOrders > 0) Color(0xFFF59E0B) else Color(0xFF10B981),
+                    gradient = listOf(Color(0xFF1E3A8A), Color(0xFF1E293B)),
+                    icon = Icons.Default.Chat,
+                    onClick = { navController.navigate("retail_dashboard") }
                 )
 
-                items(statCards.chunked(2)) { row ->
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        row.forEach { (label, value, icon) ->
-                            Card(modifier = Modifier.weight(1f)) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                                    Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-                        if (row.size == 1) Spacer(Modifier.weight(1f))
-                    }
-                }
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Highlight Card: Live Activity Feed
+                HighlightActionCard(
+                    title = "Live Bot Activity Stream",
+                    subtitle = "Real-time log of every message passing through Sabi",
+                    badge = "STREAMING",
+                    badgeColor = Color(0xFF38BDF8),
+                    gradient = listOf(Color(0xFF0C4A6E), Color(0xFF1E293B)),
+                    icon = Icons.Default.Search,
+                    onClick = { navController.navigate("bot_activity") }
+                )
             }
 
+            // ══════════════════════════════════════════════════
+            // 3. XTOPEDU & COURSES
+            // ══════════════════════════════════════════════════
             item {
-                HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                Text("Recent System Activity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            }
+                Text(
+                    "XTOPEDU SCHOOL SYSTEM",
+                    color = Color(0xFF94A3B8),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
 
-            if (recentLogs.isEmpty()) {
-                item { Text("No administrative action logs registered yet.", style = MaterialTheme.typography.bodySmall) }
-            } else {
-                items(recentLogs) { log ->
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.History, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("${log.action} — ${log.entity}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                                Text(
-                                    "by ${log.adminUser} • ${log.createdAt?.take(16) ?: ""}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    QuickNavButton(
+                        title = "Courses & Slides",
+                        subtitle = "Manage lessons",
+                        icon = Icons.Default.Star,
+                        iconTint = Color(0xFFFBBF24),
+                        modifier = Modifier.weight(1f),
+                        onClick = { navController.navigate("courses") }
+                    )
+                    QuickNavButton(
+                        title = "CBT Exams",
+                        subtitle = "Question banks",
+                        icon = Icons.Default.CheckCircle,
+                        iconTint = Color(0xFF4ADE80),
+                        modifier = Modifier.weight(1f),
+                        onClick = { navController.navigate("exams") }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    QuickNavButton(
+                        title = "Students",
+                        subtitle = "Student records",
+                        icon = Icons.Default.Person,
+                        iconTint = Color(0xFF60A5FA),
+                        modifier = Modifier.weight(1f),
+                        onClick = { navController.navigate("students") }
+                    )
+                    QuickNavButton(
+                        title = "Attendance",
+                        subtitle = "Daily serial check",
+                        icon = Icons.Default.DateRange,
+                        iconTint = Color(0xFFC084FC),
+                        modifier = Modifier.weight(1f),
+                        onClick = { navController.navigate("attendance") }
+                    )
                 }
             }
 
+            // ══════════════════════════════════════════════════
+            // 4. SYSTEM & AUDIT
+            // ══════════════════════════════════════════════════
             item {
-                HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                Text("Admin Modules", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "SYSTEM & SECURITY",
+                    color = Color(0xFF94A3B8),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    QuickNavButton(
+                        title = "Audit Logs",
+                        subtitle = "Security records",
+                        icon = Icons.Default.Lock,
+                        iconTint = Color(0xFF94A3B8),
+                        modifier = Modifier.weight(1f),
+                        onClick = { navController.navigate("audit_logs") }
+                    )
+                    QuickNavButton(
+                        title = "Admin Users",
+                        subtitle = "Permissions",
+                        icon = Icons.Default.AccountCircle,
+                        iconTint = Color(0xFF94A3B8),
+                        modifier = Modifier.weight(1f),
+                        onClick = { navController.navigate("admin_users") }
+                    )
+                }
             }
 
-            items(navItems) { item ->
-                Card(onClick = { navController.navigate(item.route) }, modifier = Modifier.fillMaxWidth()) {
-                    Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(item.icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(item.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                            Text(item.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            item { Spacer(modifier = Modifier.height(24.dp)) }
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════
+// COMPONENT: METRIC CARD
+// ══════════════════════════════════════════════════════
+@Composable
+fun MetricCard(
+    title: String,
+    value: String,
+    sub: String,
+    icon: ImageVector,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    title,
+                    color = Color(0xFF94A3B8),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                value,
+                color = color,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.ExtraBold
+            )
+            Text(
+                sub,
+                color = Color(0xFF64748B),
+                fontSize = 10.sp
+            )
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════
+// COMPONENT: HIGHLIGHT ACTION CARD
+// ══════════════════════════════════════════════════════
+@Composable
+fun HighlightActionCard(
+    title: String,
+    subtitle: String,
+    badge: String,
+    badgeColor: Color,
+    gradient: List<Color>,
+    icon: ImageVector,
+    onClick: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+    ) {
+        Box(
+            modifier = Modifier
+                .background(Brush.horizontalGradient(gradient))
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        color = Color(0x33FFFFFF),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                icon,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
                         }
-                        Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column {
+                        Text(
+                            title,
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            subtitle,
+                            color = Color(0xFFCBD5E1),
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
+                        )
                     }
                 }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Surface(
+                    color = badgeColor,
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Text(
+                        badge,
+                        color = Color.Black,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════
+// COMPONENT: QUICK NAV BUTTON
+// ══════════════════════════════════════════════════════
+@Composable
+fun QuickNavButton(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    iconTint: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier.clickable { onClick() }
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(14.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column {
+                Text(
+                    title,
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    subtitle,
+                    color = Color(0xFF64748B),
+                    fontSize = 11.sp
+                )
             }
         }
     }
