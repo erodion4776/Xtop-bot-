@@ -31,7 +31,18 @@ export interface DemoStep {
   captureField?: string;
   nextStep?: string | ((input: string, ctx: Record<string, any>) => string);
   validation?: (input: string) => string | null;
-  onComplete?: (ctx: Record<string, any>) => Promise<void>;
+  onComplete?: (ctx: Record<string, any>) => Promise<void> | void;
+  /**
+   * Runs whenever this step is resolved by user input — for "list" and
+   * "buttons" steps it receives the selected option's raw id (before the
+   * `demo_<configId>_` prefix is stripped off elsewhere it's already gone),
+   * for "input" steps it receives the raw typed text. Called BEFORE the
+   * mutated ctx is persisted and BEFORE nextStep is resolved, so it's the
+   * right place to accumulate state that isn't a simple captureField
+   * label/id pair — e.g. pushing an item onto a cart array, removing an
+   * item by index, merging quantities, etc. Mutate ctx in place.
+   */
+  onSelect?: (input: string, ctx: Record<string, any>) => Promise<void> | void;
 }
 
 export interface DemoConfig {
@@ -184,7 +195,12 @@ export async function processDemoInput(
   // Handle confirmation
   if (step.type === "confirmation") {
     if (rawInput.includes("_confirm")) {
-      if (step.onComplete) await step.onComplete(ctx);
+      if (step.onComplete) {
+        await step.onComplete(ctx);
+        // Persist whatever onComplete mutated on ctx (e.g. clearing a cart,
+        // finalizing an order) — previously this was silently dropped.
+        await updateDemoSession(session.id, { session_data: ctx } as any);
+      }
       const next = typeof step.nextStep === "function" ? step.nextStep("confirm", ctx) : (step.nextStep || "COMPLETE");
       if (next === "COMPLETE") {
         await showDemoComplete(phone, session, config);
@@ -204,9 +220,14 @@ export async function processDemoInput(
     const options = typeof step.options === "function" ? step.options(ctx) : (step.options || []);
     const selected = options.find((o) => o.id === selectedId);
 
-    if (selected && step.captureField) {
-      ctx[step.captureField] = selected.label;
-      ctx[`${step.captureField}_id`] = selected.id;
+    if (selected) {
+      if (step.captureField) {
+        ctx[step.captureField] = selected.label;
+        ctx[`${step.captureField}_id`] = selected.id;
+      }
+      if (step.onSelect) {
+        await step.onSelect(selectedId, ctx);
+      }
     }
 
     await updateDemoSession(session.id, { session_data: ctx } as any);
@@ -232,6 +253,9 @@ export async function processDemoInput(
 
     if (step.captureField) {
       ctx[step.captureField] = rawInput;
+    }
+    if (step.onSelect) {
+      await step.onSelect(rawInput, ctx);
     }
 
     await updateDemoSession(session.id, { session_data: ctx } as any);
