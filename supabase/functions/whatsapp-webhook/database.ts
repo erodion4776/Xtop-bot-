@@ -1426,3 +1426,60 @@ export async function createDemoLead(
 
   return data;
 }
+// ==========================================
+// Dashboard Activity & Phone Logging
+// ==========================================
+
+export async function logBotActivity(
+  phone: string,
+  direction: "INBOUND" | "OUTBOUND",
+  messageType: string,
+  module: string,
+  body: string,
+  contactName?: string,
+  interactiveId?: string,
+  whatsappMessageId?: string
+): Promise<void> {
+  const sb = getSupabaseClient();
+  try {
+    await sb.from("bot_activity_log").insert({
+      phone_number: phone,
+      contact_name: contactName || null,
+      direction,
+      message_type: messageType,
+      module,
+      message_body: body ? body.substring(0, 500) : null,
+      interactive_id: interactiveId || null,
+      whatsapp_message_id: whatsappMessageId || null,
+    });
+
+    // Update phone log summary
+    const { data: existing } = await sb
+      .from("phone_log")
+      .select("id, total_messages, modules_used")
+      .eq("phone_number", phone)
+      .maybeSingle();
+
+    if (existing) {
+      const modules = existing.modules_used || [];
+      if (module && !modules.includes(module)) modules.push(module);
+      await sb
+        .from("phone_log")
+        .update({
+          last_seen: new Date().toISOString(),
+          total_messages: (existing.total_messages || 0) + 1,
+          modules_used: modules,
+        })
+        .eq("phone_number", phone);
+    } else {
+      await sb.from("phone_log").insert({
+        phone_number: phone,
+        contact_name: contactName || null,
+        total_messages: 1,
+        modules_used: module ? [module] : [],
+      });
+    }
+  } catch (err) {
+    safeErrorLog("logBotActivity", err);
+  }
+}
