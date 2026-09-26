@@ -1,11 +1,15 @@
+// app/src/main/java/com/xtop/admin/MainActivity.kt
+
 package com.xtop.admin
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.xtop.admin.data.SupabaseClient
 import com.xtop.admin.ui.screens.*
 import com.xtop.admin.ui.theme.XtopAdminTheme
@@ -16,11 +20,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // ═══════════════════════════════════════════════════════
-        // GLOBAL UNCAUGHT EXCEPTION HANDLER
-        // Captures any unhandled crash and persists the full stack
-        // trace to crash_log.txt so it can be viewed on device.
-        // ═══════════════════════════════════════════════════════
+        // Global Uncaught Exception Handler
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             try {
@@ -53,12 +53,27 @@ class MainActivity : ComponentActivity() {
                         DashboardScreen(navController)
                     }
 
-                    // 2. RETAIL & SALES CRM MODULES
+                    // 2. BOT LIVE MANAGEMENT & CLIENT TICKETS (NEW)
+                    composable("bot_orders") {
+                        BotOrdersScreen(navController)
+                    }
+                    composable("phone_log") {
+                        PhoneLogScreen(navController)
+                    }
+                    composable(
+                        route = "client_chat/{phone}",
+                        arguments = listOf(navArgument("phone") { type = NavType.StringType })
+                    ) { backStack ->
+                        val phone = backStack.arguments?.getString("phone") ?: ""
+                        ClientChatScreen(navController, phone)
+                    }
+
+                    // 3. RETAIL & SALES CRM MODULES
                     composable("retail_dashboard") {
                         RetailDashboardScreen(navController)
                     }
 
-                    // 3. COURSE GENERATION & CONTENT CREATION
+                    // 4. COURSE GENERATION & CONTENT CREATION
                     composable("ai_generator") {
                         CourseAiGeneratorScreen(navController)
                     }
@@ -72,7 +87,7 @@ class MainActivity : ComponentActivity() {
                         MediaLibraryScreen(navController)
                     }
 
-                    // 4. COURSES & LESSON MANAGEMENT
+                    // 5. COURSES & LESSON MANAGEMENT
                     composable("courses") {
                         CourseListScreen(navController)
                     }
@@ -87,7 +102,7 @@ class MainActivity : ComponentActivity() {
                         CourseDetailScreen(navController, courseId)
                     }
 
-                    // 5. QUESTIONS & CBT EXAM CONFIGURATION
+                    // 6. QUESTIONS & CBT EXAM CONFIGURATION
                     composable("questions/{courseId}") { backStack ->
                         val courseId = backStack.arguments?.getString("courseId") ?: ""
                         QuestionBankScreen(navController, courseId)
@@ -104,7 +119,7 @@ class MainActivity : ComponentActivity() {
                         ExamsScreen(navController)
                     }
 
-                    // 6. ACADEMIC RECORDS & MANAGEMENT
+                    // 7. ACADEMIC RECORDS & MANAGEMENT
                     composable("students") {
                         StudentListScreen(navController)
                     }
@@ -118,7 +133,7 @@ class MainActivity : ComponentActivity() {
                         ResultsScreen(navController)
                     }
 
-                    // 7. LOGS, ANALYTICS & ADMIN CONTROLS
+                    // 8. LOGS, ANALYTICS & ADMIN CONTROLS
                     composable("bot_activity") {
                         BotActivityScreen(navController)
                     }
