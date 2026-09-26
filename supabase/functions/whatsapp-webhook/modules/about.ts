@@ -10,12 +10,14 @@ import {
   sendButtonMessage,
   sendListMessage,
   sendTextMessage,
-  sendDocumentMessage,
+  sendImageMessage,
   makeButton,
   makeListRow,
 } from "../whatsapp.ts";
 import { normalise, isBack, safeErrorLog } from "../utils.ts";
 import { showMainMenu } from "./main-menu.ts";
+
+const CAC_CERT_URL = "https://mldywarnnwjitfvqpgis.supabase.co/storage/v1/object/public/public-docs/Screenshot_20260926_160843.jpg";
 
 // ═══════════════════════════════════════════════════════
 // MAIN HANDLER
@@ -133,8 +135,15 @@ export async function handleAbout(
     if (rawInput === "about_cac_cert") {
       await sendTextMessage(
         phone,
-        `📄 The CAC certificate will be made available here.`
+        `📄 *Sending XTOP RETAIL TECHNOLOGIES CAC Certificate directly to your WhatsApp...*`
       );
+
+      await sendImageMessage(
+        phone,
+        CAC_CERT_URL,
+        "XTOP RETAIL TECHNOLOGIES — CAC Certificate (BN: 9324817)"
+      );
+
       await showRegistration(phone, conv.id);
       return;
     }
