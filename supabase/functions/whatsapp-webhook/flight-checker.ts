@@ -8,8 +8,8 @@ import {
 import {
   sendButtonMessage, sendListMessage, sendTextMessage,
   makeButton, makeListRow,
-} from "../whatsapp.ts";
-import { normalise, safeErrorLog } from "../utils.ts";
+} from "./whatsapp.ts";
+import { normalise, safeErrorLog } from "./utils.ts";
 import { showMainMenu } from "./main-menu.ts";
 
 // ═══════════════════════════════════════════════════════
