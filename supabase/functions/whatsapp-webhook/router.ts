@@ -32,10 +32,10 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
   const interactiveId = incoming.interactiveId || "";
   const lowerText = text.toLowerCase();
 
-  // 1. Ignore completely empty payloads
+  // 1. Ignore empty payloads
   if (!text && !interactiveId) return;
 
-  // 2. Message Deduplication (Prevents Meta webhook retries)
+  // 2. Message Deduplication
   if (incoming.messageId) {
     const { data: existingMsg } = await supabase
       .from("messages")
@@ -55,21 +55,38 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       text || interactiveId || null, incoming.messageId
     );
 
-    // Log to Dashboard Activity Feed safely (Direct top-level export)
+    // Log to Dashboard
     logBotActivity(
       phone, "INBOUND", incoming.type,
       conversation.current_module || "MAIN_MENU",
       text || interactiveId || "",
       contact.name || incoming.profileName,
       interactiveId, incoming.messageId
-    ).catch((e) => console.error("logBotActivity error:", e));
+    ).catch(() => {});
 
     // ══════════════════════════════════════════════════════
-    // ACTIVE WORKFLOW ROUTING (WORKFLOW LOCK)
+    // 🛑 SABI PAUSE / AGENT HANDOFF CHECK
+    // ══════════════════════════════════════════════════════
+    // If Agent Mode is toggled ON, Sabi stays quiet so you can chat manually!
+    const { data: setting } = await supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", "sabi_global_handoff")
+      .maybeSingle();
+
+    const isGlobalPaused = setting?.value?.enabled === true;
+    const isContactPaused = (contact as any)?.agent_mode === true || (conversation as any)?.agent_mode === true;
+
+    if (isGlobalPaused || isContactPaused) {
+      console.log(`[Sabi Paused] Message from ${phone} logged. Sabi auto-response is OFF.`);
+      return; // Stop here! Sabi will NOT send any automated messages.
+    }
+
+    // ══════════════════════════════════════════════════════
+    // ACTIVE WORKFLOW ROUTING
     // ══════════════════════════════════════════════════════
     const currentModule = conversation.current_module || "MAIN_MENU";
 
-    // Explicit Home/Menu button always exits any workflow
     if (interactiveId === "menu_home" || lowerText === "menu_home") {
       await updateConversation(conversation.id, {
         current_module: "MAIN_MENU",
@@ -80,13 +97,11 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-    // 1. LEARNING workflow
     if (currentModule === "LEARNING") {
       await handleLearning(phone, text, contact, conversation);
       return;
     }
 
-    // 2. Keyword trigger for Learning Centre
     if (isLearningKeyword(text)) {
       const existingCtx = conversation.context_json || {};
       await updateConversation(conversation.id, {
@@ -98,70 +113,59 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-    // 3. SALES workflow
     if (currentModule === "SALES") {
       await handleSales(phone, text, contact, conversation);
       return;
     }
 
-    // 4. AGENT workflow
     if (currentModule === "AGENT") {
       await handleAgent(phone, text, contact, conversation);
       return;
     }
 
-    // 5. EXAMS workflow
     if (currentModule === "EXAMS") {
       await handleExams(phone, text, contact, conversation);
       return;
     }
 
-    // 6. TOOLS workflow
     if (currentModule === "TOOLS") {
       await handleTools(phone, text, contact, conversation, interactiveId);
       return;
     }
 
-    // 7. GAMES workflow
     if (currentModule === "GAMES") {
       await handleGames(phone, text, contact, conversation, interactiveId);
       return;
     }
 
-    // 8. DEMOS workflow
     if (currentModule === "DEMOS") {
       await handleDemos(phone, text, contact, conversation, interactiveId);
       return;
     }
 
-    // 9. ABOUT workflow
     if (currentModule === "ABOUT") {
       await handleAbout(phone, text, contact, conversation, interactiveId);
       return;
     }
 
-    // 10. PRODUCTS workflow
     if (currentModule === "PRODUCTS") {
       await handleProducts(phone, text, contact, conversation);
       return;
     }
 
-    // 11. SERVICES workflow
     if (currentModule === "SERVICES") {
       await handleServices(phone, text, contact, conversation);
       return;
     }
 
-    // 12. MAGAZINE workflow
     if (currentModule === "MAGAZINE") {
       await handleMagazine(phone, text, contact, conversation);
       return;
     }
 
     // ══════════════════════════════════════════════════════
-    // DIRECT INTENT OVERRIDES (FROM IDLE / MAIN MENU)
+    // DIRECT INTENT OVERRIDES
     // ══════════════════════════════════════════════════════
-
     if (
       interactiveId === "menu_about" ||
       interactiveId.startsWith("about_") ||
@@ -206,9 +210,8 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     }
 
     // ══════════════════════════════════════════════════════
-    // GLOBAL COMMANDS (ONLY ACTIVE WHEN IN MAIN_MENU / IDLE)
+    // GLOBAL COMMANDS
     // ══════════════════════════════════════════════════════
-
     if (isGreeting(text) || isHelp(text)) {
       await showMainMenu(phone, conversation.id);
       return;
