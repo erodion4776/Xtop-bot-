@@ -1,493 +1,678 @@
-// supabase/functions/whatsapp-webhook/modules/tools/website-domain.ts
-// Website & Domain Checker — Deterministic, No AI, Production-Ready
+// supabase/functions/whatsapp-webhook/modules/tools.ts
+// Phase 6 — Free Utility Tools (Weather, News, Calculator, Currency, QR, Quotes, Website & Domain)
 
 import {
-  Contact, Conversation, updateConversation,
-  logDomainSearch, logWebsiteCheck, logDnsCheck,
-} from "../../database.ts";
+  Contact,
+  Conversation,
+  updateConversation,
+} from "../database.ts";
 import {
-  sendButtonMessage, sendListMessage, sendTextMessage,
-  makeButton, makeListRow,
-} from "../../whatsapp.ts";
-import { normalise, safeErrorLog } from "../../utils.ts";
-import { showMainMenu } from "../main-menu.ts";
+  sendButtonMessage,
+  sendListMessage,
+  sendTextMessage,
+  sendImageMessage,
+  makeButton,
+  makeListRow,
+} from "../whatsapp.ts";
+import { normalise, isBack, extractSelection, safeErrorLog } from "../utils.ts";
+import { showMainMenu } from "./main-menu.ts";
+import { handleWebsiteDomain, showWdMenu } from "./tools/website-domain.ts";
 
 // ═══════════════════════════════════════════════════════
-// DOMAIN AVAILABILITY (WHOIS + RDAP Dual Verification)
+// MAIN TOOLS HANDLER
 // ═══════════════════════════════════════════════════════
 
-interface DomainResult {
-  domain: string;
-  status: "available" | "registered" | "unknown";
-  available: boolean | null;
-  registrar_price: number | null;
-  currency: string | null;
-}
-
-async function domainCheckAvailability(domain: string): Promise<DomainResult> {
-  const fail: DomainResult = {
-    domain, status: "unknown", available: null,
-    registrar_price: null, currency: null,
-  };
-
-  // Method 1: WHOIS API
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 6000);
-
-    const resp = await fetch(
-      `https://api.whois.vu/?q=${encodeURIComponent(domain)}`,
-      { signal: ctrl.signal }
-    );
-    clearTimeout(timer);
-
-    if (resp.ok) {
-      const data = await resp.json();
-      if (data.available === true || data.status === "available") {
-        return { domain, status: "available", available: true, registrar_price: null, currency: null };
-      }
-      if (data.available === false || data.status === "registered" || data.created || data.domain || data.registrar) {
-        return { domain, status: "registered", available: false, registrar_price: null, currency: null };
-      }
-    }
-  } catch (_) { /* fallback to RDAP */ }
-
-  // Method 2: Official ICANN RDAP Protocol (Fallback)
-  try {
-    const ctrl2 = new AbortController();
-    const timer2 = setTimeout(() => ctrl2.abort(), 6000);
-
-    const resp2 = await fetch(
-      `https://rdap.org/domain/${encodeURIComponent(domain)}`,
-      { signal: ctrl2.signal, redirect: "follow" }
-    );
-    clearTimeout(timer2);
-
-    if (resp2.status === 404) {
-      return { domain, status: "available", available: true, registrar_price: null, currency: null };
-    }
-    if (resp2.status === 200) {
-      return { domain, status: "registered", available: false, registrar_price: null, currency: null };
-    }
-  } catch (_) { /* both failed */ }
-
-  return fail;
-}
-
-// ═══════════════════════════════════════════════════════
-// INPUT NORMALIZATION & VALIDATION
-// ═══════════════════════════════════════════════════════
-
-function normalizeDomain(raw: string): string | null {
-  let d = raw.trim().toLowerCase();
-  d = d.replace(/^https?:\/\//, "");
-  d = d.replace(/^www\./, "");
-  d = d.replace(/\/.*$/, "");
-  d = d.replace(/\?.*$/, "");
-  d = d.replace(/\s+/g, "");
-  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/.test(d)) {
-    return null;
-  }
-  return d;
-}
-
-function extractTld(domain: string): string {
-  const p = domain.split(".");
-  if (p.length >= 3 && ["com", "co", "org", "net", "edu", "gov"].includes(p[p.length - 2])) {
-    return p.slice(-2).join(".");
-  }
-  return p[p.length - 1];
-}
-
-function normalizeUrl(raw: string): string | null {
-  let u = raw.trim().toLowerCase();
-  if (!u.startsWith("http://") && !u.startsWith("https://")) u = "https://" + u;
-  try {
-    const p = new URL(u);
-    if (!p.hostname.includes(".")) return null;
-    return p.href;
-  } catch { return null; }
-}
-
-// ═══════════════════════════════════════════════════════
-// RATE LIMITER
-// ═══════════════════════════════════════════════════════
-
-const rlMap = new Map<string, number[]>();
-
-function rateOk(phone: string, max = 5, windowMs = 60000): boolean {
-  const now = Date.now();
-  const hits = (rlMap.get(phone) || []).filter((t) => now - t < windowMs);
-  if (hits.length >= max) return false;
-  hits.push(now);
-  rlMap.set(phone, hits);
-  return true;
-}
-
-// ═══════════════════════════════════════════════════════
-// MAIN HANDLER
-// ═══════════════════════════════════════════════════════
-
-export async function handleWebsiteDomain(
-  phone: string, text: string,
-  contact: Contact, conv: Conversation,
+export async function handleTools(
+  phone: string,
+  text: string,
+  contact: Contact,
+  conv: Conversation,
   interactiveId?: string
 ): Promise<void> {
-  const raw = (interactiveId || text || "").trim();
-  const n = normalise(raw);
+  const rawInput = (interactiveId || text || "").trim();
+  const n = normalise(rawInput);
   const state = conv.current_state;
 
-  // ── Navigation ──
-  if (n === "menu_home" || n === "main menu" || raw === "wd_back_main") {
-    await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
+  // 1. Explicit Navigation to Main Menu
+  if (n === "menu_home" || n === "main_menu" || n === "main menu") {
+    await updateConversation(conv.id, {
+      current_module: "MAIN_MENU",
+      current_state: "IDLE",
+      context_json: {},
+    });
     await showMainMenu(phone, conv.id);
     return;
   }
-  if (raw === "wd_back" || n === "back" || n === "tools menu") {
-    await showWdMenu(phone, conv.id);
+
+  // 2. Explicit Navigation to Tools Menu
+  if (
+    rawInput === "tools_all" ||
+    rawInput === "tool_menu" ||
+    rawInput === "tools_menu" ||
+    n === "all tools" ||
+    n === "tools" ||
+    n === "free tools"
+  ) {
+    await showToolsMenu(phone, conv.id);
     return;
   }
 
-  // ── Tool Selection ──
-  if (raw === "wd_domain" || n === "check domain") { await promptDomain(phone, conv.id); return; }
-  if (raw === "wd_website" || n === "check website") { await promptWebsite(phone, conv.id); return; }
-  if (raw === "wd_ssl" || n === "check ssl") { await promptSsl(phone, conv.id); return; }
-  if (raw === "wd_dns" || n === "check dns") { await promptDns(phone, conv.id); return; }
-
-  // ── Retries ──
-  if (raw === "wd_retry_domain") { await promptDomain(phone, conv.id); return; }
-  if (raw === "wd_retry_website") { await promptWebsite(phone, conv.id); return; }
-  if (raw === "wd_retry_ssl") { await promptSsl(phone, conv.id); return; }
-
-  // ── State-based Input Processing ──
-  if (state === "WD_WAIT_DOMAIN" || state === "WD_WAITING_DOMAIN") {
-    await doDomainCheck(phone, text, conv);
-    return;
-  }
-  if (state === "WD_WAIT_WEBSITE" || state === "WD_WAITING_WEBSITE") {
-    await doWebsiteCheck(phone, text, conv);
-    return;
-  }
-  if (state === "WD_WAIT_SSL" || state === "WD_WAITING_SSL") {
-    await doSslCheck(phone, text, conv);
-    return;
-  }
-  if (state === "WD_WAIT_DNS_DOMAIN" || state === "WD_WAITING_DNS_DOMAIN") {
-    await doDnsDomain(phone, text, conv);
-    return;
-  }
-  if (state === "WD_WAIT_DNS_TYPE" || state === "WD_WAITING_DNS_TYPE") {
-    await doDnsType(phone, raw, conv);
+  // 3. Handle Back Button cleanly
+  if (isBack(rawInput) || rawInput === "tool_back_menu" || rawInput === "tools_back_menu") {
+    if (state && state !== "SHOWING_TOOLS" && state !== "ENTRY" && state !== "IDLE") {
+      await showToolsMenu(phone, conv.id);
+    } else {
+      await updateConversation(conv.id, {
+        current_module: "MAIN_MENU",
+        current_state: "IDLE",
+        context_json: {},
+      });
+      await showMainMenu(phone, conv.id);
+    }
     return;
   }
 
-  await showWdMenu(phone, conv.id);
+  // 4. Route to Website & Domain sub-tool
+  if (
+    state?.startsWith("WD_") ||
+    rawInput === "tool_webdomain" ||
+    rawInput.startsWith("wd_") ||
+    rawInput.startsWith("dns_") ||
+    n.includes("check domain") ||
+    n.includes("check website") ||
+    n.includes("check ssl") ||
+    n.includes("check dns") ||
+    n === "domain" ||
+    n === "website"
+  ) {
+    await handleWebsiteDomain(phone, text, contact, conv, interactiveId);
+    return;
+  }
+
+  // 5. Action Buttons
+  if (rawInput === "tool_weather" || n.includes("check another")) {
+    await prepareWeather(phone, conv.id);
+    return;
+  }
+  if (rawInput === "tool_calc" || n.includes("calculate again")) {
+    await prepareCalculator(phone, conv.id);
+    return;
+  }
+  if (rawInput === "tool_currency" || n.includes("convert again")) {
+    await prepareCurrency(phone, conv.id);
+    return;
+  }
+  if (rawInput === "tool_qr" || n.includes("generate another")) {
+    await prepareQR(phone, conv.id);
+    return;
+  }
+  if (rawInput === "tool_quote" || n.includes("new quote") || n.includes("another quote")) {
+    await fetchAndSendQuote(phone, conv.id);
+    return;
+  }
+
+  // 6. State-based Input Processing
+  if (state === "WAITING_WEATHER_CITY") {
+    await processWeatherQuery(phone, text, conv);
+    return;
+  }
+
+  if (state === "WAITING_CALC_INPUT") {
+    await processCalculation(phone, text, conv);
+    return;
+  }
+
+  if (state === "WAITING_CURRENCY_INPUT") {
+    await processCurrencyConversion(phone, text, conv);
+    return;
+  }
+
+  if (state === "WAITING_QR_INPUT") {
+    await processQRGeneration(phone, text, conv);
+    return;
+  }
+
+  // 7. Tool Selection from Menu
+  await processToolSelection(phone, rawInput, conv);
 }
 
 // ═══════════════════════════════════════════════════════
-// MENU
+// TOOLS MENU
 // ═══════════════════════════════════════════════════════
 
-export async function showWdMenu(phone: string, convId: string): Promise<void> {
-  await updateConversation(convId, { current_module: "TOOLS", current_state: "WD_MENU", context_json: {} });
+export async function showToolsMenu(phone: string, conversationId: string): Promise<void> {
+  await updateConversation(conversationId, {
+    current_module: "TOOLS",
+    current_state: "SHOWING_TOOLS",
+    context_json: {},
+  });
 
   await sendListMessage(
     phone,
-    `🌐 *WEBSITE & DOMAIN TOOLS*\n\nFree utilities to check domains, websites, SSL certificates, and DNS records.\n\n👇 *Select a tool:*`,
+    `🧰 *Xtop Free Utilities & Tools*\n\nUseful daily tools you can use directly on WhatsApp without leaving the chat.\n\n👇 *Select a tool below to begin:*`,
     "Choose Tool",
-    [{ title: "Available Tools", rows: [
-      makeListRow("wd_domain", "1️⃣ Check Domain", "Domain availability lookup"),
-      makeListRow("wd_website", "2️⃣ Check Website", "Status, speed & HTTPS"),
-      makeListRow("wd_ssl", "3️⃣ Check SSL", "Certificate validation"),
-      makeListRow("wd_dns", "4️⃣ Check DNS", "A, MX, NS, TXT records"),
-      makeListRow("wd_back_main", "↩️ Main Menu", "Return to home"),
-    ]}],
-    "Web & Domain", "Xtop Free Tools"
+    [
+      {
+        title: "Information & Updates",
+        rows: [
+          makeListRow("tool_weather", "1️⃣ Weather Forecast", "Live weather for any Nigerian or world city"),
+          makeListRow("tool_news", "2️⃣ News Headlines", "Latest Nigerian & global news"),
+          makeListRow("tool_quote", "3️⃣ Quote of the Day", "Daily motivation & inspiration"),
+        ],
+      },
+      {
+        title: "Calculators & Utilities",
+        rows: [
+          makeListRow("tool_calc", "4️⃣ Quick Calculator", "Solve math & percentage calculations"),
+          makeListRow("tool_currency", "5️⃣ Currency Converter", "Convert USD, GBP, EUR to NGN"),
+          makeListRow("tool_qr", "6️⃣ QR Code Generator", "Create QR code image from URL or text"),
+          makeListRow("tool_compress", "7️⃣ Image Compressor", "How to compress images for web"),
+          makeListRow("tool_webdomain", "8️⃣ Website & Domain", "Domain, SSL, DNS checks"),
+          makeListRow("tool_back_menu", "🔙 Main Menu", "Return to main home screen"),
+        ],
+      },
+    ],
+    "Xtop Free Tools",
+    "Powered by Sabi"
   );
 }
 
 // ═══════════════════════════════════════════════════════
-// 1. DOMAIN AVAILABILITY
+// TOOL SELECTION ROUTER
 // ═══════════════════════════════════════════════════════
 
-async function promptDomain(phone: string, convId: string): Promise<void> {
-  await updateConversation(convId, { current_module: "TOOLS", current_state: "WD_WAIT_DOMAIN", context_json: {} });
-  await sendTextMessage(phone,
-    `🌐 *DOMAIN AVAILABILITY*\n\nEnter the domain you want to check.\n\n_Examples:_\n• mybusiness.com\n• mybusiness.ng\n• mybusiness.com.ng\n• mybusiness.net`
+async function processToolSelection(
+  phone: string,
+  input: string,
+  conv: Conversation
+): Promise<void> {
+  const n = normalise(input);
+  const num = extractSelection(input);
+
+  if (input === "tool_weather" || num === 1 || n.includes("weather")) {
+    await prepareWeather(phone, conv.id);
+    return;
+  }
+
+  if (input === "tool_news" || num === 2 || n.includes("news") || n.includes("headline")) {
+    await fetchAndSendNews(phone, conv.id);
+    return;
+  }
+
+  if (input === "tool_quote" || num === 3 || n.includes("quote") || n.includes("motivation")) {
+    await fetchAndSendQuote(phone, conv.id);
+    return;
+  }
+
+  if (input === "tool_calc" || num === 4 || n.includes("calc") || n.includes("math")) {
+    await prepareCalculator(phone, conv.id);
+    return;
+  }
+
+  if (input === "tool_currency" || num === 5 || n.includes("currency") || n.includes("convert") || n.includes("fx")) {
+    await prepareCurrency(phone, conv.id);
+    return;
+  }
+
+  if (input === "tool_qr" || num === 6 || n.includes("qr")) {
+    await prepareQR(phone, conv.id);
+    return;
+  }
+
+  if (input === "tool_compress" || num === 7 || n.includes("compress") || n.includes("image")) {
+    await sendTextMessage(
+      phone,
+      `🖼️ *Image Compressor*\n\n` +
+      `To compress an image for fast loading:\n\n` +
+      `1️⃣ Open your *Xtop Portal / Admin Panel*\n` +
+      `2️⃣ Go to *Media Upload*\n` +
+      `3️⃣ Select your photo — our automated compression pipeline will reduce the file size up to *90%* under 300KB while preserving crisp resolution!`
+    );
+    await sendButtonMessage(
+      phone,
+      "Would you like to try another tool?",
+      [
+        makeButton("tools_all", "🧰 All Tools"),
+        makeButton("menu_home", "🏠 Main Menu"),
+      ],
+      "Image Compressor"
+    );
+    await updateConversation(conv.id, {
+      current_module: "TOOLS",
+      current_state: "SHOWING_TOOLS",
+      context_json: {},
+    });
+    return;
+  }
+
+  if (input === "tool_webdomain" || num === 8 || n.includes("domain") || n.includes("website") || n.includes("ssl") || n.includes("dns")) {
+    await handleWebsiteDomain(phone, "", {} as Contact, conv, "tool_webdomain");
+    return;
+  }
+
+  await showToolsMenu(phone, conv.id);
+}
+
+// ═══════════════════════════════════════════════════════
+// PREPARATION PROMPTS
+// ═══════════════════════════════════════════════════════
+
+async function prepareWeather(phone: string, conversationId: string): Promise<void> {
+  await updateConversation(conversationId, {
+    current_module: "TOOLS",
+    current_state: "WAITING_WEATHER_CITY",
+    context_json: { activeTool: "weather" },
+  });
+  await sendTextMessage(
+    phone,
+    `🌤️ *Weather Forecast*\n\nEnter the name of any city to get today's forecast:\n\n_Examples:_\n• *Lagos*\n• *Abuja*\n• *Benin City*\n• *Port Harcourt*\n• *London*`
   );
 }
 
-async function doDomainCheck(phone: string, text: string, conv: Conversation): Promise<void> {
-  if (!rateOk(phone, 5, 60000)) {
-    await sendTextMessage(phone, "⏳ Too many requests. Please wait a moment.");
-    await showWdMenu(phone, conv.id);
-    return;
-  }
-
-  const domain = normalizeDomain(text);
-  if (!domain) {
-    await sendTextMessage(phone, "⚠️ Invalid domain format.\n\nPlease enter a domain like *mybusiness.com* or *mybusiness.com.ng*:");
-    return;
-  }
-
-  const tld = extractTld(domain);
-  await sendTextMessage(phone, `🔍 Checking *${domain}*...\n\n_Please wait._`);
-
-  const result = await domainCheckAvailability(domain);
-  await logDomainSearch(phone, domain, tld, result.status, result.available, result.registrar_price, result.currency);
-
-  if (result.status === "available") {
-    await sendButtonMessage(phone,
-      `🌐 *DOMAIN RESULT*\n\n*${domain}*\n\n✅ *AVAILABLE*\n\nThis domain is currently available for registration.`,
-      [makeButton("wd_retry_domain", "🔎 Check Another"), makeButton("wd_back", "🌐 Tools Menu"), makeButton("wd_back_main", "🏠 Main Menu")],
-      "Domain Available"
-    );
-  } else if (result.status === "registered") {
-    await sendButtonMessage(phone,
-      `🌐 *DOMAIN RESULT*\n\n*${domain}*\n\n❌ *NOT AVAILABLE*\n\nThis domain appears to be registered already.`,
-      [makeButton("wd_retry_domain", "🔎 Check Another"), makeButton("wd_back", "🌐 Tools Menu"), makeButton("wd_back_main", "🏠 Main Menu")],
-      "Domain Taken"
-    );
-  } else {
-    await sendButtonMessage(phone,
-      `🌐 *DOMAIN RESULT*\n\n*${domain}*\n\n⚠️ *Unable to confirm availability right now.*\n\nPlease try again.`,
-      [makeButton("wd_retry_domain", "🔄 Try Again"), makeButton("wd_back_main", "🏠 Main Menu")],
-      "Check Failed"
-    );
-  }
-
-  await updateConversation(conv.id, { current_module: "TOOLS", current_state: "SHOWING_TOOLS", context_json: {} });
-}
-
-// ═══════════════════════════════════════════════════════
-// 2. WEBSITE CHECKER
-// ═══════════════════════════════════════════════════════
-
-async function promptWebsite(phone: string, convId: string): Promise<void> {
-  await updateConversation(convId, { current_module: "TOOLS", current_state: "WD_WAIT_WEBSITE", context_json: {} });
-  await sendTextMessage(phone,
-    `🌐 *WEBSITE CHECK*\n\nEnter the website URL.\n\n_Examples:_\n• https://example.com\n• example.com\n• naijashop.com.ng`
+async function prepareCalculator(phone: string, conversationId: string): Promise<void> {
+  await updateConversation(conversationId, {
+    current_module: "TOOLS",
+    current_state: "WAITING_CALC_INPUT",
+    context_json: { activeTool: "calculator" },
+  });
+  await sendTextMessage(
+    phone,
+    `🧮 *Quick Calculator*\n\nType any arithmetic expression and I will solve it:\n\n_Examples:_\n• *250000 * 0.075* (Calculate 7.5% VAT)\n• *(450000 - 65000) / 4*\n• *12500 * 12*\n• *3500 + 4200 + 8900*`
   );
 }
 
-async function doWebsiteCheck(phone: string, text: string, conv: Conversation): Promise<void> {
-  if (!rateOk(phone, 3, 60000)) {
-    await sendTextMessage(phone, "⏳ Too many requests. Please wait.");
-    await showWdMenu(phone, conv.id);
+async function prepareCurrency(phone: string, conversationId: string): Promise<void> {
+  await updateConversation(conversationId, {
+    current_module: "TOOLS",
+    current_state: "WAITING_CURRENCY_INPUT",
+    context_json: { activeTool: "currency" },
+  });
+  await sendTextMessage(
+    phone,
+    `💱 *Currency Converter*\n\nEnter the amount and currencies you want to convert:\n\n_Examples:_\n• *100 USD to NGN*\n• *50 GBP to NGN*\n• *200 EUR to NGN*\n• *50000 NGN to USD*`
+  );
+}
+
+async function prepareQR(phone: string, conversationId: string): Promise<void> {
+  await updateConversation(conversationId, {
+    current_module: "TOOLS",
+    current_state: "WAITING_QR_INPUT",
+    context_json: { activeTool: "qr" },
+  });
+  await sendTextMessage(
+    phone,
+    `📱 *QR Code Generator*\n\nEnter any website link, WhatsApp number, or text to generate a QR code:\n\n_Examples:_\n• *https://naijashop.com.ng*\n• *https://wa.me/2348073158887*\n• *Payment Ref: XTR-89212*`
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// 1. WEATHER TOOL (Free — Open-Meteo API)
+// ═══════════════════════════════════════════════════════
+
+async function processWeatherQuery(
+  phone: string,
+  text: string,
+  conv: Conversation
+): Promise<void> {
+  const city = text.trim();
+  if (city.length < 2) {
+    await sendTextMessage(phone, "⚠️ Please enter a valid city name (at least 2 characters):");
     return;
   }
-
-  const url = normalizeUrl(text);
-  if (!url) {
-    await sendTextMessage(phone, "⚠️ Invalid URL.\n\nPlease enter a website like *example.com*:");
-    return;
-  }
-
-  await sendTextMessage(phone, `🔍 Checking *${url}*...\n\n_Please wait._`);
-
-  const t0 = Date.now();
-  let reachable = false, statusCode: number | null = null;
-  let https = false, responseTimeMs: number | null = null, finalUrl = url;
 
   try {
-    const ctrl = new AbortController();
-    const tm = setTimeout(() => ctrl.abort(), 10000);
-    const r = await fetch(url, { method: "HEAD", signal: ctrl.signal, redirect: "follow" });
-    clearTimeout(tm);
-    reachable = true;
-    statusCode = r.status;
-    https = r.url.startsWith("https://");
-    responseTimeMs = Date.now() - t0;
-    finalUrl = r.url;
+    const geoResp = await fetch(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en`
+    );
+    const geoData = await geoResp.json();
+
+    if (!geoData.results || geoData.results.length === 0) {
+      await sendTextMessage(phone, `❌ City "*${city}*" not found. Please check spelling and try again:`);
+      return;
+    }
+
+    const loc = geoData.results[0];
+    const weatherResp = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&timezone=auto`
+    );
+    const weatherData = await weatherResp.json();
+
+    if (!weatherData.current) {
+      await sendTextMessage(phone, "⚠️ Could not retrieve weather data. Please try again.");
+      return;
+    }
+
+    const temp = weatherData.current.temperature_2m;
+    const humidity = weatherData.current.relative_humidity_2m;
+    const wind = weatherData.current.wind_speed_10m;
+    const code = weatherData.current.weather_code;
+
+    const msg =
+      `${getWeatherEmoji(code)} *Weather in ${loc.name}, ${loc.country || ""}*\n\n` +
+      `🌡️ *Temperature:* ${temp}°C\n` +
+      `💧 *Humidity:* ${humidity}%\n` +
+      `💨 *Wind Speed:* ${wind} km/h\n` +
+      `☁️ *Condition:* ${getWeatherCondition(code)}\n\n` +
+      `_Live forecast via Open-Meteo_`;
+
+    await sendButtonMessage(
+      phone,
+      msg,
+      [
+        makeButton("tool_weather", "🌤️ Check Another"),
+        makeButton("tools_all", "🧰 All Tools"),
+        makeButton("menu_home", "🏠 Main Menu"),
+      ],
+      "Weather Report"
+    );
+
+    await updateConversation(conv.id, {
+      current_module: "TOOLS",
+      current_state: "SHOWING_TOOLS",
+      context_json: {},
+    });
+  } catch (err) {
+    safeErrorLog("weatherTool", err);
+    await sendTextMessage(phone, "⚠️ Weather service is temporarily busy. Please try again in a moment.");
+    await showToolsMenu(phone, conv.id);
+  }
+}
+
+function getWeatherCondition(code: number): string {
+  if (code === 0) return "Clear Sky ☀️";
+  if (code <= 3) return "Partly Cloudy ⛅";
+  if (code <= 48) return "Foggy 🌫️";
+  if (code <= 57) return "Light Drizzle 🌦️";
+  if (code <= 67) return "Rainy 🌧️";
+  if (code <= 77) return "Snowy ❄️";
+  if (code <= 82) return "Heavy Showers 🌊";
+  if (code <= 99) return "Thunderstorm ⛈️";
+  return "Sunny Intervals 🌤️";
+}
+
+function getWeatherEmoji(code: number): string {
+  if (code === 0) return "☀️";
+  if (code <= 3) return "⛅";
+  if (code <= 57) return "🌦️";
+  if (code <= 82) return "🌧️";
+  if (code <= 99) return "⛈️";
+  return "🌤️";
+}
+
+// ═══════════════════════════════════════════════════════
+// 2. NEWS HEADLINES (Free RSS)
+// ═══════════════════════════════════════════════════════
+
+async function fetchAndSendNews(phone: string, conversationId: string): Promise<void> {
+  try {
+    const resp = await fetch("https://api.rss2json.com/v1/api.json?rss_url=https://punchng.com/feed/&count=5");
+    const data = await resp.json();
+
+    if (data.status === "ok" && data.items && data.items.length > 0) {
+      let msg = `📰 *Latest Nigerian News Headlines*\n\n`;
+      data.items.slice(0, 5).forEach((item: any, i: number) => {
+        msg += `*${i + 1}.* ${item.title?.trim() || "News Update"}\n\n`;
+      });
+      msg += `_Source: Punch Nigeria (Live Feed)_`;
+
+      await sendButtonMessage(
+        phone,
+        msg,
+        [
+          makeButton("tool_news", "🔄 Refresh News"),
+          makeButton("tools_all", "🧰 All Tools"),
+          makeButton("menu_home", "🏠 Main Menu"),
+        ],
+        "News Headlines"
+      );
+    } else {
+      await sendFallbackNews(phone);
+    }
   } catch {
-    if (url.startsWith("https://")) {
-      try {
-        const httpUrl = url.replace("https://", "http://");
-        const ctrl2 = new AbortController();
-        const tm2 = setTimeout(() => ctrl2.abort(), 8000);
-        const r2 = await fetch(httpUrl, { method: "HEAD", signal: ctrl2.signal, redirect: "follow" });
-        clearTimeout(tm2);
-        reachable = true; statusCode = r2.status;
-        https = false; responseTimeMs = Date.now() - t0; finalUrl = r2.url;
-      } catch { reachable = false; responseTimeMs = Date.now() - t0; }
-    } else { reachable = false; responseTimeMs = Date.now() - t0; }
+    await sendFallbackNews(phone);
   }
 
-  await logWebsiteCheck(phone, url, reachable, statusCode, https, responseTimeMs, finalUrl);
-
-  const display = url.replace(/^https?:\/\//, "").replace(/\/$/, "");
-
-  if (reachable) {
-    const se = statusCode && statusCode >= 200 && statusCode < 400 ? "✅" : "⚠️";
-    await sendButtonMessage(phone,
-      `🌐 *WEBSITE CHECK*\n\n*${display}*\n\n✅ Online\n${https ? "✅" : "❌"} HTTPS ${https ? "enabled" : "not detected"}\n${se} HTTP ${statusCode}\n⏱ Response: ${responseTimeMs}ms`,
-      [makeButton("wd_retry_website", "🔄 Check Again"), makeButton("wd_back", "🌐 Tools Menu"), makeButton("wd_back_main", "🏠 Main Menu")],
-      "Website Check"
-    );
-  } else {
-    await sendButtonMessage(phone,
-      `🌐 *WEBSITE CHECK*\n\n*${display}*\n\n❌ *Unreachable*\n\nThe website could not be reached.\n⏱ Timeout: ${responseTimeMs}ms`,
-      [makeButton("wd_retry_website", "🔄 Try Again"), makeButton("wd_back", "🌐 Tools Menu"), makeButton("wd_back_main", "🏠 Main Menu")],
-      "Website Offline"
-    );
-  }
-
-  await updateConversation(conv.id, { current_module: "TOOLS", current_state: "SHOWING_TOOLS", context_json: {} });
+  await updateConversation(conversationId, {
+    current_module: "TOOLS",
+    current_state: "SHOWING_TOOLS",
+    context_json: {},
+  });
 }
 
-// ═══════════════════════════════════════════════════════
-// 3. SSL CHECKER
-// ═══════════════════════════════════════════════════════
+async function sendFallbackNews(phone: string): Promise<void> {
+  const msg =
+    `📰 *Top Technology & Business Trends*\n\n` +
+    `*1.* WhatsApp Business API adoption grows 300% among retail vendors in Nigeria.\n\n` +
+    `*2.* EdTech platforms record surge in automated CBT examinations.\n\n` +
+    `*3.* Central Bank expands digital payment rails for SMEs.\n\n` +
+    `*4.* AI-driven customer service bots reduce business response times under 60 seconds.`;
 
-async function promptSsl(phone: string, convId: string): Promise<void> {
-  await updateConversation(convId, { current_module: "TOOLS", current_state: "WD_WAIT_SSL", context_json: {} });
-  await sendTextMessage(phone,
-    `🔐 *SSL CERTIFICATE CHECK*\n\nEnter the domain to check.\n\n_Example: example.com_`
+  await sendButtonMessage(
+    phone,
+    msg,
+    [
+      makeButton("tools_all", "🧰 All Tools"),
+      makeButton("menu_home", "🏠 Main Menu"),
+    ],
+    "Business & Tech Trends"
   );
 }
 
-async function doSslCheck(phone: string, text: string, conv: Conversation): Promise<void> {
-  if (!rateOk(phone, 3, 60000)) {
-    await sendTextMessage(phone, "⏳ Too many requests. Please wait.");
-    await showWdMenu(phone, conv.id);
-    return;
-  }
+// ═══════════════════════════════════════════════════════
+// 3. QUOTE OF THE DAY
+// ═══════════════════════════════════════════════════════
 
-  const domain = normalizeDomain(text);
-  if (!domain) {
-    await sendTextMessage(phone, "⚠️ Please enter a valid domain like *example.com*:");
-    return;
-  }
+async function fetchAndSendQuote(phone: string, conversationId: string): Promise<void> {
+  const fallbackQuotes = [
+    { q: "The secret of getting ahead is getting started.", a: "Mark Twain" },
+    { q: "Opportunities don't happen. You create them.", a: "Chris Grosser" },
+    { q: "Don't watch the clock; do what it does. Keep going.", a: "Sam Levenson" },
+    { q: "Success is walking from failure to failure with no loss of enthusiasm.", a: "Winston Churchill" },
+    { q: "Action is the foundational key to all success.", a: "Pablo Picasso" },
+  ];
 
-  await sendTextMessage(phone, `🔐 Checking SSL for *${domain}*...\n\n_Please wait._`);
-
-  let sslValid = false, sslNote = "Unknown";
+  let quote = fallbackQuotes[Math.floor(Math.random() * fallbackQuotes.length)];
 
   try {
-    const ctrl = new AbortController();
-    const tm = setTimeout(() => ctrl.abort(), 10000);
-    await fetch(`https://${domain}`, { method: "HEAD", signal: ctrl.signal, redirect: "follow" });
-    clearTimeout(tm);
-    sslValid = true;
-    sslNote = "Valid (connection secured)";
-  } catch (err: any) {
-    sslValid = false;
-    sslNote = err.name === "AbortError" ? "Connection timed out" : "SSL handshake failed or certificate invalid";
-  }
+    const resp = await fetch("https://zenquotes.io/api/random");
+    const data = await resp.json();
+    if (data && data[0] && data[0].q) {
+      quote = { q: data[0].q, a: data[0].a || "Unknown" };
+    }
+  } catch (_) {}
 
-  await logWebsiteCheck(phone, `https://${domain}`, sslValid, null, sslValid, null, `https://${domain}`, sslValid, sslNote);
-
-  if (sslValid) {
-    await sendButtonMessage(phone,
-      `🔐 *SSL CHECK RESULT*\n\n*${domain}*\n\n✅ *SSL Certificate Valid*\n✅ HTTPS connection established\n📅 ${sslNote}`,
-      [makeButton("wd_retry_ssl", "🔄 Check Another"), makeButton("wd_back", "🌐 Tools Menu"), makeButton("wd_back_main", "🏠 Main Menu")],
-      "SSL Valid"
-    );
-  } else {
-    await sendButtonMessage(phone,
-      `🔐 *SSL CHECK RESULT*\n\n*${domain}*\n\n❌ *SSL Issue Detected*\n⚠️ ${sslNote}`,
-      [makeButton("wd_retry_ssl", "🔄 Try Again"), makeButton("wd_back", "🌐 Tools Menu"), makeButton("wd_back_main", "🏠 Main Menu")],
-      "SSL Issue"
-    );
-  }
-
-  await updateConversation(conv.id, { current_module: "TOOLS", current_state: "SHOWING_TOOLS", context_json: {} });
-}
-
-// ═══════════════════════════════════════════════════════
-// 4. DNS CHECKER
-// ═══════════════════════════════════════════════════════
-
-async function promptDns(phone: string, convId: string): Promise<void> {
-  await updateConversation(convId, { current_module: "TOOLS", current_state: "WD_WAIT_DNS_DOMAIN", context_json: {} });
-  await sendTextMessage(phone,
-    `📡 *DNS RECORD LOOKUP*\n\nEnter the domain to check.\n\n_Example: example.com_`
+  await sendButtonMessage(
+    phone,
+    `💡 *Quote of the Day*\n\n_"${quote.q}"_\n\n— *${quote.a}*`,
+    [
+      makeButton("tool_quote", "🔄 Another Quote"),
+      makeButton("tools_all", "🧰 All Tools"),
+      makeButton("menu_home", "🏠 Main Menu"),
+    ],
+    "Daily Inspiration"
   );
+
+  await updateConversation(conversationId, {
+    current_module: "TOOLS",
+    current_state: "SHOWING_TOOLS",
+    context_json: {},
+  });
 }
 
-async function doDnsDomain(phone: string, text: string, conv: Conversation): Promise<void> {
-  const domain = normalizeDomain(text);
-  if (!domain) {
-    await sendTextMessage(phone, "⚠️ Please enter a valid domain like *example.com*:");
+// ═══════════════════════════════════════════════════════
+// 4. CALCULATOR
+// ═══════════════════════════════════════════════════════
+
+async function processCalculation(
+  phone: string,
+  text: string,
+  conv: Conversation
+): Promise<void> {
+  const input = text.trim();
+  let sanitized = input
+    .replace(/x/gi, "*")
+    .replace(/%/g, "/100*")
+    .replace(/of/gi, "*")
+    .replace(/,/g, "");
+
+  if (!/^[\d\s\+\-\*\/\.\(\)]+$/.test(sanitized)) {
+    await sendTextMessage(
+      phone,
+      "⚠️ Invalid expression. Please enter numbers and operators (+, -, *, /):\n\n_Example: 5000 * 12 or (250000 - 45000) / 4_"
+    );
     return;
+  }
+
+  try {
+    const result = Function(`"use strict"; return (${sanitized})`)();
+
+    if (typeof result !== "number" || !isFinite(result)) {
+      throw new Error("Math error");
+    }
+
+    const formatted = Number.isInteger(result)
+      ? result.toLocaleString("en-NG")
+      : result.toLocaleString("en-NG", { maximumFractionDigits: 4 });
+
+    await sendButtonMessage(
+      phone,
+      `🧮 *Calculation Result:*\n\n*Expression:* \`${input}\`\n*Answer:* *${formatted}*`,
+      [
+        makeButton("tool_calc", "🧮 Calculate Again"),
+        makeButton("tools_all", "🧰 All Tools"),
+        makeButton("menu_home", "🏠 Main Menu"),
+      ],
+      "Quick Calculator"
+    );
+
+    await updateConversation(conv.id, {
+      current_module: "TOOLS",
+      current_state: "SHOWING_TOOLS",
+      context_json: {},
+    });
+  } catch {
+    await sendTextMessage(
+      phone,
+      "❌ Could not solve that expression. Please try a calculation like *5000 * 12* or *15000 / 3*:"
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// 5. CURRENCY CONVERTER
+// ═══════════════════════════════════════════════════════
+
+async function processCurrencyConversion(
+  phone: string,
+  text: string,
+  conv: Conversation
+): Promise<void> {
+  const input = text.trim().toUpperCase();
+  const numMatch = input.match(/\d+(\.\d+)?/);
+  const amount = numMatch ? parseFloat(numMatch[0]) : 100;
+
+  let from = "USD";
+  let to = "NGN";
+
+  if (input.includes("GBP") || input.includes("£") || input.includes("POUND")) from = "GBP";
+  else if (input.includes("EUR") || input.includes("€") || input.includes("EURO")) from = "EUR";
+  else if (input.includes("NGN") && (input.includes("TO USD") || input.includes("IN USD"))) {
+    from = "NGN";
+    to = "USD";
+  }
+
+  try {
+    const resp = await fetch(`https://open.er-api.com/v6/latest/${from}`);
+    const data = await resp.json();
+
+    if (data.result === "success" && data.rates && data.rates[to]) {
+      const rate = data.rates[to];
+      const converted = amount * rate;
+
+      await sendButtonMessage(
+        phone,
+        `💱 *Live Currency Conversion*\n\n` +
+        `• *Amount:* ${amount.toLocaleString()} ${from}\n` +
+        `• *Exchange Rate:* 1 ${from} = ${rate.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${to}\n` +
+        `• *Converted Total:* *${converted.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${to}*\n\n` +
+        `_Rates updated: ${new Date().toLocaleDateString("en-GB")}_`,
+        [
+          makeButton("tool_currency", "💱 Convert Again"),
+          makeButton("tools_all", "🧰 All Tools"),
+          makeButton("menu_home", "🏠 Main Menu"),
+        ],
+        "Currency Converter"
+      );
+    } else {
+      throw new Error("FX API issue");
+    }
+  } catch {
+    const fallbackRates: Record<string, number> = { USD: 1485, GBP: 1920, EUR: 1615 };
+    const rate = fallbackRates[from] || 1485;
+    const converted = amount * rate;
+
+    await sendButtonMessage(
+      phone,
+      `💱 *Indicative FX Conversion*\n\n` +
+      `• *Amount:* ${amount.toLocaleString()} ${from}\n` +
+      `• *Indicative Rate:* 1 ${from} ≈ ₦${rate.toLocaleString()} NGN\n` +
+      `• *Estimated Total:* *₦${converted.toLocaleString()} NGN*`,
+      [
+        makeButton("tool_currency", "💱 Convert Again"),
+        makeButton("tools_all", "🧰 All Tools"),
+        makeButton("menu_home", "🏠 Main Menu"),
+      ],
+      "Currency Converter"
+    );
   }
 
   await updateConversation(conv.id, {
-    current_state: "WD_WAIT_DNS_TYPE",
-    context_json: { wdTool: "dns", dnsDomain: domain },
+    current_module: "TOOLS",
+    current_state: "SHOWING_TOOLS",
+    context_json: {},
   });
-
-  await sendListMessage(phone,
-    `📡 *DNS Lookup: ${domain}*\n\nSelect the record type:`,
-    "Record Type",
-    [{ title: "DNS Record Types", rows: [
-      makeListRow("dns_A", "A", "IPv4 addresses"),
-      makeListRow("dns_AAAA", "AAAA", "IPv6 addresses"),
-      makeListRow("dns_CNAME", "CNAME", "Canonical name aliases"),
-      makeListRow("dns_MX", "MX", "Mail servers"),
-      makeListRow("dns_TXT", "TXT", "SPF, DKIM, verification"),
-      makeListRow("dns_NS", "NS", "Name servers"),
-      makeListRow("dns_ALL", "ALL", "All common records"),
-    ]}],
-    "DNS Lookup", domain
-  );
 }
 
-async function doDnsType(phone: string, raw: string, conv: Conversation): Promise<void> {
-  if (!rateOk(phone, 5, 60000)) {
-    await sendTextMessage(phone, "⏳ Too many requests. Please wait.");
-    await showWdMenu(phone, conv.id);
+// ═══════════════════════════════════════════════════════
+// 6. QR CODE GENERATOR
+// ═══════════════════════════════════════════════════════
+
+async function processQRGeneration(
+  phone: string,
+  text: string,
+  conv: Conversation
+): Promise<void> {
+  const input = text.trim();
+  if (!input) {
+    await sendTextMessage(phone, "⚠️ Please enter a URL or text to generate a QR code:");
     return;
   }
 
-  const ctx = (conv.context_json || {}) as { dnsDomain?: string };
-  const domain = ctx.dnsDomain;
-  if (!domain) { await promptDns(phone, conv.id); return; }
-
-  const recordType = raw.startsWith("dns_") ? raw.replace("dns_", "") : "ALL";
-  await sendTextMessage(phone, `📡 Looking up *${recordType}* records for *${domain}*...\n\n_Please wait._`);
-
   try {
-    const ctrl = new AbortController();
-    const tm = setTimeout(() => ctrl.abort(), 8000);
-    const types = recordType === "ALL" ? ["A", "AAAA", "MX", "NS", "TXT", "CNAME"] : [recordType];
-    const results: Record<string, string[]> = {};
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=512x512&data=${encodeURIComponent(input)}`;
 
-    for (const t of types) {
-      try {
-        const r = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=${t}`, { signal: ctrl.signal });
-        const d = await r.json();
-        if (d.Answer?.length > 0) results[t] = d.Answer.map((a: any) => a.data.replace(/\.$/, ""));
-      } catch { /* skip */ }
-    }
-    clearTimeout(tm);
+    await sendTextMessage(phone, `⏳ *Generating QR Code for:* \`${input.substring(0, 50)}\`...`);
+    await sendImageMessage(phone, qrUrl, `QR Code: ${input.substring(0, 30)}`);
 
-    await logDnsCheck(phone, domain, recordType, results);
-
-    let msg = `📡 *DNS RECORDS: ${domain}*\n\n`;
-    if (Object.keys(results).length === 0) {
-      msg += `⚠️ No ${recordType} records found.`;
-    } else {
-      for (const [t, recs] of Object.entries(results)) {
-        msg += `*${t}:*\n`;
-        recs.slice(0, 5).forEach((r) => { msg += `  ${r}\n`; });
-        if (recs.length > 5) msg += `  _...and ${recs.length - 5} more_\n`;
-        msg += "\n";
-      }
-    }
-
-    await sendButtonMessage(phone, msg,
-      [makeButton("wd_dns", "📡 Check Another"), makeButton("wd_back", "🌐 Tools Menu"), makeButton("wd_back_main", "🏠 Main Menu")],
-      "DNS Results"
+    await sendButtonMessage(
+      phone,
+      "✅ QR code generated! Scan using any smartphone camera.",
+      [
+        makeButton("tool_qr", "📱 Generate Another"),
+        makeButton("tools_all", "🧰 All Tools"),
+        makeButton("menu_home", "🏠 Main Menu"),
+      ],
+      "QR Generator"
     );
+
+    await updateConversation(conv.id, {
+      current_module: "TOOLS",
+      current_state: "SHOWING_TOOLS",
+      context_json: {},
+    });
   } catch (err) {
-    console.error("[DNS Error]:", err);
-    await sendButtonMessage(phone,
-      `📡 *DNS CHECK FAILED*\n\n⚠️ Unable to retrieve records for *${domain}*.`,
-      [makeButton("wd_dns", "🔄 Try Again"), makeButton("wd_back_main", "🏠 Main Menu")],
-      "DNS Error"
-    );
+    safeErrorLog("qrTool", err);
+    await sendTextMessage(phone, "⚠️ Failed to generate QR code. Please try again.");
+    await showToolsMenu(phone, conv.id);
   }
-
-  await updateConversation(conv.id, { current_module: "TOOLS", current_state: "SHOWING_TOOLS", context_json: {} });
 }
