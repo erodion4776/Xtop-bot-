@@ -30,8 +30,6 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val DASHBOARD_API = "https://mldywarnnwjitfvqpgis.supabase.co/functions/v1/xtop-dashboard"
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RetailDashboardScreen(navController: NavController) {
@@ -56,6 +54,11 @@ fun RetailDashboardScreen(navController: NavController) {
     var loading by remember { mutableStateOf(true) }
     var isSending by remember { mutableStateOf(false) }
     var sabiHandoff by remember { mutableStateOf(false) }
+
+    fun getDashboardApiUrl(action: String): String {
+        val base = SupabaseClient.getSupabaseUrl().trimEnd('/')
+        return "$base/functions/v1/xtop-dashboard?action=$action"
+    }
 
     fun findPhoneForContact(contactId: String?): String {
         if (contactId.isNullOrBlank()) return ""
@@ -97,13 +100,14 @@ fun RetailDashboardScreen(navController: NavController) {
                 quotations = repo.getQuotations()
                 requests = repo.getAgentRequests()
 
-                // Fetch live server handoff status
+                // Fetch server handoff status using your Supabase credentials
                 withContext(Dispatchers.IO) {
                     try {
-                        val url = URL("$DASHBOARD_API?action=get-handoff")
+                        val key = SupabaseClient.getSupabaseKey()
+                        val url = URL(getDashboardApiUrl("get-handoff"))
                         val conn = url.openConnection() as HttpURLConnection
-                        conn.setRequestProperty("apikey", SupabaseClient.getApiKey())
-                        conn.setRequestProperty("Authorization", "Bearer ${SupabaseClient.getApiKey()}")
+                        conn.setRequestProperty("apikey", key)
+                        conn.setRequestProperty("Authorization", "Bearer $key")
                         if (conn.responseCode == 200) {
                             val res = conn.inputStream.bufferedReader().readText()
                             sabiHandoff = JSONObject(res).optBoolean("enabled", false)
@@ -124,12 +128,13 @@ fun RetailDashboardScreen(navController: NavController) {
         scope.launch {
             withContext(Dispatchers.IO) {
                 try {
-                    val url = URL("$DASHBOARD_API?action=toggle-handoff")
+                    val key = SupabaseClient.getSupabaseKey()
+                    val url = URL(getDashboardApiUrl("toggle-handoff"))
                     val conn = url.openConnection() as HttpURLConnection
                     conn.requestMethod = "POST"
                     conn.setRequestProperty("Content-Type", "application/json")
-                    conn.setRequestProperty("apikey", SupabaseClient.getApiKey())
-                    conn.setRequestProperty("Authorization", "Bearer ${SupabaseClient.getApiKey()}")
+                    conn.setRequestProperty("apikey", key)
+                    conn.setRequestProperty("Authorization", "Bearer $key")
                     conn.doOutput = true
                     val payload = JSONObject().apply { put("enabled", enabled) }
                     conn.outputStream.write(payload.toString().toByteArray())
@@ -202,14 +207,14 @@ fun RetailDashboardScreen(navController: NavController) {
                         isSending = isSending,
                         onSendMessage = { messageText ->
                             if (chatPhone.isBlank()) {
-                                Toast.makeText(context, "No valid phone number selected", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "No phone number selected", Toast.LENGTH_SHORT).show()
                                 return@ChatTab
                             }
                             scope.launch {
                                 isSending = true
                                 val result = sendViaSabiBot(chatPhone, messageText)
                                 if (result.first) {
-                                    Toast.makeText(context, "✅ Message delivered", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "✅ Delivered", Toast.LENGTH_SHORT).show()
                                     if (selectedContact != null) {
                                         chatMessages = repo.getMessages(selectedContact?.id ?: "")
                                     }
@@ -227,20 +232,21 @@ fun RetailDashboardScreen(navController: NavController) {
 }
 
 // ═══════════════════════════════════════════════════════
-// API CALL WITH SUPABASE AUTHENTICATION
+// API SENDER VIA SABI BOT
 // ═══════════════════════════════════════════════════════
 
 suspend fun sendViaSabiBot(phone: String, message: String): Pair<Boolean, String> {
     return withContext(Dispatchers.IO) {
         try {
-            val url = URL("$DASHBOARD_API?action=send-message")
+            val key = SupabaseClient.getSupabaseKey()
+            val base = SupabaseClient.getSupabaseUrl().trimEnd('/')
+            val url = URL("$base/functions/v1/xtop-dashboard?action=send-message")
+            
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
-            // Supabase API Gateway Auth headers:
-            val apiKey = SupabaseClient.getApiKey()
-            conn.setRequestProperty("apikey", apiKey)
-            conn.setRequestProperty("Authorization", "Bearer $apiKey")
+            conn.setRequestProperty("apikey", key)
+            conn.setRequestProperty("Authorization", "Bearer $key")
             conn.connectTimeout = 12000
             conn.readTimeout = 12000
             conn.doOutput = true
