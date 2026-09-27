@@ -1,5 +1,5 @@
 // supabase/functions/whatsapp-webhook/modules/tools.ts
-// Phase 6 — Free Utility Tools (Weather, News, Calculator, Currency, QR, Quotes, Website & Domain)
+// Phase 6 — Free Utility Tools (Weather, News, Calculator, Currency, QR, Quotes, Website & Domain, Flight Checker)
 
 import {
   Contact,
@@ -17,6 +17,7 @@ import {
 import { normalise, isBack, extractSelection, safeErrorLog } from "../utils.ts";
 import { showMainMenu } from "./main-menu.ts";
 import { handleWebsiteDomain, showWdMenu } from "./website-domain.ts";
+import { handleFlightChecker, showFlightMenu } from "../flight-checker.ts";
 
 // ═══════════════════════════════════════════════════════
 // MAIN TOOLS HANDLER
@@ -84,6 +85,19 @@ export async function handleTools(
     n.includes("check dns")
   ) {
     await handleWebsiteDomain(phone, text, contact, conv, interactiveId);
+    return;
+  }
+
+  // 4b. ROUTE TO FLIGHT CHECKER TOOL (Active state or button trigger)
+  if (
+    state?.startsWith("FLIGHT_") ||
+    rawInput === "tool_flight" ||
+    rawInput.startsWith("flight_") ||
+    n.includes("flight check") ||
+    n.includes("check flight") ||
+    n.includes("flight status")
+  ) {
+    await handleFlightChecker(phone, text, contact, conv, interactiveId);
     return;
   }
 
@@ -166,6 +180,7 @@ export async function showToolsMenu(phone: string, conversationId: string): Prom
           makeListRow("tool_qr", "6️⃣ QR Code Generator", "Create QR code image from URL or text"),
           makeListRow("tool_compress", "7️⃣ Image Compressor", "How to compress images for web"),
           makeListRow("tool_webdomain", "8️⃣ Website & Domain", "Domain, SSL, DNS checks"),
+          makeListRow("tool_flight", "9️⃣ Flight Checker", "Check flight status, departures & arrivals"),
           makeListRow("tool_back_menu", "🔙 Main Menu", "Return to main home screen"),
         ],
       },
@@ -245,6 +260,11 @@ async function processToolSelection(
 
   if (input === "tool_webdomain" || num === 8 || n.includes("domain") || n.includes("website") || n.includes("ssl") || n.includes("dns")) {
     await handleWebsiteDomain(phone, "", {} as Contact, conv, "tool_webdomain");
+    return;
+  }
+
+  if (input === "tool_flight" || num === 9 || n.includes("flight")) {
+    await showFlightMenu(phone, conv.id);
     return;
   }
 
