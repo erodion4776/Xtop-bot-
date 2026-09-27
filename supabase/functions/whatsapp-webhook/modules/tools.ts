@@ -16,6 +16,8 @@ import {
 } from "../whatsapp.ts";
 import { normalise, isBack, extractSelection, safeErrorLog } from "../utils.ts";
 import { showMainMenu } from "./main-menu.ts";
+// ═══ ADDED: Website & Domain sub-module ═══
+import { handleWebsiteDomain, showWdMenu } from "./tools/website-domain.ts";
 
 // ═══════════════════════════════════════════════════════
 // MAIN TOOLS HANDLER
@@ -68,6 +70,20 @@ export async function handleTools(
       });
       await showMainMenu(phone, conv.id);
     }
+    return;
+  }
+
+  // ═══ ADDED: Website & Domain sub-tool routing ═══
+  if (
+    rawInput === "tool_webdomain" ||
+    rawInput.startsWith("wd_") ||
+    rawInput.startsWith("dns_") ||
+    n.includes("check domain") ||
+    n.includes("check website") ||
+    n.includes("check ssl") ||
+    n.includes("check dns")
+  ) {
+    await handleWebsiteDomain(phone, text, contact, conv, interactiveId);
     return;
   }
 
@@ -149,6 +165,8 @@ export async function showToolsMenu(phone: string, conversationId: string): Prom
           makeListRow("tool_currency", "5️⃣ Currency Converter", "Convert USD, GBP, EUR to NGN"),
           makeListRow("tool_qr", "6️⃣ QR Code Generator", "Create QR code image from URL or text"),
           makeListRow("tool_compress", "7️⃣ Image Compressor", "How to compress images for web"),
+          // ═══ ADDED: Website & Domain menu item ═══
+          makeListRow("tool_webdomain", "8️⃣ Website & Domain", "Domain, SSL, DNS checks"),
           makeListRow("tool_back_menu", "🔙 Main Menu", "Return to main home screen"),
         ],
       },
@@ -230,6 +248,12 @@ async function processToolSelection(
       current_state: "SHOWING_TOOLS",
       context_json: {},
     });
+    return;
+  }
+
+  // ═══ ADDED: 8. Website & Domain ═══
+  if (input === "tool_webdomain" || num === 8 || n.includes("domain") || n.includes("website") || n.includes("ssl") || n.includes("dns")) {
+    await handleWebsiteDomain(phone, "", contact, conv, "tool_webdomain");
     return;
   }
 
