@@ -4,7 +4,7 @@
 import {
   Contact, Conversation, updateConversation,
   logFlightSearch,
-} from "../database.ts";
+} from "./database.ts";
 import {
   sendButtonMessage, sendListMessage, sendTextMessage,
   makeButton, makeListRow,
