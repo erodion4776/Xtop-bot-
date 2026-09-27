@@ -1531,3 +1531,27 @@ export async function logDnsCheck(
     });
   } catch (e) { safeErrorLog("logDnsCheck", e); }
 }
+// ==========================================
+// 17. Flight Checker Logging
+// ==========================================
+
+export async function logFlightSearch(
+  phone: string,
+  searchType: string,
+  flightNumber?: string | null,
+  airportCode?: string | null,
+  resultStatus?: string
+): Promise<void> {
+  const sb = getSupabaseClient();
+  try {
+    await sb.from("flight_searches").insert({
+      phone,
+      search_type: searchType,
+      flight_number: flightNumber || null,
+      airport_code: airportCode || null,
+      result_status: resultStatus || "unknown",
+    });
+  } catch (e) {
+    safeErrorLog("logFlightSearch", e);
+  }
+}
