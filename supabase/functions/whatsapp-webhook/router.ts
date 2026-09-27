@@ -1,5 +1,5 @@
 // supabase/functions/whatsapp-webhook/router.ts
-
+import { handleFlightChecker, showFlightMenu } from "./flight-checker.ts";
 import {
   Contact, Conversation,
   getOrCreateContact, getOrCreateConversation,
@@ -224,7 +224,10 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       await handleWebsiteDomain(phone, text, contact, conversation, interactiveId);
       return;
     }
-
+    if (interactiveId.startsWith("flight_")) {
+      await handleFlightChecker(phone, text, contact, conversation, interactiveId);
+      return;
+        }
     // ══════════════════════════════════════════════════════
     // GLOBAL COMMANDS (IDLE ONLY)
     // ══════════════════════════════════════════════════════
