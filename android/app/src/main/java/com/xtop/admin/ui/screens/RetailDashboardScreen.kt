@@ -55,9 +55,9 @@ fun RetailDashboardScreen(navController: NavController) {
     var isSending by remember { mutableStateOf(false) }
     var sabiHandoff by remember { mutableStateOf(false) }
 
-    fun getDashboardApiUrl(action: String): String {
+    fun getWebhookApiUrl(action: String): String {
         val base = SupabaseClient.getSupabaseUrl().trimEnd('/')
-        return "$base/functions/v1/xtop-dashboard?action=$action"
+        return "$base/functions/v1/whatsapp-webhook?action=$action"
     }
 
     fun findPhoneForContact(contactId: String?): String {
@@ -100,11 +100,11 @@ fun RetailDashboardScreen(navController: NavController) {
                 quotations = repo.getQuotations()
                 requests = repo.getAgentRequests()
 
-                // Fetch server handoff status using your Supabase credentials
+                // Fetch server handoff status using your live webhook
                 withContext(Dispatchers.IO) {
                     try {
                         val key = SupabaseClient.getSupabaseKey()
-                        val url = URL(getDashboardApiUrl("get-handoff"))
+                        val url = URL(getWebhookApiUrl("get-handoff"))
                         val conn = url.openConnection() as HttpURLConnection
                         conn.setRequestProperty("apikey", key)
                         conn.setRequestProperty("Authorization", "Bearer $key")
@@ -129,7 +129,7 @@ fun RetailDashboardScreen(navController: NavController) {
             withContext(Dispatchers.IO) {
                 try {
                     val key = SupabaseClient.getSupabaseKey()
-                    val url = URL(getDashboardApiUrl("toggle-handoff"))
+                    val url = URL(getWebhookApiUrl("toggle-handoff"))
                     val conn = url.openConnection() as HttpURLConnection
                     conn.requestMethod = "POST"
                     conn.setRequestProperty("Content-Type", "application/json")
@@ -157,7 +157,7 @@ fun RetailDashboardScreen(navController: NavController) {
                     Column {
                         Text("Xtop Retail CRM", fontWeight = FontWeight.Bold)
                         Text(
-                            if (sabiHandoff) "🛑 Sabi PAUSED (Agent Live)" else "🤖 Sabi Auto-Response ON",
+                            if (sabiHandoff) "🛑 Sabi PAUSED (Agent Mode)" else "🤖 Sabi Auto-Response ON",
                             style = MaterialTheme.typography.bodySmall,
                             color = if (sabiHandoff) Color(0xFFF59E0B) else Color(0xFF10B981)
                         )
@@ -214,7 +214,7 @@ fun RetailDashboardScreen(navController: NavController) {
                                 isSending = true
                                 val result = sendViaSabiBot(chatPhone, messageText)
                                 if (result.first) {
-                                    Toast.makeText(context, "✅ Delivered", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "✅ Message sent via Sabi", Toast.LENGTH_SHORT).show()
                                     if (selectedContact != null) {
                                         chatMessages = repo.getMessages(selectedContact?.id ?: "")
                                     }
@@ -232,7 +232,7 @@ fun RetailDashboardScreen(navController: NavController) {
 }
 
 // ═══════════════════════════════════════════════════════
-// API SENDER VIA SABI BOT
+// API SENDER VIA SABI BOT (ROUTED TO WHATSAPP-WEBHOOK)
 // ═══════════════════════════════════════════════════════
 
 suspend fun sendViaSabiBot(phone: String, message: String): Pair<Boolean, String> {
@@ -240,8 +240,8 @@ suspend fun sendViaSabiBot(phone: String, message: String): Pair<Boolean, String
         try {
             val key = SupabaseClient.getSupabaseKey()
             val base = SupabaseClient.getSupabaseUrl().trimEnd('/')
-            val url = URL("$base/functions/v1/xtop-dashboard?action=send-message")
-            
+            val url = URL("$base/functions/v1/whatsapp-webhook?action=send-message")
+
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
