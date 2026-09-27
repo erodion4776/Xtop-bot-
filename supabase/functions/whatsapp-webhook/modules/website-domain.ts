@@ -1,5 +1,5 @@
 // supabase/functions/whatsapp-webhook/modules/website-domain.ts
-// Website & Domain Checker — Deterministic, No AI, Production-Ready
+// Website & Domain Checker — Accurate Multi-TLD Engine (.com, .ng, .com.ng, etc.)
 
 import {
   Contact, Conversation, updateConversation,
@@ -13,7 +13,7 @@ import { normalise, safeErrorLog } from "../utils.ts";
 import { showMainMenu } from "./main-menu.ts";
 
 // ═══════════════════════════════════════════════════════
-// DOMAIN AVAILABILITY (WHOIS + RDAP Dual Verification)
+// DOMAIN AVAILABILITY CHECKER (Multi-Tier Engine)
 // ═══════════════════════════════════════════════════════
 
 interface DomainResult {
@@ -25,34 +25,47 @@ interface DomainResult {
 }
 
 async function domainCheckAvailability(domain: string): Promise<DomainResult> {
-  const fail: DomainResult = {
-    domain, status: "unknown", available: null,
-    registrar_price: null, currency: null,
-  };
+  const isNigeriaTld = domain.endsWith(".ng"); // .ng, .com.ng, .org.ng, etc.
 
-  // Method 1: WHOIS API
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 6000);
+  // ── Tier 1: For .ng and .com.ng (DNS Delegation via Google DoH) ──
+  if (isNigeriaTld) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 6000);
 
-    const resp = await fetch(
-      `https://api.whois.vu/?q=${encodeURIComponent(domain)}`,
-      { signal: ctrl.signal }
-    );
-    clearTimeout(timer);
+      const resp = await fetch(
+        `https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=NS`,
+        { signal: ctrl.signal }
+      );
+      clearTimeout(timer);
 
-    if (resp.ok) {
-      const data = await resp.json();
-      if (data.available === true || data.status === "available") {
-        return { domain, status: "available", available: true, registrar_price: null, currency: null };
+      if (resp.ok) {
+        const data = await resp.json();
+
+        // Status 3 = NXDOMAIN (Domain does not exist in registry -> AVAILABLE)
+        if (data.Status === 3) {
+          return { domain, status: "available", available: true, registrar_price: null, currency: null };
+        }
+
+        // Status 0 with active NS records -> REGISTERED
+        if (data.Status === 0 && data.Answer && data.Answer.length > 0) {
+          return { domain, status: "registered", available: false, registrar_price: null, currency: null };
+        }
+
+        // Check for A records as fallback
+        const aResp = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=A`);
+        const aData = await aResp.json();
+        if (aData.Status === 3) {
+          return { domain, status: "available", available: true, registrar_price: null, currency: null };
+        }
+        if (aData.Status === 0 && aData.Answer && aData.Answer.length > 0) {
+          return { domain, status: "registered", available: false, registrar_price: null, currency: null };
+        }
       }
-      if (data.available === false || data.status === "registered" || data.created || data.domain || data.registrar) {
-        return { domain, status: "registered", available: false, registrar_price: null, currency: null };
-      }
-    }
-  } catch (_) {}
+    } catch (_) { /* continue to fallback */ }
+  }
 
-  // Method 2: Official ICANN RDAP Protocol (Fallback)
+  // ── Tier 2: Official ICANN RDAP Protocol (for .com, .net, .org, .io, .co, etc.) ──
   try {
     const ctrl2 = new AbortController();
     const timer2 = setTimeout(() => ctrl2.abort(), 6000);
@@ -69,9 +82,41 @@ async function domainCheckAvailability(domain: string): Promise<DomainResult> {
     if (resp2.status === 200) {
       return { domain, status: "registered", available: false, registrar_price: null, currency: null };
     }
+  } catch (_) { /* continue to tier 3 */ }
+
+  // ── Tier 3: Universal DNS-over-HTTPS Check (Google DoH) ──
+  try {
+    const ctrl3 = new AbortController();
+    const timer3 = setTimeout(() => ctrl3.abort(), 6000);
+
+    const resp3 = await fetch(
+      `https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=SOA`,
+      { signal: ctrl3.signal }
+    );
+    clearTimeout(timer3);
+
+    if (resp3.ok) {
+      const data3 = await resp3.json();
+
+      // NXDOMAIN = Available
+      if (data3.Status === 3) {
+        return { domain, status: "available", available: true, registrar_price: null, currency: null };
+      }
+
+      // If domain has active SOA/NS records -> Registered
+      if (data3.Status === 0 && data3.Answer && data3.Answer.length > 0) {
+        return { domain, status: "registered", available: false, registrar_price: null, currency: null };
+      }
+    }
   } catch (_) {}
 
-  return fail;
+  return {
+    domain,
+    status: "unknown",
+    available: null,
+    registrar_price: null,
+    currency: null,
+  };
 }
 
 // ═══════════════════════════════════════════════════════
@@ -85,6 +130,7 @@ function normalizeDomain(raw: string): string | null {
   d = d.replace(/\/.*$/, "");
   d = d.replace(/\?.*$/, "");
   d = d.replace(/\s+/g, "");
+
   if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/.test(d)) {
     return null;
   }
@@ -133,6 +179,7 @@ export async function handleWebsiteDomain(
   const n = normalise(raw);
   const state = conv.current_state;
 
+  // ── Navigation ──
   if (n === "menu_home" || n === "main menu" || raw === "wd_back_main") {
     await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
     await showMainMenu(phone, conv.id);
@@ -143,15 +190,18 @@ export async function handleWebsiteDomain(
     return;
   }
 
+  // ── Tool Selection ──
   if (raw === "wd_domain" || n === "check domain") { await promptDomain(phone, conv.id); return; }
   if (raw === "wd_website" || n === "check website") { await promptWebsite(phone, conv.id); return; }
   if (raw === "wd_ssl" || n === "check ssl") { await promptSsl(phone, conv.id); return; }
   if (raw === "wd_dns" || n === "check dns") { await promptDns(phone, conv.id); return; }
 
+  // ── Retries ──
   if (raw === "wd_retry_domain") { await promptDomain(phone, conv.id); return; }
   if (raw === "wd_retry_website") { await promptWebsite(phone, conv.id); return; }
   if (raw === "wd_retry_ssl") { await promptSsl(phone, conv.id); return; }
 
+  // ── State-based Input Processing ──
   if (state === "WD_WAIT_DOMAIN" || state === "WD_WAITING_DOMAIN") {
     await doDomainCheck(phone, text, conv);
     return;
@@ -176,6 +226,10 @@ export async function handleWebsiteDomain(
   await showWdMenu(phone, conv.id);
 }
 
+// ═══════════════════════════════════════════════════════
+// MENU
+// ═══════════════════════════════════════════════════════
+
 export async function showWdMenu(phone: string, convId: string): Promise<void> {
   await updateConversation(convId, { current_module: "TOOLS", current_state: "WD_MENU", context_json: {} });
 
@@ -193,6 +247,10 @@ export async function showWdMenu(phone: string, convId: string): Promise<void> {
     "Web & Domain", "Xtop Free Tools"
   );
 }
+
+// ═══════════════════════════════════════════════════════
+// 1. DOMAIN AVAILABILITY
+// ═══════════════════════════════════════════════════════
 
 async function promptDomain(phone: string, convId: string): Promise<void> {
   await updateConversation(convId, { current_module: "TOOLS", current_state: "WD_WAIT_DOMAIN", context_json: {} });
@@ -215,7 +273,7 @@ async function doDomainCheck(phone: string, text: string, conv: Conversation): P
   }
 
   const tld = extractTld(domain);
-  await sendTextMessage(phone, `🔍 Checking *${domain}*...\n\n_Please wait._`);
+  await sendTextMessage(phone, `🔍 Checking *${domain}* across registries...\n\n_Please wait._`);
 
   const result = await domainCheckAvailability(domain);
   await logDomainSearch(phone, domain, tld, result.status, result.available, result.registrar_price, result.currency);
@@ -223,25 +281,40 @@ async function doDomainCheck(phone: string, text: string, conv: Conversation): P
   if (result.status === "available") {
     await sendButtonMessage(phone,
       `🌐 *DOMAIN RESULT*\n\n*${domain}*\n\n✅ *AVAILABLE*\n\nThis domain is currently available for registration.`,
-      [makeButton("wd_retry_domain", "🔎 Check Another"), makeButton("wd_back", "🌐 Tools Menu"), makeButton("wd_back_main", "🏠 Main Menu")],
+      [
+        makeButton("wd_retry_domain", "🔎 Check Another"),
+        makeButton("wd_back", "🌐 Tools Menu"),
+        makeButton("wd_back_main", "🏠 Main Menu")
+      ],
       "Domain Available"
     );
   } else if (result.status === "registered") {
     await sendButtonMessage(phone,
       `🌐 *DOMAIN RESULT*\n\n*${domain}*\n\n❌ *NOT AVAILABLE*\n\nThis domain appears to be registered already.`,
-      [makeButton("wd_retry_domain", "🔎 Check Another"), makeButton("wd_back", "🌐 Tools Menu"), makeButton("wd_back_main", "🏠 Main Menu")],
+      [
+        makeButton("wd_retry_domain", "🔎 Check Another"),
+        makeButton("wd_back", "🌐 Tools Menu"),
+        makeButton("wd_back_main", "🏠 Main Menu")
+      ],
       "Domain Taken"
     );
   } else {
     await sendButtonMessage(phone,
-      `🌐 *DOMAIN RESULT*\n\n*${domain}*\n\n⚠️ *Unable to confirm availability right now.*\n\nPlease try again.`,
-      [makeButton("wd_retry_domain", "🔄 Try Again"), makeButton("wd_back_main", "🏠 Main Menu")],
+      `🌐 *DOMAIN RESULT*\n\n*${domain}*\n\n⚠️ *Unable to confirm availability right now.*\n\nPlease try again in a few moments.`,
+      [
+        makeButton("wd_retry_domain", "🔄 Try Again"),
+        makeButton("wd_back_main", "🏠 Main Menu")
+      ],
       "Check Failed"
     );
   }
 
   await updateConversation(conv.id, { current_module: "TOOLS", current_state: "SHOWING_TOOLS", context_json: {} });
 }
+
+// ═══════════════════════════════════════════════════════
+// 2. WEBSITE CHECKER
+// ═══════════════════════════════════════════════════════
 
 async function promptWebsite(phone: string, convId: string): Promise<void> {
   await updateConversation(convId, { current_module: "TOOLS", current_state: "WD_WAIT_WEBSITE", context_json: {} });
@@ -315,6 +388,10 @@ async function doWebsiteCheck(phone: string, text: string, conv: Conversation): 
   await updateConversation(conv.id, { current_module: "TOOLS", current_state: "SHOWING_TOOLS", context_json: {} });
 }
 
+// ═══════════════════════════════════════════════════════
+// 3. SSL CHECKER
+// ═══════════════════════════════════════════════════════
+
 async function promptSsl(phone: string, convId: string): Promise<void> {
   await updateConversation(convId, { current_module: "TOOLS", current_state: "WD_WAIT_SSL", context_json: {} });
   await sendTextMessage(phone,
@@ -369,6 +446,10 @@ async function doSslCheck(phone: string, text: string, conv: Conversation): Prom
 
   await updateConversation(conv.id, { current_module: "TOOLS", current_state: "SHOWING_TOOLS", context_json: {} });
 }
+
+// ═══════════════════════════════════════════════════════
+// 4. DNS CHECKER
+// ═══════════════════════════════════════════════════════
 
 async function promptDns(phone: string, convId: string): Promise<void> {
   await updateConversation(convId, { current_module: "TOOLS", current_state: "WD_WAIT_DNS_DOMAIN", context_json: {} });
