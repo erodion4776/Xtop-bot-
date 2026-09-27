@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.xtop.admin.data.SupabaseClient
 import com.xtop.admin.data.repository.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -101,6 +102,8 @@ fun RetailDashboardScreen(navController: NavController) {
                     try {
                         val url = URL("$DASHBOARD_API?action=get-handoff")
                         val conn = url.openConnection() as HttpURLConnection
+                        conn.setRequestProperty("apikey", SupabaseClient.getApiKey())
+                        conn.setRequestProperty("Authorization", "Bearer ${SupabaseClient.getApiKey()}")
                         if (conn.responseCode == 200) {
                             val res = conn.inputStream.bufferedReader().readText()
                             sabiHandoff = JSONObject(res).optBoolean("enabled", false)
@@ -125,6 +128,8 @@ fun RetailDashboardScreen(navController: NavController) {
                     val conn = url.openConnection() as HttpURLConnection
                     conn.requestMethod = "POST"
                     conn.setRequestProperty("Content-Type", "application/json")
+                    conn.setRequestProperty("apikey", SupabaseClient.getApiKey())
+                    conn.setRequestProperty("Authorization", "Bearer ${SupabaseClient.getApiKey()}")
                     conn.doOutput = true
                     val payload = JSONObject().apply { put("enabled", enabled) }
                     conn.outputStream.write(payload.toString().toByteArray())
@@ -202,13 +207,14 @@ fun RetailDashboardScreen(navController: NavController) {
                             }
                             scope.launch {
                                 isSending = true
-                                val success = sendViaSabiBot(chatPhone, messageText)
-                                if (success) {
+                                val result = sendViaSabiBot(chatPhone, messageText)
+                                if (result.first) {
+                                    Toast.makeText(context, "✅ Message delivered", Toast.LENGTH_SHORT).show()
                                     if (selectedContact != null) {
                                         chatMessages = repo.getMessages(selectedContact?.id ?: "")
                                     }
                                 } else {
-                                    Toast.makeText(context, "Delivery failed. Verify WhatsApp token & recipient phone.", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(context, "⚠️ ${result.second}", Toast.LENGTH_LONG).show()
                                 }
                                 isSending = false
                             }
@@ -221,18 +227,22 @@ fun RetailDashboardScreen(navController: NavController) {
 }
 
 // ═══════════════════════════════════════════════════════
-// API CALL
+// API CALL WITH SUPABASE AUTHENTICATION
 // ═══════════════════════════════════════════════════════
 
-suspend fun sendViaSabiBot(phone: String, message: String): Boolean {
+suspend fun sendViaSabiBot(phone: String, message: String): Pair<Boolean, String> {
     return withContext(Dispatchers.IO) {
         try {
             val url = URL("$DASHBOARD_API?action=send-message")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
-            conn.connectTimeout = 10000
-            conn.readTimeout = 10000
+            // Supabase API Gateway Auth headers:
+            val apiKey = SupabaseClient.getApiKey()
+            conn.setRequestProperty("apikey", apiKey)
+            conn.setRequestProperty("Authorization", "Bearer $apiKey")
+            conn.connectTimeout = 12000
+            conn.readTimeout = 12000
             conn.doOutput = true
 
             val payload = JSONObject().apply {
@@ -241,17 +251,25 @@ suspend fun sendViaSabiBot(phone: String, message: String): Boolean {
             }
 
             conn.outputStream.write(payload.toString().toByteArray())
-            val code = conn.responseCode
-            code == 200
+            val responseCode = conn.responseCode
+            val stream = if (responseCode in 200..299) conn.inputStream else conn.errorStream
+            val responseText = stream?.bufferedReader()?.readText() ?: "{}"
+            val json = JSONObject(responseText)
+
+            if (responseCode == 200 && json.optBoolean("success", false)) {
+                Pair(true, "Sent")
+            } else {
+                val err = json.optString("error", "Server returned HTTP $responseCode")
+                Pair(false, err)
+            }
         } catch (e: Exception) {
-            e.printStackTrace()
-            false
+            Pair(false, e.localizedMessage ?: "Network connection error")
         }
     }
 }
 
 // ═══════════════════════════════════════════════════════
-// TAB 0: OVERVIEW + SERVER-SYNCED HANDOFF SWITCH
+// TAB 0: OVERVIEW
 // ═══════════════════════════════════════════════════════
 
 @Composable
