@@ -1,5 +1,4 @@
 // supabase/functions/whatsapp-webhook/modules/tools/website-domain.ts
-// Website & Domain Checker — Deterministic, No AI, Production-Ready
 
 import {
   Contact, Conversation, updateConversation,
@@ -11,13 +10,6 @@ import {
 } from "../../whatsapp.ts";
 import { normalise, safeErrorLog } from "../../utils.ts";
 import { showMainMenu } from "../main-menu.ts";
-
-// ═══════════════════════════════════════════════════════
-// DOMAIN PROVIDER ABSTRACTION (Future-Ready)
-// ═══════════════════════════════════════════════════════
-// Swap registrar later by replacing this single implementation.
-// Interface: checkAvailability | getPrice | registerDomain | renewDomain
-// This version implements ONLY checkAvailability().
 
 interface DomainResult {
   domain: string;
@@ -35,38 +27,45 @@ async function domainCheckAvailability(domain: string): Promise<DomainResult> {
 
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const timer = setTimeout(() => ctrl.abort(), 6000);
 
-    // WHOIS API — free, no auth, works for .com/.ng/.net/.org etc.
     const resp = await fetch(
       `https://api.whois.vu/?q=${encodeURIComponent(domain)}`,
       { signal: ctrl.signal }
     );
     clearTimeout(timer);
 
-    if (!resp.ok) return fail;
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.available === true || data.status === "available") {
+        return { domain, status: "available", available: true, registrar_price: null, currency: null };
+      }
+      if (data.available === false || data.status === "registered" || data.created || data.domain || data.registrar) {
+        return { domain, status: "registered", available: false, registrar_price: null, currency: null };
+      }
+    }
+  } catch (_) {}
 
-    const data = await resp.json();
+  try {
+    const ctrl2 = new AbortController();
+    const timer2 = setTimeout(() => ctrl2.abort(), 6000);
 
-    if (data.available === true || data.status === "available") {
+    const resp2 = await fetch(
+      `https://rdap.org/domain/${encodeURIComponent(domain)}`,
+      { signal: ctrl2.signal, redirect: "follow" }
+    );
+    clearTimeout(timer2);
+
+    if (resp2.status === 404) {
       return { domain, status: "available", available: true, registrar_price: null, currency: null };
     }
-    if (data.available === false || data.status === "registered" || data.created) {
+    if (resp2.status === 200) {
       return { domain, status: "registered", available: false, registrar_price: null, currency: null };
     }
-    if (data.domain || data.registrar || data.created_date) {
-      return { domain, status: "registered", available: false, registrar_price: null, currency: null };
-    }
-    return fail;
-  } catch (err) {
-    console.error("[DomainProvider.checkAvailability]:", err);
-    return fail;
-  }
-}
+  } catch (_) {}
 
-// ═══════════════════════════════════════════════════════
-// INPUT NORMALIZATION & VALIDATION
-// ═══════════════════════════════════════════════════════
+  return fail;
+}
 
 function normalizeDomain(raw: string): string | null {
   let d = raw.trim().toLowerCase();
@@ -99,10 +98,6 @@ function normalizeUrl(raw: string): string | null {
   } catch { return null; }
 }
 
-// ═══════════════════════════════════════════════════════
-// RATE LIMITER (per-phone, sliding window)
-// ═══════════════════════════════════════════════════════
-
 const rlMap = new Map<string, number[]>();
 
 function rateOk(phone: string, max = 5, windowMs = 60000): boolean {
@@ -114,10 +109,6 @@ function rateOk(phone: string, max = 5, windowMs = 60000): boolean {
   return true;
 }
 
-// ═══════════════════════════════════════════════════════
-// MAIN HANDLER
-// ═══════════════════════════════════════════════════════
-
 export async function handleWebsiteDomain(
   phone: string, text: string,
   contact: Contact, conv: Conversation,
@@ -127,7 +118,6 @@ export async function handleWebsiteDomain(
   const n = normalise(raw);
   const state = conv.current_state;
 
-  // ── Navigation ──
   if (n === "menu_home" || n === "main menu" || raw === "wd_back_main") {
     await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
     await showMainMenu(phone, conv.id);
@@ -138,30 +128,38 @@ export async function handleWebsiteDomain(
     return;
   }
 
-  // ── Tool Selection ──
   if (raw === "wd_domain" || n === "check domain") { await promptDomain(phone, conv.id); return; }
   if (raw === "wd_website" || n === "check website") { await promptWebsite(phone, conv.id); return; }
   if (raw === "wd_ssl" || n === "check ssl") { await promptSsl(phone, conv.id); return; }
   if (raw === "wd_dns" || n === "check dns") { await promptDns(phone, conv.id); return; }
 
-  // ── Retries ──
   if (raw === "wd_retry_domain") { await promptDomain(phone, conv.id); return; }
   if (raw === "wd_retry_website") { await promptWebsite(phone, conv.id); return; }
   if (raw === "wd_retry_ssl") { await promptSsl(phone, conv.id); return; }
 
-  // ── State-based Input ──
-  if (state === "WD_WAIT_DOMAIN") { await doDomainCheck(phone, text, conv); return; }
-  if (state === "WD_WAIT_WEBSITE") { await doWebsiteCheck(phone, text, conv); return; }
-  if (state === "WD_WAIT_SSL") { await doSslCheck(phone, text, conv); return; }
-  if (state === "WD_WAIT_DNS_DOMAIN") { await doDnsDomain(phone, text, conv); return; }
-  if (state === "WD_WAIT_DNS_TYPE") { await doDnsType(phone, raw, conv); return; }
+  if (state === "WD_WAIT_DOMAIN" || state === "WD_WAITING_DOMAIN") {
+    await doDomainCheck(phone, text, conv);
+    return;
+  }
+  if (state === "WD_WAIT_WEBSITE" || state === "WD_WAITING_WEBSITE") {
+    await doWebsiteCheck(phone, text, conv);
+    return;
+  }
+  if (state === "WD_WAIT_SSL" || state === "WD_WAITING_SSL") {
+    await doSslCheck(phone, text, conv);
+    return;
+  }
+  if (state === "WD_WAIT_DNS_DOMAIN" || state === "WD_WAITING_DNS_DOMAIN") {
+    await doDnsDomain(phone, text, conv);
+    return;
+  }
+  if (state === "WD_WAIT_DNS_TYPE" || state === "WD_WAITING_DNS_TYPE") {
+    await doDnsType(phone, raw, conv);
+    return;
+  }
 
   await showWdMenu(phone, conv.id);
 }
-
-// ═══════════════════════════════════════════════════════
-// MENU
-// ═══════════════════════════════════════════════════════
 
 export async function showWdMenu(phone: string, convId: string): Promise<void> {
   await updateConversation(convId, { current_module: "TOOLS", current_state: "WD_MENU", context_json: {} });
@@ -181,10 +179,6 @@ export async function showWdMenu(phone: string, convId: string): Promise<void> {
   );
 }
 
-// ═══════════════════════════════════════════════════════
-// 1. DOMAIN AVAILABILITY
-// ═══════════════════════════════════════════════════════
-
 async function promptDomain(phone: string, convId: string): Promise<void> {
   await updateConversation(convId, { current_module: "TOOLS", current_state: "WD_WAIT_DOMAIN", context_json: {} });
   await sendTextMessage(phone,
@@ -201,7 +195,7 @@ async function doDomainCheck(phone: string, text: string, conv: Conversation): P
 
   const domain = normalizeDomain(text);
   if (!domain) {
-    await sendTextMessage(phone, "⚠️ Invalid domain format.\n\nPlease enter a domain like *mybusiness.com*:");
+    await sendTextMessage(phone, "⚠️ Invalid domain format.\n\nPlease enter a domain like *mybusiness.com* or *mybusiness.com.ng*:");
     return;
   }
 
@@ -225,16 +219,14 @@ async function doDomainCheck(phone: string, text: string, conv: Conversation): P
     );
   } else {
     await sendButtonMessage(phone,
-      `🌐 *DOMAIN RESULT*\n\n⚠️ *Unable to confirm availability right now.*\n\nPlease try again.`,
+      `🌐 *DOMAIN RESULT*\n\n*${domain}*\n\n⚠️ *Unable to confirm availability right now.*\n\nPlease try again.`,
       [makeButton("wd_retry_domain", "🔄 Try Again"), makeButton("wd_back_main", "🏠 Main Menu")],
       "Check Failed"
     );
   }
-}
 
-// ═══════════════════════════════════════════════════════
-// 2. WEBSITE CHECKER
-// ═══════════════════════════════════════════════════════
+  await updateConversation(conv.id, { current_module: "TOOLS", current_state: "SHOWING_TOOLS", context_json: {} });
+}
 
 async function promptWebsite(phone: string, convId: string): Promise<void> {
   await updateConversation(convId, { current_module: "TOOLS", current_state: "WD_WAIT_WEBSITE", context_json: {} });
@@ -304,11 +296,9 @@ async function doWebsiteCheck(phone: string, text: string, conv: Conversation): 
       "Website Offline"
     );
   }
-}
 
-// ═══════════════════════════════════════════════════════
-// 3. SSL CHECKER
-// ═══════════════════════════════════════════════════════
+  await updateConversation(conv.id, { current_module: "TOOLS", current_state: "SHOWING_TOOLS", context_json: {} });
+}
 
 async function promptSsl(phone: string, convId: string): Promise<void> {
   await updateConversation(convId, { current_module: "TOOLS", current_state: "WD_WAIT_SSL", context_json: {} });
@@ -340,7 +330,7 @@ async function doSslCheck(phone: string, text: string, conv: Conversation): Prom
     await fetch(`https://${domain}`, { method: "HEAD", signal: ctrl.signal, redirect: "follow" });
     clearTimeout(tm);
     sslValid = true;
-    sslNote = "Valid (full expiry requires server-side TLS inspection)";
+    sslNote = "Valid (connection secured)";
   } catch (err: any) {
     sslValid = false;
     sslNote = err.name === "AbortError" ? "Connection timed out" : "SSL handshake failed or certificate invalid";
@@ -361,11 +351,9 @@ async function doSslCheck(phone: string, text: string, conv: Conversation): Prom
       "SSL Issue"
     );
   }
-}
 
-// ═══════════════════════════════════════════════════════
-// 4. DNS CHECKER
-// ═══════════════════════════════════════════════════════
+  await updateConversation(conv.id, { current_module: "TOOLS", current_state: "SHOWING_TOOLS", context_json: {} });
+}
 
 async function promptDns(phone: string, convId: string): Promise<void> {
   await updateConversation(convId, { current_module: "TOOLS", current_state: "WD_WAIT_DNS_DOMAIN", context_json: {} });
@@ -457,4 +445,6 @@ async function doDnsType(phone: string, raw: string, conv: Conversation): Promis
       "DNS Error"
     );
   }
+
+  await updateConversation(conv.id, { current_module: "TOOLS", current_state: "SHOWING_TOOLS", context_json: {} });
 }
