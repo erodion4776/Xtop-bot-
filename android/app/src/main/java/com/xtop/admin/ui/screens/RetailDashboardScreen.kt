@@ -31,10 +31,6 @@ import java.net.URL
 
 private const val DASHBOARD_API = "https://mldywarnnwjitfvqpgis.supabase.co/functions/v1/xtop-dashboard"
 
-// ═══════════════════════════════════════════════════════
-// MAIN SCREEN
-// ═══════════════════════════════════════════════════════
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RetailDashboardScreen(navController: NavController) {
@@ -60,13 +56,26 @@ fun RetailDashboardScreen(navController: NavController) {
     var isSending by remember { mutableStateOf(false) }
     var sabiHandoff by remember { mutableStateOf(false) }
 
-    fun openChatWith(phone: String, name: String, contactObj: RetailContact? = null) {
-        chatPhone = phone
+    fun findPhoneForContact(contactId: String?): String {
+        if (contactId.isNullOrBlank()) return ""
+        val found = contacts.find { it.id == contactId }
+        return found?.phone ?: ""
+    }
+
+    fun openChatWith(phoneOrId: String, name: String, contactObj: RetailContact? = null) {
+        val resolvedPhone = if (phoneOrId.length > 20 && phoneOrId.contains("-")) {
+            findPhoneForContact(phoneOrId)
+        } else {
+            phoneOrId
+        }
+
+        chatPhone = resolvedPhone
         chatName = name
-        selectedContact = contactObj
+        selectedContact = contactObj ?: contacts.find { it.phone == resolvedPhone }
+
         scope.launch {
-            if (contactObj != null) {
-                chatMessages = repo.getMessages(contactObj.id ?: "")
+            if (selectedContact != null) {
+                chatMessages = repo.getMessages(selectedContact?.id ?: "")
             } else {
                 chatMessages = emptyList()
             }
@@ -86,11 +95,44 @@ fun RetailDashboardScreen(navController: NavController) {
                 leads = repo.getLeads()
                 quotations = repo.getQuotations()
                 requests = repo.getAgentRequests()
+
+                // Fetch live server handoff status
+                withContext(Dispatchers.IO) {
+                    try {
+                        val url = URL("$DASHBOARD_API?action=get-handoff")
+                        val conn = url.openConnection() as HttpURLConnection
+                        if (conn.responseCode == 200) {
+                            val res = conn.inputStream.bufferedReader().readText()
+                            sabiHandoff = JSONObject(res).optBoolean("enabled", false)
+                        }
+                    } catch (_: Exception) {}
+                }
+
                 if (selectedContact != null) {
                     chatMessages = repo.getMessages(selectedContact?.id ?: "")
                 }
             } catch (_: Exception) {}
             loading = false
+        }
+    }
+
+    fun toggleSabiHandoff(enabled: Boolean) {
+        sabiHandoff = enabled
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                try {
+                    val url = URL("$DASHBOARD_API?action=toggle-handoff")
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.doOutput = true
+                    val payload = JSONObject().apply { put("enabled", enabled) }
+                    conn.outputStream.write(payload.toString().toByteArray())
+                    conn.responseCode
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
         }
     }
 
@@ -105,9 +147,9 @@ fun RetailDashboardScreen(navController: NavController) {
                     Column {
                         Text("Xtop Retail CRM", fontWeight = FontWeight.Bold)
                         Text(
-                            if (sabiHandoff) "⚠️ Agent Mode ON — Sabi Paused" else "🤖 Sabi Auto-Response Active",
+                            if (sabiHandoff) "🛑 Sabi PAUSED (Agent Live)" else "🤖 Sabi Auto-Response ON",
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (sabiHandoff) Color(0xFFF59E0B) else MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (sabiHandoff) Color(0xFFF59E0B) else Color(0xFF10B981)
                         )
                     }
                 },
@@ -141,11 +183,11 @@ fun RetailDashboardScreen(navController: NavController) {
                 }
             } else {
                 when (selectedTab) {
-                    0 -> OverviewTab(statContacts, statLeads, statQuotations, statRequests, sabiHandoff) { sabiHandoff = it }
+                    0 -> OverviewTab(statContacts, statLeads, statQuotations, statRequests, sabiHandoff) { toggleSabiHandoff(it) }
                     1 -> ClientsTab(contacts, context) { c -> openChatWith(c.phone, c.name ?: c.phone, c) }
-                    2 -> LeadsTab(leads, context) { phone, name -> openChatWith(phone, name) }
-                    3 -> QuotationsTab(quotations, context) { phone, name -> openChatWith(phone, name) }
-                    4 -> TicketsTab(requests, repo, scope, context) { phone, name -> openChatWith(phone, name) }
+                    2 -> LeadsTab(leads, contacts, context) { phone, name -> openChatWith(phone, name) }
+                    3 -> QuotationsTab(quotations, leads, contacts, context) { phone, name -> openChatWith(phone, name) }
+                    4 -> TicketsTab(requests, repo, scope, contacts, context) { phone, name -> openChatWith(phone, name) }
                     5 -> ChatTab(
                         contactName = chatName,
                         contactPhone = chatPhone,
@@ -154,14 +196,19 @@ fun RetailDashboardScreen(navController: NavController) {
                         context = context,
                         isSending = isSending,
                         onSendMessage = { messageText ->
-                            if (chatPhone.isBlank()) return@ChatTab
+                            if (chatPhone.isBlank()) {
+                                Toast.makeText(context, "No valid phone number selected", Toast.LENGTH_SHORT).show()
+                                return@ChatTab
+                            }
                             scope.launch {
                                 isSending = true
                                 val success = sendViaSabiBot(chatPhone, messageText)
-                                if (success && selectedContact != null) {
-                                    chatMessages = repo.getMessages(selectedContact?.id ?: "")
-                                } else if (!success) {
-                                    Toast.makeText(context, "Delivery failed", Toast.LENGTH_SHORT).show()
+                                if (success) {
+                                    if (selectedContact != null) {
+                                        chatMessages = repo.getMessages(selectedContact?.id ?: "")
+                                    }
+                                } else {
+                                    Toast.makeText(context, "Delivery failed. Verify WhatsApp token & recipient phone.", Toast.LENGTH_LONG).show()
                                 }
                                 isSending = false
                             }
@@ -174,7 +221,7 @@ fun RetailDashboardScreen(navController: NavController) {
 }
 
 // ═══════════════════════════════════════════════════════
-// API: SEND MESSAGE VIA SABI BOT
+// API CALL
 // ═══════════════════════════════════════════════════════
 
 suspend fun sendViaSabiBot(phone: String, message: String): Boolean {
@@ -184,13 +231,18 @@ suspend fun sendViaSabiBot(phone: String, message: String): Boolean {
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
+            conn.connectTimeout = 10000
+            conn.readTimeout = 10000
             conn.doOutput = true
+
             val payload = JSONObject().apply {
                 put("phone", phone)
                 put("message", message)
             }
+
             conn.outputStream.write(payload.toString().toByteArray())
-            conn.responseCode == 200
+            val code = conn.responseCode
+            code == 200
         } catch (e: Exception) {
             e.printStackTrace()
             false
@@ -199,7 +251,7 @@ suspend fun sendViaSabiBot(phone: String, message: String): Boolean {
 }
 
 // ═══════════════════════════════════════════════════════
-// TAB 0: OVERVIEW + SABI HANDOFF TOGGLE
+// TAB 0: OVERVIEW + SERVER-SYNCED HANDOFF SWITCH
 // ═══════════════════════════════════════════════════════
 
 @Composable
@@ -212,9 +264,8 @@ fun OverviewTab(contacts: Int, leads: Int, quotations: Int, requests: Int, sabiH
     )
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { Text("Business Overview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+        item { Text("Dashboard Overview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
 
-        // Sabi Handoff Toggle Card
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -229,14 +280,14 @@ fun OverviewTab(contacts: Int, leads: Int, quotations: Int, requests: Int, sabiH
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            if (sabiHandoff) "⚠️ Agent Mode ON" else "🤖 Sabi Auto-Response",
+                            if (sabiHandoff) "🛑 Sabi Paused (Agent Mode)" else "🤖 Sabi Auto-Response Active",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = if (sabiHandoff) Color(0xFF92400E) else MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            if (sabiHandoff) "Sabi bot is paused. You are responding manually as an agent."
-                            else "Sabi is automatically handling all WhatsApp conversations.",
+                            if (sabiHandoff) "Sabi is paused. Messages are logged and you can reply manually without bot interruptions."
+                            else "Sabi is answering WhatsApp customer enquiries automatically.",
                             style = MaterialTheme.typography.bodySmall,
                             color = if (sabiHandoff) Color(0xFF92400E) else MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -272,7 +323,7 @@ fun OverviewTab(contacts: Int, leads: Int, quotations: Int, requests: Int, sabiH
 }
 
 // ═══════════════════════════════════════════════════════
-// TAB 1: CLIENTS (Clickable → Opens Chat via Bot)
+// TAB 1: CLIENTS
 // ═══════════════════════════════════════════════════════
 
 @Composable
@@ -285,17 +336,16 @@ fun ClientsTab(contacts: List<RetailContact>, context: android.content.Context, 
                     Text(c.name ?: c.phone, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     Text("📞 ${c.phone}", style = MaterialTheme.typography.bodySmall)
                     c.businessName?.let { Text("🏢 $it", style = MaterialTheme.typography.bodySmall) }
-                    c.email?.let { Text("✉️ $it", style = MaterialTheme.typography.labelSmall) }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
                         OutlinedButton(onClick = {
                             context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${c.phone}")))
-                        }, modifier = Modifier.weight(0.5f)) {
+                        }, modifier = Modifier.weight(0.45f)) {
                             Icon(Icons.Default.Phone, null, modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(4.dp))
                             Text("Call", fontSize = 11.sp)
                         }
-                        Button(onClick = { onOpenChat(c) }, modifier = Modifier.weight(0.5f)) {
+                        Button(onClick = { onOpenChat(c) }, modifier = Modifier.weight(0.55f)) {
                             Icon(Icons.Default.Forum, null, modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(4.dp))
                             Text("Chat as Sabi", fontSize = 11.sp)
@@ -308,21 +358,24 @@ fun ClientsTab(contacts: List<RetailContact>, context: android.content.Context, 
 }
 
 // ═══════════════════════════════════════════════════════
-// TAB 2: LEADS (Clickable → Shows Details + Chat Button)
+// TAB 2: LEADS
 // ═══════════════════════════════════════════════════════
 
 @Composable
-fun LeadsTab(leads: List<RetailLead>, context: android.content.Context, onChatWith: (String, String) -> Unit) {
+fun LeadsTab(leads: List<RetailLead>, contacts: List<RetailContact>, context: android.content.Context, onChatWith: (String, String) -> Unit) {
     var expandedLeadId by remember { mutableStateOf<String?>(null) }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { Text("Sales Leads (${leads.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
         items(leads) { lead ->
             val isExpanded = expandedLeadId == lead.id
+            val matchedContact = contacts.find { it.id == lead.contactId }
+            val clientPhone = matchedContact?.phone ?: ""
+
             Card(modifier = Modifier.fillMaxWidth().clickable { expandedLeadId = if (isExpanded) null else lead.id }) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(lead.businessName ?: "Lead", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(lead.businessName ?: matchedContact?.name ?: "Lead", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                         val statusColor = when (lead.status) {
                             "QUALIFYING" -> Color(0xFFFF9800); "QUOTED" -> Color(0xFF2196F3)
                             "PACKAGE_SELECTED" -> Color(0xFF4CAF50); else -> Color.Gray
@@ -334,7 +387,7 @@ fun LeadsTab(leads: List<RetailLead>, context: android.content.Context, onChatWi
 
                     if (isExpanded) {
                         Divider(modifier = Modifier.padding(vertical = 6.dp))
-                        Text("📋 Full Lead Details", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        if (clientPhone.isNotBlank()) Text("📞 Phone: $clientPhone", style = MaterialTheme.typography.bodySmall)
                         if (lead.estimatedMinPrice != null && lead.estimatedMaxPrice != null) {
                             Text("💵 Estimate: ₦${lead.estimatedMinPrice?.toLong()} – ₦${lead.estimatedMaxPrice?.toLong()}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                         }
@@ -342,7 +395,16 @@ fun LeadsTab(leads: List<RetailLead>, context: android.content.Context, onChatWi
 
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { onChatWith(lead.contactId ?: "", lead.businessName ?: "Lead") }, modifier = Modifier.weight(1f)) {
+                            if (clientPhone.isNotBlank()) {
+                                OutlinedButton(onClick = {
+                                    context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$clientPhone")))
+                                }, modifier = Modifier.weight(0.4f)) {
+                                    Icon(Icons.Default.Phone, null, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Call", fontSize = 11.sp)
+                                }
+                            }
+                            Button(onClick = { onChatWith(clientPhone.ifBlank { lead.contactId ?: "" }, lead.businessName ?: "Lead") }, modifier = Modifier.weight(0.6f)) {
                                 Icon(Icons.Default.Forum, null, modifier = Modifier.size(14.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("Chat as Sabi", fontSize = 11.sp)
@@ -356,17 +418,21 @@ fun LeadsTab(leads: List<RetailLead>, context: android.content.Context, onChatWi
 }
 
 // ═══════════════════════════════════════════════════════
-// TAB 3: QUOTATIONS (Clickable → Full Breakdown + Chat)
+// TAB 3: QUOTATIONS
 // ═══════════════════════════════════════════════════════
 
 @Composable
-fun QuotationsTab(quotations: List<RetailQuotation>, context: android.content.Context, onChatWith: (String, String) -> Unit) {
+fun QuotationsTab(quotations: List<RetailQuotation>, leads: List<RetailLead>, contacts: List<RetailContact>, context: android.content.Context, onChatWith: (String, String) -> Unit) {
     var expandedQuoteId by remember { mutableStateOf<String?>(null) }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { Text("Quotations (${quotations.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
         items(quotations) { q ->
             val isExpanded = expandedQuoteId == q.id
+            val matchedLead = leads.find { it.id == q.leadId }
+            val matchedContact = contacts.find { it.id == matchedLead?.contactId }
+            val clientPhone = matchedContact?.phone ?: ""
+
             Card(modifier = Modifier.fillMaxWidth().clickable { expandedQuoteId = if (isExpanded) null else q.id }) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -382,14 +448,21 @@ fun QuotationsTab(quotations: List<RetailQuotation>, context: android.content.Co
 
                     if (isExpanded) {
                         Divider(modifier = Modifier.padding(vertical = 6.dp))
-                        Text("📋 Quotation Breakdown", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        Text("📌 Scope: ${q.title}", style = MaterialTheme.typography.bodySmall)
+                        if (clientPhone.isNotBlank()) Text("📞 Phone: $clientPhone", style = MaterialTheme.typography.bodySmall)
                         Text("📅 Issued: ${q.createdAt?.take(10) ?: "Unknown"}", style = MaterialTheme.typography.labelSmall)
-                        Text("📊 Status: ${q.status}", style = MaterialTheme.typography.labelSmall)
 
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { onChatWith(q.leadId ?: "", q.quotationNumber) }, modifier = Modifier.weight(1f)) {
+                            if (clientPhone.isNotBlank()) {
+                                OutlinedButton(onClick = {
+                                    context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$clientPhone")))
+                                }, modifier = Modifier.weight(0.4f)) {
+                                    Icon(Icons.Default.Phone, null, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Call", fontSize = 11.sp)
+                                }
+                            }
+                            Button(onClick = { onChatWith(clientPhone.ifBlank { q.leadId ?: "" }, q.quotationNumber) }, modifier = Modifier.weight(0.6f)) {
                                 Icon(Icons.Default.Forum, null, modifier = Modifier.size(14.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("Chat as Sabi", fontSize = 11.sp)
@@ -403,7 +476,7 @@ fun QuotationsTab(quotations: List<RetailQuotation>, context: android.content.Co
 }
 
 // ═══════════════════════════════════════════════════════
-// TAB 4: TICKETS (Clickable → Resolve + Chat)
+// TAB 4: TICKETS
 // ═══════════════════════════════════════════════════════
 
 @Composable
@@ -411,6 +484,7 @@ fun TicketsTab(
     requests: List<RetailAgentRequest>,
     repo: RetailRepository,
     scope: kotlinx.coroutines.CoroutineScope,
+    contacts: List<RetailContact>,
     context: android.content.Context,
     onChatWith: (String, String) -> Unit
 ) {
@@ -422,6 +496,9 @@ fun TicketsTab(
         item { Text("Support Tickets (${requests.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
         items(requests) { req ->
             val isExpanded = expandedTicketId == req.id
+            val matchedContact = contacts.find { it.id == req.contactId }
+            val clientPhone = matchedContact?.phone ?: ""
+
             Card(modifier = Modifier.fillMaxWidth().clickable { expandedTicketId = if (isExpanded) null else req.id }) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -434,12 +511,10 @@ fun TicketsTab(
 
                     if (isExpanded) {
                         Divider(modifier = Modifier.padding(vertical = 6.dp))
-                        Text("📋 Full Ticket Details", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        Text("📌 Type: ${req.requestType}", style = MaterialTheme.typography.bodySmall)
-                        Text("🔔 Priority: ${req.priority}", style = MaterialTheme.typography.bodySmall)
+                        if (clientPhone.isNotBlank()) Text("📞 Phone: $clientPhone", style = MaterialTheme.typography.bodySmall)
                         Text("💬 Message: ${req.message}", style = MaterialTheme.typography.bodySmall)
-                        req.quotationSummary?.let { Text("📄 Summary: ${it.take(120)}", style = MaterialTheme.typography.labelSmall) }
-                        Text("📅 Created: ${req.createdAt?.take(16) ?: ""}", style = MaterialTheme.typography.labelSmall)
+                        req.quotationSummary?.let { Text("📄 Summary: $it", style = MaterialTheme.typography.labelSmall) }
+                        Text("📅 Date: ${req.createdAt?.take(16) ?: ""}", style = MaterialTheme.typography.labelSmall)
 
                         Spacer(modifier = Modifier.height(8.dp))
 
@@ -465,10 +540,21 @@ fun TicketsTab(
                         }
 
                         Spacer(modifier = Modifier.height(4.dp))
-                        Button(onClick = { onChatWith(req.contactId ?: "", "#${req.id?.take(8)?.uppercase()}") }, modifier = Modifier.fillMaxWidth()) {
-                            Icon(Icons.Default.Forum, null, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Chat with Client as Sabi", fontSize = 11.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (clientPhone.isNotBlank()) {
+                                OutlinedButton(onClick = {
+                                    context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$clientPhone")))
+                                }, modifier = Modifier.weight(0.4f)) {
+                                    Icon(Icons.Default.Phone, null, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Call", fontSize = 11.sp)
+                                }
+                            }
+                            Button(onClick = { onChatWith(clientPhone.ifBlank { req.contactId ?: "" }, "#${req.id?.take(8)?.uppercase()}") }, modifier = Modifier.weight(0.6f)) {
+                                Icon(Icons.Default.Forum, null, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Chat as Sabi", fontSize = 11.sp)
+                            }
                         }
                     }
                 }
@@ -478,7 +564,7 @@ fun TicketsTab(
 }
 
 // ═══════════════════════════════════════════════════════
-// TAB 5: LIVE CHAT (Send messages through Sabi Bot)
+// TAB 5: CHAT
 // ═══════════════════════════════════════════════════════
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -520,9 +606,9 @@ fun ChatTab(
         ) {
             Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(contactName.ifBlank { "WhatsApp User" }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(contactName.ifBlank { "WhatsApp Client" }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     Text(contactPhone, style = MaterialTheme.typography.bodySmall)
-                    Text("💬 Messages sent via Sabi Bot", style = MaterialTheme.typography.labelSmall, color = Color(0xFF10B981))
+                    Text("💬 Messages sent as Sabi Bot", style = MaterialTheme.typography.labelSmall, color = Color(0xFF10B981))
                 }
                 IconButton(onClick = {
                     context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$contactPhone")))
