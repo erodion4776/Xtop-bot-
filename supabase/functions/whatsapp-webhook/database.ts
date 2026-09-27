@@ -1483,3 +1483,51 @@ export async function logBotActivity(
     safeErrorLog("logBotActivity", err);
   }
 }
+// ==========================================
+// 16. Website & Domain Tool Logging
+// ==========================================
+
+export async function logDomainSearch(
+  phone: string, domain: string, tld: string,
+  status: string, available: boolean | null,
+  price?: number | null, currency?: string | null
+): Promise<void> {
+  const sb = getSupabaseClient();
+  try {
+    await sb.from("domain_searches").insert({
+      phone, domain, tld, status, available,
+      registrar_price: price || null,
+      currency: currency || null,
+    });
+  } catch (e) { safeErrorLog("logDomainSearch", e); }
+}
+
+export async function logWebsiteCheck(
+  phone: string, url: string, reachable: boolean,
+  statusCode: number | null, https: boolean,
+  responseTimeMs: number | null, finalUrl: string,
+  sslValid?: boolean | null, sslExpiry?: string | null
+): Promise<void> {
+  const sb = getSupabaseClient();
+  try {
+    await sb.from("website_checks").insert({
+      phone, url, reachable, status_code: statusCode,
+      https, response_time_ms: responseTimeMs,
+      final_url: finalUrl,
+      ssl_valid: sslValid ?? null,
+      ssl_expiry: sslExpiry ?? null,
+    });
+  } catch (e) { safeErrorLog("logWebsiteCheck", e); }
+}
+
+export async function logDnsCheck(
+  phone: string, domain: string,
+  recordType: string, records: any[]
+): Promise<void> {
+  const sb = getSupabaseClient();
+  try {
+    await sb.from("dns_checks").insert({
+      phone, domain, record_type: recordType, records,
+    });
+  } catch (e) { safeErrorLog("logDnsCheck", e); }
+}
