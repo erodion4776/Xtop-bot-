@@ -16,7 +16,7 @@ import {
 } from "../whatsapp.ts";
 import { normalise, isBack, extractSelection, safeErrorLog } from "../utils.ts";
 import { showMainMenu } from "./main-menu.ts";
-import { handleWebsiteDomain, showWdMenu } from "./tools/website-domain.ts";
+import { handleWebsiteDomain, showWdMenu } from "./website-domain.ts";
 
 // ═══════════════════════════════════════════════════════
 // MAIN TOOLS HANDLER
@@ -33,7 +33,7 @@ export async function handleTools(
   const n = normalise(rawInput);
   const state = conv.current_state;
 
-  // 1. Explicit Navigation to Main Menu
+  // 1. Navigation to Main Menu
   if (n === "menu_home" || n === "main_menu" || n === "main menu") {
     await updateConversation(conv.id, {
       current_module: "MAIN_MENU",
@@ -44,7 +44,7 @@ export async function handleTools(
     return;
   }
 
-  // 2. Explicit Navigation to Tools Menu
+  // 2. Navigation to Tools Menu
   if (
     rawInput === "tools_all" ||
     rawInput === "tool_menu" ||
@@ -57,7 +57,7 @@ export async function handleTools(
     return;
   }
 
-  // 3. Handle Back Button cleanly
+  // 3. Handle Back Button
   if (isBack(rawInput) || rawInput === "tool_back_menu" || rawInput === "tools_back_menu") {
     if (state && state !== "SHOWING_TOOLS" && state !== "ENTRY" && state !== "IDLE") {
       await showToolsMenu(phone, conv.id);
@@ -72,7 +72,7 @@ export async function handleTools(
     return;
   }
 
-  // 4. Route to Website & Domain sub-tool
+  // 4. ROUTE TO WEBSITE & DOMAIN TOOL (Active state or button trigger)
   if (
     state?.startsWith("WD_") ||
     rawInput === "tool_webdomain" ||
@@ -81,15 +81,13 @@ export async function handleTools(
     n.includes("check domain") ||
     n.includes("check website") ||
     n.includes("check ssl") ||
-    n.includes("check dns") ||
-    n === "domain" ||
-    n === "website"
+    n.includes("check dns")
   ) {
     await handleWebsiteDomain(phone, text, contact, conv, interactiveId);
     return;
   }
 
-  // 5. Action Buttons
+  // 5. Action Buttons (Re-run tools)
   if (rawInput === "tool_weather" || n.includes("check another")) {
     await prepareWeather(phone, conv.id);
     return;
@@ -111,7 +109,7 @@ export async function handleTools(
     return;
   }
 
-  // 6. State-based Input Processing
+  // 6. State-based Input Processing for other tools
   if (state === "WAITING_WEATHER_CITY") {
     await processWeatherQuery(phone, text, conv);
     return;
