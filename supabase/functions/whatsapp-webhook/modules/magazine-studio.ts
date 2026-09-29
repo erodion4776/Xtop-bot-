@@ -1,5 +1,5 @@
 // supabase/functions/whatsapp-webhook/modules/magazine-studio.ts
-// Magazine Studio — Main Handler & Wizard
+// Magazine Studio — Fast Asynchronous Engine & Wizard
 
 import {
   Contact, Conversation, updateConversation,
@@ -11,10 +11,10 @@ import {
   sendButtonMessage, sendListMessage, sendTextMessage, sendImageMessage, sendDocumentMessage,
   makeButton, makeListRow,
 } from "../whatsapp.ts";
-import { normalise, safeErrorLog } from "../utils.ts";
+import { normalise, isBack, safeErrorLog } from "../utils.ts";
 import { showMainMenu } from "./main-menu.ts";
 import { generatePagePlan, generatePageContent, generateTitleSuggestions, PagePlan, MagazineConfig } from "./magazine-engine.ts";
-import { generateImage, getCoverImageUrl, buildImagePrompt } from "./magazine-images.ts";
+import { getPollinationsUrl, getCoverImageUrl, buildImagePrompt } from "./magazine-images.ts";
 import { buildMagazinePdf } from "./magazine-pdf.ts";
 
 // ═══════════════════════════════════════════════════════
@@ -30,8 +30,8 @@ export async function handleMagazineStudio(
   const ctx = (conv.context_json || {}) as Record<string, any>;
 
   try {
-    // ── Navigation ──
-    if (n === "menu_home" || n === "main menu" || raw === "mag_back_main") {
+    // ── Emergency Reset / Home ──
+    if (n === "menu_home" || n === "main menu" || raw === "mag_back_main" || n === "reset" || n === "cancel") {
       await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
       await showMainMenu(phone, conv.id);
       return;
@@ -46,7 +46,7 @@ export async function handleMagazineStudio(
     if (raw === "mag_my" || n === "my magazines") { await showMyMagazines(phone, conv.id); return; }
     if (raw === "mag_delete" || n === "delete draft") { await showDeleteList(phone, conv.id); return; }
 
-    // ── View / Actions on individual magazine ──
+    // ── Magazine Actions ──
     if (raw.startsWith("magview_")) {
       const magId = raw.replace("magview_", "");
       await showMagazineDetail(phone, conv.id, magId);
@@ -95,8 +95,10 @@ export async function handleMagazineStudio(
     if (state === "MAG_STEP_VISUAL") { await processVisual(phone, raw, conv); return; }
     if (state === "MAG_STEP_LOGO") { await processLogo(phone, raw, conv); return; }
     if (state === "MAG_STEP_APPROVE") { await processApproval(phone, raw, conv); return; }
+
+    // ── Auto-Recovery for Stuck Generation ──
     if (state === "MAG_STEP_GENERATING") {
-      await sendTextMessage(phone, "⏳ Your magazine is still being generated. Please wait a moment...");
+      await showStudioMenu(phone, conv.id);
       return;
     }
 
@@ -129,7 +131,7 @@ export async function showStudioMenu(phone: string, convId: string): Promise<voi
 }
 
 // ═══════════════════════════════════════════════════════
-// WIZARD — STEP 1: TYPE
+// WIZARD STEPS
 // ═══════════════════════════════════════════════════════
 
 async function startWizard(phone: string, convId: string): Promise<void> {
@@ -186,10 +188,6 @@ async function processCustomType(phone: string, text: string, conv: Conversation
   await goToPagesStep(phone, conv.id, ctx);
 }
 
-// ═══════════════════════════════════════════════════════
-// WIZARD — STEP 2: PAGES
-// ═══════════════════════════════════════════════════════
-
 async function goToPagesStep(phone: string, convId: string, ctx: Record<string, any>): Promise<void> {
   ctx.step = 2;
   await updateConversation(convId, { current_state: "MAG_STEP_PAGES", context_json: ctx });
@@ -233,10 +231,6 @@ async function processCustomPages(phone: string, text: string, conv: Conversatio
   ctx.pageCount = num;
   await goToTopicStep(phone, conv.id, ctx);
 }
-
-// ═══════════════════════════════════════════════════════
-// WIZARD — STEP 3: TOPIC
-// ═══════════════════════════════════════════════════════
 
 async function goToTopicStep(phone: string, convId: string, ctx: Record<string, any>): Promise<void> {
   ctx.step = 3;
@@ -312,10 +306,6 @@ async function processCustomTitle(phone: string, text: string, conv: Conversatio
   await goToAudienceStep(phone, conv.id, ctx);
 }
 
-// ═══════════════════════════════════════════════════════
-// WIZARD — STEP 5: AUDIENCE
-// ═══════════════════════════════════════════════════════
-
 async function goToAudienceStep(phone: string, convId: string, ctx: Record<string, any>): Promise<void> {
   ctx.step = 5;
   await updateConversation(convId, { current_state: "MAG_STEP_AUDIENCE", context_json: ctx });
@@ -361,10 +351,6 @@ async function processCustomAudience(phone: string, text: string, conv: Conversa
   ctx.audience = text.trim();
   await goToStyleStep(phone, conv.id, ctx);
 }
-
-// ═══════════════════════════════════════════════════════
-// WIZARD — STEP 6: WRITING STYLE
-// ═══════════════════════════════════════════════════════
 
 async function goToStyleStep(phone: string, convId: string, ctx: Record<string, any>): Promise<void> {
   ctx.step = 6;
@@ -443,7 +429,6 @@ async function processLogo(phone: string, raw: string, conv: Conversation): Prom
   const ctx = (conv.context_json as Record<string, any>) || {};
   ctx.logo = raw === "maglogo_xtop" ? "xtop" : "none";
 
-  // Generate plan
   const plan = generatePagePlan(ctx.pageCount, ctx.magazineType, ctx.topic);
   ctx.plan = plan;
 
@@ -472,26 +457,26 @@ async function processLogo(phone: string, raw: string, conv: Conversation): Prom
 }
 
 // ═══════════════════════════════════════════════════════
-// GENERATION
+// INSTANT GENERATION (NON-BLOCKING)
 // ═══════════════════════════════════════════════════════
 
 async function processApproval(phone: string, raw: string, conv: Conversation): Promise<void> {
   const ctx = (conv.context_json as Record<string, any>) || {};
   if (raw !== "mag_approve") { await showStudioMenu(phone, conv.id); return; }
 
-  await updateConversation(conv.id, { current_state: "MAG_STEP_GENERATING", context_json: ctx });
-  await sendTextMessage(phone,
-    `📖 *Creating your magazine...*\n\n` +
-    `1/5 Planning content ✅\n` +
-    `2/5 Writing articles 🔄\n` +
-    `3/5 Generating images ⏳\n` +
-    `4/5 Building pages ⏳\n` +
-    `5/5 Creating PDF ⏳\n\n` +
-    `_This may take 1–2 minutes. Please wait..._`
-  );
+  // Immediately unlock state so user is never frozen
+  await updateConversation(conv.id, { current_module: "MAGAZINE", current_state: "MAG_MENU", context_json: ctx });
 
   try {
-    // Create magazine record
+    const config: MagazineConfig = {
+      title: ctx.title, topic: ctx.topic, audience: ctx.audience,
+      writingStyle: ctx.writingStyle, visualStyle: ctx.visualStyle, magazineType: ctx.magazineType,
+    };
+
+    const plan = ctx.plan as PagePlan[];
+    const coverImage = getCoverImageUrl(ctx.topic, ctx.visualStyle, ctx.title);
+
+    // 1. Create magazine record
     const mag = await createMagazineDraft(phone, {
       title: ctx.title,
       magazine_type: ctx.magazineType,
@@ -502,35 +487,24 @@ async function processApproval(phone: string, raw: string, conv: Conversation): 
       visual_style: ctx.visualStyle,
       template: ctx.template,
       plan_json: ctx.plan,
-      status: "generating",
+      cover_image_url: coverImage,
+      status: "completed",
     });
 
     if (!mag) {
-      await sendTextMessage(phone, "⚠️ Failed to create magazine. Please try again.");
+      await sendTextMessage(phone, "⚠️ Failed to save magazine draft. Please try again.");
       await showStudioMenu(phone, conv.id);
       return;
     }
 
-    const config: MagazineConfig = {
-      title: ctx.title, topic: ctx.topic, audience: ctx.audience,
-      writingStyle: ctx.writingStyle, visualStyle: ctx.visualStyle, magazineType: ctx.magazineType,
-    };
-
-    const plan = ctx.plan as PagePlan[];
-    const generatedPages: any[] = [];
-    let imagesCount = 0;
-
-    // Generate all pages with content and images
+    // 2. Generate all pages instantaneously in memory
     for (const p of plan) {
       const { content, imagePrompt } = generatePageContent(p, config);
-      let imageUrl: string | null = null;
+      const imageUrl = (p.page_type !== "advertisement" || p.page_number === 1)
+        ? getPollinationsUrl(imagePrompt, 1024, p.page_type === "cover" ? 1400 : 768)
+        : null;
 
-      if (p.page_type !== "advertisement" || p.page_number === 1) {
-        imageUrl = await generateImage(imagePrompt, 1024, p.page_type === "cover" ? 1400 : 768);
-        if (imageUrl) imagesCount++;
-      }
-
-      const savedPage = await saveMagazinePage(mag.id, {
+      await saveMagazinePage(mag.id, {
         page_number: p.page_number,
         page_type: p.page_type,
         title: p.title,
@@ -539,17 +513,7 @@ async function processApproval(phone: string, raw: string, conv: Conversation): 
         image_prompt: imagePrompt,
         layout_type: p.layout_type,
       });
-
-      if (savedPage) generatedPages.push(savedPage);
     }
-
-    // Set cover image
-    const coverImage = generatedPages[0]?.image_url || getCoverImageUrl(ctx.topic, ctx.visualStyle, ctx.title);
-    await updateMagazine(mag.id, phone, {
-      status: "completed",
-      cover_image_url: coverImage,
-      stats_json: { imagesGenerated: imagesCount, pagesGenerated: generatedPages.length },
-    });
 
     await updateConversation(conv.id, {
       current_module: "MAGAZINE",
@@ -561,11 +525,11 @@ async function processApproval(phone: string, raw: string, conv: Conversation): 
       `✅ *Magazine Completed!*\n\n` +
       `*Title:* ${ctx.title}\n` +
       `*Pages:* ${ctx.pageCount}\n` +
-      `*Images:* ${imagesCount} generated\n\n` +
-      `_Sending preview..._`
+      `*Status:* Ready for Preview & PDF Export\n\n` +
+      `_Sending cover image..._`
     );
 
-    // Send cover image
+    // Send cover image directly to WhatsApp
     if (coverImage) {
       try {
         await sendImageMessage(phone, coverImage, `${ctx.title} — Cover`);
@@ -577,13 +541,13 @@ async function processApproval(phone: string, raw: string, conv: Conversation): 
       [
         makeButton(`magexport_${mag.id}`, "📄 Export PDF"),
         makeButton(`magpreview_${mag.id}`, "👁️ Preview"),
-        makeButton("mag_back", "🔙 Studio Menu"),
+        makeButton("mag_my", "📚 My Magazines"),
       ],
       "Magazine Complete"
     );
   } catch (err) {
     safeErrorLog("magazineGeneration", err);
-    await sendTextMessage(phone, "⚠️ An error occurred during generation. Your draft has been saved. Please try again.");
+    await sendTextMessage(phone, "⚠️ An error occurred. Your draft has been saved.");
     await showStudioMenu(phone, conv.id);
   }
 }
@@ -675,7 +639,6 @@ async function showPreview(phone: string, convId: string, magId: string): Promis
 
   await sendTextMessage(phone, `👁️ *Preview: ${mag.title}*\n\nSending page samples...`);
 
-  // Send first 3 page previews
   const previewPages = pages.slice(0, 3);
   for (const p of previewPages) {
     let preview = `*Page ${p.page_number}: ${p.title}*\n\n`;
@@ -708,7 +671,6 @@ async function exportPdf(phone: string, convId: string, magId: string): Promise<
   const mag = await getMagazine(magId, phone);
   if (!mag) { await sendTextMessage(phone, "⚠️ Magazine not found."); return; }
 
-  // Return existing PDF if already generated
   if (mag.pdf_url) {
     await sendTextMessage(phone, `📄 Sending your PDF...`);
     try {
@@ -719,7 +681,7 @@ async function exportPdf(phone: string, convId: string, magId: string): Promise<
     return;
   }
 
-  await sendTextMessage(phone, `📄 *Generating PDF...*\n\nThis may take 30–60 seconds. Please wait...`);
+  await sendTextMessage(phone, `📄 *Generating PDF...*\n\nPlease wait a few seconds...`);
 
   try {
     const pages = await getMagazinePages(magId);
@@ -744,13 +706,13 @@ async function exportPdf(phone: string, convId: string, magId: string): Promise<
     const pdfUrl = await uploadMagazinePdf(magId, pdfBytes);
 
     if (!pdfUrl) {
-      await sendTextMessage(phone, "⚠️ Failed to save PDF. Please try again.");
+      await sendTextMessage(phone, "⚠️ Failed to save PDF to storage. Please try again.");
       return;
     }
 
     await updateMagazine(magId, phone, { pdf_url: pdfUrl });
 
-    await sendTextMessage(phone, `✅ *PDF Ready!*\n\nSending your magazine...`);
+    await sendTextMessage(phone, `✅ *PDF Ready!*\n\nSending your document...`);
     try {
       await sendDocumentMessage(phone, pdfUrl, `${mag.title.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`, mag.title);
     } catch (e) {
@@ -788,7 +750,7 @@ async function showDeleteList(phone: string, convId: string): Promise<void> {
   }
 
   const rows = mags.slice(0, 10).map((m: any) =>
-    makeListRow(`magdel_${m.id}`, (m.title || "Untitled").substring(0, 24), `${m.page_count}p • ${m.status}`)
+    makeListRow(`magdel_${m.id}`, (m.title || "Untitled").substring(0, 24), `${m.page_count}p • ${m.status}`.substring(0, 72))
   );
   rows.push(makeListRow("mag_back", "🔙 Studio Menu", ""));
 
@@ -828,19 +790,18 @@ async function regenerateImage(phone: string, convId: string, pageId: string, ma
   const page = pages.find((p: any) => p.id === pageId);
   if (!page) { await sendTextMessage(phone, "⚠️ Page not found."); return; }
 
-  await sendTextMessage(phone, `🖼️ Regenerating image for *${page.title}*...`);
-
   const mag = await getMagazine(magId, phone);
   if (!mag) return;
 
   const newPrompt = buildImagePrompt(page.page_type, mag.topic, mag.visual_style, page.title);
-  const newImage = await generateImage(newPrompt, 1024, 768);
+  const newImage = getPollinationsUrl(newPrompt, 1024, 768);
 
-  if (newImage) {
-    await updateMagazinePage(pageId, { image_url: newImage, image_prompt: newPrompt });
+  await updateMagazinePage(pageId, { image_url: newImage, image_prompt: newPrompt });
+  await saveMagazineAsset(magId, pageId, { asset_type: "image", url: newImage, prompt: newPrompt, provider: "pollinations" });
+  
+  try {
     await sendImageMessage(phone, newImage, `New image: ${page.title}`);
-    await sendTextMessage(phone, `✅ Image regenerated successfully!`);
-  } else {
-    await sendTextMessage(phone, `⚠️ Image generation failed. Please try again.`);
-  }
+  } catch (_) {}
+  
+  await sendTextMessage(phone, `✅ Image updated successfully!`);
 }
