@@ -1,22 +1,20 @@
-// supabase/functions/whatsapp-webhook/flight-checker.ts
+// supabase/functions/whatsapp-webhook/modules/flight-checker.ts
 // Flight Checker — Production-Ready, No AI, Provider-Abstracted
 
 import {
   Contact, Conversation, updateConversation,
   logFlightSearch,
-} from "./database.ts";
+} from "../database.ts";
 import {
   sendButtonMessage, sendListMessage, sendTextMessage,
   makeButton, makeListRow,
-} from "./whatsapp.ts";
-import { normalise, safeErrorLog } from "./utils.ts";
-import { showMainMenu } from "./modules/main-menu.ts";
+} from "../whatsapp.ts";
+import { normalise, safeErrorLog } from "../utils.ts";
+import { showMainMenu } from "./main-menu.ts";
 
 // ═══════════════════════════════════════════════════════
-// FLIGHT PROVIDER ABSTRACTION (Future-Ready)
+// FLIGHT PROVIDER ABSTRACTION
 // ═══════════════════════════════════════════════════════
-// To swap providers later (e.g. FlightAware, AeroDataBox),
-// only replace the FlightProvider implementation below.
 
 interface FlightInfo {
   flight_number: string;
@@ -96,7 +94,6 @@ class AviationStackProvider implements FlightProvider {
   }
 
   async checkFlight(flightNumber: string): Promise<FlightInfo | null> {
-    // Parse airline code + number (e.g. "BA75" -> iata="BA", number="75")
     const match = flightNumber.match(/^([A-Z]{2,3})(\d{1,5})$/);
     if (!match) return null;
 
@@ -126,7 +123,7 @@ class AviationStackProvider implements FlightProvider {
     };
   }
 
-  async getDepartures(airportCode: string, date: string): Promise<AirportFlight[]> {
+  async getDepartures(airportCode: string, _date: string): Promise<AirportFlight[]> {
     const data = await this.callApi({
       dep_iata: airportCode.toUpperCase(),
       flight_status: "active",
@@ -146,7 +143,7 @@ class AviationStackProvider implements FlightProvider {
     }));
   }
 
-  async getArrivals(airportCode: string, date: string): Promise<AirportFlight[]> {
+  async getArrivals(airportCode: string, _date: string): Promise<AirportFlight[]> {
     const data = await this.callApi({
       arr_iata: airportCode.toUpperCase(),
       flight_status: "active",
@@ -167,21 +164,20 @@ class AviationStackProvider implements FlightProvider {
   }
 }
 
-// Singleton provider instance
 const flightProvider: FlightProvider = new AviationStackProvider();
 
 // ═══════════════════════════════════════════════════════
-// INPUT VALIDATION & NORMALIZATION
+// INPUT VALIDATION & FORMATTING
 // ═══════════════════════════════════════════════════════
 
 function normalizeFlightNumber(raw: string): string | null {
-  let f = raw.trim().toUpperCase().replace(/\s+/g, "");
+  const f = raw.trim().toUpperCase().replace(/\s+/g, "");
   if (/^[A-Z]{2,3}\d{1,5}$/.test(f)) return f;
   return null;
 }
 
 function normalizeAirportCode(raw: string): string | null {
-  let a = raw.trim().toUpperCase().replace(/\s+/g, "");
+  const a = raw.trim().toUpperCase().replace(/\s+/g, "");
   if (/^[A-Z]{3}$/.test(a)) return a;
   return null;
 }
@@ -231,10 +227,6 @@ function rateOk(phone: string, max = 20, windowMs = 3600000): boolean {
   rlMap.set(phone, hits);
   return true;
 }
-
-// ═══════════════════════════════════════════════════════
-// DISCLAIMER
-// ═══════════════════════════════════════════════════════
 
 const DISCLAIMER =
   "\n\n_⚠️ Flight information is provided through third-party aviation data services and may change. Confirm critical travel information with the airline or airport._";
