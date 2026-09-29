@@ -26,23 +26,24 @@ export async function showMainMenu(phone: string, conversationId: string): Promi
         rows: [
           makeListRow("menu_products", "1️⃣ Our Products", "NaijaShop, Edvenia & more"),
           makeListRow("menu_services", "2️⃣ Our Services", "WhatsApp Bots & App Dev"),
-          makeListRow("menu_demos", "3️⃣ 🎮 Demo Centre", "Try live automation demos"),
+          makeListRow("menu_demos", "3️⃣ Demo Centre", "Try live automation demos"),
           makeListRow("menu_games", "4️⃣ Xtop Games", "Play trivia, math & more"),
         ],
       },
       {
-        title: "Tools & Support",
+        title: "Tools & Utilities",
         rows: [
-          makeListRow("menu_tools", "5️⃣ Free Tools", "Weather, News, Calculator & more"),
-          makeListRow("menu_magazine", "6️⃣ Product Magazine", "Download PDF catalogue"),
-          makeListRow("menu_agent", "7️⃣ Talk to an Agent", "Get support & enquiries"),
-          makeListRow("menu_sales", "8️⃣ Build a Project", "Get instant price quote"),
+          makeListRow("menu_tools", "5️⃣ Free Tools", "Weather, Calculator, QR & more"),
+          makeListRow("menu_magazine_studio", "6️⃣ Magazine Studio", "Create professional magazines"),
+          makeListRow("menu_magazine", "7️⃣ Product Magazine", "Download PDF catalogue"),
         ],
       },
       {
-        title: "Company",
+        title: "Support & Sales",
         rows: [
-          makeListRow("menu_about", "🏢 About XTOP", "Company info, mission & registration"),
+          makeListRow("menu_agent", "8️⃣ Talk to an Agent", "Get support & enquiries"),
+          makeListRow("menu_sales", "9️⃣ Build a Project", "Get instant price quote"),
+          makeListRow("menu_about", "🏢 About XTOP", "Company info & registration"),
         ],
       },
     ],
