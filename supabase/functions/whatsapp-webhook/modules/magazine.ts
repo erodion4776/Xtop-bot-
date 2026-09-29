@@ -1,4 +1,5 @@
 // supabase/functions/whatsapp-webhook/modules/magazine.ts
+// Xtop Official Product Magazine & Catalogue Download (Menu Option 7)
 
 import {
   Contact,
@@ -19,16 +20,23 @@ export async function handleMagazine(
   phone: string,
   text: string,
   contact: Contact,
-  conversation: Conversation
+  conversation: Conversation,
+  interactiveId?: string
 ): Promise<void> {
-  const n = normalise(text);
+  const raw = (interactiveId || text || "").trim();
+  const n = normalise(raw);
 
-  if (isBack(text) || n === "mag_back_menu") {
+  if (isBack(raw) || n === "cat_mag_back" || n === "main menu" || n === "menu_home") {
+    await updateConversation(conversation.id, {
+      current_module: "MAIN_MENU",
+      current_state: "IDLE",
+      context_json: {},
+    });
     await showMainMenu(phone, conversation.id);
     return;
   }
 
-  if (n === "mag_act_agent" || n.includes("agent")) {
+  if (raw === "cat_mag_agent" || n.includes("agent")) {
     await updateConversation(conversation.id, {
       current_module: "AGENT",
       current_state: "COLLECT_MESSAGE",
@@ -41,7 +49,7 @@ export async function handleMagazine(
     return;
   }
 
-  if (n === "mag_act_products" || n.includes("product")) {
+  if (raw === "cat_mag_products" || n.includes("product")) {
     const { showProductsList } = await import("./products.ts");
     await showProductsList(phone, conversation.id);
     return;
@@ -54,7 +62,7 @@ export async function displayMagazine(phone: string, conversationId: string): Pr
   const mag = await getActiveMagazineConfig();
 
   await updateConversation(conversationId, {
-    current_module: "MAGAZINE",
+    current_module: "MAGAZINE_CATALOG",
     current_state: "SHOWING_MAGAZINE",
     context_json: {},
   });
@@ -69,9 +77,9 @@ export async function displayMagazine(phone: string, conversationId: string): Pr
       phone,
       fallbackMessage,
       [
-        makeButton("mag_act_products", "📦 Our Products"),
-        makeButton("mag_act_agent", "👤 Talk to an Agent"),
-        makeButton("mag_back_menu", "🔙 Main Menu"),
+        makeButton("cat_mag_products", "📦 Our Products"),
+        makeButton("cat_mag_agent", "👤 Talk to an Agent"),
+        makeButton("cat_mag_back", "🔙 Main Menu"),
       ],
       "Xtop Digital Magazine",
       "Xtop Retail Technologies"
@@ -85,20 +93,24 @@ export async function displayMagazine(phone: string, conversationId: string): Pr
     `📖 *${mag.title}*\n\n${mag.description}\n\n_Sending document directly to your WhatsApp..._`
   );
 
-  await sendDocumentMessage(
-    phone,
-    mag.file_url,
-    "Xtop-Retail-Technologies-Magazine.pdf",
-    mag.title
-  );
+  try {
+    await sendDocumentMessage(
+      phone,
+      mag.file_url,
+      "Xtop-Retail-Technologies-Magazine.pdf",
+      mag.title
+    );
+  } catch (_) {
+    await sendTextMessage(phone, `📄 *Download link:*\n${mag.file_url}`);
+  }
 
   await sendButtonMessage(
     phone,
     "Would you like to start a project or speak with an engineer?",
     [
-      makeButton("mag_act_products", "📦 Explore Products"),
-      makeButton("mag_act_agent", "👤 Talk to an Agent"),
-      makeButton("mag_back_menu", "🔙 Main Menu"),
+      makeButton("cat_mag_products", "📦 Explore Products"),
+      makeButton("cat_mag_agent", "👤 Talk to an Agent"),
+      makeButton("cat_mag_back", "🔙 Main Menu"),
     ],
     "Catalogue Delivered",
     "Powered by Sabi"
