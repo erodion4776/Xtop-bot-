@@ -1,5 +1,5 @@
 // supabase/functions/whatsapp-webhook/modules/magazine-images.ts
-// Pollinations AI — Free, no API key required
+// Fast On-Demand Pollinations Image Engine
 
 const POLLINATIONS_BASE = "https://image.pollinations.ai/prompt";
 
@@ -40,31 +40,9 @@ export function getPollinationsUrl(prompt: string, width = 1024, height = 768, s
   return `${POLLINATIONS_BASE}/${encoded}?width=${width}&height=${height}&seed=${s}&nologo=true&model=flux`;
 }
 
-/**
- * Verifies Pollinations can serve the image, retries on failure.
- * Returns the URL if successful, null if all retries fail.
- */
-export async function generateImage(prompt: string, width = 1024, height = 768, retries = 2): Promise<string | null> {
-  const url = getPollinationsUrl(prompt, width, height);
-
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 30000);
-      const resp = await fetch(url, { method: "HEAD", signal: ctrl.signal });
-      clearTimeout(timer);
-
-      if (resp.ok) return url;
-    } catch (err) {
-      console.error(`[Pollinations] Attempt ${attempt + 1} failed:`, err);
-      if (attempt < retries) {
-        await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
-      }
-    }
-  }
-
-  // Return URL anyway — Pollinations generates on-demand when fetched
-  return url;
+// Generates the URL instantly without blocking webhook execution
+export async function generateImage(prompt: string, width = 1024, height = 768): Promise<string> {
+  return getPollinationsUrl(prompt, width, height);
 }
 
 export function getCoverImageUrl(topic: string, visualStyle: string, title: string): string {
@@ -72,20 +50,17 @@ export function getCoverImageUrl(topic: string, visualStyle: string, title: stri
   return getPollinationsUrl(prompt, 1024, 1400);
 }
 
-/**
- * Fetches raw image bytes for embedding in PDFs.
- */
+// Fast timeout-protected image fetcher for PDF export
 export async function fetchImageBytes(url: string): Promise<Uint8Array | null> {
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 45000);
+    const timer = setTimeout(() => ctrl.abort(), 6000); // Max 6s per image
     const resp = await fetch(url, { signal: ctrl.signal });
     clearTimeout(timer);
     if (!resp.ok) return null;
     const buf = await resp.arrayBuffer();
     return new Uint8Array(buf);
-  } catch (err) {
-    console.error("[fetchImageBytes]:", err);
+  } catch (_) {
     return null;
   }
 }
