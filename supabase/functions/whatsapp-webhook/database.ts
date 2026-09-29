@@ -1555,3 +1555,80 @@ export async function logFlightSearch(
     safeErrorLog("logFlightSearch", e);
   }
 }
+// ==========================================
+// 18. Magazine Studio Functions
+// ==========================================
+
+export async function createMagazineDraft(phone: string, data: Record<string, any>): Promise<any> {
+  const sb = getSupabaseClient();
+  const { data: row, error } = await sb.from("magazines").insert({ phone, ...data, status: data.status || "draft" }).select("*").single();
+  if (error) { safeErrorLog("createMagazineDraft", error); return null; }
+  return row;
+}
+
+export async function updateMagazine(magId: string, phone: string, data: Record<string, any>): Promise<any> {
+  const sb = getSupabaseClient();
+  const { data: row, error } = await sb.from("magazines").update({ ...data, updated_at: new Date().toISOString() }).eq("id", magId).eq("phone", phone).select("*").single();
+  if (error) { safeErrorLog("updateMagazine", error); return null; }
+  return row;
+}
+
+export async function getMagazine(magId: string, phone: string): Promise<any> {
+  const sb = getSupabaseClient();
+  const { data } = await sb.from("magazines").select("*").eq("id", magId).eq("phone", phone).maybeSingle();
+  return data;
+}
+
+export async function getUserMagazines(phone: string, limit = 20): Promise<any[]> {
+  const sb = getSupabaseClient();
+  const { data } = await sb.from("magazines").select("*").eq("phone", phone).order("created_at", { ascending: false }).limit(limit);
+  return data || [];
+}
+
+export async function saveMagazinePage(magId: string, page: Record<string, any>): Promise<any> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb.from("magazine_pages").insert({ magazine_id: magId, ...page }).select("*").single();
+  if (error) { safeErrorLog("saveMagazinePage", error); return null; }
+  return data;
+}
+
+export async function getMagazinePages(magId: string): Promise<any[]> {
+  const sb = getSupabaseClient();
+  const { data } = await sb.from("magazine_pages").select("*").eq("magazine_id", magId).order("page_number", { ascending: true });
+  return data || [];
+}
+
+export async function updateMagazinePage(pageId: string, data: Record<string, any>): Promise<any> {
+  const sb = getSupabaseClient();
+  const { data: row } = await sb.from("magazine_pages").update({ ...data, updated_at: new Date().toISOString() }).eq("id", pageId).select("*").single();
+  return row;
+}
+
+export async function saveMagazineAsset(magId: string, pageId: string | null, asset: Record<string, any>): Promise<any> {
+  const sb = getSupabaseClient();
+  const { data } = await sb.from("magazine_assets").insert({ magazine_id: magId, page_id: pageId, ...asset }).select("*").single();
+  return data;
+}
+
+export async function deleteMagazine(magId: string, phone: string): Promise<boolean> {
+  const sb = getSupabaseClient();
+  const { error } = await sb.from("magazines").delete().eq("id", magId).eq("phone", phone);
+  return !error;
+}
+
+export async function uploadMagazinePdf(magId: string, pdfBytes: Uint8Array): Promise<string | null> {
+  const sb = getSupabaseClient();
+  const path = `${magId}/magazine_${Date.now()}.pdf`;
+  try {
+    const { error } = await sb.storage.from("magazines").upload(path, pdfBytes, {
+      contentType: "application/pdf",
+      upsert: true,
+    });
+    if (error) { safeErrorLog("uploadMagazinePdf", error); return null; }
+    const { data } = sb.storage.from("magazines").getPublicUrl(path);
+    return data.publicUrl;
+  } catch (e) {
+    safeErrorLog("uploadMagazinePdf catch", e);
+    return null;
+  }
+}
