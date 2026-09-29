@@ -1,5 +1,5 @@
 // supabase/functions/whatsapp-webhook/router.ts
-import { handleFlightChecker, showFlightMenu } from "./flight-checker.ts";
+
 import {
   Contact, Conversation,
   getOrCreateContact, getOrCreateConversation,
@@ -21,8 +21,10 @@ import { handleSales, showServiceTypeSelector } from "./modules/sales.ts";
 import { handleExams } from "./modules/exams.ts";
 import { handleTools, showToolsMenu } from "./modules/tools.ts";
 import { handleWebsiteDomain } from "./modules/website-domain.ts";
+import { handleFlightChecker } from "./modules/flight-checker.ts";
 import { handleGames, showGamesMenu } from "./modules/games/index.ts";
 import { handleAbout, showAboutMenu } from "./modules/about.ts";
+import { handleMagazineStudio, showStudioMenu } from "./modules/magazine-studio.ts";
 
 const supabase = getSupabaseClient();
 
@@ -36,7 +38,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
   // 1. Ignore completely empty payloads
   if (!text && !interactiveId) return;
 
-  // 2. Message Deduplication (Prevents Meta webhook retries)
+  // 2. Message Deduplication
   if (incoming.messageId) {
     const { data: existingMsg } = await supabase
       .from("messages")
@@ -50,13 +52,11 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     const contact = await getOrCreateContact(phone, incoming.profileName);
     const conversation = await getOrCreateConversation(contact.id);
 
-    // Save message record
     await storeMessage(
       contact.id, "INBOUND", incoming.type,
       text || interactiveId || null, incoming.messageId
     );
 
-    // Log to Dashboard
     logBotActivity(
       phone, "INBOUND", incoming.type,
       conversation.current_module || "MAIN_MENU",
@@ -66,7 +66,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     ).catch(() => {});
 
     // ══════════════════════════════════════════════════════
-    // 🛑 SABI PAUSE / AGENT HANDOFF CHECK
+    // SABI PAUSE / AGENT HANDOFF CHECK
     // ══════════════════════════════════════════════════════
     const { data: setting } = await supabase
       .from("system_settings")
@@ -84,7 +84,6 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     // ══════════════════════════════════════════════════════
     const currentModule = conversation.current_module || "MAIN_MENU";
 
-    // Explicit Home button always resets to Main Menu
     if (interactiveId === "menu_home" || lowerText === "menu_home") {
       await updateConversation(conversation.id, {
         current_module: "MAIN_MENU",
@@ -95,13 +94,11 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-    // 1. LEARNING workflow
     if (currentModule === "LEARNING") {
       await handleLearning(phone, text, contact, conversation);
       return;
     }
 
-    // 2. Keyword trigger for Learning Centre
     if (isLearningKeyword(text)) {
       const ctx = conversation.context_json || {};
       await updateConversation(conversation.id, {
@@ -113,62 +110,57 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-    // 3. SALES workflow
     if (currentModule === "SALES") {
       await handleSales(phone, text, contact, conversation);
       return;
     }
 
-    // 4. AGENT workflow
     if (currentModule === "AGENT") {
       await handleAgent(phone, text, contact, conversation);
       return;
     }
 
-    // 5. EXAMS workflow
     if (currentModule === "EXAMS") {
       await handleExams(phone, text, contact, conversation);
       return;
     }
 
-    // 6. TOOLS workflow
     if (currentModule === "TOOLS") {
       await handleTools(phone, text, contact, conversation, interactiveId);
       return;
     }
 
-    // 7. GAMES workflow
     if (currentModule === "GAMES") {
       await handleGames(phone, text, contact, conversation, interactiveId);
       return;
     }
 
-    // 8. DEMOS workflow
     if (currentModule === "DEMOS") {
       await handleDemos(phone, text, contact, conversation, interactiveId);
       return;
     }
 
-    // 9. ABOUT workflow
+    if (currentModule === "MAGAZINE") {
+      await handleMagazineStudio(phone, text, contact, conversation, interactiveId);
+      return;
+    }
+
     if (currentModule === "ABOUT") {
       await handleAbout(phone, text, contact, conversation, interactiveId);
       return;
     }
 
-    // 10. PRODUCTS workflow
     if (currentModule === "PRODUCTS") {
       await handleProducts(phone, text, contact, conversation);
       return;
     }
 
-    // 11. SERVICES workflow
     if (currentModule === "SERVICES") {
       await handleServices(phone, text, contact, conversation);
       return;
     }
 
-    // 12. MAGAZINE workflow
-    if (currentModule === "MAGAZINE") {
+    if (currentModule === "MAGAZINE_CATALOG") {
       await handleMagazine(phone, text, contact, conversation);
       return;
     }
@@ -224,10 +216,38 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       await handleWebsiteDomain(phone, text, contact, conversation, interactiveId);
       return;
     }
+
     if (interactiveId.startsWith("flight_")) {
       await handleFlightChecker(phone, text, contact, conversation, interactiveId);
       return;
-        }
+    }
+
+    // Magazine Studio (all mag_ prefixes)
+    if (
+      interactiveId === "menu_magazine_studio" ||
+      interactiveId.startsWith("mag_") ||
+      interactiveId.startsWith("magtype_") ||
+      interactiveId.startsWith("magpages_") ||
+      interactiveId.startsWith("magaud_") ||
+      interactiveId.startsWith("magstyle_") ||
+      interactiveId.startsWith("magvis_") ||
+      interactiveId.startsWith("magtitle_") ||
+      interactiveId.startsWith("maglogo_") ||
+      interactiveId.startsWith("magview_") ||
+      interactiveId.startsWith("magdel_") ||
+      interactiveId.startsWith("magdelconfirm_") ||
+      interactiveId.startsWith("magexport_") ||
+      interactiveId.startsWith("magpreview_") ||
+      interactiveId.startsWith("magregen_")
+    ) {
+      if (interactiveId === "menu_magazine_studio") {
+        await showStudioMenu(phone, conversation.id);
+      } else {
+        await handleMagazineStudio(phone, text, contact, conversation, interactiveId);
+      }
+      return;
+    }
+
     // ══════════════════════════════════════════════════════
     // GLOBAL COMMANDS (IDLE ONLY)
     // ══════════════════════════════════════════════════════
@@ -267,8 +287,10 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       await showDemoCentreMenu(phone, conversation.id);
     } else if (interactiveId === "menu_games" || lowerText.includes("games")) {
       await showGamesMenu(phone, conversation.id);
-    } else if (intent === "TOOLS" || interactiveId === "menu_tools" || lowerText.includes("tools")) {
+    } else if (interactiveId === "menu_tools" || lowerText.includes("tools")) {
       await showToolsMenu(phone, conversation.id);
+    } else if (interactiveId === "menu_magazine_studio" || lowerText.includes("magazine studio") || lowerText.includes("create magazine")) {
+      await showStudioMenu(phone, conversation.id);
     } else if (intent === "MAGAZINE" || interactiveId === "menu_magazine") {
       await displayMagazine(phone, conversation.id);
     } else if (intent === "AGENT" || interactiveId === "menu_agent") {
