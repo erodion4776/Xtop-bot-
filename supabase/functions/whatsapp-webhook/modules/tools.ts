@@ -17,7 +17,8 @@ import {
 import { normalise, isBack, extractSelection, safeErrorLog } from "../utils.ts";
 import { showMainMenu } from "./main-menu.ts";
 import { handleWebsiteDomain, showWdMenu } from "./website-domain.ts";
-import { handleFlightChecker, showFlightMenu } from "../flight-checker.ts";
+import { handleFlightChecker, showFlightMenu } from "./flight-checker.ts";
+import { handleMagazineStudio, showStudioMenu } from "./magazine-studio.ts";
 
 // ═══════════════════════════════════════════════════════
 // MAIN TOOLS HANDLER
@@ -73,7 +74,7 @@ export async function handleTools(
     return;
   }
 
-  // 4. ROUTE TO WEBSITE & DOMAIN TOOL (Active state or button trigger)
+  // 4. Route to Website & Domain sub-tool
   if (
     state?.startsWith("WD_") ||
     rawInput === "tool_webdomain" ||
@@ -88,20 +89,30 @@ export async function handleTools(
     return;
   }
 
-  // 4b. ROUTE TO FLIGHT CHECKER TOOL (Active state or button trigger)
+  // 5. Route to Flight Checker sub-tool
   if (
     state?.startsWith("FLIGHT_") ||
     rawInput === "tool_flight" ||
     rawInput.startsWith("flight_") ||
-    n.includes("flight check") ||
-    n.includes("check flight") ||
-    n.includes("flight status")
+    n.includes("flight") ||
+    n.includes("departures") ||
+    n.includes("arrivals")
   ) {
     await handleFlightChecker(phone, text, contact, conv, interactiveId);
     return;
   }
 
-  // 5. Action Buttons (Re-run tools)
+  // 6. Route to Magazine Studio
+  if (
+    state?.startsWith("MAG_") ||
+    rawInput === "tool_magazine_studio" ||
+    rawInput.startsWith("mag_")
+  ) {
+    await handleMagazineStudio(phone, text, contact, conv, interactiveId);
+    return;
+  }
+
+  // 7. Action Buttons (Re-run tools)
   if (rawInput === "tool_weather" || n.includes("check another")) {
     await prepareWeather(phone, conv.id);
     return;
@@ -122,8 +133,16 @@ export async function handleTools(
     await fetchAndSendQuote(phone, conv.id);
     return;
   }
+  if (rawInput === "tool_biztip" || n === "tip" || n === "business tip") {
+    await sendBusinessTip(phone, conv.id);
+    return;
+  }
+  if (rawInput === "tool_biztip_another") {
+    await sendBusinessTip(phone, conv.id);
+    return;
+  }
 
-  // 6. State-based Input Processing for other tools
+  // 8. State-based Input Processing for other tools
   if (state === "WAITING_WEATHER_CITY") {
     await processWeatherQuery(phone, text, conv);
     return;
@@ -144,7 +163,7 @@ export async function handleTools(
     return;
   }
 
-  // 7. Tool Selection from Menu
+  // 9. Tool Selection from Menu
   await processToolSelection(phone, rawInput, conv);
 }
 
@@ -167,20 +186,21 @@ export async function showToolsMenu(phone: string, conversationId: string): Prom
       {
         title: "Information & Updates",
         rows: [
-          makeListRow("tool_weather", "1️⃣ Weather Forecast", "Live weather for any Nigerian or world city"),
+          makeListRow("tool_weather", "1️⃣ Weather Forecast", "Live weather for any city"),
           makeListRow("tool_news", "2️⃣ News Headlines", "Latest Nigerian & global news"),
           makeListRow("tool_quote", "3️⃣ Quote of the Day", "Daily motivation & inspiration"),
+          makeListRow("tool_biztip", "4️⃣ Business Tip", "Growth tips for SMEs"),
         ],
       },
       {
         title: "Calculators & Utilities",
         rows: [
-          makeListRow("tool_calc", "4️⃣ Quick Calculator", "Solve math & percentage calculations"),
-          makeListRow("tool_currency", "5️⃣ Currency Converter", "Convert USD, GBP, EUR to NGN"),
-          makeListRow("tool_qr", "6️⃣ QR Code Generator", "Create QR code image from URL or text"),
-          makeListRow("tool_compress", "7️⃣ Image Compressor", "How to compress images for web"),
+          makeListRow("tool_calc", "5️⃣ Quick Calculator", "Solve math & percentage calculations"),
+          makeListRow("tool_currency", "6️⃣ Currency Converter", "Convert USD, GBP, EUR to NGN"),
+          makeListRow("tool_qr", "7️⃣ QR Code Generator", "Create QR code image from URL or text"),
           makeListRow("tool_webdomain", "8️⃣ Website & Domain", "Domain, SSL, DNS checks"),
-          makeListRow("tool_flight", "9️⃣ Flight Checker", "Check flight status, departures & arrivals"),
+          makeListRow("tool_flight", "9️⃣ Flight Checker", "Flight status, departures & arrivals"),
+          makeListRow("tool_magazine_studio", "🔟 Magazine Studio", "Create professional magazines"),
           makeListRow("tool_back_menu", "🔙 Main Menu", "Return to main home screen"),
         ],
       },
@@ -217,44 +237,23 @@ async function processToolSelection(
     return;
   }
 
-  if (input === "tool_calc" || num === 4 || n.includes("calc") || n.includes("math")) {
+  if (input === "tool_biztip" || num === 4 || n.includes("tip")) {
+    await sendBusinessTip(phone, conv.id);
+    return;
+  }
+
+  if (input === "tool_calc" || num === 5 || n.includes("calc") || n.includes("math")) {
     await prepareCalculator(phone, conv.id);
     return;
   }
 
-  if (input === "tool_currency" || num === 5 || n.includes("currency") || n.includes("convert") || n.includes("fx")) {
+  if (input === "tool_currency" || num === 6 || n.includes("currency") || n.includes("convert") || n.includes("fx")) {
     await prepareCurrency(phone, conv.id);
     return;
   }
 
-  if (input === "tool_qr" || num === 6 || n.includes("qr")) {
+  if (input === "tool_qr" || num === 7 || n.includes("qr")) {
     await prepareQR(phone, conv.id);
-    return;
-  }
-
-  if (input === "tool_compress" || num === 7 || n.includes("compress") || n.includes("image")) {
-    await sendTextMessage(
-      phone,
-      `🖼️ *Image Compressor*\n\n` +
-      `To compress an image for fast loading:\n\n` +
-      `1️⃣ Open your *Xtop Portal / Admin Panel*\n` +
-      `2️⃣ Go to *Media Upload*\n` +
-      `3️⃣ Select your photo — our automated compression pipeline will reduce the file size up to *90%* under 300KB while preserving crisp resolution!`
-    );
-    await sendButtonMessage(
-      phone,
-      "Would you like to try another tool?",
-      [
-        makeButton("tools_all", "🧰 All Tools"),
-        makeButton("menu_home", "🏠 Main Menu"),
-      ],
-      "Image Compressor"
-    );
-    await updateConversation(conv.id, {
-      current_module: "TOOLS",
-      current_state: "SHOWING_TOOLS",
-      context_json: {},
-    });
     return;
   }
 
@@ -264,7 +263,12 @@ async function processToolSelection(
   }
 
   if (input === "tool_flight" || num === 9 || n.includes("flight")) {
-    await showFlightMenu(phone, conv.id);
+    await handleFlightChecker(phone, "", {} as Contact, conv, "tool_flight");
+    return;
+  }
+
+  if (input === "tool_magazine_studio" || num === 10 || n.includes("magazine")) {
+    await handleMagazineStudio(phone, "", {} as Contact, conv, "tool_magazine_studio");
     return;
   }
 
@@ -518,7 +522,28 @@ async function fetchAndSendQuote(phone: string, conversationId: string): Promise
 }
 
 // ═══════════════════════════════════════════════════════
-// 4. CALCULATOR
+// 4. BUSINESS TIP
+// ═══════════════════════════════════════════════════════
+
+async function sendBusinessTip(phone: string, convId: string): Promise<void> {
+  const tips = [
+    "💡 *Automate Customer FAQ:* 70% of inbound enquiries are repetitive. Automating them on WhatsApp increases conversion by 4x.",
+    "💡 *Digital Receipts:* Sending automated PDF receipts via WhatsApp reduces payment disputes and builds trust.",
+    "💡 *Speed Wins Deals:* Shoppers who get a response within 60 seconds are 390% more likely to buy.",
+    "💡 *Follow-Up Matters:* 80% of sales require 5+ follow-ups. Use automated reminders to stay top-of-mind.",
+    "💡 *WhatsApp Catalogue:* Businesses using WhatsApp catalogues see 3x more product enquiries.",
+  ];
+  const tip = tips[Math.floor(Math.random() * tips.length)];
+
+  await sendButtonMessage(phone, tip,
+    [makeButton("tool_biztip_another", "🔄 Another Tip"), makeButton("tools_all", "🧰 All Tools"), makeButton("menu_home", "🏠 Main Menu")],
+    "Business Tips"
+  );
+  await updateConversation(convId, { current_module: "TOOLS", current_state: "SHOWING_TOOLS", context_json: {} });
+}
+
+// ═══════════════════════════════════════════════════════
+// 5. CALCULATOR
 // ═══════════════════════════════════════════════════════
 
 async function processCalculation(
@@ -577,7 +602,7 @@ async function processCalculation(
 }
 
 // ═══════════════════════════════════════════════════════
-// 5. CURRENCY CONVERTER
+// 6. CURRENCY CONVERTER
 // ═══════════════════════════════════════════════════════
 
 async function processCurrencyConversion(
@@ -652,7 +677,7 @@ async function processCurrencyConversion(
 }
 
 // ═══════════════════════════════════════════════════════
-// 6. QR CODE GENERATOR
+// 7. QR CODE GENERATOR
 // ═══════════════════════════════════════════════════════
 
 async function processQRGeneration(
