@@ -84,15 +84,36 @@ class CommandCentreRepository(private val client: SupabaseClient) {
         } catch (e: Exception) { null }
     }
 
-    // ── Messages ──
+    // ── Messages (Query by contact_id OR phone_number) ──
     suspend fun getMessages(contactId: String, limit: Int = 100): List<MessageRecord> {
         return try {
-            client.from("messages").select {
+            // Find messages linked by contact_id
+            val byContact = client.from("messages").select {
                 filter { eq("contact_id", contactId) }
                 order("created_at", Order.ASCENDING)
                 limit(limit.toLong())
+            }.decodeList<MessageRecord>()
+
+            if (byContact.isNotEmpty()) {
+                return byContact
+            }
+
+            // Fallback: if contactId was actually a phone number
+            val cleanPhone = contactId.replace("+", "").replace(" ", "")
+            client.from("messages").select {
+                filter { 
+                    or {
+                        eq("phone_number", cleanPhone)
+                        eq("phone_number", "+$cleanPhone")
+                    }
+                }
+                order("created_at", Order.ASCENDING)
+                limit(limit.toLong())
             }.decodeList()
-        } catch (e: Exception) { emptyList() }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
     }
 
     // ── Leads ──
@@ -145,7 +166,7 @@ class CommandCentreRepository(private val client: SupabaseClient) {
         } catch (e: Exception) { emptyList() }
     }
 
-    // ── Agent Takeover (Individual Customer Bot Pause) ──
+    // ── Agent Takeover ──
     suspend fun takeOverConversation(contactIdOrConvId: String, phone: String = ""): Boolean {
         return withContext(Dispatchers.IO) {
             try {
@@ -168,30 +189,10 @@ class CommandCentreRepository(private val client: SupabaseClient) {
                 }
 
                 conn.outputStream.write(payload.toString().toByteArray())
-                val code = conn.responseCode
-                code == 200
+                conn.responseCode == 200
             } catch (e: Exception) {
                 e.printStackTrace()
-                // Fallback direct DB update
-                try {
-                    client.from("conversations").update(
-                        buildJsonObject {
-                            put("context_json", buildJsonObject {
-                                put("agent_takeover", true)
-                                put("agent_mode", true)
-                                put("agent_name", "Admin")
-                            })
-                        }
-                    ) {
-                        filter {
-                            or {
-                                eq("id", contactIdOrConvId)
-                                eq("contact_id", contactIdOrConvId)
-                            }
-                        }
-                    }
-                    true
-                } catch (_: Exception) { false }
+                false
             }
         }
     }
@@ -218,33 +219,15 @@ class CommandCentreRepository(private val client: SupabaseClient) {
                 }
 
                 conn.outputStream.write(payload.toString().toByteArray())
-                val code = conn.responseCode
-                code == 200
+                conn.responseCode == 200
             } catch (e: Exception) {
                 e.printStackTrace()
-                try {
-                    client.from("conversations").update(
-                        buildJsonObject {
-                            put("context_json", buildJsonObject {
-                                put("agent_takeover", false)
-                                put("agent_mode", false)
-                            })
-                        }
-                    ) {
-                        filter {
-                            or {
-                                eq("id", contactIdOrConvId)
-                                eq("contact_id", contactIdOrConvId)
-                            }
-                        }
-                    }
-                    true
-                } catch (_: Exception) { false }
+                false
             }
         }
     }
 
-    // ── Send WhatsApp Message (Overload 1: with detailed result string) ──
+    // ── Send WhatsApp Message ──
     suspend fun sendWhatsAppMessage(phone: String, contactId: String, message: String): Pair<Boolean, String> {
         return withContext(Dispatchers.IO) {
             try {
@@ -284,7 +267,6 @@ class CommandCentreRepository(private val client: SupabaseClient) {
         }
     }
 
-    // ── Send WhatsApp Message (Overload 2: simple boolean for legacy callers) ──
     suspend fun sendWhatsAppMessage(phone: String, message: String): Boolean {
         val result = sendWhatsAppMessage(phone = phone, contactId = "", message = message)
         return result.first
