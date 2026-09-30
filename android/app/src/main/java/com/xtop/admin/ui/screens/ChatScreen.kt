@@ -1,5 +1,8 @@
 package com.xtop.admin.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,12 +16,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.xtop.admin.data.ClientProfile
+import com.xtop.admin.data.ConversationRecord
 import com.xtop.admin.data.MessageRecord
 import com.xtop.admin.data.repository.CommandCentreRepository
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -28,19 +35,70 @@ fun ChatScreen(
     repo: CommandCentreRepository,
     contactId: String
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var client by remember { mutableStateOf<ClientProfile?>(null) }
+    var conversation by remember { mutableStateOf<ConversationRecord?>(null) }
     var messages by remember { mutableStateOf<List<MessageRecord>>(emptyList()) }
     var inputText by remember { mutableStateOf("") }
     var isAgentMode by remember { mutableStateOf(false) }
-    var sending by remember { mutableStateOf(false) }
+    var isSending by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
+    // 1. Load client profile, takeover state & messages on launch + Auto-Poll every 3 seconds
     LaunchedEffect(contactId) {
-        scope.launch { messages = repo.getMessages(contactId) }
+        scope.launch {
+            client = repo.getClientById(contactId)
+            conversation = repo.getConversationByContact(contactId)
+            val ctx = conversation?.context_json
+            isAgentMode = ctx?.get("agent_takeover")?.toString()?.contains("true") == true ||
+                          ctx?.get("agent_mode")?.toString()?.contains("true") == true
+            messages = repo.getMessages(contactId, 100)
+        }
+
+        // Live background polling for incoming WhatsApp messages
+        while (true) {
+            delay(3000)
+            try {
+                val updated = repo.getMessages(contactId, 100)
+                if (updated.size != messages.size || 
+                    (updated.isNotEmpty() && messages.isNotEmpty() && updated.last().id != messages.last().id)) {
+                    messages = updated
+                }
+            } catch (_: Exception) {}
+        }
     }
 
+    // 2. Auto-scroll to bottom when new messages arrive or are sent
     LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size - 1)
+        }
+    }
+
+    fun sendMessage() {
+        val phone = client?.phone ?: ""
+        if (phone.isBlank()) {
+            Toast.makeText(context, "⚠️ No phone number linked to this contact", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (inputText.isBlank()) return
+
+        val msg = inputText.trim()
+        inputText = ""
+        isSending = true
+
+        scope.launch {
+            // Send directly to the client's verified phone number
+            val success = repo.sendWhatsAppMessage(phone, msg)
+            if (success) {
+                // Immediately refresh messages so the new message bubble appears
+                messages = repo.getMessages(contactId, 100)
+            } else {
+                Toast.makeText(context, "⚠️ Delivery failed. Check Meta credentials or 24-hr window.", Toast.LENGTH_LONG).show()
+            }
+            isSending = false
+        }
     }
 
     Scaffold(
@@ -48,9 +106,13 @@ fun ChatScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("Chat", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         Text(
-                            if (isAgentMode) "👨🏽‍💼 Agent Mode — Bot Paused" else "🤖 Bot Active",
+                            client?.name ?: client?.business_name ?: client?.phone ?: "Client Chat",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            if (isAgentMode) "👨🏽‍💼 Agent Mode (Bot Paused)" else "🤖 Sabi Auto-Responding",
                             fontSize = 11.sp,
                             color = if (isAgentMode) Color(0xFFF59E0B) else Color(0xFF22C55E)
                         )
@@ -62,36 +124,59 @@ fun ChatScreen(
                     }
                 },
                 actions = {
+                    // Call button (opens native Android dialer)
+                    if (!client?.phone.isNullOrBlank()) {
+                        IconButton(onClick = {
+                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${client?.phone}"))
+                            context.startActivity(intent)
+                        }) {
+                            Icon(Icons.Default.Phone, "Call", tint = Color(0xFF10B981))
+                        }
+                    }
+
+                    // Individual conversation takeover toggle
                     TextButton(onClick = {
                         scope.launch {
+                            val phone = client?.phone ?: ""
                             if (isAgentMode) {
                                 repo.returnToBot(contactId)
                                 isAgentMode = false
+                                Toast.makeText(context, "🤖 Bot resumed for this client", Toast.LENGTH_SHORT).show()
                             } else {
-                                repo.takeOverConversation(contactId, "")
+                                repo.takeOverConversation(contactId, phone)
                                 isAgentMode = true
+                                Toast.makeText(context, "👨🏽‍💼 You took over. Bot paused for this client.", Toast.LENGTH_SHORT).show()
                             }
                         }
                     }) {
                         Text(
                             if (isAgentMode) "Return to Bot" else "Take Over",
                             color = if (isAgentMode) Color(0xFF22C55E) else Color(0xFFF59E0B),
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0F172A), titleContentColor = Color.White
+                    containerColor = Color(0xFF0F172A),
+                    titleContentColor = Color.White
                 )
             )
         },
         containerColor = Color(0xFF0F172A)
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            // Live Message Stream
             LazyColumn(
                 state = listState,
-                modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(messages) { msg ->
                     val isInbound = msg.direction == "INBOUND"
@@ -100,15 +185,22 @@ fun ChatScreen(
                         horizontalArrangement = if (isInbound) Arrangement.Start else Arrangement.End
                     ) {
                         Surface(
-                            color = if (isInbound) Color(0xFF1E293B) else Color(0xFF1E40AF),
+                            color = if (isInbound) Color(0xFF1E293B) else Color(0xFF2563EB),
                             shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.widthIn(max = 280.dp)
+                            modifier = Modifier.widthIn(max = 290.dp)
                         ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
-                                Text(msg.displayText, color = Color.White, fontSize = 13.sp)
+                            Column(modifier = Modifier.padding(12.dp)) {
                                 Text(
-                                    "${if (isInbound) "👤 Client" else "🤖 Bot"} • ${msg.created_at.takeLast(8).take(5)}",
-                                    color = Color(0xFF94A3B8), fontSize = 10.sp
+                                    msg.displayText,
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    lineHeight = 18.sp
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    "${if (isInbound) "👤 Client" else "🤖 Sabi"} • ${msg.created_at.takeLast(8).take(5)}",
+                                    color = if (isInbound) Color(0xFF94A3B8) else Color(0xFFDBEAFE),
+                                    fontSize = 10.sp
                                 )
                             }
                         }
@@ -116,16 +208,22 @@ fun ChatScreen(
                 }
             }
 
-            // Input Bar
-            Surface(color = Color(0xFF1E293B)) {
+            // Chat Input Bar
+            Surface(
+                color = Color(0xFF1E293B),
+                tonalElevation = 4.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Row(
-                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                    modifier = Modifier
+                        .padding(12.dp)
+                        .fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedTextField(
                         value = inputText,
                         onValueChange = { inputText = it },
-                        placeholder = { Text("Type message...", color = Color(0xFF64748B)) },
+                        placeholder = { Text("Reply to client as Sabi...", color = Color(0xFF64748B)) },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(24.dp),
                         singleLine = true,
@@ -136,24 +234,26 @@ fun ChatScreen(
                             unfocusedTextColor = Color.White
                         )
                     )
-                    Spacer(Modifier.width(8.dp))
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
                     IconButton(
-                        onClick = {
-                            if (inputText.isNotBlank()) {
-                                scope.launch {
-                                    sending = true
-                                    repo.sendWhatsAppMessage("", inputText)
-                                    inputText = ""
-                                    sending = false
-                                }
-                            }
-                        },
-                        enabled = !sending && inputText.isNotBlank(),
+                        onClick = { sendMessage() },
+                        enabled = !isSending && inputText.isNotBlank(),
                         colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = Color(0xFF38BDF8)
+                            containerColor = Color(0xFF38BDF8),
+                            contentColor = Color(0xFF0F172A)
                         )
                     ) {
-                        Icon(Icons.Default.Send, "Send", tint = Color(0xFF0F172A))
+                        if (isSending) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = Color(0xFF0F172A),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Default.Send, contentDescription = "Send")
+                        }
                     }
                 }
             }
