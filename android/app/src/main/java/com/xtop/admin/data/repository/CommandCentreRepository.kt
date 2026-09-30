@@ -5,9 +5,14 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 import java.time.LocalDate
 
 class CommandCentreRepository(private val client: SupabaseClient) {
@@ -140,52 +145,148 @@ class CommandCentreRepository(private val client: SupabaseClient) {
         } catch (e: Exception) { emptyList() }
     }
 
-    // ── Agent Takeover ──
-    suspend fun takeOverConversation(conversationId: String, phone: String): Boolean {
-        return try {
-            client.from("conversations").update(
-                buildJsonObject {
-                    put("context_json", buildJsonObject {
-                        put("agent_takeover", true)
-                        put("agent_name", "Admin")
-                    })
-                }
-            ) { filter { eq("id", conversationId) } }
-            true
-        } catch (e: Exception) { false }
-    }
+    // ── Agent Takeover (Individual Customer Bot Pause) ──
+    suspend fun takeOverConversation(contactIdOrConvId: String, phone: String = ""): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val baseUrl = com.xtop.admin.data.SupabaseClient.getSupabaseUrl().trimEnd('/')
+                val apiKey = com.xtop.admin.data.SupabaseClient.getSupabaseKey()
+                val url = URL("$baseUrl/functions/v1/whatsapp-webhook?action=toggle-takeover")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("apikey", apiKey)
+                conn.setRequestProperty("Authorization", "Bearer $apiKey")
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
+                conn.doOutput = true
 
-    suspend fun returnToBot(conversationId: String): Boolean {
-        return try {
-            client.from("conversations").update(
-                buildJsonObject {
-                    put("context_json", buildJsonObject {
-                        put("agent_takeover", false)
-                    })
+                val payload = JSONObject().apply {
+                    put("contact_id", contactIdOrConvId)
+                    put("phone", phone)
+                    put("enabled", true)
                 }
-            ) { filter { eq("id", conversationId) } }
-            true
-        } catch (e: Exception) { false }
-    }
 
-    // ── Send WhatsApp Message via existing Edge Function ──
-    suspend fun sendWhatsAppMessage(phone: String, message: String): Boolean {
-        return try {
-            val supabaseUrl = com.xtop.admin.data.SupabaseClient.getSupabaseUrl().trimEnd('/')
-            val apiKey = com.xtop.admin.data.SupabaseClient.getSupabaseKey()
-            val url = java.net.URL("$supabaseUrl/functions/v1/whatsapp-webhook?action=send-message")
-            val conn = url.openConnection() as java.net.HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.setRequestProperty("apikey", apiKey)
-            conn.setRequestProperty("Authorization", "Bearer $apiKey")
-            conn.doOutput = true
-            val payload = org.json.JSONObject().apply {
-                put("phone", phone)
-                put("message", message)
+                conn.outputStream.write(payload.toString().toByteArray())
+                val code = conn.responseCode
+                code == 200
+            } catch (e: Exception) {
+                e.printStackTrace()
+                // Fallback direct DB update
+                try {
+                    client.from("conversations").update(
+                        buildJsonObject {
+                            put("context_json", buildJsonObject {
+                                put("agent_takeover", true)
+                                put("agent_mode", true)
+                                put("agent_name", "Admin")
+                            })
+                        }
+                    ) {
+                        filter {
+                            or {
+                                eq("id", contactIdOrConvId)
+                                eq("contact_id", contactIdOrConvId)
+                            }
+                        }
+                    }
+                    true
+                } catch (_: Exception) { false }
             }
-            conn.outputStream.write(payload.toString().toByteArray())
-            conn.responseCode == 200
-        } catch (e: Exception) { false }
+        }
+    }
+
+    suspend fun returnToBot(contactIdOrConvId: String, phone: String = ""): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val baseUrl = com.xtop.admin.data.SupabaseClient.getSupabaseUrl().trimEnd('/')
+                val apiKey = com.xtop.admin.data.SupabaseClient.getSupabaseKey()
+                val url = URL("$baseUrl/functions/v1/whatsapp-webhook?action=toggle-takeover")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("apikey", apiKey)
+                conn.setRequestProperty("Authorization", "Bearer $apiKey")
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
+                conn.doOutput = true
+
+                val payload = JSONObject().apply {
+                    put("contact_id", contactIdOrConvId)
+                    put("phone", phone)
+                    put("enabled", false)
+                }
+
+                conn.outputStream.write(payload.toString().toByteArray())
+                val code = conn.responseCode
+                code == 200
+            } catch (e: Exception) {
+                e.printStackTrace()
+                try {
+                    client.from("conversations").update(
+                        buildJsonObject {
+                            put("context_json", buildJsonObject {
+                                put("agent_takeover", false)
+                                put("agent_mode", false)
+                            })
+                        }
+                    ) {
+                        filter {
+                            or {
+                                eq("id", contactIdOrConvId)
+                                eq("contact_id", contactIdOrConvId)
+                            }
+                        }
+                    }
+                    true
+                } catch (_: Exception) { false }
+            }
+        }
+    }
+
+    // ── Send WhatsApp Message (Overload 1: with detailed result string) ──
+    suspend fun sendWhatsAppMessage(phone: String, contactId: String, message: String): Pair<Boolean, String> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val baseUrl = com.xtop.admin.data.SupabaseClient.getSupabaseUrl().trimEnd('/')
+                val apiKey = com.xtop.admin.data.SupabaseClient.getSupabaseKey()
+                val url = URL("$baseUrl/functions/v1/whatsapp-webhook?action=send-message")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("apikey", apiKey)
+                conn.setRequestProperty("Authorization", "Bearer $apiKey")
+                conn.connectTimeout = 12000
+                conn.readTimeout = 12000
+                conn.doOutput = true
+
+                val payload = JSONObject().apply {
+                    put("phone", phone)
+                    if (contactId.isNotBlank()) put("contact_id", contactId)
+                    put("message", message)
+                }
+
+                conn.outputStream.write(payload.toString().toByteArray())
+                val responseCode = conn.responseCode
+                val stream = if (responseCode in 200..299) conn.inputStream else conn.errorStream
+                val responseText = stream?.bufferedReader()?.readText() ?: "{}"
+                val json = JSONObject(responseText)
+
+                if (responseCode == 200 && json.optBoolean("success", false)) {
+                    Pair(true, "Sent")
+                } else {
+                    val err = json.optString("error", "Server returned HTTP $responseCode")
+                    Pair(false, err)
+                }
+            } catch (e: Exception) {
+                Pair(false, e.localizedMessage ?: "Network connection error")
+            }
+        }
+    }
+
+    // ── Send WhatsApp Message (Overload 2: simple boolean for legacy callers) ──
+    suspend fun sendWhatsAppMessage(phone: String, message: String): Boolean {
+        val result = sendWhatsAppMessage(phone = phone, contactId = "", message = message)
+        return result.first
     }
 }
