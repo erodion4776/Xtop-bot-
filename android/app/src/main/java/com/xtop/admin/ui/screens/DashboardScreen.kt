@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.xtop.admin.data.SupabaseClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -44,11 +45,17 @@ fun DashboardScreen(navController: NavController) {
         scope.launch {
             isRefreshing = true
             try {
-                val url = URL("https://mldywarnnwjitfvqpgis.supabase.co/functions/v1/xtop-dashboard?action=stats")
+                val baseUrl = SupabaseClient.getSupabaseUrl().trimEnd('/')
+                val apiKey = SupabaseClient.getSupabaseKey()
+                val url = URL("$baseUrl/functions/v1/whatsapp-webhook?action=stats")
+
                 withContext(Dispatchers.IO) {
                     val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 5000
-                    conn.readTimeout = 5000
+                    conn.connectTimeout = 7000
+                    conn.readTimeout = 7000
+                    conn.setRequestProperty("apikey", apiKey)
+                    conn.setRequestProperty("Authorization", "Bearer $apiKey")
+
                     if (conn.responseCode == 200) {
                         val response = conn.inputStream.bufferedReader().readText()
                         val json = JSONObject(response).optJSONObject("data")
@@ -87,14 +94,14 @@ fun DashboardScreen(navController: NavController) {
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                "XTOP Admin Console",
+                                "XTOP Command Centre",
                                 color = Color(0xFF38BDF8),
                                 fontSize = 17.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                         Text(
-                            "Sabi WhatsApp Assistant Live",
+                            "Sabi Assistant & Enterprise CRM",
                             color = Color(0xFF94A3B8),
                             fontSize = 11.sp
                         )
@@ -115,6 +122,13 @@ fun DashboardScreen(navController: NavController) {
                                 tint = Color(0xFF38BDF8)
                             )
                         }
+                    }
+                    IconButton(onClick = { navController.navigate("notifications") }) {
+                        Icon(
+                            Icons.Default.Notifications,
+                            contentDescription = "Notifications",
+                            tint = Color(0xFFFBBF24)
+                        )
                     }
                     IconButton(onClick = { navController.navigate("settings") }) {
                         Icon(
@@ -139,7 +153,7 @@ fun DashboardScreen(navController: NavController) {
             item { Spacer(modifier = Modifier.height(4.dp)) }
 
             // ══════════════════════════════════════════════════
-            // 1. STATS METRICS GRID
+            // 1. STATS METRICS GRID (CLICKABLE)
             // ══════════════════════════════════════════════════
             item {
                 Text(
@@ -158,18 +172,20 @@ fun DashboardScreen(navController: NavController) {
                     MetricCard(
                         title = "Today's Msgs",
                         value = stats.todayMessages.toString(),
-                        sub = "Inbound + Outbound",
+                        sub = "Live Inbound + Outbound",
                         icon = Icons.Default.Send,
                         color = Color(0xFF38BDF8),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        onClick = { navController.navigate("live_activity") }
                     )
                     MetricCard(
                         title = "Open Tickets",
                         value = stats.openOrders.toString(),
-                        sub = "Action required",
+                        sub = "Needs action",
                         icon = Icons.Default.Warning,
                         color = Color(0xFFFBBF24),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        onClick = { navController.navigate("tickets") }
                     )
                 }
 
@@ -182,28 +198,30 @@ fun DashboardScreen(navController: NavController) {
                     MetricCard(
                         title = "Total Clients",
                         value = stats.totalContacts.toString(),
-                        sub = "Unique WhatsApp users",
+                        sub = "WhatsApp directory",
                         icon = Icons.Default.Person,
                         color = Color(0xFF10B981),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        onClick = { navController.navigate("clients") }
                     )
                     MetricCard(
-                        title = "Total Orders",
+                        title = "Active Leads",
                         value = stats.totalOrders.toString(),
-                        sub = "Bot build requests",
-                        icon = Icons.Default.ShoppingCart,
+                        sub = "Commercial pipeline",
+                        icon = Icons.Default.TrendingUp,
                         color = Color(0xFFA855F7),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        onClick = { navController.navigate("leads") }
                     )
                 }
             }
 
             // ══════════════════════════════════════════════════
-            // 2. CLIENT MANAGEMENT & LIVE BOT CRM
+            // 2. COMMAND CENTRE CORE WORKFLOWS
             // ══════════════════════════════════════════════════
             item {
                 Text(
-                    "CLIENT MANAGEMENT & BOT OPERATIONS",
+                    "COMMAND CENTRE CORE WORKFLOWS",
                     color = Color(0xFF94A3B8),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -211,11 +229,11 @@ fun DashboardScreen(navController: NavController) {
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Highlight Card: Opens the full Retail CRM & Sabi Chat
+                // Highlight Card: Direct CRM & Sabi Chat Console
                 HighlightActionCard(
                     title = "Retail CRM & Sabi Live Chat",
-                    subtitle = "View all clients, leads, quotes, tickets and chat directly via Sabi",
-                    badge = if (stats.openOrders > 0) "${stats.openOrders} OPEN" else "ACTIVE",
+                    subtitle = "Manage clients, send WhatsApp replies as Sabi & toggle Agent Handoff",
+                    badge = if (stats.openOrders > 0) "${stats.openOrders} PENDING" else "ACTIVE",
                     badgeColor = if (stats.openOrders > 0) Color(0xFFF59E0B) else Color(0xFF10B981),
                     gradient = listOf(Color(0xFF1E3A8A), Color(0xFF1E293B)),
                     icon = Icons.Default.Chat,
@@ -224,20 +242,80 @@ fun DashboardScreen(navController: NavController) {
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Highlight Card: Live Activity Feed
+                // Highlight Card: Live Activity Stream
                 HighlightActionCard(
-                    title = "Live Bot Activity Stream",
-                    subtitle = "Real-time log of every message passing through Sabi",
-                    badge = "STREAMING",
+                    title = "Live Customer Activity Stream",
+                    subtitle = "Real-time log of customer menu selections, bot queries & events",
+                    badge = "LIVE STREAM",
                     badgeColor = Color(0xFF38BDF8),
                     gradient = listOf(Color(0xFF0C4A6E), Color(0xFF1E293B)),
                     icon = Icons.Default.Search,
-                    onClick = { navController.navigate("bot_activity") }
+                    onClick = { navController.navigate("live_activity") }
                 )
             }
 
             // ══════════════════════════════════════════════════
-            // 3. XTOPEDU & COURSES
+            // 3. SALES, CLIENTS & SUPPORT TICKETS
+            // ══════════════════════════════════════════════════
+            item {
+                Text(
+                    "SALES, LEADS & TICKETS",
+                    color = Color(0xFF94A3B8),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    QuickNavButton(
+                        title = "Sales Leads",
+                        subtitle = "Pipeline & budgets",
+                        icon = Icons.Default.TrendingUp,
+                        iconTint = Color(0xFF22C55E),
+                        modifier = Modifier.weight(1f),
+                        onClick = { navController.navigate("leads") }
+                    )
+                    QuickNavButton(
+                        title = "Support Tickets",
+                        subtitle = "Inbound requests",
+                        icon = Icons.Default.Notifications,
+                        iconTint = Color(0xFFF97316),
+                        modifier = Modifier.weight(1f),
+                        onClick = { navController.navigate("tickets") }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    QuickNavButton(
+                        title = "Clients Directory",
+                        subtitle = "Profiles & call log",
+                        icon = Icons.Default.People,
+                        iconTint = Color(0xFF38BDF8),
+                        modifier = Modifier.weight(1f),
+                        onClick = { navController.navigate("clients") }
+                    )
+                    QuickNavButton(
+                        title = "Customer Inbox",
+                        subtitle = "Chat conversations",
+                        icon = Icons.Default.MailOutline,
+                        iconTint = Color(0xFFA855F7),
+                        modifier = Modifier.weight(1f),
+                        onClick = { navController.navigate("inbox") }
+                    )
+                }
+            }
+
+            // ══════════════════════════════════════════════════
+            // 4. XTOPEDU ACADEMIC MANAGEMENT
             // ══════════════════════════════════════════════════
             item {
                 Text(
@@ -255,7 +333,7 @@ fun DashboardScreen(navController: NavController) {
                 ) {
                     QuickNavButton(
                         title = "Courses & Slides",
-                        subtitle = "Manage lessons",
+                        subtitle = "Lesson modules",
                         icon = Icons.Default.Star,
                         iconTint = Color(0xFFFBBF24),
                         modifier = Modifier.weight(1f),
@@ -263,7 +341,7 @@ fun DashboardScreen(navController: NavController) {
                     )
                     QuickNavButton(
                         title = "CBT Exams",
-                        subtitle = "Question banks",
+                        subtitle = "Online questions",
                         icon = Icons.Default.CheckCircle,
                         iconTint = Color(0xFF4ADE80),
                         modifier = Modifier.weight(1f),
@@ -279,7 +357,7 @@ fun DashboardScreen(navController: NavController) {
                 ) {
                     QuickNavButton(
                         title = "Students",
-                        subtitle = "Student records",
+                        subtitle = "Records & levels",
                         icon = Icons.Default.Person,
                         iconTint = Color(0xFF60A5FA),
                         modifier = Modifier.weight(1f),
@@ -297,11 +375,11 @@ fun DashboardScreen(navController: NavController) {
             }
 
             // ══════════════════════════════════════════════════
-            // 4. SYSTEM & AUDIT
+            // 5. SYSTEM & AUDIT
             // ══════════════════════════════════════════════════
             item {
                 Text(
-                    "SYSTEM & SECURITY",
+                    "SYSTEM & ADMINISTRATION",
                     color = Color(0xFF94A3B8),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -323,7 +401,7 @@ fun DashboardScreen(navController: NavController) {
                     )
                     QuickNavButton(
                         title = "Admin Users",
-                        subtitle = "Permissions",
+                        subtitle = "Team access",
                         icon = Icons.Default.AccountCircle,
                         iconTint = Color(0xFF94A3B8),
                         modifier = Modifier.weight(1f),
@@ -338,7 +416,7 @@ fun DashboardScreen(navController: NavController) {
 }
 
 // ══════════════════════════════════════════════════════
-// COMPONENT: METRIC CARD
+// COMPONENT: METRIC CARD (CLICKABLE)
 // ══════════════════════════════════════════════════════
 @Composable
 fun MetricCard(
@@ -347,12 +425,13 @@ fun MetricCard(
     sub: String,
     icon: ImageVector,
     color: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {}
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
         shape = RoundedCornerShape(12.dp),
-        modifier = modifier
+        modifier = modifier.clickable { onClick() }
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
