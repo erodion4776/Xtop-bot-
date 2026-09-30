@@ -38,7 +38,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
   // 1. Ignore completely empty payloads
   if (!text && !interactiveId) return;
 
-  // 2. Message Deduplication
+  // 2. Message Deduplication (Prevents Meta webhook retry storms)
   if (incoming.messageId) {
     const { data: existingMsg } = await supabase
       .from("messages")
@@ -52,11 +52,13 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     const contact = await getOrCreateContact(phone, incoming.profileName);
     const conversation = await getOrCreateConversation(contact.id);
 
+    // Save message record in database
     await storeMessage(
       contact.id, "INBOUND", incoming.type,
       text || interactiveId || null, incoming.messageId
     );
 
+    // Log to Dashboard Activity Feed
     logBotActivity(
       phone, "INBOUND", incoming.type,
       conversation.current_module || "MAIN_MENU",
@@ -66,7 +68,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     ).catch(() => {});
 
     // ══════════════════════════════════════════════════════
-    // SABI PAUSE / AGENT HANDOFF CHECK
+    // 🛑 1. GLOBAL SABI PAUSE CHECK
     // ══════════════════════════════════════════════════════
     const { data: setting } = await supabase
       .from("system_settings")
@@ -75,15 +77,30 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       .maybeSingle();
 
     if (setting?.value?.enabled === true) {
-      console.log(`[Sabi Paused] Message from ${phone} logged. Auto-response OFF.`);
+      console.log(`[Global Sabi Paused] Message from ${phone} logged. Auto-response OFF.`);
       return;
+    }
+
+    // ══════════════════════════════════════════════════════
+    // 🛑 2. INDIVIDUAL CONVERSATION AGENT TAKEOVER CHECK
+    // ══════════════════════════════════════════════════════
+    const ctx = (conversation.context_json || {}) as Record<string, any>;
+    const isContactAgentMode = (contact as any)?.agent_mode === true;
+    const isConvTakeover = ctx.agent_takeover === true || ctx.agent_mode === true;
+
+    if (isContactAgentMode || isConvTakeover) {
+      console.log(`[Individual Agent Takeover Active] Bot paused for customer: ${phone}.`);
+      return; // Sabi stays silent for this specific customer only
     }
 
     // ══════════════════════════════════════════════════════
     // ACTIVE WORKFLOW ROUTING (WORKFLOW LOCK)
     // ══════════════════════════════════════════════════════
+    // Once a customer is inside a workflow, that workflow
+    // owns the conversation until completed or explicitly exited.
     const currentModule = conversation.current_module || "MAIN_MENU";
 
+    // Explicit Home button always resets to Main Menu
     if (interactiveId === "menu_home" || lowerText === "menu_home") {
       await updateConversation(conversation.id, {
         current_module: "MAIN_MENU",
@@ -94,74 +111,87 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
+    // 1. LEARNING workflow
     if (currentModule === "LEARNING") {
       await handleLearning(phone, text, contact, conversation);
       return;
     }
 
+    // 2. Keyword trigger for Learning Centre
     if (isLearningKeyword(text)) {
-      const ctx = conversation.context_json || {};
+      const existingCtx = conversation.context_json || {};
       await updateConversation(conversation.id, {
         current_module: "LEARNING",
         current_state: "ENTRY",
-        context_json: { ...ctx, learningUnlocked: true, step: "ENTRY" },
+        context_json: { ...existingCtx, learningUnlocked: true, step: "ENTRY" },
       });
       await handleLearning(phone, text, contact, conversation);
       return;
     }
 
+    // 3. SALES workflow
     if (currentModule === "SALES") {
       await handleSales(phone, text, contact, conversation);
       return;
     }
 
+    // 4. AGENT workflow
     if (currentModule === "AGENT") {
       await handleAgent(phone, text, contact, conversation);
       return;
     }
 
+    // 5. EXAMS workflow
     if (currentModule === "EXAMS") {
       await handleExams(phone, text, contact, conversation);
       return;
     }
 
+    // 6. TOOLS workflow
     if (currentModule === "TOOLS") {
       await handleTools(phone, text, contact, conversation, interactiveId);
       return;
     }
 
+    // 7. GAMES workflow
     if (currentModule === "GAMES") {
       await handleGames(phone, text, contact, conversation, interactiveId);
       return;
     }
 
+    // 8. DEMOS workflow
     if (currentModule === "DEMOS") {
       await handleDemos(phone, text, contact, conversation, interactiveId);
       return;
     }
 
+    // 9. MAGAZINE STUDIO workflow
     if (currentModule === "MAGAZINE") {
       await handleMagazineStudio(phone, text, contact, conversation, interactiveId);
       return;
     }
 
+    // 10. ABOUT workflow
     if (currentModule === "ABOUT") {
       await handleAbout(phone, text, contact, conversation, interactiveId);
       return;
     }
 
+    // 11. PRODUCTS workflow
     if (currentModule === "PRODUCTS") {
       await handleProducts(phone, text, contact, conversation);
       return;
     }
 
+    // 12. SERVICES workflow
     if (currentModule === "SERVICES") {
       await handleServices(phone, text, contact, conversation);
       return;
     }
 
+    // 13. MAGAZINE CATALOGUE workflow
     if (currentModule === "MAGAZINE_CATALOG") {
-      await handleMagazine(phone, text, contact, conversation);
+      await handleMagazine(phone, text, contact, conversation, interactiveId);
       return;
     }
 
@@ -169,6 +199,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     // DIRECT INTENT OVERRIDES (FROM IDLE / MAIN MENU)
     // ══════════════════════════════════════════════════════
 
+    // About Xtop
     if (
       interactiveId === "menu_about" ||
       interactiveId.startsWith("about_") ||
@@ -180,6 +211,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
+    // Games Engine
     if (
       interactiveId.startsWith("game_") ||
       interactiveId.startsWith("trivia_") ||
@@ -197,6 +229,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
+    // Demo Centre
     if (
       interactiveId.startsWith("demo_") ||
       interactiveId.startsWith("democat_") ||
@@ -207,22 +240,25 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
+    // Tools
     if (interactiveId.startsWith("tool_") || interactiveId.startsWith("tools_")) {
       await handleTools(phone, text, contact, conversation, interactiveId);
       return;
     }
 
+    // Website & Domain sub-tool
     if (interactiveId.startsWith("wd_") || interactiveId.startsWith("dns_")) {
       await handleWebsiteDomain(phone, text, contact, conversation, interactiveId);
       return;
     }
 
+    // Flight Checker sub-tool
     if (interactiveId.startsWith("flight_")) {
       await handleFlightChecker(phone, text, contact, conversation, interactiveId);
       return;
     }
 
-    // Magazine Studio (all mag_ prefixes)
+    // Magazine Studio
     if (
       interactiveId === "menu_magazine_studio" ||
       interactiveId.startsWith("mag_") ||
