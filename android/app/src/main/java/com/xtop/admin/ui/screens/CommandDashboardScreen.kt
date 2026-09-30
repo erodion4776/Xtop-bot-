@@ -1,192 +1,191 @@
-package com.xtop.admin.ui.screens
+package com.xtop.admin.data.repository
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.navigation.NavController
-import com.xtop.admin.data.ActivityEvent
-import com.xtop.admin.data.repository.CommandCentreRepository
-import kotlinx.coroutines.launch
+import com.xtop.admin.data.*
+import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.query.Columns
+import io.github.jan.supabase.postgrest.query.Order
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import java.time.LocalDate
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun CommandDashboardScreen(
-    navController: NavController,
-    repo: CommandCentreRepository
-) {
-    val scope = rememberCoroutineScope()
-    var stats by remember { mutableStateOf(mapOf<String, Int>()) }
-    var activity by remember { mutableStateOf<List<ActivityEvent>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
+class CommandCentreRepository(private val client: SupabaseClient) {
 
-    LaunchedEffect(Unit) {
-        scope.launch {
-            stats = repo.getDashboardStats()
-            activity = repo.getRecentActivity(20)
-            loading = false
-        }
-    }
+    // ── Dashboard Stats ──
+    suspend fun getDashboardStats(): Map<String, Int> {
+        val today = LocalDate.now().toString()
+        return try {
+            val contacts = client.from("contacts").select(columns = Columns.raw("id")) {
+                filter { gte("created_at", "${today}T00:00:00Z") }
+            }.decodeList<JsonObject>().size
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("XTOP Command Centre", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text("Sales & Client Management", fontSize = 12.sp, color = Color.Gray)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0F172A),
-                    titleContentColor = Color.White
-                )
+            val conversations = client.from("conversations").select(columns = Columns.raw("id")) {
+                filter { neq("current_state", "IDLE") }
+            }.decodeList<JsonObject>().size
+
+            val leads = client.from("leads").select(columns = Columns.raw("id")) {
+                filter {
+                    gte("created_at", "${today}T00:00:00Z")
+                    isIn("status", listOf("QUALIFYING", "QUOTED"))
+                }
+            }.decodeList<JsonObject>().size
+
+            val tickets = client.from("agent_requests").select(columns = Columns.raw("id")) {
+                filter {
+                    gte("created_at", "${today}T00:00:00Z")
+                    eq("status", "NEW")
+                }
+            }.decodeList<JsonObject>().size
+
+            mapOf(
+                "activeUsers" to contacts,
+                "conversations" to conversations,
+                "newLeads" to leads,
+                "newTickets" to tickets
             )
-        },
-        containerColor = Color(0xFF0F172A)
-    ) { padding ->
-        if (loading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Color(0xFF38BDF8))
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.padding(padding).padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                item {
-                    Text("TODAY", color = Color(0xFF94A3B8), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-
-                item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        StatCard("Active Users", stats["activeUsers"] ?: 0, Icons.Default.People, Color(0xFF38BDF8), Modifier.weight(1f))
-                        StatCard("Conversations", stats["conversations"] ?: 0, Icons.Default.Chat, Color(0xFFA855F7), Modifier.weight(1f))
-                    }
-                }
-
-                item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        StatCard("New Leads", stats["newLeads"] ?: 0, Icons.Default.TrendingUp, Color(0xFF22C55E), Modifier.weight(1f))
-                        StatCard("New Tickets", stats["newTickets"] ?: 0, Icons.Default.Notifications, Color(0xFFF97316), Modifier.weight(1f))
-                    }
-                }
-
-                item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        QuickNavCard("💬 Inbox", "Customer messages", Modifier.weight(1f)) {
-                            navController.navigate("inbox")
-                        }
-                        QuickNavCard("🎯 Leads", "Manage leads", Modifier.weight(1f)) {
-                            navController.navigate("leads")
-                        }
-                    }
-                }
-
-                item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        QuickNavCard("🎫 Tickets", "Support tickets", Modifier.weight(1f)) {
-                            navController.navigate("tickets")
-                        }
-                        QuickNavCard("👥 Clients", "All clients", Modifier.weight(1f)) {
-                            navController.navigate("clients")
-                        }
-                    }
-                }
-
-                item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        QuickNavCard("🔴 Live Activity", "Real-time events", Modifier.weight(1f)) {
-                            navController.navigate("live_activity")
-                        }
-                        QuickNavCard("🔔 Notifications", "Alerts", Modifier.weight(1f)) {
-                            navController.navigate("notifications")
-                        }
-                    }
-                }
-
-                item {
-                    Spacer(Modifier.height(8.dp))
-                    Text("🔴 NEEDS ATTENTION", color = Color(0xFFEF4444), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                }
-
-                items(activity.filter { it.direction == "INBOUND" }.take(5)) { event ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            navController.navigate("client_profile/${event.phone_number}")
-                        },
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp).fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    event.contact_name ?: event.phone_number,
-                                    color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp
-                                )
-                                Text(
-                                    event.message_body?.take(50) ?: event.module ?: "Activity",
-                                    color = Color(0xFF94A3B8), fontSize = 12.sp
-                                )
-                            }
-                            Text(
-                                event.created_at.takeLast(8).take(5),
-                                color = Color(0xFF64748B), fontSize = 11.sp
-                            )
-                        }
-                    }
-                }
-            }
+        } catch (e: Exception) {
+            mapOf("activeUsers" to 0, "conversations" to 0, "newLeads" to 0, "newTickets" to 0)
         }
     }
-}
 
-@Composable
-fun StatCard(title: String, value: Int, icon: ImageVector, color: Color, modifier: Modifier = Modifier) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(title, color = Color(0xFF94A3B8), fontSize = 11.sp)
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(value.toString(), color = color, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-        }
+    // ── Clients ──
+    suspend fun getClients(limitCount: Long = 50L): List<ClientProfile> {
+        return try {
+            client.from("contacts").select {
+                order("updated_at", Order.DESCENDING)
+                limit(limitCount)
+            }.decodeList()
+        } catch (e: Exception) { emptyList() }
     }
-}
 
-@Composable
-fun QuickNavCard(title: String, subtitle: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Card(
-        modifier = modifier.clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-            Text(subtitle, color = Color(0xFF64748B), fontSize = 11.sp)
-        }
+    suspend fun getClientById(id: String): ClientProfile? {
+        return try {
+            client.from("contacts").select {
+                filter { eq("id", id) }
+                limit(1L)
+            }.decodeSingleOrNull()
+        } catch (e: Exception) { null }
+    }
+
+    // ── Conversations ──
+    suspend fun getConversationByContact(contactId: String): ConversationRecord? {
+        return try {
+            client.from("conversations").select {
+                filter { eq("contact_id", contactId) }
+                order("updated_at", Order.DESCENDING)
+                limit(1L)
+            }.decodeSingleOrNull()
+        } catch (e: Exception) { null }
+    }
+
+    // ── Messages ──
+    suspend fun getMessages(contactId: String, limitCount: Long = 100L): List<MessageRecord> {
+        return try {
+            client.from("messages").select {
+                filter { eq("contact_id", contactId) }
+                order("created_at", Order.ASCENDING)
+                limit(limitCount)
+            }.decodeList()
+        } catch (e: Exception) { emptyList() }
+    }
+
+    // ── Leads ──
+    suspend fun getLeads(status: String? = null, limitCount: Long = 50L): List<LeadRecord> {
+        return try {
+            client.from("leads").select {
+                if (status != null) filter { eq("status", status) }
+                order("created_at", Order.DESCENDING)
+                limit(limitCount)
+            }.decodeList()
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun updateLeadStatus(leadId: String, status: String): Boolean {
+        return try {
+            client.from("leads").update(
+                buildJsonObject { put("status", status) }
+            ) { filter { eq("id", leadId) } }
+            true
+        } catch (e: Exception) { false }
+    }
+
+    // ── Tickets / Agent Requests ──
+    suspend fun getTickets(status: String? = null, limitCount: Long = 50L): List<TicketRecord> {
+        return try {
+            client.from("agent_requests").select {
+                if (status != null) filter { eq("status", status) }
+                order("created_at", Order.DESCENDING)
+                limit(limitCount)
+            }.decodeList()
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun updateTicketStatus(ticketId: String, status: String): Boolean {
+        return try {
+            client.from("agent_requests").update(
+                buildJsonObject { put("status", status) }
+            ) { filter { eq("id", ticketId) } }
+            true
+        } catch (e: Exception) { false }
+    }
+
+    // ── Live Activity ──
+    suspend fun getRecentActivity(limitCount: Long = 50L): List<ActivityEvent> {
+        return try {
+            client.from("bot_activity_log").select {
+                order("created_at", Order.DESCENDING)
+                limit(limitCount)
+            }.decodeList()
+        } catch (e: Exception) { emptyList() }
+    }
+
+    // ── Agent Takeover ──
+    suspend fun takeOverConversation(conversationId: String, phone: String): Boolean {
+        return try {
+            client.from("conversations").update(
+                buildJsonObject {
+                    put("context_json", buildJsonObject {
+                        put("agent_takeover", true)
+                        put("agent_name", "Admin")
+                    })
+                }
+            ) { filter { eq("id", conversationId) } }
+            true
+        } catch (e: Exception) { false }
+    }
+
+    suspend fun returnToBot(conversationId: String): Boolean {
+        return try {
+            client.from("conversations").update(
+                buildJsonObject {
+                    put("context_json", buildJsonObject {
+                        put("agent_takeover", false)
+                    })
+                }
+            ) { filter { eq("id", conversationId) } }
+            true
+        } catch (e: Exception) { false }
+    }
+
+    // ── Send WhatsApp Message via existing Edge Function ──
+    suspend fun sendWhatsAppMessage(phone: String, message: String): Boolean {
+        return try {
+            val supabaseUrl = com.xtop.admin.data.SupabaseClient.getSupabaseUrl().trimEnd('/')
+            val apiKey = com.xtop.admin.data.SupabaseClient.getSupabaseKey()
+            val url = java.net.URL("$supabaseUrl/functions/v1/whatsapp-webhook?action=send-message")
+            val conn = url.openConnection() as java.net.HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("apikey", apiKey)
+            conn.setRequestProperty("Authorization", "Bearer $apiKey")
+            conn.doOutput = true
+            val payload = org.json.JSONObject().apply {
+                put("phone", phone)
+                put("message", message)
+            }
+            conn.outputStream.write(payload.toString().toByteArray())
+            conn.responseCode == 200
+        } catch (e: Exception) { false }
     }
 }
