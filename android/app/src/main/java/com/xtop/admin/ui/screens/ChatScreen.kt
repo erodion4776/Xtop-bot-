@@ -27,6 +27,7 @@ import com.xtop.admin.data.MessageRecord
 import com.xtop.admin.data.repository.CommandCentreRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,19 +53,24 @@ fun ChatScreen(
             val ctx = conversation?.context_json
             isAgentMode = ctx?.get("agent_takeover")?.toString()?.contains("true") == true ||
                           ctx?.get("agent_mode")?.toString()?.contains("true") == true
-            messages = repo.getMessages(contactId, 100)
+            
+            // Search using both contactId and client's phone number
+            val phone = client?.phone ?: contactId
+            val msgs = repo.getMessages(contactId, 100)
+            messages = if (msgs.isNotEmpty()) msgs else repo.getMessages(phone, 100)
         }
     }
 
     LaunchedEffect(contactId) {
         loadData()
-        // Live poll every 2.5 seconds
         while (true) {
             delay(2500)
             try {
+                val phone = client?.phone ?: contactId
                 val updated = repo.getMessages(contactId, 100)
-                if (updated.size != messages.size) {
-                    messages = updated
+                val finalUpdated = if (updated.isNotEmpty()) updated else repo.getMessages(phone, 100)
+                if (finalUpdated.size != messages.size) {
+                    messages = finalUpdated
                 }
             } catch (_: Exception) {}
         }
@@ -77,7 +83,7 @@ fun ChatScreen(
     }
 
     fun sendMessage() {
-        val phone = client?.phone ?: ""
+        val phone = client?.phone ?: contactId
         if (phone.isBlank()) {
             Toast.makeText(context, "⚠️ No phone number found for this contact", Toast.LENGTH_SHORT).show()
             return
@@ -88,11 +94,24 @@ fun ChatScreen(
         inputText = ""
         isSending = true
 
+        // 🌟 OPTIMISTIC UI UPDATE: Add message bubble immediately to screen!
+        val tempMessage = MessageRecord(
+            id = "temp_${Date().time}",
+            contact_id = contactId,
+            phone_number = phone,
+            direction = "OUTBOUND",
+            body = msg,
+            text = msg,
+            created_at = Date().toString()
+        )
+        messages = messages + tempMessage
+
         scope.launch {
             val result = repo.sendWhatsAppMessage(phone, contactId, msg)
             if (result.first) {
-                // Instantly refresh message list
-                messages = repo.getMessages(contactId, 100)
+                // Refresh from DB in background
+                val updated = repo.getMessages(contactId, 100)
+                messages = if (updated.isNotEmpty()) updated else repo.getMessages(phone, 100)
             } else {
                 Toast.makeText(context, "⚠️ ${result.second}", Toast.LENGTH_LONG).show()
             }
@@ -123,9 +142,10 @@ fun ChatScreen(
                     }
                 },
                 actions = {
-                    if (!client?.phone.isNullOrBlank()) {
+                    val phone = client?.phone ?: contactId
+                    if (phone.isNotBlank()) {
                         IconButton(onClick = {
-                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${client?.phone}"))
+                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
                             context.startActivity(intent)
                         }) {
                             Icon(Icons.Default.Phone, "Call", tint = Color(0xFF10B981))
@@ -134,18 +154,18 @@ fun ChatScreen(
 
                     TextButton(onClick = {
                         scope.launch {
-                            val phone = client?.phone ?: ""
+                            val p = client?.phone ?: contactId
                             if (isAgentMode) {
-                                val ok = repo.returnToBot(contactId, phone)
+                                val ok = repo.returnToBot(contactId, p)
                                 if (ok) {
                                     isAgentMode = false
                                     Toast.makeText(context, "🤖 Bot resumed for this client", Toast.LENGTH_SHORT).show()
                                 }
                             } else {
-                                val ok = repo.takeOverConversation(contactId, phone)
+                                val ok = repo.takeOverConversation(contactId, p)
                                 if (ok) {
                                     isAgentMode = true
-                                    Toast.makeText(context, "👨🏽‍💼 You took over. Bot paused for this client.", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "👨🏽‍💼 Bot paused for this client", Toast.LENGTH_SHORT).show()
                                 }
                             }
                             loadData()
@@ -171,7 +191,6 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Live Message Stream
             LazyColumn(
                 state = listState,
                 modifier = Modifier
@@ -199,7 +218,7 @@ fun ChatScreen(
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    "${if (isInbound) "👤 Client" else "🤖 Sabi"} • ${msg.created_at.takeLast(8).take(5)}",
+                                    "${if (isInbound) "👤 Client" else "🤖 Sabi"} • ${msg.created_at?.takeLast(8)?.take(5) ?: ""}",
                                     color = if (isInbound) Color(0xFF94A3B8) else Color(0xFFDBEAFE),
                                     fontSize = 10.sp
                                 )
@@ -209,7 +228,6 @@ fun ChatScreen(
                 }
             }
 
-            // Input Bar
             Surface(
                 color = Color(0xFF1E293B),
                 tonalElevation = 4.dp,
