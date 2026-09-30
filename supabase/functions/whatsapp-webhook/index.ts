@@ -83,15 +83,20 @@ serve(async (req: Request) => {
       }
 
       // If a UUID was passed instead of phone, resolve from contacts/leads
+      let resolvedContactId: string | null = null;
       if (rawPhone.includes("-") && rawPhone.length > 20) {
-        const { data: c } = await sb.from("contacts").select("phone").eq("id", rawPhone).maybeSingle();
+        const { data: c } = await sb.from("contacts").select("id, phone").eq("id", rawPhone).maybeSingle();
         if (c?.phone) {
           rawPhone = c.phone;
+          resolvedContactId = c.id;
         } else {
           const { data: l } = await sb.from("leads").select("contact_id").eq("id", rawPhone).maybeSingle();
           if (l?.contact_id) {
-            const { data: c2 } = await sb.from("contacts").select("phone").eq("id", l.contact_id).maybeSingle();
-            if (c2?.phone) rawPhone = c2.phone;
+            const { data: c2 } = await sb.from("contacts").select("id, phone").eq("id", l.contact_id).maybeSingle();
+            if (c2?.phone) {
+              rawPhone = c2.phone;
+              resolvedContactId = c2.id;
+            }
           }
         }
       }
@@ -156,12 +161,21 @@ serve(async (req: Request) => {
         return jsonResponse({ error: userFriendly, raw: waData.error }, 400);
       }
 
-      // Find or create contact
-      const { data: contact } = await sb.from("contacts").select("id").eq("phone", cleanPhone).maybeSingle();
+      // Find contact by cleanPhone, +cleanPhone, or local 080...
+      let contactId = resolvedContactId;
+      if (!contactId) {
+        const localPhone = cleanPhone.startsWith("234") ? "0" + cleanPhone.slice(3) : cleanPhone;
+        const { data: contact } = await sb
+          .from("contacts")
+          .select("id")
+          .or(`phone.eq.${cleanPhone},phone.eq.+${cleanPhone},phone.eq.${localPhone}`)
+          .maybeSingle();
+        contactId = contact?.id || null;
+      }
 
-      // Store in messages table
+      // Store in messages table so Android App Chat updates immediately
       await sb.from("messages").insert({
-        contact_id: contact?.id || null,
+        contact_id: contactId,
         phone_number: cleanPhone,
         direction: "OUTBOUND",
         message_type: "text",
