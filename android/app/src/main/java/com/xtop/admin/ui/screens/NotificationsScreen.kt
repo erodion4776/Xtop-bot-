@@ -1,35 +1,33 @@
 package com.xtop.admin.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.xtop.admin.data.ActivityEvent
-import com.xtop.admin.data.LeadRecord
-import com.xtop.admin.data.TicketRecord
 import com.xtop.admin.data.repository.CommandCentreRepository
 import kotlinx.coroutines.launch
 
 data class NotificationItem(
     val id: String,
-    val type: String,       // "LEAD", "TICKET", "AGENT_REQUEST", "ACTIVITY"
+    val type: String,
     val title: String,
     val body: String,
     val time: String,
-    val priority: String,   // "HIGH", "NORMAL", "LOW"
+    val priority: String,
     val isRead: Boolean = false
 )
 
@@ -47,8 +45,7 @@ fun NotificationsScreen(
         scope.launch {
             val items = mutableListOf<NotificationItem>()
 
-            // Gather leads as notifications
-            val leads = repo.getLeads(limit = 20)
+            val leads = repo.getLeads(limitCount = 20L)
             leads.forEach { lead ->
                 items.add(
                     NotificationItem(
@@ -62,8 +59,7 @@ fun NotificationsScreen(
                 )
             }
 
-            // Gather tickets as notifications
-            val tickets = repo.getTickets(limit = 20)
+            val tickets = repo.getTickets(limitCount = 20L)
             tickets.filter { it.status == "NEW" }.forEach { ticket ->
                 items.add(
                     NotificationItem(
@@ -77,22 +73,6 @@ fun NotificationsScreen(
                 )
             }
 
-            // Gather agent requests
-            val agentTickets = tickets.filter { it.request_type == "GENERAL_ENQUIRY" && it.status == "NEW" }
-            agentTickets.forEach { ticket ->
-                items.add(
-                    NotificationItem(
-                        id = "agent_${ticket.id}",
-                        type = "AGENT_REQUEST",
-                        title = "👨🏽‍💼 Agent Request",
-                        body = ticket.message.take(80),
-                        time = ticket.created_at,
-                        priority = "HIGH"
-                    )
-                )
-            }
-
-            // Sort by time descending
             notifications = items.sortedByDescending { it.time }
             loading = false
         }
@@ -158,16 +138,17 @@ fun NotificationsScreen(
                             verticalAlignment = Alignment.Top
                         ) {
                             Row(modifier = Modifier.weight(1f)) {
-                                // Priority indicator
                                 Box(
                                     modifier = Modifier
                                         .size(8.dp)
-                                        .clip(CircleShape),
-                                    color = when (notif.priority) {
-                                        "HIGH" -> Color(0xFFEF4444)
-                                        "NORMAL" -> Color(0xFFF59E0B)
-                                        else -> Color(0xFF22C55E)
-                                    }
+                                        .background(
+                                            when (notif.priority) {
+                                                "HIGH" -> Color(0xFFEF4444)
+                                                "NORMAL" -> Color(0xFFF59E0B)
+                                                else -> Color(0xFF22C55E)
+                                            },
+                                            CircleShape
+                                        )
                                 )
                                 Spacer(Modifier.width(10.dp))
                                 Column {
