@@ -45,8 +45,7 @@ fun ChatScreen(
     var isSending by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
-    // 1. Load client profile, takeover state & messages on launch + Auto-Poll every 3 seconds
-    LaunchedEffect(contactId) {
+    fun loadData() {
         scope.launch {
             client = repo.getClientById(contactId)
             conversation = repo.getConversationByContact(contactId)
@@ -55,21 +54,22 @@ fun ChatScreen(
                           ctx?.get("agent_mode")?.toString()?.contains("true") == true
             messages = repo.getMessages(contactId, 100)
         }
+    }
 
-        // Live background polling for incoming WhatsApp messages
+    LaunchedEffect(contactId) {
+        loadData()
+        // Live poll every 2.5 seconds
         while (true) {
-            delay(3000)
+            delay(2500)
             try {
                 val updated = repo.getMessages(contactId, 100)
-                if (updated.size != messages.size || 
-                    (updated.isNotEmpty() && messages.isNotEmpty() && updated.last().id != messages.last().id)) {
+                if (updated.size != messages.size) {
                     messages = updated
                 }
             } catch (_: Exception) {}
         }
     }
 
-    // 2. Auto-scroll to bottom when new messages arrive or are sent
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
@@ -79,7 +79,7 @@ fun ChatScreen(
     fun sendMessage() {
         val phone = client?.phone ?: ""
         if (phone.isBlank()) {
-            Toast.makeText(context, "⚠️ No phone number linked to this contact", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "⚠️ No phone number found for this contact", Toast.LENGTH_SHORT).show()
             return
         }
         if (inputText.isBlank()) return
@@ -89,13 +89,12 @@ fun ChatScreen(
         isSending = true
 
         scope.launch {
-            // Send directly to the client's verified phone number
-            val success = repo.sendWhatsAppMessage(phone, msg)
-            if (success) {
-                // Immediately refresh messages so the new message bubble appears
+            val result = repo.sendWhatsAppMessage(phone, contactId, msg)
+            if (result.first) {
+                // Instantly refresh message list
                 messages = repo.getMessages(contactId, 100)
             } else {
-                Toast.makeText(context, "⚠️ Delivery failed. Check Meta credentials or 24-hr window.", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "⚠️ ${result.second}", Toast.LENGTH_LONG).show()
             }
             isSending = false
         }
@@ -112,7 +111,7 @@ fun ChatScreen(
                             fontSize = 16.sp
                         )
                         Text(
-                            if (isAgentMode) "👨🏽‍💼 Agent Mode (Bot Paused)" else "🤖 Sabi Auto-Responding",
+                            if (isAgentMode) "👨🏽‍💼 Agent Mode Active (Bot Paused)" else "🤖 Sabi Auto-Responding",
                             fontSize = 11.sp,
                             color = if (isAgentMode) Color(0xFFF59E0B) else Color(0xFF22C55E)
                         )
@@ -124,7 +123,6 @@ fun ChatScreen(
                     }
                 },
                 actions = {
-                    // Call button (opens native Android dialer)
                     if (!client?.phone.isNullOrBlank()) {
                         IconButton(onClick = {
                             val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${client?.phone}"))
@@ -134,19 +132,23 @@ fun ChatScreen(
                         }
                     }
 
-                    // Individual conversation takeover toggle
                     TextButton(onClick = {
                         scope.launch {
                             val phone = client?.phone ?: ""
                             if (isAgentMode) {
-                                repo.returnToBot(contactId)
-                                isAgentMode = false
-                                Toast.makeText(context, "🤖 Bot resumed for this client", Toast.LENGTH_SHORT).show()
+                                val ok = repo.returnToBot(contactId, phone)
+                                if (ok) {
+                                    isAgentMode = false
+                                    Toast.makeText(context, "🤖 Bot resumed for this client", Toast.LENGTH_SHORT).show()
+                                }
                             } else {
-                                repo.takeOverConversation(contactId, phone)
-                                isAgentMode = true
-                                Toast.makeText(context, "👨🏽‍💼 You took over. Bot paused for this client.", Toast.LENGTH_SHORT).show()
+                                val ok = repo.takeOverConversation(contactId, phone)
+                                if (ok) {
+                                    isAgentMode = true
+                                    Toast.makeText(context, "👨🏽‍💼 You took over. Bot paused for this client.", Toast.LENGTH_SHORT).show()
+                                }
                             }
+                            loadData()
                         }
                     }) {
                         Text(
@@ -158,8 +160,7 @@ fun ChatScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0F172A),
-                    titleContentColor = Color.White
+                    containerColor = Color(0xFF0F172A), titleContentColor = Color.White
                 )
             )
         },
@@ -208,7 +209,7 @@ fun ChatScreen(
                 }
             }
 
-            // Chat Input Bar
+            // Input Bar
             Surface(
                 color = Color(0xFF1E293B),
                 tonalElevation = 4.dp,
