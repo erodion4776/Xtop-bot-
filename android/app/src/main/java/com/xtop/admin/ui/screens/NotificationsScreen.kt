@@ -45,7 +45,7 @@ fun NotificationsScreen(
         scope.launch {
             val items = mutableListOf<NotificationItem>()
 
-            val leads = repo.getLeads(limitCount = 20L)
+            val leads = repo.getLeads(null, 20)
             leads.forEach { lead ->
                 items.add(
                     NotificationItem(
@@ -59,7 +59,7 @@ fun NotificationsScreen(
                 )
             }
 
-            val tickets = repo.getTickets(limitCount = 20L)
+            val tickets = repo.getTickets(null, 20)
             tickets.filter { it.status == "NEW" }.forEach { ticket ->
                 items.add(
                     NotificationItem(
