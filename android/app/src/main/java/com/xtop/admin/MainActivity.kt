@@ -134,7 +134,7 @@ class MainActivity : ComponentActivity() {
                     }
 
                     // ══════════════════════════════════════════
-                    // NEW COMMAND CENTRE ROUTES
+                    // COMMAND CENTRE ROUTES
                     // ══════════════════════════════════════════
 
                     composable("command_dashboard") {
