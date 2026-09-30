@@ -30,8 +30,8 @@ fun LiveActivityScreen(navController: NavController, repo: CommandCentreReposito
 
     LaunchedEffect(Unit) {
         while (true) {
-            events = repo.getRecentActivity(50L)
-            delay(5000) // Refresh every 5 seconds
+            events = repo.getRecentActivity(50)
+            delay(5000)
         }
     }
 
