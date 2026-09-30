@@ -1,5 +1,6 @@
 package com.xtop.admin.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,7 +12,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,7 +30,7 @@ fun LiveActivityScreen(navController: NavController, repo: CommandCentreReposito
 
     LaunchedEffect(Unit) {
         while (true) {
-            events = repo.getRecentActivity(50)
+            events = repo.getRecentActivity(50L)
             delay(5000) // Refresh every 5 seconds
         }
     }
@@ -41,8 +41,9 @@ fun LiveActivityScreen(navController: NavController, repo: CommandCentreReposito
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
-                            modifier = Modifier.size(8.dp).clip(CircleShape),
-                            color = Color(0xFFEF4444)
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(Color(0xFFEF4444), CircleShape)
                         )
                         Spacer(Modifier.width(8.dp))
                         Text("LIVE ACTIVITY", fontWeight = FontWeight.Bold, color = Color(0xFFEF4444))
