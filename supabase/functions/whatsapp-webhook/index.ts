@@ -13,7 +13,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
 };
 
-// Helper: Normalize phone numbers to international standard (e.g. 2348012345678)
 function normalizePhone(raw: string): string {
   let clean = raw.replace(/[^0-9]/g, "");
   if (clean.startsWith("0") && clean.length === 11) {
@@ -30,7 +29,6 @@ function jsonResponse(body: any, status: number = 200): Response {
 }
 
 serve(async (req: Request) => {
-  // Handle CORS preflight for Android / Web
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -46,16 +44,15 @@ serve(async (req: Request) => {
   const sb = createClient(supabaseUrl, supabaseKey);
 
   // ══════════════════════════════════════════════════════
-  // 1. ADMIN API ROUTES (Called by Android App)
+  // 1. ADMIN API ROUTES
   // ══════════════════════════════════════════════════════
 
-  // ── A. GET SABI HANDOFF STATUS ──
+  // ── A. GET / SET GLOBAL SABI PAUSE ──
   if (action === "get-handoff" && req.method === "GET") {
     const { data } = await sb.from("system_settings").select("value").eq("key", "sabi_global_handoff").maybeSingle();
     return jsonResponse({ enabled: data?.value?.enabled ?? false });
   }
 
-  // ── B. TOGGLE SABI HANDOFF (PAUSE / RESUME) ──
   if (action === "toggle-handoff" && req.method === "POST") {
     try {
       const body = await req.json();
@@ -71,33 +68,61 @@ serve(async (req: Request) => {
     }
   }
 
+  // ── B. INDIVIDUAL CONVERSATION AGENT TAKEOVER (PAUSE BOT FOR 1 CLIENT) ──
+  if (action === "toggle-takeover" && req.method === "POST") {
+    try {
+      const body = await req.json();
+      const rawPhone = (body.phone || "").trim();
+      const contactId = (body.contact_id || "").trim();
+      const enabled = !!body.enabled;
+
+      let targetContactId = contactId;
+
+      if (!targetContactId && rawPhone) {
+        const clean = normalizePhone(rawPhone);
+        const { data: c } = await sb.from("contacts").select("id").or(`phone.eq.${clean},phone.eq.+${clean}`).maybeSingle();
+        targetContactId = c?.id || "";
+      }
+
+      if (targetContactId) {
+        // 1. Set agent_mode on contacts table
+        await sb.from("contacts").update({ agent_mode: enabled }).eq("id", targetContactId);
+
+        // 2. Set agent_takeover in conversation context_json
+        const { data: conv } = await sb.from("conversations").select("id, context_json").eq("contact_id", targetContactId).maybeSingle();
+        if (conv) {
+          const updatedCtx = { ...(conv.context_json || {}), agent_takeover: enabled, agent_mode: enabled };
+          await sb.from("conversations").update({
+            context_json: updatedCtx,
+            updated_at: new Date().toISOString(),
+          }).eq("id", conv.id);
+        }
+      }
+
+      return jsonResponse({ success: true, agent_takeover: enabled, contact_id: targetContactId });
+    } catch (e: any) {
+      return jsonResponse({ error: e.message }, 500);
+    }
+  }
+
   // ── C. SEND DIRECT WHATSAPP MESSAGE TO CLIENT AS SABI ──
   if (action === "send-message" && req.method === "POST") {
     try {
       const body = await req.json();
       let rawPhone = (body.phone || "").trim();
       const message = (body.message || "").trim();
+      let contactId = body.contact_id || null;
 
       if (!rawPhone || !message) {
         return jsonResponse({ error: "Phone number and message text are required" }, 400);
       }
 
-      // If a UUID was passed instead of phone, resolve from contacts/leads
-      let resolvedContactId: string | null = null;
+      // If a UUID was passed instead of phone, resolve from contacts
       if (rawPhone.includes("-") && rawPhone.length > 20) {
         const { data: c } = await sb.from("contacts").select("id, phone").eq("id", rawPhone).maybeSingle();
         if (c?.phone) {
           rawPhone = c.phone;
-          resolvedContactId = c.id;
-        } else {
-          const { data: l } = await sb.from("leads").select("contact_id").eq("id", rawPhone).maybeSingle();
-          if (l?.contact_id) {
-            const { data: c2 } = await sb.from("contacts").select("id, phone").eq("id", l.contact_id).maybeSingle();
-            if (c2?.phone) {
-              rawPhone = c2.phone;
-              resolvedContactId = c2.id;
-            }
-          }
+          contactId = c.id;
         }
       }
 
@@ -107,7 +132,7 @@ serve(async (req: Request) => {
         return jsonResponse({ error: `Invalid phone format: "${rawPhone}". Expected e.g. 2348073158887` }, 400);
       }
 
-      // Read WhatsApp secrets
+      // Check all possible secret names
       const waToken =
         Deno.env.get("WHATSAPP_ACCESS_TOKEN") ||
         Deno.env.get("WHATSAPP_TOKEN") ||
@@ -122,7 +147,7 @@ serve(async (req: Request) => {
 
       if (!waToken || !waPhoneId) {
         return jsonResponse({
-          error: "WhatsApp API credentials not found in Supabase Secrets. Please verify WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.",
+          error: "WhatsApp API credentials not set in Supabase Secrets (WHATSAPP_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID missing).",
         }, 500);
       }
 
@@ -151,18 +176,19 @@ serve(async (req: Request) => {
 
         let userFriendly = errorMsg;
         if (errorCode === 131047) {
-          userFriendly = "24-Hour customer service window expired. The client must text your bot first before you can reply.";
+          userFriendly = "24-Hour customer service window expired. The client must text your bot first.";
         } else if (errorCode === 190) {
-          userFriendly = "Meta WhatsApp Access Token has expired. Please refresh it in Supabase Secrets.";
-        } else if (errorCode === 100) {
-          userFriendly = "Invalid WhatsApp Phone ID or invalid phone format.";
+          userFriendly = "Meta WhatsApp Access Token has expired. Please update it in Supabase Secrets.";
+        } else if (errorCode === 131030) {
+          userFriendly = "Recipient phone number is not on WhatsApp or not whitelisted in Meta test sandbox.";
         }
 
         return jsonResponse({ error: userFriendly, raw: waData.error }, 400);
       }
 
-      // Find contact by cleanPhone, +cleanPhone, or local 080...
-      let contactId = resolvedContactId;
+      const waMsgId = waData.messages?.[0]?.id || null;
+
+      // Find contact if not resolved
       if (!contactId) {
         const localPhone = cleanPhone.startsWith("234") ? "0" + cleanPhone.slice(3) : cleanPhone;
         const { data: contact } = await sb
@@ -183,7 +209,7 @@ serve(async (req: Request) => {
         text: message,
         content: message,
         message_text: message,
-        whatsapp_message_id: waData.messages?.[0]?.id || null,
+        whatsapp_message_id: waMsgId,
         created_at: new Date().toISOString(),
       });
 
@@ -196,10 +222,10 @@ serve(async (req: Request) => {
         status: "SENT",
       });
 
-      return jsonResponse({ success: true, messageId: waData.messages?.[0]?.id }, 200);
+      return jsonResponse({ success: true, messageId: waMsgId }, 200);
     } catch (e: any) {
       console.error("[send-message error]:", e);
-      return jsonResponse({ error: e.message || "Failed to send message" }, 500);
+      return jsonResponse({ error: e.message || "Failed to deliver message" }, 500);
     }
   }
 
@@ -224,7 +250,7 @@ serve(async (req: Request) => {
   }
 
   // ══════════════════════════════════════════════════════
-  // 2. WHATSAPP WEBHOOK VERIFICATION (GET from Meta)
+  // 2. WHATSAPP WEBHOOK VERIFICATION (GET)
   // ══════════════════════════════════════════════════════
   if (req.method === "GET") {
     const mode = url.searchParams.get("hub.mode");
@@ -238,7 +264,7 @@ serve(async (req: Request) => {
   }
 
   // ══════════════════════════════════════════════════════
-  // 3. INCOMING MESSAGES & WEBHOOK EVENTS (POST from Meta)
+  // 3. INCOMING MESSAGES (POST)
   // ══════════════════════════════════════════════════════
   if (req.method === "POST") {
     try {
@@ -248,7 +274,6 @@ serve(async (req: Request) => {
       const changes = entry?.changes?.[0];
       const value = changes?.value;
 
-      // Ignore delivery/read receipts immediately
       if (value?.statuses && !value?.messages) {
         return new Response(JSON.stringify({ status: "ignored_status" }), {
           status: 200,
@@ -294,7 +319,6 @@ serve(async (req: Request) => {
         timestamp: messageObj.timestamp,
       };
 
-      // Process message in background
       routeMessage(incoming).catch((err) => {
         console.error("[RouteMessage Error]:", err);
       });
