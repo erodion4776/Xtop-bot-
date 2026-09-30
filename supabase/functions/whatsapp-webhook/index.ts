@@ -3,7 +3,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { routeMessage } from "./router.ts";
-import { IncomingMessage } from "./whatsapp.ts";
+import { IncomingMessage, sendTextMessage } from "./whatsapp.ts";
 
 const VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "xtop_webhook_secret";
 
@@ -47,7 +47,7 @@ serve(async (req: Request) => {
   // 1. ADMIN API ROUTES
   // ══════════════════════════════════════════════════════
 
-  // ── A. GET / SET GLOBAL SABI PAUSE ──
+  // ── A. GET / SET GLOBAL SABI HANDOFF ──
   if (action === "get-handoff" && req.method === "GET") {
     const { data } = await sb.from("system_settings").select("value").eq("key", "sabi_global_handoff").maybeSingle();
     return jsonResponse({ enabled: data?.value?.enabled ?? false });
@@ -68,7 +68,7 @@ serve(async (req: Request) => {
     }
   }
 
-  // ── B. INDIVIDUAL CONVERSATION AGENT TAKEOVER (PAUSE BOT FOR 1 CLIENT) ──
+  // ── B. INDIVIDUAL CONVERSATION AGENT TAKEOVER ──
   if (action === "toggle-takeover" && req.method === "POST") {
     try {
       const body = await req.json();
@@ -85,10 +85,8 @@ serve(async (req: Request) => {
       }
 
       if (targetContactId) {
-        // 1. Set agent_mode on contacts table
         await sb.from("contacts").update({ agent_mode: enabled }).eq("id", targetContactId);
 
-        // 2. Set agent_takeover in conversation context_json
         const { data: conv } = await sb.from("conversations").select("id, context_json").eq("contact_id", targetContactId).maybeSingle();
         if (conv) {
           const updatedCtx = { ...(conv.context_json || {}), agent_takeover: enabled, agent_mode: enabled };
@@ -105,7 +103,7 @@ serve(async (req: Request) => {
     }
   }
 
-  // ── C. SEND DIRECT WHATSAPP MESSAGE TO CLIENT AS SABI ──
+  // ── C. SEND DIRECT WHATSAPP MESSAGE (LINKED PROPERLY TO CONTACT) ──
   if (action === "send-message" && req.method === "POST") {
     try {
       const body = await req.json();
@@ -117,7 +115,7 @@ serve(async (req: Request) => {
         return jsonResponse({ error: "Phone number and message text are required" }, 400);
       }
 
-      // If a UUID was passed instead of phone, resolve from contacts
+      // If a UUID was passed as phone, resolve from contacts
       if (rawPhone.includes("-") && rawPhone.length > 20) {
         const { data: c } = await sb.from("contacts").select("id, phone").eq("id", rawPhone).maybeSingle();
         if (c?.phone) {
@@ -129,78 +127,46 @@ serve(async (req: Request) => {
       const cleanPhone = normalizePhone(rawPhone);
 
       if (cleanPhone.length < 10) {
-        return jsonResponse({ error: `Invalid phone format: "${rawPhone}". Expected e.g. 2348073158887` }, 400);
+        return jsonResponse({ error: `Invalid phone format: "${rawPhone}"` }, 400);
       }
 
-      // Check all possible secret names
-      const waToken =
-        Deno.env.get("WHATSAPP_ACCESS_TOKEN") ||
-        Deno.env.get("WHATSAPP_TOKEN") ||
-        Deno.env.get("META_ACCESS_TOKEN") ||
-        "";
-
-      const waPhoneId =
-        Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") ||
-        Deno.env.get("WHATSAPP_PHONE_ID") ||
-        Deno.env.get("PHONE_NUMBER_ID") ||
-        "";
-
-      if (!waToken || !waPhoneId) {
-        return jsonResponse({
-          error: "WhatsApp API credentials not set in Supabase Secrets (WHATSAPP_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID missing).",
-        }, 500);
-      }
-
-      // Send to Meta WhatsApp Cloud API
-      const waResp = await fetch(`https://graph.facebook.com/v19.0/${waPhoneId}/messages`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${waToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          recipient_type: "individual",
-          to: cleanPhone,
-          type: "text",
-          text: { preview_url: false, body: message },
-        }),
-      });
-
-      const waData = await waResp.json();
-
-      if (!waResp.ok || waData.error) {
-        const errorMsg = waData.error?.message || "Meta API rejected message";
-        const errorCode = waData.error?.code;
-        console.error(`[WhatsApp API Error (${errorCode})]:`, JSON.stringify(waData));
-
-        let userFriendly = errorMsg;
-        if (errorCode === 131047) {
-          userFriendly = "24-Hour customer service window expired. The client must text your bot first.";
-        } else if (errorCode === 190) {
-          userFriendly = "Meta WhatsApp Access Token has expired. Please update it in Supabase Secrets.";
-        } else if (errorCode === 131030) {
-          userFriendly = "Recipient phone number is not on WhatsApp or not whitelisted in Meta test sandbox.";
-        }
-
-        return jsonResponse({ error: userFriendly, raw: waData.error }, 400);
-      }
-
-      const waMsgId = waData.messages?.[0]?.id || null;
-
-      // Find contact if not resolved
+      // Ensure Contact Record exists so message is ALWAYS linked
       if (!contactId) {
         const localPhone = cleanPhone.startsWith("234") ? "0" + cleanPhone.slice(3) : cleanPhone;
-        const { data: contact } = await sb
+        const { data: existingContact } = await sb
           .from("contacts")
           .select("id")
           .or(`phone.eq.${cleanPhone},phone.eq.+${cleanPhone},phone.eq.${localPhone}`)
           .maybeSingle();
-        contactId = contact?.id || null;
+
+        if (existingContact) {
+          contactId = existingContact.id;
+        } else {
+          const { data: newContact } = await sb
+            .from("contacts")
+            .insert({ phone: cleanPhone, name: "WhatsApp Client" })
+            .select("id")
+            .single();
+          contactId = newContact?.id || null;
+        }
       }
 
-      // Store in messages table so Android App Chat updates immediately
-      await sb.from("messages").insert({
+      // Send to WhatsApp Cloud API via tested helper
+      console.log(`[Admin Chat Outbound] Dispatching to: ${cleanPhone}`);
+      const sendResult = await sendTextMessage(cleanPhone, message);
+
+      if (sendResult && (sendResult.error || sendResult.status >= 400)) {
+        const errObj = sendResult.error || sendResult;
+        return jsonResponse({
+          error: errObj.message || "Meta WhatsApp API rejected the message",
+          details: errObj,
+        }, 400);
+      }
+
+      const waMsgId = sendResult?.messages?.[0]?.id || null;
+
+      // Insert message with all possible column mappings
+      const msgRecord = {
         contact_id: contactId,
         phone_number: cleanPhone,
         direction: "OUTBOUND",
@@ -211,9 +177,11 @@ serve(async (req: Request) => {
         message_text: message,
         whatsapp_message_id: waMsgId,
         created_at: new Date().toISOString(),
-      });
+      };
 
-      // Store in client_chat_log
+      const { data: savedMsg } = await sb.from("messages").insert(msgRecord).select("*").maybeSingle();
+
+      // Also record in client_chat_log
       await sb.from("client_chat_log").insert({
         phone_number: cleanPhone,
         direction: "ADMIN_TO_CLIENT",
@@ -222,14 +190,31 @@ serve(async (req: Request) => {
         status: "SENT",
       });
 
-      return jsonResponse({ success: true, messageId: waMsgId }, 200);
+      return jsonResponse({ success: true, messageId: waMsgId, data: savedMsg }, 200);
     } catch (e: any) {
       console.error("[send-message error]:", e);
       return jsonResponse({ error: e.message || "Failed to deliver message" }, 500);
     }
   }
 
-  // ── D. GET STATS ──
+  // ── D. GET CHAT MESSAGES BY PHONE OR CONTACT ID ──
+  if (action === "chat" && req.method === "GET") {
+    const rawParam = (url.searchParams.get("phone") || url.searchParams.get("contact_id") || "").trim();
+    if (!rawParam) return jsonResponse({ data: [] }, 200);
+
+    let query = sb.from("messages").select("*");
+    if (rawParam.includes("-") && rawParam.length > 20) {
+      query = query.eq("contact_id", rawParam);
+    } else {
+      const clean = normalizePhone(rawParam);
+      query = query.or(`phone_number.eq.${clean},phone_number.eq.+${clean}`);
+    }
+
+    const { data } = await query.order("created_at", { ascending: true }).limit(100);
+    return jsonResponse({ data: data || [] });
+  }
+
+  // ── E. GET STATS ──
   if (action === "stats" && req.method === "GET") {
     const today = new Date().toISOString().split("T")[0];
     const [totalContacts, todayMessages, totalOrders, openOrders] = await Promise.all([
