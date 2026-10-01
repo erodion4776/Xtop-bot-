@@ -2,22 +2,12 @@ package com.xtop.admin.data.repository
 
 import com.xtop.admin.data.SupabaseClient
 import io.github.jan.supabase.postgrest.from
-import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
-import java.time.LocalDate
 
 // ═══════════════════════════════════════════════════════
-// DATA MODELS
+// RETAIL MODELS
 // ═══════════════════════════════════════════════════════
 
 @Serializable
@@ -90,7 +80,6 @@ data class RetailMessage(
     @SerialName("message_text") val messageText: String? = null,
     @SerialName("created_at") val createdAt: String? = null
 ) {
-    // Reads whichever column is populated in the database
     val displayBody: String
         get() = body?.takeIf { it.isNotBlank() }
             ?: text?.takeIf { it.isNotBlank() }
@@ -100,13 +89,12 @@ data class RetailMessage(
 }
 
 // ═══════════════════════════════════════════════════════
-// RETAIL REPOSITORY (Fast Direct PostgREST Access)
+// RETAIL REPOSITORY
 // ═══════════════════════════════════════════════════════
 
 class RetailRepository {
     private val db by lazy { SupabaseClient.postgrest }
 
-    // ── CONTACTS / CLIENTS ──
     suspend fun getContacts(): List<RetailContact> = try {
         db.from("contacts").select { order("created_at", Order.DESCENDING) }.decodeList()
     } catch (e: Exception) {
@@ -128,7 +116,6 @@ class RetailRepository {
         }.decodeList()
     } catch (e: Exception) { emptyList() }
 
-    // ── LEADS ──
     suspend fun getLeads(): List<RetailLead> = try {
         db.from("leads").select { order("created_at", Order.DESCENDING) }.decodeList()
     } catch (e: Exception) { emptyList() }
@@ -139,7 +126,6 @@ class RetailRepository {
         } catch (e: Exception) { e.printStackTrace() }
     }
 
-    // ── QUOTATIONS ──
     suspend fun getQuotations(): List<RetailQuotation> = try {
         db.from("quotations").select { order("created_at", Order.DESCENDING) }.decodeList()
     } catch (e: Exception) { emptyList() }
@@ -150,7 +136,6 @@ class RetailRepository {
         } catch (e: Exception) { e.printStackTrace() }
     }
 
-    // ── AGENT REQUESTS / SUPPORT TICKETS ──
     suspend fun getAgentRequests(): List<RetailAgentRequest> = try {
         db.from("agent_requests").select { order("created_at", Order.DESCENDING) }.decodeList()
     } catch (e: Exception) { emptyList() }
@@ -165,19 +150,16 @@ class RetailRepository {
         } catch (e: Exception) { e.printStackTrace() }
     }
 
-    // ── CHAT MESSAGES (Direct DB Query by contact_id OR phone) ──
     suspend fun getMessages(contactIdOrPhone: String): List<RetailMessage> = try {
         val clean = contactIdOrPhone.replace("+", "").replace(" ", "").trim()
 
         if (contactIdOrPhone.contains("-") && contactIdOrPhone.length > 20) {
-            // Is UUID -> Query by contact_id
             db.from("messages").select {
                 filter { eq("contact_id", contactIdOrPhone) }
                 order("created_at", Order.ASCENDING)
                 limit(100L)
             }.decodeList()
         } else {
-            // Is phone -> Query by phone_number
             db.from("messages").select {
                 filter {
                     or {
@@ -194,7 +176,6 @@ class RetailRepository {
         emptyList()
     }
 
-    // ── DASHBOARD STATS ──
     suspend fun getNewRequestCount(): Int = try {
         db.from("agent_requests").select { filter { eq("status", "NEW") } }.decodeList<RetailAgentRequest>().size
     } catch (e: Exception) { 0 }
@@ -210,226 +191,4 @@ class RetailRepository {
     suspend fun getTotalContactCount(): Int = try {
         db.from("contacts").select().decodeList<RetailContact>().size
     } catch (e: Exception) { 0 }
-}
-
-// ═══════════════════════════════════════════════════════
-// COMMAND CENTRE REPOSITORY
-// ═══════════════════════════════════════════════════════
-
-class CommandCentreRepository(private val client: io.github.jan.supabase.SupabaseClient) {
-    private val retailRepo = RetailRepository()
-
-    suspend fun getDashboardStats(): Map<String, Int> {
-        val today = LocalDate.now().toString()
-        return try {
-            val contacts = client.from("contacts").select(columns = Columns.raw("id")) {
-                filter { gte("created_at", "${today}T00:00:00Z") }
-            }.decodeList<JsonObject>().size
-
-            val conversations = client.from("conversations").select(columns = Columns.raw("id")) {
-                filter { neq("current_state", "IDLE") }
-            }.decodeList<JsonObject>().size
-
-            val leads = client.from("leads").select(columns = Columns.raw("id, status, created_at")) {
-                filter { gte("created_at", "${today}T00:00:00Z") }
-            }.decodeList<JsonObject>().filter {
-                val st = it["status"]?.toString()?.replace("\"", "") ?: ""
-                st == "QUALIFYING" || st == "QUOTED"
-            }.size
-
-            val tickets = client.from("agent_requests").select(columns = Columns.raw("id")) {
-                filter {
-                    gte("created_at", "${today}T00:00:00Z")
-                    eq("status", "NEW")
-                }
-            }.decodeList<JsonObject>().size
-
-            mapOf(
-                "activeUsers" to contacts,
-                "conversations" to conversations,
-                "newLeads" to leads,
-                "newTickets" to tickets
-            )
-        } catch (e: Exception) {
-            mapOf("activeUsers" to 0, "conversations" to 0, "newLeads" to 0, "newTickets" to 0)
-        }
-    }
-
-    suspend fun getClients(limit: Int = 50): List<ClientProfile> = try {
-        client.from("contacts").select {
-            order("updated_at", Order.DESCENDING)
-            limit(limit.toLong())
-        }.decodeList()
-    } catch (e: Exception) { emptyList() }
-
-    suspend fun getClientById(id: String): ClientProfile? = try {
-        client.from("contacts").select {
-            filter { eq("id", id) }
-            limit(1L)
-        }.decodeSingleOrNull()
-    } catch (e: Exception) { null }
-
-    suspend fun getConversationByContact(contactId: String): ConversationRecord? = try {
-        client.from("conversations").select {
-            filter { eq("contact_id", contactId) }
-            order("updated_at", Order.DESCENDING)
-            limit(1L)
-        }.decodeSingleOrNull()
-    } catch (e: Exception) { null }
-
-    // Direct database read for messages (matches RetailRepository)
-    suspend fun getMessages(contactIdOrPhone: String, limit: Int = 100): List<MessageRecord> {
-        val rawMessages = retailRepo.getMessages(contactIdOrPhone)
-        return rawMessages.map {
-            MessageRecord(
-                id = it.id ?: "",
-                contact_id = it.contactId,
-                phone_number = it.phoneNumber,
-                direction = it.direction,
-                message_type = it.messageType,
-                body = it.displayBody,
-                content = it.content,
-                text = it.text,
-                message_text = it.messageText,
-                created_at = it.createdAt ?: ""
-            )
-        }
-    }
-
-    suspend fun getLeads(status: String? = null, limit: Int = 50): List<LeadRecord> = try {
-        client.from("leads").select {
-            if (status != null) filter { eq("status", status) }
-            order("created_at", Order.DESCENDING)
-            limit(limit.toLong())
-        }.decodeList()
-    } catch (e: Exception) { emptyList() }
-
-    suspend fun updateLeadStatus(leadId: String, status: String): Boolean = try {
-        client.from("leads").update(buildJsonObject { put("status", status) }) { filter { eq("id", leadId) } }
-        true
-    } catch (e: Exception) { false }
-
-    suspend fun getTickets(status: String? = null, limit: Int = 50): List<TicketRecord> = try {
-        client.from("agent_requests").select {
-            if (status != null) filter { eq("status", status) }
-            order("created_at", Order.DESCENDING)
-            limit(limit.toLong())
-        }.decodeList()
-    } catch (e: Exception) { emptyList() }
-
-    suspend fun updateTicketStatus(ticketId: String, status: String): Boolean = try {
-        client.from("agent_requests").update(buildJsonObject { put("status", status) }) { filter { eq("id", ticketId) } }
-        true
-    } catch (e: Exception) { false }
-
-    suspend fun getRecentActivity(limit: Int = 50): List<ActivityEvent> = try {
-        client.from("bot_activity_log").select {
-            order("created_at", Order.DESCENDING)
-            limit(limit.toLong())
-        }.decodeList()
-    } catch (e: Exception) { emptyList() }
-
-    // Takeover Endpoint
-    suspend fun takeOverConversation(contactIdOrConvId: String, phone: String = ""): Boolean {
-        return withContext(Dispatchers.IO) {
-            try {
-                val baseUrl = SupabaseClient.getSupabaseUrl().trimEnd('/')
-                val apiKey = SupabaseClient.getSupabaseKey()
-                val url = URL("$baseUrl/functions/v1/whatsapp-webhook?action=toggle-takeover")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("apikey", apiKey)
-                conn.setRequestProperty("Authorization", "Bearer $apiKey")
-                conn.connectTimeout = 10000
-                conn.readTimeout = 10000
-                conn.doOutput = true
-
-                val payload = JSONObject().apply {
-                    put("contact_id", contactIdOrConvId)
-                    put("phone", phone)
-                    put("enabled", true)
-                }
-
-                conn.outputStream.write(payload.toString().toByteArray())
-                conn.responseCode == 200
-            } catch (e: Exception) {
-                false
-            }
-        }
-    }
-
-    suspend fun returnToBot(contactIdOrConvId: String, phone: String = ""): Boolean {
-        return withContext(Dispatchers.IO) {
-            try {
-                val baseUrl = SupabaseClient.getSupabaseUrl().trimEnd('/')
-                val apiKey = SupabaseClient.getSupabaseKey()
-                val url = URL("$baseUrl/functions/v1/whatsapp-webhook?action=toggle-takeover")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("apikey", apiKey)
-                conn.setRequestProperty("Authorization", "Bearer $apiKey")
-                conn.connectTimeout = 10000
-                conn.readTimeout = 10000
-                conn.doOutput = true
-
-                val payload = JSONObject().apply {
-                    put("contact_id", contactIdOrConvId)
-                    put("phone", phone)
-                    put("enabled", false)
-                }
-
-                conn.outputStream.write(payload.toString().toByteArray())
-                conn.responseCode == 200
-            } catch (e: Exception) {
-                false
-            }
-        }
-    }
-
-    // Outbound WhatsApp Delivery via Edge Function
-    suspend fun sendWhatsAppMessage(phone: String, contactId: String, message: String): Pair<Boolean, String> {
-        return withContext(Dispatchers.IO) {
-            try {
-                val baseUrl = SupabaseClient.getSupabaseUrl().trimEnd('/')
-                val apiKey = SupabaseClient.getSupabaseKey()
-                val url = URL("$baseUrl/functions/v1/whatsapp-webhook?action=send-message")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("apikey", apiKey)
-                conn.setRequestProperty("Authorization", "Bearer $apiKey")
-                conn.connectTimeout = 12000
-                conn.readTimeout = 12000
-                conn.doOutput = true
-
-                val payload = JSONObject().apply {
-                    put("phone", phone)
-                    if (contactId.isNotBlank()) put("contact_id", contactId)
-                    put("message", message)
-                }
-
-                conn.outputStream.write(payload.toString().toByteArray())
-                val responseCode = conn.responseCode
-                val stream = if (responseCode in 200..299) conn.inputStream else conn.errorStream
-                val responseText = stream?.bufferedReader()?.readText() ?: "{}"
-                val json = JSONObject(responseText)
-
-                if (responseCode == 200 && json.optBoolean("success", false)) {
-                    Pair(true, "Sent")
-                } else {
-                    val err = json.optString("error", "Server returned HTTP $responseCode")
-                    Pair(false, err)
-                }
-            } catch (e: Exception) {
-                Pair(false, e.localizedMessage ?: "Network connection error")
-            }
-        }
-    }
-
-    suspend fun sendWhatsAppMessage(phone: String, message: String): Boolean {
-        val result = sendWhatsAppMessage(phone = phone, contactId = "", message = message)
-        return result.first
-    }
 }
