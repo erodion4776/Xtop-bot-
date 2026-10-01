@@ -309,20 +309,40 @@ export async function storeMessage(
 ): Promise<any> {
   const sb = getSupabaseClient();
   try {
-    // First attempt: try inserting with all known column names
+    let phone: string | null = null;
+    let resolvedContactId: string | null = null;
+
+    if (contactId) {
+      if (contactId.includes("-") && contactId.length > 20) {
+        // contactId is a UUID -> lookup phone number
+        resolvedContactId = contactId;
+        const { data: c } = await sb.from("contacts").select("phone").eq("id", contactId).maybeSingle();
+        phone = c?.phone ? c.phone.replace(/[^0-9]/g, "") : null;
+      } else {
+        // contactId is a phone number -> lookup contact UUID
+        phone = contactId.replace(/[^0-9]/g, "");
+        const localPhone = phone.startsWith("234") ? "0" + phone.slice(3) : phone;
+        const { data: c } = await sb
+          .from("contacts")
+          .select("id")
+          .or(`phone.eq.${phone},phone.eq.+${phone},phone.eq.${localPhone}`)
+          .maybeSingle();
+        resolvedContactId = c?.id || null;
+      }
+    }
+
     const payload: Record<string, unknown> = {
+      contact_id: resolvedContactId,
+      phone_number: phone,
       direction,
       message_type: messageType,
       body: body || null,
       content: body || null,
       text: body || null,
+      message_text: body || null, // Included for Android app compatibility
       whatsapp_message_id: whatsappMessageId || null,
       created_at: new Date().toISOString(),
     };
-
-    if (contactId) {
-      payload.contact_id = contactId;
-    }
 
     const { data, error } = await sb
       .from("messages")
@@ -331,35 +351,7 @@ export async function storeMessage(
       .maybeSingle();
 
     if (error) {
-      // If PGRST204 (column not found), retry with minimal safe columns
-      if (error.code === "PGRST204") {
-        const minimalPayload: Record<string, unknown> = {
-          contact_id: contactId || null,
-          direction,
-          message_type: messageType,
-          whatsapp_message_id: whatsappMessageId || null,
-        };
-
-        // Try each possible text column name
-        const textColumns = ["body", "content", "text", "message"];
-        for (const col of textColumns) {
-          minimalPayload[col] = body || null;
-        }
-
-        const { data: retryData, error: retryError } = await sb
-          .from("messages")
-          .insert(minimalPayload)
-          .select("*")
-          .maybeSingle();
-
-        if (retryError) {
-          safeErrorLog("storeMessage (retry)", retryError);
-          return null;
-        }
-        return retryData;
-      }
       safeErrorLog("storeMessage", error);
-      return null;
     }
     return data;
   } catch (err) {
@@ -367,7 +359,6 @@ export async function storeMessage(
     return null;
   }
 }
-
 // ==========================================
 // 5. Products Functions
 // ==========================================
