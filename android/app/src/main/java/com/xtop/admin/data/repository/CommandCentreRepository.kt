@@ -10,6 +10,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -84,35 +85,53 @@ class CommandCentreRepository(private val client: SupabaseClient) {
         } catch (e: Exception) { null }
     }
 
-    // ── Messages (Query by contact_id OR phone_number) ──
-    suspend fun getMessages(contactId: String, limit: Int = 100): List<MessageRecord> {
-        return try {
-            // Find messages linked by contact_id
-            val byContact = client.from("messages").select {
-                filter { eq("contact_id", contactId) }
-                order("created_at", Order.ASCENDING)
-                limit(limit.toLong())
-            }.decodeList<MessageRecord>()
+    // ── Messages (Fetched via Unified Webhook Endpoint) ──
+    suspend fun getMessages(contactIdOrPhone: String, limit: Int = 100): List<MessageRecord> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val baseUrl = com.xtop.admin.data.SupabaseClient.getSupabaseUrl().trimEnd('/')
+                val apiKey = com.xtop.admin.data.SupabaseClient.getSupabaseKey()
+                val url = URL("$baseUrl/functions/v1/whatsapp-webhook?action=chat&contact_id=$contactIdOrPhone&phone=$contactIdOrPhone")
 
-            if (byContact.isNotEmpty()) {
-                return byContact
-            }
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("apikey", apiKey)
+                conn.setRequestProperty("Authorization", "Bearer $apiKey")
+                conn.connectTimeout = 7000
+                conn.readTimeout = 7000
 
-            // Fallback: if contactId was actually a phone number
-            val cleanPhone = contactId.replace("+", "").replace(" ", "")
-            client.from("messages").select {
-                filter { 
-                    or {
-                        eq("phone_number", cleanPhone)
-                        eq("phone_number", "+$cleanPhone")
+                if (conn.responseCode == 200) {
+                    val responseText = conn.inputStream.bufferedReader().readText()
+                    val json = JSONObject(responseText)
+                    val dataArr = json.optJSONArray("data") ?: JSONArray()
+                    val result = mutableListOf<MessageRecord>()
+
+                    for (i in 0 until dataArr.length()) {
+                        val obj = dataArr.getJSONObject(i)
+                        result.add(
+                            MessageRecord(
+                                id = obj.optString("id", ""),
+                                contact_id = obj.optString("contact_id", null),
+                                phone_number = obj.optString("phone_number", null),
+                                direction = obj.optString("direction", "INBOUND"),
+                                message_type = obj.optString("message_type", "text"),
+                                body = obj.optString("body", null),
+                                content = obj.optString("content", null),
+                                text = obj.optString("text", null),
+                                message_text = obj.optString("message_text", null),
+                                whatsapp_message_id = obj.optString("whatsapp_message_id", null),
+                                created_at = obj.optString("created_at", "")
+                            )
+                        )
                     }
+                    result
+                } else {
+                    emptyList()
                 }
-                order("created_at", Order.ASCENDING)
-                limit(limit.toLong())
-            }.decodeList()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            emptyList()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                emptyList()
+            }
         }
     }
 
