@@ -53,11 +53,13 @@ fun ChatScreen(
             val ctx = conversation?.context_json
             isAgentMode = ctx?.get("agent_takeover")?.toString()?.contains("true") == true ||
                           ctx?.get("agent_mode")?.toString()?.contains("true") == true
-            
-            // Search using both contactId and client's phone number
+
             val phone = client?.phone ?: contactId
             val msgs = repo.getMessages(contactId, 100)
-            messages = if (msgs.isNotEmpty()) msgs else repo.getMessages(phone, 100)
+            val finalMsgs = if (msgs.isNotEmpty()) msgs else repo.getMessages(phone, 100)
+            if (finalMsgs.isNotEmpty()) {
+                messages = finalMsgs
+            }
         }
     }
 
@@ -69,7 +71,7 @@ fun ChatScreen(
                 val phone = client?.phone ?: contactId
                 val updated = repo.getMessages(contactId, 100)
                 val finalUpdated = if (updated.isNotEmpty()) updated else repo.getMessages(phone, 100)
-                if (finalUpdated.size != messages.size) {
+                if (finalUpdated.isNotEmpty()) {
                     messages = finalUpdated
                 }
             } catch (_: Exception) {}
@@ -94,7 +96,7 @@ fun ChatScreen(
         inputText = ""
         isSending = true
 
-        // 🌟 OPTIMISTIC UI UPDATE: Add message bubble immediately to screen!
+        // Optimistic bubble added immediately
         val tempMessage = MessageRecord(
             id = "temp_${Date().time}",
             contact_id = contactId,
@@ -109,9 +111,11 @@ fun ChatScreen(
         scope.launch {
             val result = repo.sendWhatsAppMessage(phone, contactId, msg)
             if (result.first) {
-                // Refresh from DB in background
                 val updated = repo.getMessages(contactId, 100)
-                messages = if (updated.isNotEmpty()) updated else repo.getMessages(phone, 100)
+                val finalUpdated = if (updated.isNotEmpty()) updated else repo.getMessages(phone, 100)
+                if (finalUpdated.isNotEmpty()) {
+                    messages = finalUpdated
+                }
             } else {
                 Toast.makeText(context, "⚠️ ${result.second}", Toast.LENGTH_LONG).show()
             }
