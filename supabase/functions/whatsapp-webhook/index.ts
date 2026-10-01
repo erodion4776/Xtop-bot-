@@ -103,7 +103,7 @@ serve(async (req: Request) => {
     }
   }
 
-  // ── C. SEND DIRECT WHATSAPP MESSAGE (LINKED PROPERLY TO CONTACT) ──
+  // ── C. SEND DIRECT WHATSAPP MESSAGE ──
   if (action === "send-message" && req.method === "POST") {
     try {
       const body = await req.json();
@@ -115,7 +115,6 @@ serve(async (req: Request) => {
         return jsonResponse({ error: "Phone number and message text are required" }, 400);
       }
 
-      // If a UUID was passed as phone, resolve from contacts
       if (rawPhone.includes("-") && rawPhone.length > 20) {
         const { data: c } = await sb.from("contacts").select("id, phone").eq("id", rawPhone).maybeSingle();
         if (c?.phone) {
@@ -130,7 +129,7 @@ serve(async (req: Request) => {
         return jsonResponse({ error: `Invalid phone format: "${rawPhone}"` }, 400);
       }
 
-      // Ensure Contact Record exists so message is ALWAYS linked
+      // Ensure Contact Record exists
       if (!contactId) {
         const localPhone = cleanPhone.startsWith("234") ? "0" + cleanPhone.slice(3) : cleanPhone;
         const { data: existingContact } = await sb
@@ -151,7 +150,6 @@ serve(async (req: Request) => {
         }
       }
 
-      // Send to WhatsApp Cloud API via tested helper
       console.log(`[Admin Chat Outbound] Dispatching to: ${cleanPhone}`);
       const sendResult = await sendTextMessage(cleanPhone, message);
 
@@ -165,7 +163,7 @@ serve(async (req: Request) => {
 
       const waMsgId = sendResult?.messages?.[0]?.id || null;
 
-      // Insert message with all possible column mappings
+      // Insert message with all possible column variations
       const msgRecord = {
         contact_id: contactId,
         phone_number: cleanPhone,
@@ -181,7 +179,6 @@ serve(async (req: Request) => {
 
       const { data: savedMsg } = await sb.from("messages").insert(msgRecord).select("*").maybeSingle();
 
-      // Also record in client_chat_log
       await sb.from("client_chat_log").insert({
         phone_number: cleanPhone,
         direction: "ADMIN_TO_CLIENT",
@@ -197,21 +194,44 @@ serve(async (req: Request) => {
     }
   }
 
-  // ── D. GET CHAT MESSAGES BY PHONE OR CONTACT ID ──
+  // ── D. GET CHAT HISTORY (UNIVERSAL RESOLVER) ──
   if (action === "chat" && req.method === "GET") {
-    const rawParam = (url.searchParams.get("phone") || url.searchParams.get("contact_id") || "").trim();
+    const rawParam = (url.searchParams.get("contact_id") || url.searchParams.get("phone") || "").trim();
     if (!rawParam) return jsonResponse({ data: [] }, 200);
 
-    let query = sb.from("messages").select("*");
+    let phone = rawParam;
+    let contactId: string | null = null;
+
     if (rawParam.includes("-") && rawParam.length > 20) {
-      query = query.eq("contact_id", rawParam);
-    } else {
-      const clean = normalizePhone(rawParam);
-      query = query.or(`phone_number.eq.${clean},phone_number.eq.+${clean}`);
+      contactId = rawParam;
+      const { data: c } = await sb.from("contacts").select("id, phone").eq("id", rawParam).maybeSingle();
+      if (c?.phone) phone = c.phone;
     }
 
-    const { data } = await query.order("created_at", { ascending: true }).limit(100);
-    return jsonResponse({ data: data || [] });
+    const cleanPhone = normalizePhone(phone);
+    const localPhone = cleanPhone.startsWith("234") ? "0" + cleanPhone.slice(3) : cleanPhone;
+
+    const orClauses = [
+      `phone_number.eq.${cleanPhone}`,
+      `phone_number.eq.+${cleanPhone}`,
+      `phone_number.eq.${localPhone}`,
+    ];
+
+    if (contactId) {
+      orClauses.push(`contact_id.eq.${contactId}`);
+    } else if (cleanPhone) {
+      const { data: c } = await sb.from("contacts").select("id").or(`phone.eq.${cleanPhone},phone.eq.+${cleanPhone}`).maybeSingle();
+      if (c?.id) orClauses.push(`contact_id.eq.${c.id}`);
+    }
+
+    const { data, error } = await sb
+      .from("messages")
+      .select("*")
+      .or(orClauses.join(","))
+      .order("created_at", { ascending: true })
+      .limit(100);
+
+    return jsonResponse({ data: data || [], error: error?.message });
   }
 
   // ── E. GET STATS ──
@@ -235,7 +255,7 @@ serve(async (req: Request) => {
   }
 
   // ══════════════════════════════════════════════════════
-  // 2. WHATSAPP WEBHOOK VERIFICATION (GET)
+  // 2. WHATSAPP WEBHOOK VERIFICATION (GET from Meta)
   // ══════════════════════════════════════════════════════
   if (req.method === "GET") {
     const mode = url.searchParams.get("hub.mode");
@@ -249,7 +269,7 @@ serve(async (req: Request) => {
   }
 
   // ══════════════════════════════════════════════════════
-  // 3. INCOMING MESSAGES (POST)
+  // 3. INCOMING MESSAGES (POST from Meta)
   // ══════════════════════════════════════════════════════
   if (req.method === "POST") {
     try {
