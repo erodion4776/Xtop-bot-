@@ -1,15 +1,28 @@
-// supabase/functions/whatsapp-webhook/modules/agents.ts
-// Phase 3 — Talk to an Agent (With Auto-Redirection to Structured Qualification)
+
+ // supabase/functions/whatsapp-webhook/modules/agents.ts
+ // Phase 3 — Talk to an Agent (With Auto-Redirection to Structured Qualification)
 
 import {
-  Contact, Conversation, updateConversation,
+  Contact,
+  Conversation,
+  updateConversation,
   createAgentRequest,
 } from "../database.ts";
+
 import {
-  sendButtonMessage, sendListMessage, sendTextMessage,
-  makeButton, makeListRow,
+  sendButtonMessage,
+  sendListMessage,
+  sendTextMessage,
+  makeButton,
+  makeListRow,
 } from "../whatsapp.ts";
-import { extractSelection, normalise, isBack } from "../utils.ts";
+
+import {
+  extractSelection,
+  normalise,
+  isBack,
+} from "../utils.ts";
+
 import { showMainMenu } from "./main-menu.ts";
 
 // ═══════════════════════════════════════════════════════
@@ -17,9 +30,13 @@ import { showMainMenu } from "./main-menu.ts";
 // ═══════════════════════════════════════════════════════
 
 export async function handleAgent(
-  phone: string, text: string, contact: Contact, conversation: Conversation
+  phone: string,
+  text: string,
+  contact: Contact,
+  conversation: Conversation
 ): Promise<void> {
   const state = conversation.current_state;
+
   const context = conversation.context_json as {
     request_type?: string;
   };
@@ -36,11 +53,21 @@ export async function handleAgent(
   switch (state) {
     case "ENTRY":
     case "SELECT_TYPE":
-      await processAgentCategorySelection(phone, text, conversation);
+      await processAgentCategorySelection(
+        phone,
+        text,
+        conversation
+      );
       break;
 
     case "COLLECT_MESSAGE":
-      await processAgentMessageSubmission(phone, text, contact, conversation, context.request_type || "GENERAL_ENQUIRY");
+      await processAgentMessageSubmission(
+        phone,
+        text,
+        contact,
+        conversation,
+        context.request_type || "GENERAL_ENQUIRY"
+      );
       break;
 
     default:
@@ -53,7 +80,10 @@ export async function handleAgent(
 // CATEGORY SELECTOR
 // ═══════════════════════════════════════════════════════
 
-export async function showAgentCategories(phone: string, conversationId: string): Promise<void> {
+export async function showAgentCategories(
+  phone: string,
+  conversationId: string
+): Promise<void> {
   await updateConversation(conversationId, {
     current_module: "AGENT",
     current_state: "SELECT_TYPE",
@@ -73,16 +103,36 @@ export async function showAgentCategories(phone: string, conversationId: string)
       {
         title: "Start or Get Estimates",
         rows: [
-          makeListRow("agt_type_project", "1️⃣ Start a Project", "Launch qualification wizard"),
-          makeListRow("agt_type_quote", "2️⃣ Request a Quotation", "Get instant estimate"),
+          makeListRow(
+            "agt_type_project",
+            "1️⃣ Start a Project",
+            "Launch qualification wizard"
+          ),
+          makeListRow(
+            "agt_type_quote",
+            "2️⃣ Request a Quotation",
+            "Get instant estimate"
+          ),
         ],
       },
       {
         title: "Product Support & Other",
         rows: [
-          makeListRow("agt_type_product", "3️⃣ Product Question", "Questions on XtopEdu/NaijaShop"),
-          makeListRow("agt_type_support", "4️⃣ Technical Support", "For existing customers"),
-          makeListRow("agt_type_general", "5️⃣ Speak to an Agent", "General human escalation"),
+          makeListRow(
+            "agt_type_product",
+            "3️⃣ Product Question",
+            "Questions on XtopEdu/NaijaShop"
+          ),
+          makeListRow(
+            "agt_type_support",
+            "4️⃣ Technical Support",
+            "For existing customers"
+          ),
+          makeListRow(
+            "agt_type_general",
+            "5️⃣ Speak to an Agent",
+            "General human escalation"
+          ),
         ],
       },
     ],
@@ -96,12 +146,19 @@ export async function showAgentCategories(phone: string, conversationId: string)
 // ═══════════════════════════════════════════════════════
 
 async function processAgentCategorySelection(
-  phone: string, text: string, conversation: Conversation
+  phone: string,
+  text: string,
+  conversation: Conversation
 ): Promise<void> {
   const n = normalise(text);
 
-  // 1. Direct Redirections to Structured Qualification
-  if (n === "agt_type_project" || n === "agt_type_quote" || n === "1" || n === "2") {
+  // 1. Direct redirections to structured qualification
+  if (
+    n === "agt_type_project" ||
+    n === "agt_type_quote" ||
+    n === "1" ||
+    n === "2"
+  ) {
     const { showServiceTypeSelector } = await import("./sales.ts");
     await showServiceTypeSelector(phone, conversation.id);
     return;
@@ -118,6 +175,7 @@ async function processAgentCategorySelection(
     requestType = "GENERAL_ENQUIRY";
   } else {
     const num = extractSelection(text);
+
     if (num === 1 || num === 2) {
       const { showServiceTypeSelector } = await import("./sales.ts");
       await showServiceTypeSelector(phone, conversation.id);
@@ -129,13 +187,17 @@ async function processAgentCategorySelection(
     } else if (num === 5) {
       requestType = "GENERAL_ENQUIRY";
     } else {
-      await sendTextMessage(phone, "⚠️ Please select one of the valid options from the menu.");
+      await sendTextMessage(
+        phone,
+        "⚠️ Please select one of the valid options from the menu."
+      );
+
       await showAgentCategories(phone, conversation.id);
       return;
     }
   }
 
-  // 3. Move to free-text message collection for Support/Questions
+  // 3. Move to free-text message collection
   await updateConversation(conversation.id, {
     current_module: "AGENT",
     current_state: "COLLECT_MESSAGE",
@@ -143,9 +205,19 @@ async function processAgentCategorySelection(
   });
 
   const prompts: Record<string, string> = {
-    PRODUCT_QUESTION: "❓ *Product Question*\n\nWhich of our products (XtopEdu, NaijaShop) do you have a question about, and what would you like to know?\n\n_(Type your question below)_",
-    TECH_SUPPORT: "🛠 *Technical Support*\n\nPlease describe the technical issue you are experiencing in detail:\n\n_(Type your support request below)_",
-    GENERAL_ENQUIRY: "💬 *Speak to an Agent*\n\nPlease type your message or enquiry below and a team member will reply directly:",
+    PRODUCT_QUESTION:
+      "❓ *Product Question*\n\n" +
+      "Which of our products (XtopEdu, NaijaShop) do you have a question about, and what would you like to know?\n\n" +
+      "_(Type your question below)_",
+
+    TECH_SUPPORT:
+      "🛠 *Technical Support*\n\n" +
+      "Please describe the technical issue you are experiencing in detail:\n\n" +
+      "_(Type your support request below)_",
+
+    GENERAL_ENQUIRY:
+      "💬 *Speak to an Agent*\n\n" +
+      "Please type your message or enquiry below and a team member will reply directly:",
   };
 
   await sendTextMessage(phone, prompts[requestType]);
@@ -156,26 +228,47 @@ async function processAgentCategorySelection(
 // ═══════════════════════════════════════════════════════
 
 async function processAgentMessageSubmission(
-  phone: string, text: string, contact: Contact, conversation: Conversation, requestType: string
+  phone: string,
+  text: string,
+  contact: Contact,
+  conversation: Conversation,
+  requestType: string
 ): Promise<void> {
-  const priority = requestType === "TECH_SUPPORT" ? "HIGH" : "NORMAL";
+  const priority =
+    requestType === "TECH_SUPPORT" ? "HIGH" : "NORMAL";
 
-  const record = await createAgentRequest(contact.id, requestType, text, priority);
+  const record = await createAgentRequest(
+    contact.id,
+    requestType,
+    text,
+    priority
+  );
 
+  // Do not claim a ticket was created if the database insert failed.
+  if (!record || !record.id) {
+    await sendTextMessage(
+      phone,
+      "⚠️ *Your request could not be saved yet.*\n\n" +
+      "We have not generated a ticket reference. Please try sending your message again shortly.\n\n" +
+      "If the problem continues, type *menu* and try again later."
+    );
+    return;
+  }
+
+  // Reset the conversation only after the request is saved.
   await updateConversation(conversation.id, {
     current_module: "MAIN_MENU",
     current_state: "IDLE",
-    context_json: { lastRequestId: record?.id },
+    context_json: { lastRequestId: record.id },
   });
 
-  const ticketRef = record?.id
-    ? `#REQ-${record.id.substring(0, 8).toUpperCase()}`
-    : "#REQ-RECEIVED";
+  const ticketRef =
+    `#REQ-${record.id.substring(0, 8).toUpperCase()}`;
 
   const confirmationMessage =
     `✅ *Your request has been logged successfully!*\n\n` +
     `*Reference Ticket:* \`${ticketRef}\`\n` +
-    `*Department:* ${requestType.replace("_", " ")}\n` +
+    `*Department:* ${requestType.replace(/_/g, " ")}\n` +
     `*Status:* Queued for Agent Review\n\n` +
     `An Xtop Retail Technologies team member will follow up with you on WhatsApp shortly.\n\n` +
     `_Type *menu* anytime to return to the main options._`;
