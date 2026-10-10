@@ -30,15 +30,16 @@ export function extractTokenFromText(text: string): string | null {
 
   const cleanText = text.toLowerCase();
 
-  // 1. Structured message detection
+  // 1. Structured message detection (e.g. "Business name: Sunrise Hotel...")
   if (
-    cleanText.includes("business name") &&
-    (cleanText.includes("business category") || cleanText.includes("business type") || cleanText.includes("category"))
+    cleanText.includes("business name") ||
+    cleanText.includes("company name") ||
+    (cleanText.includes("demo prepared for") && cleanText.includes("business"))
   ) {
     return "STRUCTURED_DIRECT_REQUEST";
   }
 
-  // 2. Explicit "reference: TOKEN" pattern
+  // 2. Explicit "reference: TOKEN" pattern (e.g. "Demo reference: DEMO_MAELIZA_7F3K")
   const explicit = text.match(/(?:reference|ref|token|code)\s*[:=-]?\s*([A-Za-z0-9_-]{4,40})/i);
   if (explicit?.[1]) return explicit[1];
 
@@ -61,6 +62,35 @@ export interface ValidatedToken {
 }
 
 /**
+ * Helper to extract business details from natural text
+ */
+function extractDetailsFromText(text: string): { name: string; category: string; need: string } {
+  let name = "";
+  let category = "";
+  let need = "";
+
+  // 1. Business Name
+  const nameMatch = text.match(/(?:business\s+name|company\s+name|biz\s+name|prepared\s+for|demo\s+for)\s*[:=-]?\s*([^.\n\r]+?)(?=\.?\s*(?:business\s+category|business\s+type|category|industry|main\s+need|need|demo\s+reference|ref|$))/i);
+  if (nameMatch?.[1]) {
+    name = nameMatch[1].trim().replace(/^[:\s-]+|[:\s-]+$/g, "");
+  }
+
+  // 2. Category
+  const catMatch = text.match(/(?:business\s+category|business\s+type|category|industry|type)\s*[:=-]?\s*([^.\n\r]+?)(?=\.?\s*(?:main\s+need|need|business\s+name|demo\s+reference|ref|$))/i);
+  if (catMatch?.[1]) {
+    category = catMatch[1].trim().replace(/^[:\s-]+|[:\s-]+$/g, "");
+  }
+
+  // 3. Main Need
+  const needMatch = text.match(/(?:main\s+need|business\s+need|need)\s*[:=-]?\s*([^.\n\r]+?)(?=\.?\s*(?:business\s+name|business\s+category|demo\s+reference|$))/i);
+  if (needMatch?.[1]) {
+    need = needMatch[1].trim().replace(/^[:\s-]+|[:\s-]+$/g, "");
+  }
+
+  return { name, category, need };
+}
+
+/**
  * Validate a token or process structured details directly on-the-fly.
  */
 export async function validateToken(
@@ -68,74 +98,34 @@ export async function validateToken(
   originalText?: string
 ): Promise<ValidatedToken | null> {
   const clean = rawToken.trim();
+  const text = originalText || "";
 
-  // ── 1. STRUCTURED DIRECT REQUESTS ──
-  if (clean === "STRUCTURED_DIRECT_REQUEST" && originalText) {
-    let businessName = "Your Business";
-    let categoryKey = "other";
-    let mainNeed = "";
-
-    const nameMatch = originalText.match(/(?:business\s+name|company\s+name|biz\s+name)\s*[:=-]?\s*([^.\n\r]+?)(?=\.?\s*(?:business\s+category|business\s+type|category|main\s+need|need|$))/i);
-    if (nameMatch?.[1]) {
-      businessName = nameMatch[1].trim().replace(/^[:\s-]+|[:\s-]+$/g, "");
-    }
-
-    const catMatch = originalText.match(/(?:business\s+category|business\s+type|category|industry)\s*[:=-]?\s*([^.\n\r]+?)(?=\.?\s*(?:main\s+need|need|business\s+name|$))/i);
-    if (catMatch?.[1]) {
-      const rawCat = catMatch[1].trim().replace(/^[:\s-]+|[:\s-]+$/g, "");
-      categoryKey = classifyCategory(rawCat);
-    }
-
-    const needMatch = originalText.match(/(?:main\s+need|business\s+need|need)\s*[:=-]?\s*([^.\n\r]+?)(?=\.?\s*(?:business\s+name|business\s+category|business\s+type|$))/i);
-    if (needMatch?.[1]) {
-      mainNeed = needMatch[1].trim().replace(/^[:\s-]+|[:\s-]+$/g, "");
-    }
-
-    return {
-      tokenId: "00000000-0000-0000-0000-000000000000",
-      businessConfigId: "00000000-0000-0000-0000-000000000000",
-      businessName,
-      businessCategory: categoryKey,
-      demoTemplate: categoryKey,
-      demoConfig: { main_need: mainNeed },
-      campaignSource: "structured_direct_inbound",
-      tokenPrefix: "DIRECT",
-    };
-  }
-
-  // ── 2. TEST TOKENS ──
-  if (clean.toUpperCase().startsWith("TEST_")) {
-    let businessName = "Test Business";
-    let businessType = "";
-
-    if (originalText) {
-      const nameMatch = originalText.match(/(?:prepared\s+)?for\s+([A-Z][^.]+?)(?:\.|\s+Business|\s+Demo|\s*$)/i);
-      if (nameMatch?.[1]) businessName = nameMatch[1].trim();
-
-      const typeMatch = originalText.match(/business\s+type\s*[:=-]?\s*([^.\n\r]+)/i);
-      if (typeMatch?.[1]) businessType = typeMatch[1].trim();
-    }
-
-    if (businessName === "Test Business") {
-      const slug = clean.replace(/^TEST_/i, "").replace(/_/g, " ");
+  // ── 1. STRUCTURED DIRECT REQUESTS & FALLBACKS ──
+  if (clean === "STRUCTURED_DIRECT_REQUEST" || clean.toUpperCase().startsWith("TEST_") || clean.toUpperCase().startsWith("DEMO_")) {
+    const extracted = extractDetailsFromText(text);
+    
+    let businessName = extracted.name;
+    if (!businessName && (clean.startsWith("TEST_") || clean.startsWith("DEMO_"))) {
+      const slug = clean.replace(/^(?:TEST|DEMO)_/i, "").replace(/_[A-Z0-9]{4}$/i, "").replace(/_/g, " ");
       businessName = slug.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
     }
+    if (!businessName) businessName = "Your Business";
 
-    const category = businessType ? classifyCategory(businessType) : "digital_agency";
+    const resolvedCategory = classifyCategory(extracted.category || businessName);
 
     return {
       tokenId: "00000000-0000-0000-0000-000000000000",
       businessConfigId: "00000000-0000-0000-0000-000000000000",
       businessName,
-      businessCategory: category,
-      demoTemplate: category,
-      demoConfig: {},
-      campaignSource: "developer_testing",
+      businessCategory: resolvedCategory,
+      demoTemplate: resolvedCategory,
+      demoConfig: { main_need: extracted.need },
+      campaignSource: "inbound_demo_request",
       tokenPrefix: clean.substring(0, 8),
     };
   }
 
-  // ── 3. PRODUCTION TOKENS ──
+  // ── 2. PRODUCTION DATABASE TOKENS ──
   const sb = getSupabaseClient();
   try {
     const hash = await hashToken(clean);
@@ -146,31 +136,47 @@ export async function validateToken(
       .or(`token_hash.eq.${hash},token_hash.eq.${clean}`)
       .maybeSingle();
 
-    if (!tokenRow || !tokenRow.is_active || tokenRow.is_revoked) return null;
-    if (new Date(tokenRow.expires_at) < new Date()) return null;
+    if (tokenRow && tokenRow.is_active && !tokenRow.is_revoked && new Date(tokenRow.expires_at) >= new Date()) {
+      const { data: biz } = await sb
+        .from("business_demo_configs")
+        .select("id, business_name, business_category, demo_template, demo_config, is_active")
+        .eq("id", tokenRow.business_config_id)
+        .maybeSingle();
 
-    const { data: biz } = await sb
-      .from("business_demo_configs")
-      .select("id, business_name, business_category, demo_template, demo_config, is_active")
-      .eq("id", tokenRow.business_config_id)
-      .maybeSingle();
-
-    if (!biz || !biz.is_active) return null;
-
-    return {
-      tokenId: tokenRow.id,
-      businessConfigId: biz.id,
-      businessName: biz.business_name,
-      businessCategory: biz.business_category,
-      demoTemplate: biz.demo_template,
-      demoConfig: (biz.demo_config || {}) as Record<string, any>,
-      campaignSource: tokenRow.campaign_source,
-      tokenPrefix: tokenRow.token_prefix,
-    };
+      if (biz && biz.is_active) {
+        return {
+          tokenId: tokenRow.id,
+          businessConfigId: biz.id,
+          businessName: biz.business_name,
+          businessCategory: biz.business_category,
+          demoTemplate: biz.demo_template,
+          demoConfig: (biz.demo_config || {}) as Record<string, any>,
+          campaignSource: tokenRow.campaign_source,
+          tokenPrefix: tokenRow.token_prefix,
+        };
+      }
+    }
   } catch (err) {
-    safeErrorLog("validateToken", err);
-    return null;
+    safeErrorLog("validateToken (db)", err);
   }
+
+  // ── 3. RESILIENT FALLBACK: If token wasn't in DB but message has a business name in text ──
+  const fallback = extractDetailsFromText(text);
+  if (fallback.name) {
+    const resolvedCategory = classifyCategory(fallback.category || fallback.name);
+    return {
+      tokenId: "00000000-0000-0000-0000-000000000000",
+      businessConfigId: "00000000-0000-0000-0000-000000000000",
+      businessName: fallback.name,
+      businessCategory: resolvedCategory,
+      demoTemplate: resolvedCategory,
+      demoConfig: { main_need: fallback.need },
+      campaignSource: "inbound_text_fallback",
+      tokenPrefix: clean.substring(0, 8),
+    };
+  }
+
+  return null;
 }
 
 export async function createDemoLink(
