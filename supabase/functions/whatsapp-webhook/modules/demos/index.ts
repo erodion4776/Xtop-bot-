@@ -1,6 +1,5 @@
 // supabase/functions/whatsapp-webhook/modules/demos/index.ts
 // Demo Centre — Main Router & Category Menus
-// Enhanced with Generic Personalized Demos (Path A) & Onboarding (Path B)
 
 import {
   Contact, Conversation, updateConversation,
@@ -16,12 +15,9 @@ import { startDemo, processDemoInput, handlePostDemoAction, processLeadCapture }
 import { getAllDemos, getDemoConfig, getDemosByCategory, getDemoCategories } from "./data.ts";
 
 // ✨ Generic Business Demo Engine
-import { handlePersonalizedDemoAction } from "./personalized.ts";
+import { handlePersonalizedDemoAction, handlePersonalizedDemoToken } from "./personalized.ts";
 import { processOnboarding, startOnboarding, handleChangeDetails } from "./onboarding.ts";
-
-// ═══════════════════════════════════════════════════════
-// DEMO CENTRE MAIN MENU
-// ═══════════════════════════════════════════════════════
+import { extractTokenFromText } from "./tokens.ts";
 
 export async function showDemoCentreMenu(phone: string, conversationId: string): Promise<void> {
   await updateConversation(conversationId, {
@@ -63,10 +59,6 @@ export async function showDemoCentreMenu(phone: string, conversationId: string):
   );
 }
 
-// ═══════════════════════════════════════════════════════
-// CATEGORY SUB-MENU
-// ═══════════════════════════════════════════════════════
-
 async function showCategoryDemos(phone: string, conversationId: string, category: string): Promise<void> {
   const demosByCategory = getDemosByCategory();
   const demos = category === "ALL" ? getAllDemos() : (demosByCategory[category] || []);
@@ -96,13 +88,12 @@ async function showCategoryDemos(phone: string, conversationId: string, category
   );
 }
 
-// ═══════════════════════════════════════════════════════
-// MAIN HANDLER
-// ═══════════════════════════════════════════════════════
-
 export async function handleDemos(
-  phone: string, text: string, contact: Contact,
-  conv: Conversation, interactiveId?: string
+  phone: string,
+  text: string,
+  contact: Contact,
+  conv: Conversation,
+  interactiveId?: string
 ): Promise<void> {
   const rawInput = (interactiveId || text || "").trim();
   const n = normalise(rawInput);
@@ -122,14 +113,30 @@ export async function handleDemos(
       return;
     }
 
-    // ══════════════════════════════════════════════════════
-    // ✨ PATH B: ONBOARDING FLOW
-    // ══════════════════════════════════════════════════════
-    const ctx = (conv.context_json || {}) as Record<string, any>;
+    // ── PRIORITY 1: Check if text contains token or structured details ──
+    const detectedToken = extractTokenFromText(text || rawInput);
+    if (detectedToken) {
+      const handled = await handlePersonalizedDemoToken(
+        phone, text || rawInput, detectedToken, contact, conv
+      );
+      if (handled) return;
+    }
 
-    if (rawInput === "demo_onboard_start" ||
-        n.includes("demo for my business") ||
-        n.includes("see a demo for my business")) {
+    // ── PRIORITY 2: Active Personalized Demo Session ──
+    const ctx = (conv.context_json || {}) as Record<string, any>;
+    if (ctx.personalizedDemo === true) {
+      const handled = await handlePersonalizedDemoAction(phone, text, rawInput, conv);
+      if (handled) return;
+    }
+
+    // ── PRIORITY 3: Active Onboarding Session ──
+    if (ctx.onboarding === true && ctx.step) {
+      const handled = await processOnboarding(phone, text, contact, conv, interactiveId);
+      if (handled) return;
+    }
+
+    // ── PRIORITY 4: Explicit Onboarding Triggers ──
+    if (rawInput === "demo_onboard_start") {
       await startOnboarding(phone, conv);
       return;
     }
@@ -139,28 +146,13 @@ export async function handleDemos(
       if (handled) return;
     }
 
-    if (ctx.onboarding === true && ctx.step) {
-      const handled = await processOnboarding(phone, text, contact, conv, interactiveId);
-      if (handled) return;
-    }
-
-    // ══════════════════════════════════════════════════════
-    // ✨ PATH A: PERSONALIZED DEMO SESSION (Active)
-    // ══════════════════════════════════════════════════════
-    if (ctx.personalizedDemo === true) {
-      const handled = await handlePersonalizedDemoAction(phone, text, rawInput, conv);
-      if (handled) return;
-    }
-
-    // ══════════════════════════════════════════════════════
-    // LEGACY DEMO FLOWS (Preserved — No Changes)
-    // ══════════════════════════════════════════════════════
-
+    // ── POST-DEMO ACTIONS ──
     if (rawInput.startsWith("demo_restart_") || n === "demo_build_lead" || n === "demo_agent") {
       const handled = await handlePostDemoAction(phone, text, rawInput, conv.id, contact.name);
       if (handled) return;
     }
 
+    // ── LEGACY DEMO ENGINES ──
     const activeDemo = await getActiveDemoSession(phone);
     if (activeDemo && activeDemo.demo_id === "LEAD_CAPTURE") {
       const handled = await processLeadCapture(phone, text, activeDemo, conv.id);
@@ -192,7 +184,7 @@ export async function handleDemos(
       if (matched) { await showCategoryDemos(phone, conv.id, matched); return; }
     }
 
-    // Text-based demo search
+    // Text-based fallback searches
     if (n.includes("store") || n.includes("shop")) { await startDemoById(phone, conv.id, "online_store"); return; }
     if (n.includes("restaurant") || n.includes("food")) { await startDemoById(phone, conv.id, "restaurant"); return; }
     if (n.includes("real estate") || n.includes("property")) { await startDemoById(phone, conv.id, "real_estate"); return; }
@@ -207,11 +199,9 @@ export async function handleDemos(
     if (n.includes("custom") || n.includes("automat")) { await startDemoById(phone, conv.id, "custom_automation"); return; }
 
     await showDemoCentreMenu(phone, conv.id);
-
   } catch (err) {
     safeErrorLog("handleDemos", err);
-    await sendTextMessage(phone,
-      "⚠️ Something went wrong in the Demo Centre.\n\nPlease try again or type *menu*.");
+    await sendTextMessage(phone, "⚠️ Something went wrong in the Demo Centre.\n\nPlease try again or type *menu*.");
   }
 }
 
