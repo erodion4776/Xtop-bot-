@@ -333,8 +333,18 @@ export async function handleDemos(
     }
 
     // ── PRIORITY 1: Personalized demo tokens ──
+    //
+    // IMPORTANT FIX:
+    // Interactive IDs such as "demo_rooms" are menu actions,
+    // not personalized demo tokens. Never extract or validate
+    // a token from an interactive button/list selection.
+    //
+    // Typed messages and actual demo references still use the
+    // existing token-validation flow.
 
-    const detectedToken = extractTokenFromText(text || rawInput);
+    const detectedToken = interactiveId
+      ? null
+      : extractTokenFromText(text || rawInput);
 
     if (detectedToken) {
       const handled = await handlePersonalizedDemoToken(
