@@ -1,54 +1,19 @@
 // modules/demos/tokens.ts
-// Secure token generation, extraction, and validation.
+// Secure demo token generation, extraction, validation and link creation.
+// Structured business enquiries must use the onboarding flow;
+// they must never be treated as valid database-backed tokens.
 
 import { getSupabaseClient, safeErrorLog } from "../../database.ts";
-import { classifyCategory } from "./templates.ts";
 
 const TOKEN_PREFIX = "XTD_";
 const TOKEN_RANDOM_LENGTH = 12;
+const MILLISECONDS_PER_DAY = 86_400_000;
+const MAX_TOKEN_LIFETIME_DAYS = 365;
 
-export function generateRawToken(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-  const array = new Uint8Array(TOKEN_RANDOM_LENGTH);
-  crypto.getRandomValues(array);
-  let random = "";
-  for (const byte of array) random += chars[byte % chars.length];
-  return `${TOKEN_PREFIX}${random}`;
-}
-
-export async function hashToken(rawToken: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(rawToken.trim()));
-  return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-/**
- * Extract a demo token or recognize structured customer business criteria.
- */
-export function extractTokenFromText(text: string): string | null {
-  if (!text) return null;
-
-  const cleanText = text.toLowerCase();
-
-  // 1. Structured message detection (e.g. "Business name: Sunrise Hotel...")
-  if (
-    cleanText.includes("business name") ||
-    cleanText.includes("company name") ||
-    (cleanText.includes("demo prepared for") && cleanText.includes("business"))
-  ) {
-    return "STRUCTURED_DIRECT_REQUEST";
-  }
-
-  // 2. Explicit "reference: TOKEN" pattern (e.g. "Demo reference: DEMO_MAELIZA_7F3K")
-  const explicit = text.match(/(?:reference|ref|token|code)\s*[:=-]?\s*([A-Za-z0-9_-]{4,40})/i);
-  if (explicit?.[1]) return explicit[1];
-
-  // 3. Direct prefix match (XTD_*, DEMO_*, TEST_*)
-  const prefix = text.match(/(?:XTD|DEMO|TEST)_[A-Za-z0-9_-]{4,40}/i);
-  if (prefix) return prefix[0];
-
-  return null;
-}
+// Keep the alphabet length below 256 and use rejection sampling
+// to avoid modulo bias when generating random token characters.
+const TOKEN_CHARACTERS =
+  "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
 
 export interface ValidatedToken {
   tokenId: string;
@@ -56,168 +21,352 @@ export interface ValidatedToken {
   businessName: string;
   businessCategory: string;
   demoTemplate: string;
-  demoConfig: Record<string, any>;
+  demoConfig: Record<string, unknown>;
   campaignSource: string | null;
   tokenPrefix: string;
 }
 
 /**
- * Helper to extract business details from natural text
+ * Generate a cryptographically random demo token.
  */
-function extractDetailsFromText(text: string): { name: string; category: string; need: string } {
-  let name = "";
-  let category = "";
-  let need = "";
+export function generateRawToken(): string {
+  const chars = TOKEN_CHARACTERS;
+  const maxAcceptedByte = Math.floor(256 / chars.length) * chars.length;
 
-  // 1. Business Name
-  const nameMatch = text.match(/(?:business\s+name|company\s+name|biz\s+name|prepared\s+for|demo\s+for)\s*[:=-]?\s*([^.\n\r]+?)(?=\.?\s*(?:business\s+category|business\s+type|category|industry|main\s+need|need|demo\s+reference|ref|$))/i);
-  if (nameMatch?.[1]) {
-    name = nameMatch[1].trim().replace(/^[:\s-]+|[:\s-]+$/g, "");
+  let random = "";
+
+  while (random.length < TOKEN_RANDOM_LENGTH) {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+
+    for (const byte of bytes) {
+      if (byte >= maxAcceptedByte) continue;
+
+      random += chars[byte % chars.length];
+
+      if (random.length === TOKEN_RANDOM_LENGTH) break;
+    }
   }
 
-  // 2. Category
-  const catMatch = text.match(/(?:business\s+category|business\s+type|category|industry|type)\s*[:=-]?\s*([^.\n\r]+?)(?=\.?\s*(?:main\s+need|need|business\s+name|demo\s+reference|ref|$))/i);
-  if (catMatch?.[1]) {
-    category = catMatch[1].trim().replace(/^[:\s-]+|[:\s-]+$/g, "");
-  }
-
-  // 3. Main Need
-  const needMatch = text.match(/(?:main\s+need|business\s+need|need)\s*[:=-]?\s*([^.\n\r]+?)(?=\.?\s*(?:business\s+name|business\s+category|demo\s+reference|$))/i);
-  if (needMatch?.[1]) {
-    need = needMatch[1].trim().replace(/^[:\s-]+|[:\s-]+$/g, "");
-  }
-
-  return { name, category, need };
+  return `${TOKEN_PREFIX}${random}`;
 }
 
 /**
- * Validate a token or process structured details directly on-the-fly.
+ * Return the SHA-256 hexadecimal digest of a token.
+ * Raw tokens must not be stored in token_hash.
+ */
+export async function hashToken(rawToken: string): Promise<string> {
+  const clean = rawToken.trim();
+
+  if (!clean || clean.length > 100) {
+    throw new Error("Invalid token input");
+  }
+
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(clean),
+  );
+
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * Extract an explicit token from a WhatsApp message.
+ *
+ * Business details alone are not authentication credentials.
+ * Structured requests must go through the onboarding flow.
+ */
+export function extractTokenFromText(text: string): string | null {
+  if (!text || text.length > 10_000) return null;
+
+  const explicit = text.match(
+    /(?:demo\s+reference|reference|ref|token|code)\s*[:=-]?\s*((?:XTD|DEMO|TEST)_[A-Za-z0-9_-]{4,40})/i,
+  );
+
+  if (explicit?.[1]) return explicit[1].trim();
+
+  const direct = text.match(
+    /(?:XTD|DEMO|TEST)_[A-Za-z0-9_-]{4,40}/i,
+  );
+
+  return direct?.[0]?.trim() ?? null;
+}
+
+/**
+ * Validate a token against the database.
+ *
+ * A token is accepted only when:
+ * - Its SHA-256 hash matches a database record.
+ * - The token is active and not revoked.
+ * - Its expiry timestamp is valid and still in the future.
+ * - Its associated business configuration is active.
  */
 export async function validateToken(
   rawToken: string,
-  originalText?: string
+  _originalText?: string,
 ): Promise<ValidatedToken | null> {
   const clean = rawToken.trim();
-  const text = originalText || "";
 
-  // ── 1. STRUCTURED DIRECT REQUESTS & FALLBACKS ──
-  if (clean === "STRUCTURED_DIRECT_REQUEST" || clean.toUpperCase().startsWith("TEST_") || clean.toUpperCase().startsWith("DEMO_")) {
-    const extracted = extractDetailsFromText(text);
-    
-    let businessName = extracted.name;
-    if (!businessName && (clean.startsWith("TEST_") || clean.startsWith("DEMO_"))) {
-      const slug = clean.replace(/^(?:TEST|DEMO)_/i, "").replace(/_[A-Z0-9]{4}$/i, "").replace(/_/g, " ");
-      businessName = slug.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
-    }
-    if (!businessName) businessName = "Your Business";
-
-    const resolvedCategory = classifyCategory(extracted.category || businessName);
-
-    return {
-      tokenId: "00000000-0000-0000-0000-000000000000",
-      businessConfigId: "00000000-0000-0000-0000-000000000000",
-      businessName,
-      businessCategory: resolvedCategory,
-      demoTemplate: resolvedCategory,
-      demoConfig: { main_need: extracted.need },
-      campaignSource: "inbound_demo_request",
-      tokenPrefix: clean.substring(0, 8),
-    };
+  // Only tokens with recognised prefixes can be validated.
+  if (
+    clean.length < 8 ||
+    clean.length > 45 ||
+    !/^(?:XTD|DEMO|TEST)_[A-Za-z0-9_-]+$/i.test(clean)
+  ) {
+    return null;
   }
 
-  // ── 2. PRODUCTION DATABASE TOKENS ──
-  const sb = getSupabaseClient();
   try {
-    const hash = await hashToken(clean);
+    const sb = getSupabaseClient();
+    const tokenHash = await hashToken(clean);
 
-    const { data: tokenRow } = await sb
+    const { data: tokenRow, error: tokenError } = await sb
       .from("demo_entry_tokens")
-      .select("id, business_config_id, is_active, is_revoked, expires_at, campaign_source, token_prefix")
-      .or(`token_hash.eq.${hash},token_hash.eq.${clean}`)
+      .select(
+        "id, business_config_id, is_active, is_revoked, expires_at, campaign_source, token_prefix",
+      )
+      .eq("token_hash", tokenHash)
       .maybeSingle();
 
-    if (tokenRow && tokenRow.is_active && !tokenRow.is_revoked && new Date(tokenRow.expires_at) >= new Date()) {
-      const { data: biz } = await sb
-        .from("business_demo_configs")
-        .select("id, business_name, business_category, demo_template, demo_config, is_active")
-        .eq("id", tokenRow.business_config_id)
-        .maybeSingle();
-
-      if (biz && biz.is_active) {
-        return {
-          tokenId: tokenRow.id,
-          businessConfigId: biz.id,
-          businessName: biz.business_name,
-          businessCategory: biz.business_category,
-          demoTemplate: biz.demo_template,
-          demoConfig: (biz.demo_config || {}) as Record<string, any>,
-          campaignSource: tokenRow.campaign_source,
-          tokenPrefix: tokenRow.token_prefix,
-        };
-      }
+    if (tokenError) {
+      safeErrorLog("validateToken: token lookup failed", tokenError);
+      return null;
     }
-  } catch (err) {
-    safeErrorLog("validateToken (db)", err);
-  }
 
-  // ── 3. RESILIENT FALLBACK: If token wasn't in DB but message has a business name in text ──
-  const fallback = extractDetailsFromText(text);
-  if (fallback.name) {
-    const resolvedCategory = classifyCategory(fallback.category || fallback.name);
+    if (!tokenRow) return null;
+    if (tokenRow.is_active !== true) return null;
+    if (tokenRow.is_revoked !== false) return null;
+
+    const expiryTime = Date.parse(tokenRow.expires_at);
+
+    if (!Number.isFinite(expiryTime) || expiryTime <= Date.now()) {
+      return null;
+    }
+
+    if (
+      typeof tokenRow.business_config_id !== "string" ||
+      !tokenRow.business_config_id
+    ) {
+      return null;
+    }
+
+    const { data: biz, error: businessError } = await sb
+      .from("business_demo_configs")
+      .select(
+        "id, business_name, business_category, demo_template, demo_config, is_active",
+      )
+      .eq("id", tokenRow.business_config_id)
+      .maybeSingle();
+
+    if (businessError) {
+      safeErrorLog("validateToken: business lookup failed", businessError);
+      return null;
+    }
+
+    if (!biz || biz.is_active !== true) return null;
+
+    if (
+      typeof biz.id !== "string" ||
+      typeof biz.business_name !== "string" ||
+      typeof biz.business_category !== "string" ||
+      typeof biz.demo_template !== "string"
+    ) {
+      safeErrorLog(
+        "validateToken: business record has missing required fields",
+        { businessConfigId: tokenRow.business_config_id },
+      );
+      return null;
+    }
+
+    const demoConfig =
+      biz.demo_config &&
+      typeof biz.demo_config === "object" &&
+      !Array.isArray(biz.demo_config)
+        ? (biz.demo_config as Record<string, unknown>)
+        : {};
+
     return {
-      tokenId: "00000000-0000-0000-0000-000000000000",
-      businessConfigId: "00000000-0000-0000-0000-000000000000",
-      businessName: fallback.name,
-      businessCategory: resolvedCategory,
-      demoTemplate: resolvedCategory,
-      demoConfig: { main_need: fallback.need },
-      campaignSource: "inbound_text_fallback",
-      tokenPrefix: clean.substring(0, 8),
+      tokenId: tokenRow.id,
+      businessConfigId: biz.id,
+      businessName: biz.business_name,
+      businessCategory: biz.business_category,
+      demoTemplate: biz.demo_template,
+      demoConfig,
+      campaignSource:
+        typeof tokenRow.campaign_source === "string"
+          ? tokenRow.campaign_source
+          : null,
+      tokenPrefix:
+        typeof tokenRow.token_prefix === "string"
+          ? tokenRow.token_prefix
+          : clean.substring(0, 8),
     };
+  } catch (error) {
+    safeErrorLog("validateToken: unexpected error", error);
+    return null;
   }
-
-  return null;
 }
 
+/**
+ * Create a business demo configuration and its hashed entry token.
+ *
+ * Returns null if creation fails. If token insertion fails after
+ * business creation, attempts to remove the newly created business row.
+ */
 export async function createDemoLink(
   businessName: string,
   businessCategory: string,
   demoTemplate: string,
   campaignSource?: string,
-  expiresInDays: number = 30
-): Promise<{ rawToken: string; waLink: string; businessSlug: string } | null> {
-  const sb = getSupabaseClient();
-  try {
-    const slug = businessName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").substring(0, 50)
-      + "_" + Date.now().toString(36);
+  expiresInDays = 30,
+): Promise<{
+  rawToken: string;
+  waLink: string;
+  businessSlug: string;
+} | null> {
+  const name = businessName.trim();
+  const category = businessCategory.trim();
+  const template = demoTemplate.trim();
 
-    const { data: biz, error: bizErr } = await sb
+  if (
+    !name ||
+    name.length > 100 ||
+    !category ||
+    category.length > 100 ||
+    !template ||
+    template.length > 100
+  ) {
+    return null;
+  }
+
+  if (
+    !Number.isInteger(expiresInDays) ||
+    expiresInDays < 1 ||
+    expiresInDays > MAX_TOKEN_LIFETIME_DAYS
+  ) {
+    return null;
+  }
+
+  if (campaignSource && campaignSource.length > 100) {
+    return null;
+  }
+
+  const sb = getSupabaseClient();
+  let businessConfigId: string | null = null;
+
+  try {
+    const slugBase = name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .substring(0, 50) || "business";
+
+    const businessSlug = `${slugBase}_${crypto.randomUUID().replace(/-/g, "").substring(0, 12)}`;
+
+    const { data: biz, error: businessError } = await sb
       .from("business_demo_configs")
-      .insert({ business_slug: slug, business_name: businessName, business_category: businessCategory, demo_template: demoTemplate })
-      .select("id").single();
-    if (bizErr || !biz) { safeErrorLog("createDemoLink (biz)", bizErr); return null; }
+      .insert({
+        business_slug: businessSlug,
+        business_name: name,
+        business_category: category,
+        demo_template: template,
+      })
+      .select("id")
+      .single();
+
+    if (businessError || !biz?.id) {
+      safeErrorLog(
+        "createDemoLink: business insert failed",
+        businessError ?? "Missing business ID",
+      );
+      return null;
+    }
+
+    businessConfigId = biz.id;
 
     const rawToken = generateRawToken();
-    const expiresAt = new Date(Date.now() + expiresInDays * 86400000).toISOString();
+    const tokenHash = await hashToken(rawToken);
+    const expiresAt = new Date(
+      Date.now() + expiresInDays * MILLISECONDS_PER_DAY,
+    ).toISOString();
 
-    const { error: tokenErr } = await sb
+    const { error: tokenError } = await sb
       .from("demo_entry_tokens")
       .insert({
-        token_hash: await hashToken(rawToken),
+        token_hash: tokenHash,
         token_prefix: rawToken.substring(0, 8),
-        business_config_id: biz.id,
+        business_config_id: businessConfigId,
         expires_at: expiresAt,
         campaign_source: campaignSource || null,
       });
-    if (tokenErr) { safeErrorLog("createDemoLink (token)", tokenErr); return null; }
 
-    const msg = encodeURIComponent(
-      `Hello Xtop, I am interested in seeing the WhatsApp demo prepared for ${businessName}. Demo reference: ${rawToken}`
+    if (tokenError) {
+      safeErrorLog("createDemoLink: token insert failed", tokenError);
+
+      // Best-effort cleanup of the business row created by this call.
+      const { error: cleanupError } = await sb
+        .from("business_demo_configs")
+        .delete()
+        .eq("id", businessConfigId);
+
+      if (cleanupError) {
+        safeErrorLog(
+          "createDemoLink: orphan cleanup failed",
+          cleanupError,
+        );
+      }
+
+      return null;
+    }
+
+    // Use an actual WhatsApp phone number, not the Cloud API phone ID.
+    const configuredPhone = Deno.env.get("WHATSAPP_DEMO_PHONE_NUMBER");
+    const phone = (configuredPhone || "2348024988555").replace(/\D/g, "");
+
+    if (!/^\d{10,15}$/.test(phone)) {
+      safeErrorLog(
+        "createDemoLink: invalid demo WhatsApp phone number",
+        { configured: Boolean(configuredPhone) },
+      );
+      return null;
+    }
+
+    const message = encodeURIComponent(
+      `Hello Xtop, I am interested in seeing the WhatsApp demo prepared for ${name}. Demo reference: ${rawToken}`,
     );
 
-    return { rawToken, waLink: `https://wa.me/2348024988555?text=${msg}`, businessSlug: slug };
-  } catch (err) {
-    safeErrorLog("createDemoLink", err);
+    return {
+      rawToken,
+      waLink: `https://wa.me/${phone}?text=${message}`,
+      businessSlug,
+    };
+  } catch (error) {
+    safeErrorLog("createDemoLink: unexpected error", error);
+
+    // Best-effort cleanup if business creation succeeded before failure.
+    if (businessConfigId) {
+      try {
+        const { error: cleanupError } = await sb
+          .from("business_demo_configs")
+          .delete()
+          .eq("id", businessConfigId);
+
+        if (cleanupError) {
+          safeErrorLog(
+            "createDemoLink: exception cleanup failed",
+            cleanupError,
+          );
+        }
+      } catch (cleanupError) {
+        safeErrorLog(
+          "createDemoLink: exception cleanup threw",
+          cleanupError,
+        );
+      }
+    }
+
     return null;
   }
 }
