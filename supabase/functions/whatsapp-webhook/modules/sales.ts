@@ -586,7 +586,7 @@ async function handleBotFlow(
       break;
     }
 
-    case "ASK_INDUSTRY": {
+    case "ASK_INDUSTR;Y": {
       const r = resolveStrict(text, INDUSTRY_IDS, INDUSTRY_NUMS);
       if (!r) {
         await sendTextMessage(phone, "⚠️ Please select one of the industries from the list.");
@@ -1514,28 +1514,78 @@ function buildLeadFields(
 // ═══════════════════════════════════════════════════════
 
 async function handlePostQuoteAction(
-  phone: string, text: string, contact: Contact, conv: Conversation, ctx: SalesCtx
+  phone: string,
+  text: string,
+  contact: Contact,
+  conv: Conversation,
+  ctx: SalesCtx
 ): Promise<void> {
   const n = normalise(text);
 
-  if (n === "q_select" || n.includes("select")) {
-    if (ctx.leadId) await updateLead(ctx.leadId, { status: "PACKAGE_SELECTED", selected_package_id: ctx.selectedPackageId });
-    if (ctx.quotationId) await updateQuotation(ctx.quotationId, { status: "PACKAGE_SELECTED" });
-    await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
-    await sendButtonMessage(phone,
-      `✅ *Package selection recorded.*\n\n*Ref:* ${ctx.quotationNumber}\n*Package:* ${ctx.selectedPackageCode}\n*Estimate:* ${formatNaira(ctx.estimatedMin || 0)} – ${formatNaira(ctx.estimatedMax || 0)}\n\nAn Xtop agent will confirm the final scope.`,
-      [makeButton("q_agent_now", "👤 Talk to Agent"), makeButton("menu_home", "🏠 Main Menu")],
-      "Package Selected", "Xtop Retail Technologies");
+  // Return to the main menu when requested.
+  if (
+    n === "menu_home" ||
+    n === "main menu" ||
+    n === "menu"
+  ) {
+    await showMainMenu(phone, conv.id);
     return;
   }
 
-  if (n === "q_change" || n.includes("change")) {
-    await showServiceTypeSelector(phone, conv.id); return;
+  // Record package selection without destroying the quotation context.
+  if (n === "q_select" || n.includes("select")) {
+    if (ctx.leadId) {
+      await updateLead(ctx.leadId, {
+        status: "PACKAGE_SELECTED",
+        selected_package_id: ctx.selectedPackageId,
+      });
+    }
+
+    if (ctx.quotationId) {
+      await updateQuotation(ctx.quotationId, {
+        status: "PACKAGE_SELECTED",
+      });
+    }
+
+    ctx.step = "SHOWING_QUOTE";
+
+    await updateConversation(conv.id, {
+      current_module: "SALES",
+      current_state: "SHOWING_QUOTE",
+      context_json: ctx as unknown as Record<string, unknown>,
+    });
+
+    await sendButtonMessage(
+      phone,
+      `✅ *Package selection recorded.*\n\n` +
+        `*Ref:* ${ctx.quotationNumber || "PENDING"}\n` +
+        `*Package:* ${ctx.selectedPackageCode || "N/A"}\n` +
+        `*Estimate:* ${formatNaira(ctx.estimatedMin || 0)} – ${formatNaira(ctx.estimatedMax || 0)}\n\n` +
+        "An Xtop agent will confirm the final scope. You can request an agent now or return to the main menu.",
+      [
+        makeButton("q_agent_now", "👤 Talk to Agent"),
+        makeButton("menu_home", "🏠 Main Menu"),
+      ],
+      "Package Selected",
+      "Xtop Retail Technologies"
+    );
+
+    return;
   }
 
-  if (n === "q_agent" || n === "q_agent_now" || n.includes("agent") || n.includes("talk")) {
-    if (ctx.leadId) await updateLead(ctx.leadId, { status: "AGENT_REQUESTED" });
-    if (ctx.quotationId) await updateQuotation(ctx.quotationId, { status: "AGENT_REVIEW" });
+  // Allow the customer to change requirements.
+  if (n === "q_change" || n.includes("change")) {
+    await showServiceTypeSelector(phone, conv.id);
+    return;
+  }
+
+  // Save the agent request before reporting success.
+  if (
+    n === "q_agent" ||
+    n === "q_agent_now" ||
+    n.includes("agent") ||
+    n.includes("talk")
+  ) {
     const summary =
       `Client: ${ctx.clientName || contact.name || "N/A"}\n` +
       `Email: ${ctx.clientEmail || "N/A"}\n` +
@@ -1543,28 +1593,116 @@ async function handlePostQuoteAction(
       `Business: ${ctx.businessName || "N/A"}\n` +
       `Industry: ${ctx.industry || "N/A"}\n` +
       `Service: ${ctx.serviceType || "N/A"}\n` +
-      `Features: ${[...ctx.features, ...ctx.webFeatures, ...ctx.autoActivities].join(", ") || "N/A"}\n` +
+      `Features: ${
+        [
+          ...ctx.features,
+          ...ctx.webFeatures,
+          ...ctx.autoActivities,
+        ].join(", ") || "N/A"
+      }\n` +
       `Budget: ${ctx.budget || "N/A"}\n` +
       `Package: ${ctx.selectedPackageCode || "N/A"}\n` +
       `Estimate: ${formatNaira(ctx.estimatedMin || 0)} – ${formatNaira(ctx.estimatedMax || 0)}\n` +
-      `Ref: ${ctx.quotationNumber || "N/A"}`;
+      `Quotation Ref: ${ctx.quotationNumber || "N/A"}`;
 
-    await createAgentRequest(
-      contact.id, "QUOTATION",
-      `Quotation review request from ${ctx.clientName || contact.name || contact.phone}`,
-      "HIGH", ctx.leadId, ctx.quotationId, summary
+    const record = await createAgentRequest(
+      contact.id,
+      "QUOTATION",
+      `Quotation review request from ${
+        ctx.clientName || contact.name || contact.phone
+      }`,
+      "HIGH",
+      ctx.leadId,
+      ctx.quotationId,
+      summary
     );
 
-    await updateConversation(conv.id, { current_module: "MAIN_MENU", current_state: "IDLE", context_json: {} });
-    await sendButtonMessage(phone,
-      `✅ *Your requirements and quotation have been sent to our engineering team.*\n\n` +
-      `*Ref:* ${ctx.quotationNumber || "XTR-PENDING"}\n\n` +
-      `An Xtop consultant will reach out on WhatsApp shortly.`,
-      [makeButton("menu_home", "🏠 Main Menu")],
-      "Agent Notified", "Xtop Retail Technologies"
+    // Do not claim success if the database did not save the request.
+    if (!record || !record.id) {
+      console.error(
+        "[SALES AGENT REQUEST ERROR]",
+        JSON.stringify({
+          conversationId: conv.id,
+          contactId: contact.id,
+          leadId: ctx.leadId || null,
+          quotationId: ctx.quotationId || null,
+        })
+      );
+
+      // Preserve the quotation so the customer can retry.
+      await updateConversation(conv.id, {
+        current_module: "SALES",
+        current_state: "SHOWING_QUOTE",
+        context_json: ctx as unknown as Record<string, unknown>,
+      });
+
+      await sendButtonMessage(
+        phone,
+        "⚠️ *We could not record your request right now.*\n\n" +
+          "Your quotation details are still available. Please try requesting an agent again shortly. " +
+          "Your request has not been confirmed as submitted.",
+        [
+          makeButton("q_agent", "🔄 Try Again"),
+          makeButton("menu_home", "🏠 Main Menu"),
+        ],
+        "Request Not Saved",
+        "Xtop Retail Technologies"
+      );
+
+      return;
+    }
+
+    // Update lead and quotation only after the request is saved.
+    if (ctx.leadId) {
+      await updateLead(ctx.leadId, {
+        status: "AGENT_REQUESTED",
+      });
+    }
+
+    if (ctx.quotationId) {
+      await updateQuotation(ctx.quotationId, {
+        status: "AGENT_REVIEW",
+      });
+    }
+
+    const ticketRef =
+      `#REQ-${record.id.substring(0, 8).toUpperCase()}`;
+
+    await updateConversation(conv.id, {
+      current_module: "MAIN_MENU",
+      current_state: "IDLE",
+      context_json: {
+        lastRequestId: record.id,
+        lastRequestRef: ticketRef,
+      },
+    });
+
+    await sendButtonMessage(
+      phone,
+      `✅ *Your agent request has been recorded successfully.*\n\n` +
+        `*Ticket:* ${ticketRef}\n` +
+        `*Quotation Ref:* ${ctx.quotationNumber || "N/A"}\n\n` +
+        "Your request is queued for review by the Xtop team. An agent will follow up on WhatsApp when available.",
+      [
+        makeButton("menu_home", "🏠 Main Menu"),
+      ],
+      "Request Recorded",
+      "Xtop Retail Technologies"
     );
+
     return;
   }
 
-  await sendTextMessage(phone, "Please choose one of the options below:");
+  // Keep the quotation flow active for an unrecognised selection.
+  await sendButtonMessage(
+    phone,
+    "What would you like to do with your quotation?",
+    [
+      makeButton("q_select", "✅ Select Package"),
+      makeButton("q_change", "🔄 Change Reqs"),
+      makeButton("q_agent", "👤 Talk to Agent"),
+    ],
+    "Quotation Options",
+    "Xtop Retail Technologies"
+  );
 }
