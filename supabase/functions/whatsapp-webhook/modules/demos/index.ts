@@ -1,5 +1,6 @@
 // supabase/functions/whatsapp-webhook/modules/demos/index.ts
 // Demo Centre — Main Router & Category Menus
+// Enhanced with Personalized Business Demos (Path A) & Onboarding (Path B)
 
 import {
   Contact, Conversation, updateConversation,
@@ -13,6 +14,10 @@ import { normalise, isBack, safeErrorLog } from "../../utils.ts";
 import { showMainMenu } from "../main-menu.ts";
 import { startDemo, processDemoInput, handlePostDemoAction, processLeadCapture } from "./engine.ts";
 import { getAllDemos, getDemoConfig, getDemosByCategory, getDemoCategories } from "./data.ts";
+
+// ✨ NEW IMPORTS: Personalized Business Demo Engine
+import { handlePersonalizedDemoAction } from "./personalized.ts";
+import { processOnboarding, startOnboarding, handleChangeDetails } from "./onboarding.ts";
 
 // ═══════════════════════════════════════════════════════
 // DEMO CENTRE MAIN MENU
@@ -45,6 +50,7 @@ export async function showDemoCentreMenu(phone: string, conversationId: string):
     )
   );
   rows.push(makeListRow("democat_all", "📋 All Demos", "Browse every demo"));
+  rows.push(makeListRow("demo_onboard_start", "✨ Demo for My Business", "Get a personalized demo"));
   rows.push(makeListRow("democat_back", "🔙 Main Menu", "Return to home"));
 
   await sendListMessage(
@@ -132,6 +138,50 @@ export async function handleDemos(
       await showDemoCentreMenu(phone, conv.id);
       return;
     }
+
+    // ══════════════════════════════════════════════════════
+    // ✨ PATH B: ONBOARDING FLOW (New Business, No Token)
+    // ══════════════════════════════════════════════════════
+    const ctx = (conv.context_json || {}) as Record<string, any>;
+
+    // User explicitly requests the onboarding flow
+    if (
+      rawInput === "demo_onboard_start" ||
+      n.includes("demo for my business") ||
+      n.includes("see a demo for my business")
+    ) {
+      await startOnboarding(phone, conv);
+      return;
+    }
+
+    // User wants to change their onboarding details
+    if (rawInput === "demo_change_details" || n.includes("change details") || n.includes("change my details")) {
+      const handled = await handleChangeDetails(phone, conv);
+      if (handled) return;
+    }
+
+    // Active onboarding session — delegate to onboarding processor
+    if (ctx.onboarding === true && ctx.step) {
+      const handled = await processOnboarding(phone, text, contact, conv, interactiveId);
+      if (handled) return;
+    }
+
+    // ══════════════════════════════════════════════════════
+    // ✨ PATH A: PERSONALIZED DEMO SESSION (Active)
+    // Handles buttons like demo_view_my_biz, demo_try_related,
+    // demo_try_tools, demo_build_lead, demo_back_personalized,
+    // and all sample response demo_* IDs for the active template.
+    // ══════════════════════════════════════════════════════
+    if (ctx.personalizedDemo === true) {
+      const handled = await handlePersonalizedDemoAction(
+        phone, text, rawInput, conv
+      );
+      if (handled) return;
+    }
+
+    // ══════════════════════════════════════════════════════
+    // LEGACY DEMO FLOWS (Preserved — No Changes)
+    // ══════════════════════════════════════════════════════
 
     // ── POST-DEMO ACTIONS (Build Lead, Restart, Agent) ──
     if (rawInput.startsWith("demo_restart_") || n === "demo_build_lead" || n === "demo_agent") {
