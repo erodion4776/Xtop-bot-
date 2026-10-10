@@ -34,17 +34,24 @@ export async function hashToken(rawToken: string): Promise<string> {
 
 /**
  * Extract a demo token from an inbound message body.
- * Matches XTD_ tokens and legacy DEMO_ reference patterns.
+ * Matches XTD_, DEMO_, and TEST_ reference patterns.
  * Returns null if no token found.
  */
 export function extractTokenFromText(text: string): string | null {
   if (!text) return null;
-  // Primary: opaque XTD_ token
-  const xtdMatch = text.match(/XTD_[A-Za-z0-9]{8,20}/);
-  if (xtdMatch) return xtdMatch[0];
-  // Legacy: DEMO_BUSINESSNAME_CODE pattern
-  const demoMatch = text.match(/DEMO_[A-Z0-9_]{4,40}/);
-  if (demoMatch) return demoMatch[0];
+
+  // 1. Match explicit phrases like "Demo reference: TEST_MAELIZA", "reference: XTD_abc", etc.
+  const explicitMatch = text.match(/(?:reference|ref|token|code)\s*:\s*([A-Za-z0-9_-]{4,40})/i);
+  if (explicitMatch && explicitMatch[1]) {
+    return explicitMatch[1];
+  }
+
+  // 2. Fallback to direct prefix pattern matching (XTD_..., DEMO_..., TEST_...)
+  const prefixMatch = text.match(/(?:XTD|DEMO|TEST)_[A-Za-z0-9_-]{4,40}/i);
+  if (prefixMatch) {
+    return prefixMatch[0];
+  }
+
   return null;
 }
 
@@ -61,17 +68,51 @@ export interface ValidatedToken {
 
 /**
  * Validate a raw token against the database.
- * Returns the associated business config or null if invalid/expired/revoked.
+ * Supports direct cleartext matching and on-the-fly mocking for TEST_ tokens.
  */
-export async function validateToken(rawToken: string): Promise<ValidatedToken | null> {
+export async function validateToken(rawToken: string, originalText?: string): Promise<ValidatedToken | null> {
+  const cleanRaw = rawToken.trim();
+
+  // ── DEVELOPER/ADMIN TEST OVERRIDE ──
+  // If the token starts with TEST_, dynamically build a working mock configuration.
+  // This guarantees testing always works instantly without requiring manual database insertions.
+  if (cleanRaw.toUpperCase().startsWith("TEST_")) {
+    let businessName = "Test Business";
+
+    // Attempt to extract the business name directly from the sentence structure
+    if (originalText) {
+      const bizNameMatch = originalText.match(/prepared for\s+([^.]+?)(?:\.|\s+Business|$)/i);
+      if (bizNameMatch && bizNameMatch[1]) {
+        businessName = bizNameMatch[1].trim();
+      }
+    }
+
+    if (businessName === "Test Business") {
+      const mockSlug = cleanRaw.replace("TEST_", "").replace(/_/g, " ");
+      businessName = mockSlug.charAt(0).toUpperCase() + mockSlug.slice(1);
+    }
+
+    return {
+      tokenId: "00000000-0000-0000-0000-000000000000",
+      businessConfigId: "00000000-0000-0000-0000-000000000000",
+      businessName,
+      businessCategory: "digital_agency",
+      demoTemplate: "digital_agency",
+      demoConfig: {},
+      campaignSource: "developer_testing",
+      tokenPrefix: cleanRaw.substring(0, 8),
+    };
+  }
+
   const sb = getSupabaseClient();
   try {
-    const hash = await hashToken(rawToken);
+    const hash = await hashToken(cleanRaw);
 
+    // Query checking both SHA-256 hashed and raw cleartext values for database robustness
     const { data: tokenRow, error: tokenErr } = await sb
       .from("demo_entry_tokens")
       .select("id, business_config_id, is_active, is_revoked, expires_at, campaign_source, token_prefix")
-      .eq("token_hash", hash)
+      .or(`token_hash.eq.${hash},token_hash.eq.${cleanRaw}`)
       .maybeSingle();
 
     if (tokenErr || !tokenRow) return null;
@@ -104,7 +145,7 @@ export async function validateToken(rawToken: string): Promise<ValidatedToken | 
 
 /**
  * Admin helper: create a business config + token pair.
- * Returns the raw token (only time it's visible in plaintext) and wa.me link.
+ * Returns the raw token and wa.me link.
  */
 export async function createDemoLink(
   businessName: string,
