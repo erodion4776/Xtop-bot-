@@ -314,12 +314,10 @@ export async function storeMessage(
 
     if (contactId) {
       if (contactId.includes("-") && contactId.length > 20) {
-        // contactId is a UUID -> lookup phone number
         resolvedContactId = contactId;
         const { data: c } = await sb.from("contacts").select("phone").eq("id", contactId).maybeSingle();
         phone = c?.phone ? c.phone.replace(/[^0-9]/g, "") : null;
       } else {
-        // contactId is a phone number -> lookup contact UUID
         phone = contactId.replace(/[^0-9]/g, "");
         const localPhone = phone.startsWith("234") ? "0" + phone.slice(3) : phone;
         const { data: c } = await sb
@@ -339,7 +337,7 @@ export async function storeMessage(
       body: body || null,
       content: body || null,
       text: body || null,
-      message_text: body || null, // Included for Android app compatibility
+      message_text: body || null,
       whatsapp_message_id: whatsappMessageId || null,
       created_at: new Date().toISOString(),
     };
@@ -359,6 +357,7 @@ export async function storeMessage(
     return null;
   }
 }
+
 // ==========================================
 // 5. Products Functions
 // ==========================================
@@ -1032,6 +1031,7 @@ export async function getStudentExamAttempts(studentId: string, courseId: string
   }
   return data || [];
 }
+
 // ==========================================
 // 13. Games Engine Functions
 // ==========================================
@@ -1071,8 +1071,6 @@ export interface GameQuestion {
   explanation?: string;
   is_active: boolean;
 }
-
-// ── Session Management ──
 
 export async function getActiveGameSession(phone: string): Promise<GameSession | null> {
   const sb = getSupabaseClient();
@@ -1160,8 +1158,6 @@ export async function completeGameSession(sessionId: string): Promise<GameSessio
   } as any);
 }
 
-// ── Question Fetch ──
-
 export async function getRandomQuestions(
   gameType: string,
   difficulty: string,
@@ -1182,8 +1178,6 @@ export async function getRandomQuestions(
   const shuffled = (data || []).sort(() => Math.random() - 0.5);
   return shuffled.slice(0, count) as GameQuestion[];
 }
-
-// ── Answer Logging ──
 
 export async function logGameAnswer(
   sessionId: string,
@@ -1206,8 +1200,6 @@ export async function logGameAnswer(
   });
 }
 
-// ── Scores ──
-
 export async function recordGameScore(
   session: GameSession,
   xp: number
@@ -1226,8 +1218,6 @@ export async function recordGameScore(
     xp_earned: xp,
   });
 }
-
-// ── User Stats ──
 
 export async function updateUserGameStats(
   phone: string,
@@ -1286,8 +1276,6 @@ export async function getUserGameStats(phone: string): Promise<any> {
   return data;
 }
 
-// ── Achievements ──
-
 export async function awardAchievement(
   phone: string,
   code: string,
@@ -1300,6 +1288,7 @@ export async function awardAchievement(
     .insert({ phone_number: phone, achievement_code: code, name, icon });
   return !error;
 }
+
 // ==========================================
 // 14. Demo Centre Functions
 // ==========================================
@@ -1399,7 +1388,6 @@ export async function createDemoLead(
   }).select("*").single();
   if (error) { safeErrorLog("createDemoLead", error); return null; }
 
-  // Also create in main leads table for CRM integration
   await sb.from("leads").insert({
     contact_id: null,
     service_type: "DEMO_CONVERSION",
@@ -1417,8 +1405,9 @@ export async function createDemoLead(
 
   return data;
 }
+
 // ==========================================
-// Dashboard Activity & Phone Logging
+// 15. Dashboard Activity & Phone Logging
 // ==========================================
 
 export async function logBotActivity(
@@ -1444,7 +1433,6 @@ export async function logBotActivity(
       whatsapp_message_id: whatsappMessageId || null,
     });
 
-    // Update phone log summary
     const { data: existing } = await sb
       .from("phone_log")
       .select("id, total_messages, modules_used")
@@ -1474,6 +1462,7 @@ export async function logBotActivity(
     safeErrorLog("logBotActivity", err);
   }
 }
+
 // ==========================================
 // 16. Website & Domain Tool Logging
 // ==========================================
@@ -1522,6 +1511,7 @@ export async function logDnsCheck(
     });
   } catch (e) { safeErrorLog("logDnsCheck", e); }
 }
+
 // ==========================================
 // 17. Flight Checker Logging
 // ==========================================
@@ -1546,6 +1536,7 @@ export async function logFlightSearch(
     safeErrorLog("logFlightSearch", e);
   }
 }
+
 // ==========================================
 // 18. Magazine Studio Functions
 // ==========================================
@@ -1623,8 +1614,9 @@ export async function uploadMagazinePdf(magId: string, pdfBytes: Uint8Array): Pr
     return null;
   }
 }
+
 // ==========================================
-// 19. Business Demo Engine Functions
+// 19. Generic Business Demo Engine Helpers
 // ==========================================
 
 export interface BusinessDemoConfig {
@@ -1632,6 +1624,8 @@ export interface BusinessDemoConfig {
   business_slug: string;
   business_name: string;
   business_category: string;
+  business_website?: string;
+  business_phone?: string;
   demo_template: string;
   demo_config: Record<string, any>;
   is_active: boolean;
@@ -1695,63 +1689,6 @@ export async function updateDemoLeadStatus(
   const sb = getSupabaseClient();
   const { error } = await sb
     .from("demo_leads")
-    .update({ status, lead_status: status, updated_at: new Date().toISOString() })
-    .eq("id", leadId);
-  if (error) { safeErrorLog("updateDemoLeadStatus", error); return false; }
-  return true;
-}
-// ==========================================
-// 19. Generic Business Demo Engine Helpers
-// ==========================================
-
-export interface BusinessDemoConfig {
-  id: string;
-  business_slug: string;
-  business_name: string;
-  business_category: string;
-  business_website?: string;
-  business_phone?: string;
-  demo_template: string;
-  demo_config: Record<string, any>;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export async function getBusinessDemoConfig(configId: string): Promise<BusinessDemoConfig | null> {
-  const sb = getSupabaseClient();
-  const { data, error } = await sb
-    .from("business_demo_configs")
-    .select("*").eq("id", configId).eq("is_active", true).maybeSingle();
-  if (error) { safeErrorLog("getBusinessDemoConfig", error); return null; }
-  return data as BusinessDemoConfig;
-}
-
-export async function logSalesEvent(
-  phone: string, eventType: string,
-  leadId?: string | null, eventData?: Record<string, any>
-): Promise<void> {
-  const sb = getSupabaseClient();
-  try {
-    await sb.from("sales_events").insert({
-      phone_number: phone, lead_id: leadId || null,
-      event_type: eventType, event_data: eventData || {},
-    });
-  } catch (err) { safeErrorLog("logSalesEvent", err); }
-}
-
-export async function getDemoLeadsForAdmin(limit = 50, status?: string): Promise<any[]> {
-  const sb = getSupabaseClient();
-  let query = sb.from("demo_leads").select("*").order("created_at", { ascending: false }).limit(limit);
-  if (status) query = query.eq("status", status);
-  const { data, error } = await query;
-  if (error) { safeErrorLog("getDemoLeadsForAdmin", error); return []; }
-  return data || [];
-}
-
-export async function updateDemoLeadStatus(leadId: string, status: string): Promise<boolean> {
-  const sb = getSupabaseClient();
-  const { error } = await sb.from("demo_leads")
     .update({ status, lead_status: status, updated_at: new Date().toISOString() })
     .eq("id", leadId);
   if (error) { safeErrorLog("updateDemoLeadStatus", error); return false; }
