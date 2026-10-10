@@ -1,6 +1,6 @@
 // modules/demos/tokens.ts
 // Secure token generation, extraction, and validation.
-// Upgraded to parse natural structured messages directly on-the-fly!
+// Upgraded: resilient non-punctuated boundary lookahead parser.
 
 import { getSupabaseClient, safeErrorLog } from "../../database.ts";
 import { classifyCategory } from "./templates.ts";
@@ -24,24 +24,26 @@ export async function hashToken(rawToken: string): Promise<string> {
 }
 
 /**
- * Extract a demo token or recognize a structured business details message.
+ * Extract a demo token or recognize structured customer business criteria.
  */
 export function extractTokenFromText(text: string): string | null {
   if (!text) return null;
 
-  const lowerText = text.toLowerCase();
+  const cleanText = text.toLowerCase();
 
-  // 1. Direct structured message detection
-  // If the customer already sent their business details, treat the message as its own virtual token!
-  if (lowerText.includes("business name:") && lowerText.includes("business category:")) {
+  // 1. Resilient structured pattern matching (any spacing, colons, or punctuation)
+  if (
+    cleanText.includes("business name") &&
+    (cleanText.includes("business category") || cleanText.includes("business type") || cleanText.includes("category"))
+  ) {
     return "STRUCTURED_DIRECT_REQUEST";
   }
 
   // 2. Explicit "reference: TOKEN" pattern
-  const explicit = text.match(/(?:reference|ref|token|code)\s*:\s*([A-Za-z0-9_-]{4,40})/i);
+  const explicit = text.match(/(?:reference|ref|token|code)\s*[:=-]?\s*([A-Za-z0-9_-]{4,40})/i);
   if (explicit?.[1]) return explicit[1];
 
-  // 3. Direct prefix match (TEST_*, XTD_*, DEMO_*)
+  // 3. Direct prefix match (XTD_*, DEMO_*, TEST_*)
   const prefix = text.match(/(?:XTD|DEMO|TEST)_[A-Za-z0-9_-]{4,40}/i);
   if (prefix) return prefix[0];
 
@@ -68,28 +70,27 @@ export async function validateToken(
 ): Promise<ValidatedToken | null> {
   const clean = rawToken.trim();
 
-  // ── 1. STRUCTURED DIRECT REQUESTS (Bypasses manual onboarding) ──
+  // ── 1. STRUCTURED DIRECT REQUESTS (Bypasses manual onboarding questions) ──
   if (clean === "STRUCTURED_DIRECT_REQUEST" && originalText) {
     let businessName = "Your Business";
     let categoryKey = "other";
     let mainNeed = "";
 
-    // Extract Business Name
-    const nameMatch = originalText.match(/Business\s+name\s*:\s*([^.\n\r]+)/i);
+    // Robust lookahead boundaries (period, newline, or next criteria keyword acting as delimiter)
+    const nameMatch = originalText.match(/business\s+name\s*[:=-]?\s*([^.]+?)(?=\.?\s*(?:business\s+category|business\s+type|category|main\s+need|need|$))/i);
     if (nameMatch?.[1]) {
-      businessName = nameMatch[1].trim();
+      businessName = nameMatch[1].trim().replace(/^[:\s-]+|[:\s-]+$/g, "");
     }
 
-    // Extract Business Category & Classify
-    const catMatch = originalText.match(/Business\s+category\s*:\s*([^.\n\r]+)/i);
+    const catMatch = originalText.match(/(?:business\s+category|business\s+type|category)\s*[:=-]?\s*([^.]+?)(?=\.?\s*(?:main\s+need|need|business\s+name|$))/i);
     if (catMatch?.[1]) {
-      categoryKey = classifyCategory(catMatch[1].trim());
+      const rawCat = catMatch[1].trim().replace(/^[:\s-]+|[:\s-]+$/g, "");
+      categoryKey = classifyCategory(rawCat);
     }
 
-    // Extract Main Need
-    const needMatch = originalText.match(/Main\s+need\s*:\s*([^.\n\r]+)/i);
+    const needMatch = originalText.match(/(?:main\s+need|need)\s*[:=-]?\s*([^.]+?)(?=\.?\s*(?:business\s+name|business\s+category|business\s+type|$))/i);
     if (needMatch?.[1]) {
-      mainNeed = needMatch[1].trim();
+      mainNeed = needMatch[1].trim().replace(/^[:\s-]+|[:\s-]+$/g, "");
     }
 
     return {
@@ -113,7 +114,7 @@ export async function validateToken(
       const nameMatch = originalText.match(/(?:prepared\s+)?for\s+([A-Z][^.]+?)(?:\.|\s+Business|\s+Demo|\s*$)/i);
       if (nameMatch?.[1]) businessName = nameMatch[1].trim();
 
-      const typeMatch = originalText.match(/business\s+type\s*:\s*([^.\n\r]+)/i);
+      const typeMatch = originalText.match(/business\s+type\s*[:=-]?\s*([^.\n\r]+)/i);
       if (typeMatch?.[1]) businessType = typeMatch[1].trim();
     }
 
