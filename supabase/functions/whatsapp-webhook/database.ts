@@ -1700,3 +1700,60 @@ export async function updateDemoLeadStatus(
   if (error) { safeErrorLog("updateDemoLeadStatus", error); return false; }
   return true;
 }
+// ==========================================
+// 19. Generic Business Demo Engine Helpers
+// ==========================================
+
+export interface BusinessDemoConfig {
+  id: string;
+  business_slug: string;
+  business_name: string;
+  business_category: string;
+  business_website?: string;
+  business_phone?: string;
+  demo_template: string;
+  demo_config: Record<string, any>;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getBusinessDemoConfig(configId: string): Promise<BusinessDemoConfig | null> {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb
+    .from("business_demo_configs")
+    .select("*").eq("id", configId).eq("is_active", true).maybeSingle();
+  if (error) { safeErrorLog("getBusinessDemoConfig", error); return null; }
+  return data as BusinessDemoConfig;
+}
+
+export async function logSalesEvent(
+  phone: string, eventType: string,
+  leadId?: string | null, eventData?: Record<string, any>
+): Promise<void> {
+  const sb = getSupabaseClient();
+  try {
+    await sb.from("sales_events").insert({
+      phone_number: phone, lead_id: leadId || null,
+      event_type: eventType, event_data: eventData || {},
+    });
+  } catch (err) { safeErrorLog("logSalesEvent", err); }
+}
+
+export async function getDemoLeadsForAdmin(limit = 50, status?: string): Promise<any[]> {
+  const sb = getSupabaseClient();
+  let query = sb.from("demo_leads").select("*").order("created_at", { ascending: false }).limit(limit);
+  if (status) query = query.eq("status", status);
+  const { data, error } = await query;
+  if (error) { safeErrorLog("getDemoLeadsForAdmin", error); return []; }
+  return data || [];
+}
+
+export async function updateDemoLeadStatus(leadId: string, status: string): Promise<boolean> {
+  const sb = getSupabaseClient();
+  const { error } = await sb.from("demo_leads")
+    .update({ status, lead_status: status, updated_at: new Date().toISOString() })
+    .eq("id", leadId);
+  if (error) { safeErrorLog("updateDemoLeadStatus", error); return false; }
+  return true;
+}
