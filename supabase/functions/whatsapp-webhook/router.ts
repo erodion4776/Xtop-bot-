@@ -112,14 +112,16 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     // ══════════════════════════════════════════════════════
     // 🎯 PERSONALIZED DEMO TOKEN CHECK (Path A)
     // Only fires for IDLE/MAIN_MENU users.
+    // Uses unmodified incoming.text to protect newlines & colons.
     // Students in LEARNING/EXAMS/GAMES are NEVER intercepted.
     // ══════════════════════════════════════════════════════
     if (currentModule === "MAIN_MENU" || !currentModule) {
-      const detectedToken = extractTokenFromText(text);
+      const originalText = incoming.text || text;
+      const detectedToken = extractTokenFromText(originalText);
       if (detectedToken) {
         console.log(`[Demo Token] ${detectedToken.substring(0, 8)}... from ${phone}`);
         const handled = await handlePersonalizedDemoToken(
-          phone, text, detectedToken, contact, conversation
+          phone, originalText, detectedToken, contact, conversation
         );
         if (handled) return;
       }
