@@ -88,18 +88,15 @@ async function checkBotStatus(): Promise<string> {
       .select("id", { count: "exact", head: true });
 
     if (error) {
-      console.error(
-        "[AdminAgent] Status check failed:",
-        error.message,
-      );
+      console.error("[AdminAgent] Status check failed:", error.message);
 
       return [
         "⚠️ *DATABASE CHECK FAILED*",
         "",
         "The contacts query returned an error.",
-        `Details: ${error.message.slice(0, 250)}`,
+        `Details: ${error.message.slice(0, 200)}`,
         "",
-        "This does not necessarily mean the entire Supabase project is down.",
+        "This does not necessarily mean the entire project is down.",
       ].join("\n");
     }
 
@@ -109,8 +106,6 @@ async function checkBotStatus(): Promise<string> {
       "Supabase responded successfully to the contacts query.",
       `Contact records: ${count ?? "Not reported"}`,
       `Checked: ${new Date().toISOString()}`,
-      "",
-      "This checks database access only, not every webhook or WhatsApp request.",
     ].join("\n");
   } catch (error) {
     console.error(
@@ -118,32 +113,23 @@ async function checkBotStatus(): Promise<string> {
       error instanceof Error ? error.message : "Unknown error",
     );
 
-    return [
-      "🔴 *STATUS CHECK ERROR*",
-      "",
-      "The diagnostic could not complete.",
-      "Check the Supabase Edge Function logs for details.",
-    ].join("\n");
+    return "🔴 *STATUS CHECK ERROR*\n\nThe diagnostic could not complete. Check the Supabase logs.";
   }
 }
 
 async function getBotStats(): Promise<string> {
   const checks = await Promise.all([
     supabase.from("contacts").select("id", {
-      count: "exact",
-      head: true,
+      count: "exact", head: true,
     }),
     supabase.from("messages").select("id", {
-      count: "exact",
-      head: true,
+      count: "exact", head: true,
     }),
     supabase.from("bot_orders").select("id", {
-      count: "exact",
-      head: true,
+      count: "exact", head: true,
     }),
     supabase.from("agent_requests").select("id", {
-      count: "exact",
-      head: true,
+      count: "exact", head: true,
     }).eq("status", "NEW"),
   ]);
 
@@ -174,7 +160,7 @@ async function getBotStats(): Promise<string> {
     "",
     `Checked: ${new Date().toISOString()}`,
     "",
-    "These figures come from the connected database. They are not a financial report.",
+    "These are database counts, not a financial report.",
   ].join("\n");
 }
 
@@ -186,8 +172,7 @@ async function getBotStats(): Promise<string> {
    GITHUB_OWNER
    GITHUB_REPO
 
-   IMPORTANT:
-   Never log or return the GitHub token.
+   Never log or return the token.
    ========================================================= */
 
 type GitHubRun = {
@@ -218,60 +203,66 @@ type GitHubJob = {
   }>;
 };
 
+type GitHubResult<T> = {
+  data?: T;
+  error?: string;
+};
+
 function getGitHubConfig():
   | { token: string; owner: string; repo: string }
   | null {
-  // Trim accidental whitespace in saved configuration.
   const token = (Deno.env.get("GITHUB_TOKEN") || "").trim();
   const owner = (Deno.env.get("GITHUB_OWNER") || "").trim();
   const repo = (Deno.env.get("GITHUB_REPO") || "").trim();
 
-  if (!token || !owner || !repo) {
-    return null;
-  }
+  if (!token || !owner || !repo) return null;
 
   return { token, owner, repo };
 }
 
 function githubHeaders(token: string): HeadersInit {
   return {
-    "Accept": "application/vnd.github+json",
-    "Authorization": `Bearer ${token}`,
+    Accept: "application/vnd.github+json",
+    Authorization: `Bearer ${token}`,
     "X-GitHub-Api-Version": GITHUB_API_VERSION,
   };
 }
 
 /**
- * All GitHub requests in this module use GET.
- *
- * Diagnostics log only:
- * - HTTP status
- * - Sanitized GitHub error message
- * - GitHub request ID
- *
- * Never log tokens or authorization headers.
+ * Sanitizes GitHub error text before returning it to the administrator.
+ * Never includes request headers or credentials.
  */
+function sanitizeGitHubMessage(value: unknown): string {
+  if (typeof value !== "string") return "No readable message";
+
+  return value
+    .replace(/[\r\n\t]/g, " ")
+    .replace(/[^ -~]/g, "")
+    .slice(0, 160);
+}
+
 async function githubGet<T>(
   path: string,
-): Promise<{ data?: T; error?: string }> {
+): Promise<GitHubResult<T>> {
   const config = getGitHubConfig();
 
   if (!config) {
-    console.error(
-      "[AdminAgent][GitHub] Missing required configuration secret(s).",
-    );
+    console.error("[AdminAgent][GitHub] Missing configuration secret(s).");
 
     return {
       error:
-        "GitHub secrets are missing. Check GITHUB_TOKEN, GITHUB_OWNER, and GITHUB_REPO in Supabase.",
+        "Required GitHub secrets are missing. Check GITHUB_TOKEN, GITHUB_OWNER and GITHUB_REPO in Supabase.",
     };
   }
 
-  // Only accept the expected GitHub API path format.
-  if (!path.startsWith("/") || path.startsWith("//")) {
-    console.error("[AdminAgent][GitHub] Rejected an invalid API path.");
+  if (
+    !path.startsWith("/") ||
+    path.startsWith("//") ||
+    path.includes("://")
+  ) {
+    console.error("[AdminAgent][GitHub] Rejected invalid API path.");
 
-    return { error: "Invalid GitHub diagnostic path." };
+    return { error: "Invalid GitHub API path." };
   }
 
   const url =
@@ -285,27 +276,18 @@ async function githubGet<T>(
     });
 
     if (!response.ok) {
-      // GitHub error messages are parsed only for diagnostics.
-      // They are not returned raw to WhatsApp users.
-      let githubMessage = "";
+      let githubMessage = "No readable error message";
 
       try {
         const body = await response.json();
-
-        if (typeof body?.message === "string") {
-          githubMessage = body.message
-            .replace(/[\r\n\t]/g, " ")
-            .replace(/[^ -~]/g, "")
-            .slice(0, 180);
-        }
+        githubMessage = sanitizeGitHubMessage(body?.message);
       } catch {
-        githubMessage = "No readable error message returned";
+        // Keep the safe fallback.
       }
 
       const requestId =
         response.headers.get("x-github-request-id") || "not provided";
 
-      // Owner and repository are configuration values, not secrets.
       console.error("[AdminAgent][GitHub] Request failed", {
         status: response.status,
         owner: config.owner,
@@ -315,35 +297,41 @@ async function githubGet<T>(
         requestId,
       });
 
+      // IMPORTANT:
+      // Return the useful diagnostic to the administrator through
+      // WhatsApp so the dashboard logs are not the only source.
+      const diagnostic =
+        `HTTP ${response.status} | path: ${path} | GitHub: ${githubMessage} | request ID: ${requestId}`;
+
       if (response.status === 401) {
         return {
           error:
-            "GitHub rejected the token (HTTP 401). Verify that GITHUB_TOKEN contains the correct active token.",
+            `GitHub rejected the token. ${diagnostic}. Verify that GITHUB_TOKEN is the correct active token.`,
         };
       }
 
       if (response.status === 403) {
         return {
           error:
-            "GitHub denied access (HTTP 403). Check token permissions and rate limits. See Supabase logs for the sanitized diagnostic.",
+            `GitHub denied access. ${diagnostic}. Check token permissions or rate limits.`,
         };
       }
 
       if (response.status === 404) {
         return {
           error:
-            "GitHub returned HTTP 404. The repository or API resource was not found, or the token cannot access it. Check the sanitized diagnostic in Supabase logs.",
+            `GitHub could not find the repository or API resource, or the token cannot access it. ${diagnostic}. Check GITHUB_OWNER, GITHUB_REPO and token access.`,
         };
       }
 
       if (response.status === 429) {
         return {
-          error: "GitHub rate limit reached. Try again later.",
+          error: `GitHub rate limit reached. ${diagnostic}. Try again later.`,
         };
       }
 
       return {
-        error: `GitHub API returned HTTP ${response.status}. Check Supabase logs for the sanitized diagnostic.`,
+        error: `GitHub API request failed. ${diagnostic}.`,
       };
     }
 
@@ -351,25 +339,26 @@ async function githubGet<T>(
       data: await response.json() as T,
     };
   } catch (error) {
-    // Error messages only; never log request headers or credentials.
+    const safeMessage = error instanceof Error
+      ? sanitizeGitHubMessage(error.message)
+      : "Unknown network error";
+
     console.error("[AdminAgent][GitHub] Network request failed", {
       owner: config.owner,
       repo: config.repo,
       path,
-      message: error instanceof Error
-        ? error.message.slice(0, 180)
-        : "Unknown error",
+      message: safeMessage,
     });
 
     return {
       error:
-        "Could not reach GitHub. Check network access and Supabase logs, then try again.",
+        `Could not reach GitHub API. Path: ${path}. Error: ${safeMessage}. Check network access and try again.`,
     };
   }
 }
 
 /* =========================================================
-   GITHUB REPOSITORY CONNECTION CHECK
+   GITHUB CONNECTION CHECK
    ========================================================= */
 
 async function checkGitHubConnection(): Promise<string> {
@@ -381,6 +370,7 @@ async function checkGitHubConnection(): Promise<string> {
       "",
       "One or more GitHub secrets are missing.",
       "Required: GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO.",
+      "",
       "Add them in the Supabase project used by this bot.",
     ].join("\n");
   }
@@ -398,8 +388,11 @@ async function checkGitHubConnection(): Promise<string> {
       "",
       result.error || "GitHub returned no repository information.",
       "",
+      `Configured owner: ${config.owner}`,
+      `Configured repository: ${config.repo}`,
+      "",
       "No changes were made to GitHub.",
-      "The diagnostic details are available in Supabase Edge Function logs.",
+      "Send this diagnostic back for help if needed.",
     ].join("\n");
   }
 
@@ -410,8 +403,8 @@ async function checkGitHubConnection(): Promise<string> {
     `Default branch: ${result.data.default_branch || "Not reported"}`,
     `Visibility: ${result.data.private ? "Private" : "Public"}`,
     "",
-    "Lizzy can read repository metadata using the configured token.",
-    "This test does not by itself confirm that Actions runs and job details are accessible.",
+    "Repository metadata is accessible.",
+    "This test does not by itself confirm Actions run or job access.",
     result.data.html_url || "",
   ].filter(Boolean).join("\n");
 }
@@ -432,18 +425,18 @@ async function getRecentDeployments(): Promise<string> {
       "",
       result.error || "GitHub returned no workflow data.",
       "",
-      "Check the GitHub token's Actions: Read-only permission.",
+      "Check the token's Actions read permission.",
     ].join("\n");
   }
 
   const runs = result.data.workflow_runs || [];
 
-  if (runs.length === 0) {
+  if (!runs.length) {
     return [
       "ℹ️ *NO WORKFLOW RUNS RETURNED*",
       "",
-      "GitHub returned no recent Actions runs for this repository.",
-      "Confirm that the repository has workflows and that the token can read Actions.",
+      "GitHub returned no recent Actions runs.",
+      "Confirm that this repository has workflows.",
     ].join("\n");
   }
 
@@ -480,12 +473,12 @@ async function getRecentDeployments(): Promise<string> {
     ...lines,
     "",
     "Use `logs` to inspect the latest run's jobs and failed steps.",
-    "These are GitHub Actions workflow results, not a live health check of the WhatsApp bot.",
+    "These are workflow results, not a live bot health check.",
   ].join("\n");
 }
 
 /* =========================================================
-   GITHUB WORKFLOW JOB / FAILED-STEP DIAGNOSTICS
+   WORKFLOW JOB / FAILED-STEP DIAGNOSTICS
    ========================================================= */
 
 async function inspectWorkflowRun(
@@ -556,20 +549,20 @@ async function inspectWorkflowRun(
   const lines: string[] = [];
 
   for (const job of jobs.slice(0, 10)) {
-    const jobConclusion = job.conclusion || job.status || "unknown";
+    const conclusion = job.conclusion || job.status || "unknown";
 
-    const icon = jobConclusion === "success"
+    const icon = conclusion === "success"
       ? "🟢"
-      : jobConclusion === "failure"
+      : conclusion === "failure"
       ? "🔴"
-      : jobConclusion === "cancelled"
+      : conclusion === "cancelled"
       ? "⚪"
       : "🟡";
 
     lines.push(
       `${icon} *${(job.name || "Unnamed job").slice(0, 100)}*`,
     );
-    lines.push(`   Result: ${jobConclusion}`);
+    lines.push(`   Result: ${conclusion}`);
 
     const failedSteps = (job.steps || []).filter((step) =>
       step.conclusion === "failure"
@@ -581,9 +574,9 @@ async function inspectWorkflowRun(
       );
     }
 
-    if (jobConclusion === "failure" && failedSteps.length === 0) {
+    if (conclusion === "failure" && failedSteps.length === 0) {
       lines.push(
-        "   GitHub reports job failure but did not identify a failed step in the returned summary.",
+        "   Job failed; no failed step was identified in the summary.",
       );
     }
   }
@@ -605,8 +598,7 @@ async function inspectWorkflowRun(
     "",
     ...(lines.length ? lines : ["No job details were returned."]),
     "",
-    "This is a job and step summary, not the full raw log output.",
-    "Open the workflow run link below to view complete logs and error messages.",
+    "This is a job and step summary, not the full raw log.",
     runUrl,
     "",
     "Lizzy has not changed or rerun anything.",
@@ -624,7 +616,7 @@ async function askAdminAI(
   if (!Deno.env.get("AI_API_KEY")) {
     await sendTextMessage(
       phone,
-      "AI advice is not configured yet. Set the AI_API_KEY secret in Supabase. Status, stats, and GitHub diagnostics do not require an AI key.",
+      "AI advice is not configured. Set the AI_API_KEY secret in Supabase. Database and GitHub diagnostics do not require an AI key.",
     );
     return;
   }
@@ -638,23 +630,23 @@ Be practical, concise, honest, and security-conscious.
 You may advise on TypeScript, Deno, Supabase, WhatsApp Cloud API,
 GitHub, debugging, and business operations.
 
-Available verified tools in this module:
+Available tools in this module:
 - Database status query
 - Database statistics queries
 - GitHub repository connection test
 - Recent GitHub Actions workflow run listing
 - GitHub workflow job and failed-step summaries
 
-IMPORTANT LIMITATIONS:
-- You can only report results returned by tools that were actually called.
-- An AI advice request alone does not execute diagnostics.
-- Do not claim you read raw workflow logs; this module returns job and failed-step summaries.
-- Never claim to have run tests, changed files, or deployed code unless that action actually happened.
+IMPORTANT:
+- Only report results from tools that were actually called.
+- An advice request does not execute diagnostics.
+- This module does not retrieve full raw workflow logs.
+- Never claim to have run tests, changed files, or deployed code unless that happened.
 - Never invent credentials, configuration values, or test results.
 - Prefer small changes that preserve existing bot features.
-- Never ask the administrator to share secret API keys in chat.
-- Require explicit human approval before production or destructive changes.
-- GitHub actions available in this version are read-only.
+- Never ask the administrator to share API keys in chat.
+- Require human approval before production or destructive changes.
+- GitHub actions in this version are read-only.
 `.trim();
 
   try {
@@ -694,9 +686,6 @@ export async function handleAdminAgent(
 ): Promise<void> {
   const command = (interactiveId || text).trim().toLowerCase();
 
-  // Close the private assistant.
-  // "4" is intentionally NOT an exit command:
-  // option 4 is the deployments menu item.
   if (
     ["exit", "quit", "close", "admin_agent_exit"].includes(command)
   ) {
@@ -710,11 +699,9 @@ export async function handleAdminAgent(
       phone,
       "🔒 Private admin assistant closed.\n\nType *menu* to return to the public Xtop menu.",
     );
-
     return;
   }
 
-  // Show menu.
   if (
     ["menu", "help", "admin_agent_open", "0"].includes(command)
   ) {
@@ -722,7 +709,6 @@ export async function handleAdminAgent(
     return;
   }
 
-  // Database status.
   if (
     ["1", "status", "health", "check status", "admin_agent_status"].includes(command)
   ) {
@@ -731,7 +717,6 @@ export async function handleAdminAgent(
     return;
   }
 
-  // Database statistics.
   if (
     ["2", "stats", "statistics", "admin_agent_stats"].includes(command)
   ) {
@@ -740,19 +725,17 @@ export async function handleAdminAgent(
     return;
   }
 
-  // GitHub connection.
   if (
     ["3", "github", "github status", "github check"].includes(command)
   ) {
     await sendTextMessage(
       phone,
-      "Checking the GitHub read-only connection...",
+      "Checking GitHub read-only connection...",
     );
     await sendTextMessage(phone, await checkGitHubConnection());
     return;
   }
 
-  // Recent workflow runs.
   if (
     ["4", "deployments", "deployment", "runs", "workflow runs"].includes(command)
   ) {
@@ -764,7 +747,6 @@ export async function handleAdminAgent(
     return;
   }
 
-  // Failed jobs and steps for a specific or recent workflow run.
   if (
     command === "5" ||
     command === "logs" ||
@@ -776,18 +758,16 @@ export async function handleAdminAgent(
 
     await sendTextMessage(
       phone,
-      "Inspecting GitHub workflow jobs and failed steps...",
+      "Inspecting workflow jobs and failed steps...",
     );
 
     await sendTextMessage(
       phone,
       await inspectWorkflowRun(runId),
     );
-
     return;
   }
 
-  // AI adviser prompt.
   if (
     ["advice", "admin_agent_advice"].includes(command)
   ) {
@@ -799,7 +779,7 @@ export async function handleAdminAgent(
   }
 
   if (command.startsWith("advice ")) {
-    const question = (interactiveId ? text : text.slice(7)).trim();
+    const question = text.slice(7).trim();
 
     if (!question) {
       await sendTextMessage(
