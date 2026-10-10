@@ -26,7 +26,7 @@ import { handleGames, showGamesMenu } from "./modules/games/index.ts";
 import { handleAbout, showAboutMenu } from "./modules/about.ts";
 import { handleMagazineStudio, showStudioMenu } from "./modules/magazine-studio.ts";
 
-// ✨ NEW: Personalized Business Demo imports
+// ✨ Generic Business Demo Engine
 import { handlePersonalizedDemoToken } from "./modules/demos/personalized.ts";
 import { extractTokenFromText } from "./modules/demos/tokens.ts";
 
@@ -42,7 +42,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
   // 1. Ignore completely empty payloads
   if (!text && !interactiveId) return;
 
-  // 2. Message Deduplication (Prevents Meta webhook retry storms)
+  // 2. Message Deduplication
   if (incoming.messageId) {
     const { data: existingMsg } = await supabase
       .from("messages")
@@ -56,13 +56,11 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     const contact = await getOrCreateContact(phone, incoming.profileName);
     const conversation = await getOrCreateConversation(contact.id);
 
-    // Save message record in database
     await storeMessage(
       contact.id, "INBOUND", incoming.type,
       text || interactiveId || null, incoming.messageId
     );
 
-    // Log to Dashboard Activity Feed
     logBotActivity(
       phone, "INBOUND", incoming.type,
       conversation.current_module || "MAIN_MENU",
@@ -81,35 +79,31 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       .maybeSingle();
 
     if (setting?.value?.enabled === true) {
-      console.log(`[Global Sabi Paused] Message from ${phone} logged. Auto-response OFF.`);
+      console.log(`[Global Sabi Paused] Message from ${phone} logged.`);
       return;
     }
 
     // ══════════════════════════════════════════════════════
-    // 🛑 2. INDIVIDUAL CONVERSATION AGENT TAKEOVER CHECK
+    // 🛑 2. INDIVIDUAL AGENT TAKEOVER CHECK
     // ══════════════════════════════════════════════════════
     const ctx = (conversation.context_json || {}) as Record<string, any>;
     const isContactAgentMode = (contact as any)?.agent_mode === true;
     const isConvTakeover = ctx.agent_takeover === true || ctx.agent_mode === true;
 
     if (isContactAgentMode || isConvTakeover) {
-      console.log(`[Individual Agent Takeover Active] Bot paused for customer: ${phone}.`);
-      return; // Sabi stays silent for this specific customer only
+      console.log(`[Agent Takeover] Bot paused for: ${phone}.`);
+      return;
     }
 
     // ══════════════════════════════════════════════════════
     // ACTIVE WORKFLOW ROUTING (WORKFLOW LOCK)
     // ══════════════════════════════════════════════════════
-    // Once a customer is inside a workflow, that workflow
-    // owns the conversation until completed or explicitly exited.
     const currentModule = conversation.current_module || "MAIN_MENU";
 
-    // Explicit Home button always resets to Main Menu
+    // Explicit Home button always resets
     if (interactiveId === "menu_home" || lowerText === "menu_home") {
       await updateConversation(conversation.id, {
-        current_module: "MAIN_MENU",
-        current_state: "IDLE",
-        context_json: {},
+        current_module: "MAIN_MENU", current_state: "IDLE", context_json: {},
       });
       await showMainMenu(phone, conversation.id);
       return;
@@ -117,21 +111,13 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
 
     // ══════════════════════════════════════════════════════
     // 🎯 PERSONALIZED DEMO TOKEN CHECK (Path A)
-    // ──────────────────────────────────────────────────────
-    // Only intercepts users in MAIN_MENU/IDLE state.
-    // Active workflows (LEARNING, EXAMS, GAMES, TOOLS, etc.)
-    // are NEVER disrupted — token check is skipped for them.
-    //
-    // This preserves ALL of Engr Ero's student workflows:
-    //  ✅ ELA301 Automobile Workshop Practice
-    //  ✅ ELA302, ELA401 Time Measurement
-    //  ✅ Learning Hub, Exams, Course Access
-    //  ✅ Sales phases, Magazine, Tools, Games
+    // Only fires for IDLE/MAIN_MENU users.
+    // Students in LEARNING/EXAMS/GAMES are NEVER intercepted.
     // ══════════════════════════════════════════════════════
     if (currentModule === "MAIN_MENU" || !currentModule) {
       const detectedToken = extractTokenFromText(text);
       if (detectedToken) {
-        console.log(`[Personalized Demo Token] Detected: ${detectedToken.substring(0, 8)}... for ${phone}`);
+        console.log(`[Demo Token] ${detectedToken.substring(0, 8)}... from ${phone}`);
         const handled = await handlePersonalizedDemoToken(
           phone, text, detectedToken, contact, conversation
         );
@@ -149,8 +135,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     if (isLearningKeyword(text)) {
       const existingCtx = conversation.context_json || {};
       await updateConversation(conversation.id, {
-        current_module: "LEARNING",
-        current_state: "ENTRY",
+        current_module: "LEARNING", current_state: "ENTRY",
         context_json: { ...existingCtx, learningUnlocked: true, step: "ENTRY" },
       });
       await handleLearning(phone, text, contact, conversation);
@@ -187,7 +172,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-    // 8. DEMOS workflow (handles personalized + onboarding + legacy demos)
+    // 8. DEMOS workflow (personalized + onboarding + legacy)
     if (currentModule === "DEMOS") {
       await handleDemos(phone, text, contact, conversation, interactiveId);
       return;
@@ -227,7 +212,6 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     // DIRECT INTENT OVERRIDES (FROM IDLE / MAIN MENU)
     // ══════════════════════════════════════════════════════
 
-    // About Xtop
     if (
       interactiveId === "menu_about" ||
       interactiveId.startsWith("about_") ||
@@ -239,7 +223,6 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-    // Games Engine
     if (
       interactiveId.startsWith("game_") ||
       interactiveId.startsWith("trivia_") ||
@@ -257,9 +240,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-    // Demo Centre (includes personalized demo IDs: demo_view_my_biz, demo_try_related,
-    // demo_try_tools, demo_build_lead, demo_change_details, demo_back_personalized,
-    // onboard_type_*, onboard_need_*)
+    // Demo Centre (includes personalized + onboarding prefixes)
     if (
       interactiveId.startsWith("demo_") ||
       interactiveId.startsWith("democat_") ||
@@ -271,25 +252,21 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-    // Tools
     if (interactiveId.startsWith("tool_") || interactiveId.startsWith("tools_")) {
       await handleTools(phone, text, contact, conversation, interactiveId);
       return;
     }
 
-    // Website & Domain sub-tool
     if (interactiveId.startsWith("wd_") || interactiveId.startsWith("dns_")) {
       await handleWebsiteDomain(phone, text, contact, conversation, interactiveId);
       return;
     }
 
-    // Flight Checker sub-tool
     if (interactiveId.startsWith("flight_")) {
       await handleFlightChecker(phone, text, contact, conversation, interactiveId);
       return;
     }
 
-    // Magazine Studio
     if (
       interactiveId === "menu_magazine_studio" ||
       interactiveId.startsWith("mag_") ||
@@ -326,9 +303,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
 
     if (isExit(text)) {
       await updateConversation(conversation.id, {
-        current_module: "MAIN_MENU",
-        current_state: "IDLE",
-        context_json: {},
+        current_module: "MAIN_MENU", current_state: "IDLE", context_json: {},
       });
       await sendTextMessage(phone,
         `👋 Thank you for contacting *Xtop Retail Technologies*, ${contact.name || ""}.\n\nType *hi* or *menu* to return anytime.`
