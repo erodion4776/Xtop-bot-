@@ -2,7 +2,8 @@
 /**
  * supabase/functions/whatsapp-webhook/modules/demos/personalized.ts
  *
- * Personalized business demo token handling and interactive demo actions.
+ * Personalized business demo token handling, structured business requests,
+ * and interactive demo actions.
  */
 
 import {
@@ -226,6 +227,181 @@ async function showRelatedTemplates(
     "Xtop Demo Centre",
     "Related Industries",
   );
+}
+
+/**
+ * Read fields from a structured business-demo request.
+ *
+ * Field labels can appear in any order, provided all three required
+ * labels are present:
+ * Business name:
+ * Business category:
+ * Main need:
+ */
+function readStructuredField(
+  text: string,
+  label: string,
+): string {
+  const labels =
+    "(?:business\\s*name|business\\s*category|main\\s*need)";
+
+  const pattern = new RegExp(
+    label +
+      "\\s*:\\s*([\\s\\S]*?)(?=\\s*(?:[.;\\n]\\s*)?" +
+      labels +
+      "\\s*:|$)",
+    "i",
+  );
+
+  const match = text.match(pattern);
+
+  return (match?.[1] || "")
+    .trim()
+    .replace(/[\s.?!;,]+$/g, "")
+    .trim()
+    .slice(0, 500);
+}
+
+/**
+ * Handle a complete structured personalized demo request.
+ *
+ * Example:
+ * Hello Xtop, I want to see a personalized WhatsApp demo for my business.
+ * Business name: Sunrise Hotel Demo
+ * Business category: Hotel and accommodation
+ * Main need: Room enquiries and booking requests
+ *
+ * This request is not a token. Do not route it to the generic
+ * appointment-booking intent.
+ *
+ * Returns true when handled, false when this is not a complete
+ * structured personalized-demo request.
+ */
+export async function handleStructuredPersonalizedDemoRequest(
+  phone: string,
+  text: string,
+  contact: Contact,
+  conversation: Conversation,
+): Promise<boolean> {
+  if (!text || text.length > 10000) {
+    return false;
+  }
+
+  const looksLikeDemoRequest =
+    /personalized\s+(?:whatsapp\s+)?demo|personalised\s+(?:whatsapp\s+)?demo/i
+      .test(text);
+
+  if (!looksLikeDemoRequest) {
+    return false;
+  }
+
+  const businessName = readStructuredField(
+    text,
+    "business\\s*name",
+  );
+
+  const businessCategory = readStructuredField(
+    text,
+    "business\\s*category",
+  );
+
+  const businessNeed = readStructuredField(
+    text,
+    "main\\s*need",
+  );
+
+  // Do not intercept incomplete requests. They can continue through
+  // the existing bot workflow instead.
+  if (
+    !businessName ||
+    !businessCategory ||
+    !businessNeed
+  ) {
+    return false;
+  }
+
+  const templateKey = classifyCategory(businessCategory);
+  const template = getTemplate(templateKey);
+
+  let leadId: string | null = null;
+
+  try {
+    const lead = await createDemoLead(
+      phone,
+      contact.name || "Prospect",
+      businessName,
+      businessCategory,
+      template.existingDemoId || template.key,
+      `${businessName} — ${template.label} Personalized Demo`,
+      `Main need: ${businessNeed}`,
+    );
+
+    leadId =
+      typeof lead?.id === "string"
+        ? lead.id
+        : null;
+  } catch (error) {
+    safeErrorLog(
+      "handleStructuredPersonalizedDemoRequest: lead creation failed",
+      error,
+    );
+  }
+
+  const context: Record<string, unknown> = {
+    personalizedDemo: true,
+    businessName,
+    businessCategory,
+    demoTemplate: template.key,
+    businessNeed,
+    requirements: `Main need: ${businessNeed}`,
+    businessConfigId: null,
+    tokenPrefix: "DIRECT",
+    leadId,
+    onboardingComplete: true,
+  };
+
+  // Save the personalized demo state before sending messages.
+  await updateConversation(conversation.id, {
+    current_module: "DEMOS",
+    current_state: "PERSONALIZED_MENU",
+    context_json: context,
+  });
+
+  logEvent(
+    phone,
+    "structured_demo_request",
+    leadId,
+    {
+      business: businessName,
+      category: businessCategory,
+      template: template.key,
+      mainNeed: businessNeed,
+    },
+  );
+
+  await sendTextMessage(
+    phone,
+    `Thank you! I have your personalized demo request.\n\n` +
+      `*Business:* ${businessName}\n` +
+      `*Category:* ${businessCategory}\n` +
+      `*Main need:* ${businessNeed}\n\n` +
+      `Opening your ${template.label} demo now.` +
+      (
+        leadId
+          ? "\n\nYour enquiry has also been recorded for the Xtop team."
+          : "\n\n_Note: Your enquiry could not be saved just now, but you can still explore the demo._"
+      ),
+  );
+
+  // Open the actual category-specific template and its interactive menu.
+  await showPersonalizedTemplate(
+    phone,
+    conversation.id,
+    context,
+    template.key,
+  );
+
+  return true;
 }
 
 /**
