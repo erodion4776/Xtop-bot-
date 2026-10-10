@@ -110,16 +110,17 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
     }
 
     // ══════════════════════════════════════════════════════
-    // 🎯 PERSONALIZED DEMO TOKEN CHECK (Path A)
-    // Only fires for IDLE/MAIN_MENU users.
-    // Uses unmodified incoming.text to protect newlines & colons.
-    // Students in LEARNING/EXAMS/GAMES are NEVER intercepted.
+    // 🎯 PERSONALIZED DEMO TOKEN & STRUCTURED REQUEST CHECK
+    // ──────────────────────────────────────────────────────
+    // Protected student/exam workflows are NEVER intercepted.
+    // Allowed from MAIN_MENU, DEMOS, or IDLE states.
     // ══════════════════════════════════════════════════════
-    if (currentModule === "MAIN_MENU" || !currentModule) {
+    const isAcademicWorkflow = ["LEARNING", "EXAMS"].includes(currentModule);
+    if (!isAcademicWorkflow) {
       const originalText = incoming.text || text;
       const detectedToken = extractTokenFromText(originalText);
       if (detectedToken) {
-        console.log(`[Demo Token] ${detectedToken.substring(0, 8)}... from ${phone}`);
+        console.log(`[Demo Intercept] Detected: ${detectedToken} for ${phone}`);
         const handled = await handlePersonalizedDemoToken(
           phone, originalText, detectedToken, contact, conversation
         );
