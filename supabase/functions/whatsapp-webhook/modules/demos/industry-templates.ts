@@ -298,7 +298,7 @@ const TEMPLATES: Record<string, IndustryTemplate> = {
         `⚠️ _Sample tracking data for demonstration._`,
       demo_support:
         `💬 *Support Chat Simulation*\n\n` +
-        `_"Welcome to ${b} support! How can I help?"_\n\n` +
+        `_"Welcome to customer support! How can I assist you today?"_\n\n` +
         `⚠️ _Demo only — no real agent connected._`,
     },
   },
