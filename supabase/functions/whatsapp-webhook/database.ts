@@ -691,6 +691,7 @@ export async function getActiveMagazineConfig(): Promise<MagazineConfig | null> 
 // ==========================================
 // 10. Agent & Support Requests
 // ==========================================
+
 export async function createAgentRequest(
   contactId?: string,
   requestType: string = "GENERAL_ENQUIRY",
@@ -701,6 +702,7 @@ export async function createAgentRequest(
   summary?: string
 ): Promise<AgentRequest | null> {
   const sb = getSupabaseClient();
+
   const payload: Record<string, unknown> = {
     request_type: requestType,
     message,
@@ -713,30 +715,32 @@ export async function createAgentRequest(
   if (quotationId) payload.quotation_id = quotationId;
   if (summary) payload.summary = summary;
 
-  const { data, error } = await sb
-    .from("agent_requests")
-    .insert(payload)
-    .select("*")
-    .single();
+  try {
+    const { data, error } = await sb
+      .from("agent_requests")
+      .insert(payload)
+      .select("*")
+      .single();
 
-  if (error) {
-    safeErrorLog("createAgentRequest", error);
-    return {
-      id: crypto.randomUUID ? crypto.randomUUID() : `REQ-${Date.now()}`,
-      contact_id: contactId || null,
-      request_type: requestType,
-      message,
-      priority,
-      lead_id: leadId || null,
-      quotation_id: quotationId || null,
-      summary: summary || null,
-      status: "PENDING",
-      created_at: new Date().toISOString(),
-      updated_at: null,
-    };
+    if (error) {
+      safeErrorLog("createAgentRequest", error);
+      return null;
+    }
+
+    if (!data) {
+      console.error(
+        "[DB Error - createAgentRequest]: Insert returned no record."
+      );
+      return null;
+    }
+
+    return data as AgentRequest;
+  } catch (err) {
+    safeErrorLog("createAgentRequest catch", err);
+    return null;
   }
-  return data as AgentRequest;
 }
+
 
 // ==========================================
 // 11. Student & Attendance Functions
