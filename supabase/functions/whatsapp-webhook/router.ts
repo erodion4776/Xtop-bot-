@@ -26,6 +26,10 @@ import { handleGames, showGamesMenu } from "./modules/games/index.ts";
 import { handleAbout, showAboutMenu } from "./modules/about.ts";
 import { handleMagazineStudio, showStudioMenu } from "./modules/magazine-studio.ts";
 
+// ✨ NEW: Personalized Business Demo imports
+import { handlePersonalizedDemoToken } from "./modules/demos/personalized.ts";
+import { extractTokenFromText } from "./modules/demos/tokens.ts";
+
 const supabase = getSupabaseClient();
 
 export async function routeMessage(incoming: IncomingMessage): Promise<void> {
@@ -111,6 +115,30 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
+    // ══════════════════════════════════════════════════════
+    // 🎯 PERSONALIZED DEMO TOKEN CHECK (Path A)
+    // ──────────────────────────────────────────────────────
+    // Only intercepts users in MAIN_MENU/IDLE state.
+    // Active workflows (LEARNING, EXAMS, GAMES, TOOLS, etc.)
+    // are NEVER disrupted — token check is skipped for them.
+    //
+    // This preserves ALL of Engr Ero's student workflows:
+    //  ✅ ELA301 Automobile Workshop Practice
+    //  ✅ ELA302, ELA401 Time Measurement
+    //  ✅ Learning Hub, Exams, Course Access
+    //  ✅ Sales phases, Magazine, Tools, Games
+    // ══════════════════════════════════════════════════════
+    if (currentModule === "MAIN_MENU" || !currentModule) {
+      const detectedToken = extractTokenFromText(text);
+      if (detectedToken) {
+        console.log(`[Personalized Demo Token] Detected: ${detectedToken.substring(0, 8)}... for ${phone}`);
+        const handled = await handlePersonalizedDemoToken(
+          phone, text, detectedToken, contact, conversation
+        );
+        if (handled) return;
+      }
+    }
+
     // 1. LEARNING workflow
     if (currentModule === "LEARNING") {
       await handleLearning(phone, text, contact, conversation);
@@ -159,7 +187,7 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-    // 8. DEMOS workflow
+    // 8. DEMOS workflow (handles personalized + onboarding + legacy demos)
     if (currentModule === "DEMOS") {
       await handleDemos(phone, text, contact, conversation, interactiveId);
       return;
@@ -229,12 +257,15 @@ export async function routeMessage(incoming: IncomingMessage): Promise<void> {
       return;
     }
 
-    // Demo Centre
+    // Demo Centre (includes personalized demo IDs: demo_view_my_biz, demo_try_related,
+    // demo_try_tools, demo_build_lead, demo_change_details, demo_back_personalized,
+    // onboard_type_*, onboard_need_*)
     if (
       interactiveId.startsWith("demo_") ||
       interactiveId.startsWith("democat_") ||
       interactiveId.startsWith("demostart_") ||
-      interactiveId.startsWith("demo_lead_")
+      interactiveId.startsWith("demo_lead_") ||
+      interactiveId.startsWith("onboard_")
     ) {
       await handleDemos(phone, text, contact, conversation, interactiveId);
       return;
