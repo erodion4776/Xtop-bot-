@@ -1,5 +1,5 @@
 
-// supabase/functions/whatsapp-webhook/router.ts
+ // supabase/functions/whatsapp-webhook/router.ts
 
 import {
   Contact,
@@ -81,6 +81,17 @@ import {
 } from "./modules/demos/personalized.ts";
 
 import { extractTokenFromText } from "./modules/demos/tokens.ts";
+
+// =====================================================
+// PRIVATE ADMIN AGENT
+// =====================================================
+
+import {
+  isAdminPhone,
+  isAdminAgentTrigger,
+  showAdminAgentMenu,
+  handleAdminAgent,
+} from "./modules/admin-agent.ts";
 
 const supabase = getSupabaseClient();
 
@@ -169,8 +180,70 @@ export async function routeMessage(
     ).catch(() => {});
 
     // =====================================================
-    // 1. GLOBAL SABI PAUSE CHECK
+    // 3. PRIVATE ADMIN AGENT
+    //
+    // IMPORTANT:
+    // This block runs before the global pause check and all
+    // ordinary public-bot routing.
+    //
+    // The agent is accessible only to the configured admin
+    // WhatsApp sender number.
     // =====================================================
+
+    const authorisedAdmin = isAdminPhone(phone);
+
+    const existingContext = (
+      conversation.context_json || {}
+    ) as Record<string, unknown>;
+
+    const adminAgentActive =
+      conversation.current_module === "ADMIN_AGENT" ||
+      existingContext.admin_agent_active === true;
+
+    // Open the private agent using "Lizzy".
+    if (
+      authorisedAdmin &&
+      isAdminAgentTrigger(text, interactiveId)
+    ) {
+      const updatedConversation = await updateConversation(
+        conversation.id,
+        {
+          current_module: "ADMIN_AGENT",
+          current_state: "ACTIVE",
+          context_json: {
+            admin_agent_active: true,
+          },
+        },
+      );
+
+      if (!updatedConversation) {
+        await sendTextMessage(
+          phone,
+          "I could not open the private assistant because the conversation state could not be saved. Please try again.",
+        );
+        return;
+      }
+
+      await showAdminAgentMenu(phone);
+      return;
+    }
+
+    // Route messages to the private agent only while the
+    // authorised administrator is in ADMIN_AGENT mode.
+    if (authorisedAdmin && adminAgentActive) {
+      await handleAdminAgent(
+        phone,
+        text,
+        interactiveId,
+        conversation.id,
+      );
+      return;
+    }
+
+    // =====================================================
+    // 4. GLOBAL SABI PAUSE CHECK
+    // =====================================================
+
     const { data: setting, error: settingError } = await supabase
       .from("system_settings")
       .select("value")
@@ -189,8 +262,9 @@ export async function routeMessage(
     }
 
     // =====================================================
-    // 2. INDIVIDUAL AGENT TAKEOVER CHECK
+    // 5. INDIVIDUAL AGENT TAKEOVER CHECK
     // =====================================================
+
     const ctx = (
       conversation.context_json || {}
     ) as Record<string, any>;
@@ -211,8 +285,9 @@ export async function routeMessage(
       conversation.current_module || "MAIN_MENU";
 
     // =====================================================
-    // 3. EXPLICIT HOME ACTION
+    // 6. EXPLICIT HOME ACTION
     // =====================================================
+
     if (
       interactiveId === "menu_home" ||
       lowerText === "menu_home"
@@ -228,7 +303,7 @@ export async function routeMessage(
     }
 
     // =====================================================
-    // 4. PERSONALIZED DEMO INTERCEPTION
+    // 7. PERSONALIZED DEMO INTERCEPTION
     //
     // Structured business requests are handled before token
     // validation and generic intent routing.
@@ -236,6 +311,7 @@ export async function routeMessage(
     // Learning and Exams remain protected.
     // Interactive menu IDs are not treated as free-text requests.
     // =====================================================
+
     const isAcademicWorkflow =
       currentModule === "LEARNING" ||
       currentModule === "EXAMS";
@@ -246,16 +322,7 @@ export async function routeMessage(
     ) {
       const originalText = incoming.text || text;
 
-      // First, handle a complete structured request such as:
-      //
-      // Hello Xtop, I want to see a personalized WhatsApp demo
-      // for my business.
-      // Business name: Sunrise Hotel Demo
-      // Business category: Hotel and accommodation
-      // Main need: Room enquiries and booking requests
-      //
-      // This must happen before generic booking/appointment intent
-      // handling so the correct industry template is opened.
+      // First, handle a complete structured request.
       const structuredDemoHandled =
         await handleStructuredPersonalizedDemoRequest(
           phone,
@@ -287,7 +354,7 @@ export async function routeMessage(
     }
 
     // =====================================================
-    // 5. ACTIVE WORKFLOW ROUTING
+    // 8. ACTIVE WORKFLOW ROUTING
     // =====================================================
 
     // Learning workflow.
@@ -335,7 +402,7 @@ export async function routeMessage(
       return;
     }
 
-    // Agent workflow.
+    // Existing public agent workflow.
     if (currentModule === "AGENT") {
       await handleAgent(
         phone,
@@ -452,7 +519,7 @@ export async function routeMessage(
     }
 
     // =====================================================
-    // 6. DIRECT INTENT OVERRIDES FROM IDLE / MAIN MENU
+    // 9. DIRECT INTENT OVERRIDES FROM IDLE / MAIN MENU
     // =====================================================
 
     // About.
@@ -584,7 +651,7 @@ export async function routeMessage(
     }
 
     // =====================================================
-    // 7. GLOBAL COMMANDS
+    // 10. GLOBAL COMMANDS
     // =====================================================
 
     if (isGreeting(text) || isHelp(text)) {
@@ -614,7 +681,7 @@ export async function routeMessage(
     }
 
     // =====================================================
-    // 8. MAIN MENU DISPATCH
+    // 11. MAIN MENU DISPATCH
     // =====================================================
 
     const intent = detectIntent(text, interactiveId);
