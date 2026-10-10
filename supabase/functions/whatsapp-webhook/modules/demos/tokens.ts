@@ -1,6 +1,6 @@
 // modules/demos/tokens.ts
 // Secure token generation, extraction, and validation.
-// Generic: works for ANY business, not hardcoded to one company.
+// Upgraded to parse natural structured messages directly on-the-fly!
 
 import { getSupabaseClient, safeErrorLog } from "../../database.ts";
 import { classifyCategory } from "./templates.ts";
@@ -24,17 +24,27 @@ export async function hashToken(rawToken: string): Promise<string> {
 }
 
 /**
- * Extract a demo token from inbound message text.
- * Supports: XTD_*, DEMO_*, TEST_* prefixes and "reference: TOKEN" patterns.
+ * Extract a demo token or recognize a structured business details message.
  */
 export function extractTokenFromText(text: string): string | null {
   if (!text) return null;
-  // Explicit "reference: TOKEN" pattern
+
+  const lowerText = text.toLowerCase();
+
+  // 1. Direct structured message detection
+  // If the customer already sent their business details, treat the message as its own virtual token!
+  if (lowerText.includes("business name:") && lowerText.includes("business category:")) {
+    return "STRUCTURED_DIRECT_REQUEST";
+  }
+
+  // 2. Explicit "reference: TOKEN" pattern
   const explicit = text.match(/(?:reference|ref|token|code)\s*:\s*([A-Za-z0-9_-]{4,40})/i);
   if (explicit?.[1]) return explicit[1];
-  // Direct prefix match
+
+  // 3. Direct prefix match (TEST_*, XTD_*, DEMO_*)
   const prefix = text.match(/(?:XTD|DEMO|TEST)_[A-Za-z0-9_-]{4,40}/i);
   if (prefix) return prefix[0];
+
   return null;
 }
 
@@ -50,9 +60,7 @@ export interface ValidatedToken {
 }
 
 /**
- * Validate a token. Supports:
- * 1. TEST_* tokens → dynamic mock (no DB needed)
- * 2. XTD_*/DEMO_* tokens → database lookup
+ * Validate a token or process structured details directly on-the-fly.
  */
 export async function validateToken(
   rawToken: string,
@@ -60,17 +68,52 @@ export async function validateToken(
 ): Promise<ValidatedToken | null> {
   const clean = rawToken.trim();
 
-  // ── TEST TOKEN: Dynamic mock for any business ──
+  // ── 1. STRUCTURED DIRECT REQUESTS (Bypasses manual onboarding) ──
+  if (clean === "STRUCTURED_DIRECT_REQUEST" && originalText) {
+    let businessName = "Your Business";
+    let categoryKey = "other";
+    let mainNeed = "";
+
+    // Extract Business Name
+    const nameMatch = originalText.match(/Business\s+name\s*:\s*([^.\n\r]+)/i);
+    if (nameMatch?.[1]) {
+      businessName = nameMatch[1].trim();
+    }
+
+    // Extract Business Category & Classify
+    const catMatch = originalText.match(/Business\s+category\s*:\s*([^.\n\r]+)/i);
+    if (catMatch?.[1]) {
+      categoryKey = classifyCategory(catMatch[1].trim());
+    }
+
+    // Extract Main Need
+    const needMatch = originalText.match(/Main\s+need\s*:\s*([^.\n\r]+)/i);
+    if (needMatch?.[1]) {
+      mainNeed = needMatch[1].trim();
+    }
+
+    return {
+      tokenId: "00000000-0000-0000-0000-000000000000",
+      businessConfigId: "00000000-0000-0000-0000-000000000000",
+      businessName,
+      businessCategory: categoryKey,
+      demoTemplate: categoryKey,
+      demoConfig: { main_need: mainNeed },
+      campaignSource: "structured_direct_inbound",
+      tokenPrefix: "DIRECT",
+    };
+  }
+
+  // ── 2. TEST TOKENS (Dynamic mocks) ──
   if (clean.toUpperCase().startsWith("TEST_")) {
     let businessName = "Test Business";
     let businessType = "";
 
     if (originalText) {
-      // Generic extraction: "prepared for <Name>" or "for <Name>"
       const nameMatch = originalText.match(/(?:prepared\s+)?for\s+([A-Z][^.]+?)(?:\.|\s+Business|\s+Demo|\s*$)/i);
       if (nameMatch?.[1]) businessName = nameMatch[1].trim();
-      // Extract business type if provided
-      const typeMatch = originalText.match(/business\s+type\s*:\s*([^.\n]+)/i);
+
+      const typeMatch = originalText.match(/business\s+type\s*:\s*([^.\n\r]+)/i);
       if (typeMatch?.[1]) businessType = typeMatch[1].trim();
     }
 
@@ -93,7 +136,7 @@ export async function validateToken(
     };
   }
 
-  // ── PRODUCTION TOKEN: Database lookup ──
+  // ── 3. PRODUCTION TOKENS (Database query) ──
   const sb = getSupabaseClient();
   try {
     const hash = await hashToken(clean);
@@ -133,7 +176,7 @@ export async function validateToken(
 
 /**
  * Admin: create a business config + token pair.
- * Returns the raw token (visible only once) and wa.me link.
+ * Returns the raw token and wa.me link.
  */
 export async function createDemoLink(
   businessName: string,
