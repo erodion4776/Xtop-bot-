@@ -1,6 +1,5 @@
 // modules/demos/tokens.ts
 // Secure token generation, extraction, and validation.
-// Upgraded: resilient non-punctuated boundary lookahead parser.
 
 import { getSupabaseClient, safeErrorLog } from "../../database.ts";
 import { classifyCategory } from "./templates.ts";
@@ -31,7 +30,7 @@ export function extractTokenFromText(text: string): string | null {
 
   const cleanText = text.toLowerCase();
 
-  // 1. Resilient structured pattern matching (any spacing, colons, or punctuation)
+  // 1. Structured message detection
   if (
     cleanText.includes("business name") &&
     (cleanText.includes("business category") || cleanText.includes("business type") || cleanText.includes("category"))
@@ -70,25 +69,24 @@ export async function validateToken(
 ): Promise<ValidatedToken | null> {
   const clean = rawToken.trim();
 
-  // ── 1. STRUCTURED DIRECT REQUESTS (Bypasses manual onboarding questions) ──
+  // ── 1. STRUCTURED DIRECT REQUESTS ──
   if (clean === "STRUCTURED_DIRECT_REQUEST" && originalText) {
     let businessName = "Your Business";
     let categoryKey = "other";
     let mainNeed = "";
 
-    // Robust lookahead boundaries (period, newline, or next criteria keyword acting as delimiter)
-    const nameMatch = originalText.match(/business\s+name\s*[:=-]?\s*([^.]+?)(?=\.?\s*(?:business\s+category|business\s+type|category|main\s+need|need|$))/i);
+    const nameMatch = originalText.match(/(?:business\s+name|company\s+name|biz\s+name)\s*[:=-]?\s*([^.\n\r]+?)(?=\.?\s*(?:business\s+category|business\s+type|category|main\s+need|need|$))/i);
     if (nameMatch?.[1]) {
       businessName = nameMatch[1].trim().replace(/^[:\s-]+|[:\s-]+$/g, "");
     }
 
-    const catMatch = originalText.match(/(?:business\s+category|business\s+type|category)\s*[:=-]?\s*([^.]+?)(?=\.?\s*(?:main\s+need|need|business\s+name|$))/i);
+    const catMatch = originalText.match(/(?:business\s+category|business\s+type|category|industry)\s*[:=-]?\s*([^.\n\r]+?)(?=\.?\s*(?:main\s+need|need|business\s+name|$))/i);
     if (catMatch?.[1]) {
       const rawCat = catMatch[1].trim().replace(/^[:\s-]+|[:\s-]+$/g, "");
       categoryKey = classifyCategory(rawCat);
     }
 
-    const needMatch = originalText.match(/(?:main\s+need|need)\s*[:=-]?\s*([^.]+?)(?=\.?\s*(?:business\s+name|business\s+category|business\s+type|$))/i);
+    const needMatch = originalText.match(/(?:main\s+need|business\s+need|need)\s*[:=-]?\s*([^.\n\r]+?)(?=\.?\s*(?:business\s+name|business\s+category|business\s+type|$))/i);
     if (needMatch?.[1]) {
       mainNeed = needMatch[1].trim().replace(/^[:\s-]+|[:\s-]+$/g, "");
     }
@@ -105,7 +103,7 @@ export async function validateToken(
     };
   }
 
-  // ── 2. TEST TOKENS (Dynamic mocks) ──
+  // ── 2. TEST TOKENS ──
   if (clean.toUpperCase().startsWith("TEST_")) {
     let businessName = "Test Business";
     let businessType = "";
@@ -137,7 +135,7 @@ export async function validateToken(
     };
   }
 
-  // ── 3. PRODUCTION TOKENS (Database query) ──
+  // ── 3. PRODUCTION TOKENS ──
   const sb = getSupabaseClient();
   try {
     const hash = await hashToken(clean);
@@ -175,10 +173,6 @@ export async function validateToken(
   }
 }
 
-/**
- * Admin: create a business config + token pair.
- * Returns the raw token and wa.me link.
- */
 export async function createDemoLink(
   businessName: string,
   businessCategory: string,
