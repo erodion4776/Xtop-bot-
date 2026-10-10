@@ -265,8 +265,12 @@ async function githubGet<T>(
     return { error: "Invalid GitHub API path." };
   }
 
+  // FIX: The repository metadata endpoint should not end with "/".
+  // For all other endpoints, preserve their paths and query strings.
+  const normalizedPath = path === "/" ? "" : path;
+
   const url =
-    `${GITHUB_API}/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}${path}`;
+    `${GITHUB_API}/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}${normalizedPath}`;
 
   try {
     const response = await fetch(url, {
@@ -292,16 +296,13 @@ async function githubGet<T>(
         status: response.status,
         owner: config.owner,
         repo: config.repo,
-        path,
+        path: normalizedPath || "/",
         githubMessage,
         requestId,
       });
 
-      // IMPORTANT:
-      // Return the useful diagnostic to the administrator through
-      // WhatsApp so the dashboard logs are not the only source.
       const diagnostic =
-        `HTTP ${response.status} | path: ${path} | GitHub: ${githubMessage} | request ID: ${requestId}`;
+        `HTTP ${response.status} | path: ${normalizedPath || "/"} | GitHub: ${githubMessage} | request ID: ${requestId}`;
 
       if (response.status === 401) {
         return {
@@ -346,13 +347,13 @@ async function githubGet<T>(
     console.error("[AdminAgent][GitHub] Network request failed", {
       owner: config.owner,
       repo: config.repo,
-      path,
+      path: normalizedPath || "/",
       message: safeMessage,
     });
 
     return {
       error:
-        `Could not reach GitHub API. Path: ${path}. Error: ${safeMessage}. Check network access and try again.`,
+        `Could not reach GitHub API. Path: ${normalizedPath || "/"}. Error: ${safeMessage}. Check network access and try again.`,
     };
   }
 }
