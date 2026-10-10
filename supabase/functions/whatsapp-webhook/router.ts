@@ -1,5 +1,5 @@
 
- // supabase/functions/whatsapp-webhook/router.ts
+// supabase/functions/whatsapp-webhook/router.ts
 
 import {
   Contact,
@@ -75,7 +75,11 @@ import {
   showStudioMenu,
 } from "./modules/magazine-studio.ts";
 
-import { handlePersonalizedDemoToken } from "./modules/demos/personalized.ts";
+import {
+  handlePersonalizedDemoToken,
+  handleStructuredPersonalizedDemoRequest,
+} from "./modules/demos/personalized.ts";
+
 import { extractTokenFromText } from "./modules/demos/tokens.ts";
 
 const supabase = getSupabaseClient();
@@ -224,10 +228,13 @@ export async function routeMessage(
     }
 
     // =====================================================
-    // 4. PERSONALIZED DEMO TOKEN INTERCEPTION
+    // 4. PERSONALIZED DEMO INTERCEPTION
     //
-    // Do not intercept interactive IDs as tokens.
+    // Structured business requests are handled before token
+    // validation and generic intent routing.
+    //
     // Learning and Exams remain protected.
+    // Interactive menu IDs are not treated as free-text requests.
     // =====================================================
     const isAcademicWorkflow =
       currentModule === "LEARNING" ||
@@ -238,6 +245,28 @@ export async function routeMessage(
       !isInteractivePayload(incoming)
     ) {
       const originalText = incoming.text || text;
+
+      // First, handle a complete structured request such as:
+      //
+      // Hello Xtop, I want to see a personalized WhatsApp demo
+      // for my business.
+      // Business name: Sunrise Hotel Demo
+      // Business category: Hotel and accommodation
+      // Main need: Room enquiries and booking requests
+      //
+      // This must happen before generic booking/appointment intent
+      // handling so the correct industry template is opened.
+      const structuredDemoHandled =
+        await handleStructuredPersonalizedDemoRequest(
+          phone,
+          originalText,
+          contact,
+          conversation,
+        );
+
+      if (structuredDemoHandled) return;
+
+      // Preserve the existing demo-token flow.
       const detectedToken = extractTokenFromText(originalText);
 
       if (detectedToken) {
