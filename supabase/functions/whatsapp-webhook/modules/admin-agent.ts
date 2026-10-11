@@ -195,11 +195,85 @@ async function getBotStats(): Promise<string> {
 }
 
 /* =========================================================
-   SECURE ADMIN LEAD ASSISTANT
+   SECURE ADMIN LEAD ASSISTANT HELPERS
    ========================================================= */
 
 function sanitizeId(id: string): string {
   return id.replace(/[^a-zA-Z0-9-]/g, "").trim();
+}
+
+/**
+ * UUID-safe resolver for Leads (handles full UUIDs and short prefixes without crashing Postgres)
+ */
+async function findLeadByIdOrPrefix(leadId: string): Promise<any | null> {
+  const clean = sanitizeId(leadId).toLowerCase();
+  if (!clean) return null;
+
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean);
+
+  if (isUUID) {
+    const { data, error } = await supabase
+      .from("leads")
+      .select("*")
+      .eq("id", clean)
+      .maybeSingle();
+
+    if (error) safeErrorLog("findLeadByIdOrPrefix.uuid", error);
+    return data;
+  }
+
+  // Prefix lookup (in-memory match to avoid illegal SQL uuid ilike errors)
+  const { data, error } = await supabase
+    .from("leads")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error || !data) {
+    if (error) safeErrorLog("findLeadByIdOrPrefix.prefix", error);
+    return null;
+  }
+
+  const matched = data.find((l: any) => l.id.toLowerCase().startsWith(clean));
+  return matched || null;
+}
+
+/**
+ * UUID-safe resolver for Quotations
+ */
+async function findQuotationByIdOrPrefix(quoteId: string): Promise<any | null> {
+  const clean = sanitizeId(quoteId).toLowerCase();
+  if (!clean) return null;
+
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean);
+
+  if (isUUID) {
+    const { data, error } = await supabase
+      .from("quotations")
+      .select("*, leads(business_name, service_type)")
+      .eq("id", clean)
+      .maybeSingle();
+
+    if (error) safeErrorLog("findQuotationByIdOrPrefix.uuid", error);
+    return data;
+  }
+
+  const { data, error } = await supabase
+    .from("quotations")
+    .select("*, leads(business_name, service_type)")
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error || !data) {
+    if (error) safeErrorLog("findQuotationByIdOrPrefix.prefix", error);
+    return null;
+  }
+
+  const matched = data.find((q: any) => 
+    q.id.toLowerCase().startsWith(clean) || 
+    (q.quotation_number && q.quotation_number.toLowerCase().includes(clean))
+  );
+  return matched || null;
 }
 
 /**
@@ -276,22 +350,10 @@ async function listLeads(phone: string, filterType: "ALL" | "PENDING" | "APPROVE
  * Dynamically renders action buttons depending on approval state.
  */
 async function showLeadDetails(phone: string, inputId: string): Promise<void> {
-  const leadId = sanitizeId(inputId);
-  if (!leadId) {
-    await sendTextMessage(phone, "⚠️ Please provide a valid lead ID.");
-    return;
-  }
+  const lead = await findLeadByIdOrPrefix(inputId);
 
-  const { data: lead, error } = await supabase
-    .from("leads")
-    .select("*")
-    .or(`id.eq.${leadId},id.ilike.${leadId}%`)
-    .limit(1)
-    .maybeSingle();
-
-  if (error || !lead) {
-    if (error) safeErrorLog("showLeadDetails", error);
-    await sendTextMessage(phone, `⚠️ Could not find a qualifying lead with ID matching: \`${leadId}\``);
+  if (!lead) {
+    await sendTextMessage(phone, `⚠️ Could not find a qualifying lead with ID matching: \`${inputId}\``);
     return;
   }
 
@@ -373,22 +435,10 @@ async function showLeadDetails(phone: string, inputId: string): Promise<void> {
  * Explicit two-step approval flow with interactive confirmation buttons.
  */
 async function processLeadApproval(phone: string, inputId: string, isConfirm: boolean): Promise<void> {
-  const leadId = sanitizeId(inputId);
-  if (!leadId) {
-    await sendTextMessage(phone, "⚠️ Please provide a valid lead ID.");
-    return;
-  }
+  const lead = await findLeadByIdOrPrefix(inputId);
 
-  const { data: lead, error } = await supabase
-    .from("leads")
-    .select("*")
-    .or(`id.eq.${leadId},id.ilike.${leadId}%`)
-    .limit(1)
-    .maybeSingle();
-
-  if (error || !lead) {
-    if (error) safeErrorLog("processLeadApproval", error);
-    await sendTextMessage(phone, `⚠️ Lead lookup failed. Could not find lead matching: \`${leadId}\``);
+  if (!lead) {
+    await sendTextMessage(phone, `⚠️ Lead lookup failed. Could not find lead matching: \`${inputId}\``);
     return;
   }
 
@@ -512,22 +562,10 @@ async function processLeadApproval(phone: string, inputId: string, isConfirm: bo
  * Chat with Client Link Generator.
  */
 async function initializeClientChat(phone: string, inputId: string): Promise<void> {
-  const leadId = sanitizeId(inputId);
-  if (!leadId) {
-    await sendTextMessage(phone, "⚠️ Please provide a valid lead ID.");
-    return;
-  }
+  const lead = await findLeadByIdOrPrefix(inputId);
 
-  const { data: lead, error } = await supabase
-    .from("leads")
-    .select("*")
-    .or(`id.eq.${leadId},id.ilike.${leadId}%`)
-    .limit(1)
-    .maybeSingle();
-
-  if (error || !lead) {
-    if (error) safeErrorLog("initializeClientChat", error);
-    await sendTextMessage(phone, `⚠️ Could not find lead matching ID: \`${leadId}\``);
+  if (!lead) {
+    await sendTextMessage(phone, `⚠️ Could not find lead matching ID: \`${inputId}\``);
     return;
   }
 
@@ -640,19 +678,10 @@ async function listQuotations(phone: string): Promise<string> {
 }
 
 async function approveDraftQuotation(phone: string, inputId: string): Promise<string> {
-  const quoteId = sanitizeId(inputId);
-  if (!quoteId) return "⚠️ Please provide a valid quotation ID.";
+  const quote = await findQuotationByIdOrPrefix(inputId);
 
-  const { data: quote, error } = await supabase
-    .from("quotations")
-    .select("*, leads(business_name)")
-    .or(`id.eq.${quoteId},id.ilike.${quoteId}%`)
-    .limit(1)
-    .maybeSingle();
-
-  if (error || !quote) {
-    if (error) safeErrorLog("approveDraftQuotation", error);
-    return `⚠️ Quotation lookup failed. No quote matched: \`${quoteId}\``;
+  if (!quote) {
+    return `⚠️ Quotation lookup failed. No quote matched: \`${inputId}\``;
   }
 
   if (quote.status === "APPROVED") {
