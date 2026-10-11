@@ -1,21 +1,37 @@
-
- // supabase/functions/whatsapp-webhook/modules/admin-agent.ts
+// supabase/functions/whatsapp-webhook/modules/admin-agent.ts
+// Private technical, diagnostic, and secure Lead Assistant (Lizzy)
+// Enforces strict verification checks, ₦100k minimum qualifying threshold,
+// redacted customer PII, explicit two-step approvals, and robust auditing.
+// Fully button and list-menu driven for absolute mobile convenience.
 
 import {
   getSupabaseClient,
   updateConversation,
+  updateLead,
+  updateQuotation,
+  createAgentRequest,
+  logSalesEvent,
 } from "../database.ts";
 
-import { sendTextMessage } from "../whatsapp.ts";
+import {
+  sendTextMessage,
+  sendButtonMessage,
+  sendListMessage,
+  makeButton,
+  makeListRow,
+} from "../whatsapp.ts";
+
 import { callAI } from "../ai.ts";
+import { formatNaira } from "./pricing.ts";
 
 const supabase = getSupabaseClient();
 
 const GITHUB_API = "https://api.github.com";
 const GITHUB_API_VERSION = "2022-11-28";
+const MIN_QUALIFYING_PRICE = 100000;
 
 /* =========================================================
-   PHONE / ADMIN ACCESS
+   PHONE / ADMIN ACCESS Normalizer and Checker
    ========================================================= */
 
 function normalizePhone(raw: string): string {
@@ -45,36 +61,58 @@ export function isAdminAgentTrigger(
 ): boolean {
   return (
     text.trim().toLowerCase() === "lizzy" ||
-    interactiveId === "admin_agent_open"
+    interactiveId === "admin_agent_open" ||
+    interactiveId === "admin_agent_menu"
   );
 }
 
+/**
+ * Renders Lizzy's primary menu using WhatsApp native List selections.
+ * Exactly 10 rows total, fitting WhatsApp constraints perfectly without clipping.
+ */
 export async function showAdminAgentMenu(phone: string): Promise<void> {
-  const message = [
-    "🔐 *XTOP PRIVATE ADMIN AGENT*",
-    "",
-    "Welcome, Admin.",
-    "",
-    "*Database*",
-    "1️⃣ `status` — check database connectivity",
-    "2️⃣ `stats` — view bot statistics",
-    "",
-    "*GitHub diagnostics*",
-    "3️⃣ `github` — test GitHub connection",
-    "4️⃣ `deployments` — inspect recent workflow runs",
-    "5️⃣ `logs` — inspect failed jobs and steps",
-    "   `logs RUN_ID` — inspect a particular run",
-    "",
-    "*AI adviser*",
-    "`advice your question`",
-    "",
-    "`menu` — show this menu",
-    "`exit` — close Lizzy",
-    "",
-    "🔒 GitHub diagnostics are read-only.",
-  ].join("\n");
+  const body =
+    "🔐 *XTOP PRIVATE ADMIN ASSISTANT (LIZZY)*\n\n" +
+    "Welcome, Authorized Admin.\n\n" +
+    "Use the dynamic menu below to assess high-value leads, approve client details, " +
+    "track quotations, check system health, or consult the AI advisory engine.";
 
-  await sendTextMessage(phone, message);
+  const sections = [
+    {
+      title: "💼 Lead & Quote Desk",
+      rows: [
+        makeListRow("admin_leads", "💼 List Leads", "Qualifying enquiries (>= ₦100k)"),
+        makeListRow("admin_pending", "⏳ Pending Approvals", "Leads awaiting admin approval"),
+        makeListRow("admin_approved", "✅ Approved Archives", "Explicitly approved leads list"),
+        makeListRow("admin_quotes", "📋 Quotations", "Manage, prepare, and track quotes"),
+      ],
+    },
+    {
+      title: "⚙️ System Diagnostics",
+      rows: [
+        makeListRow("admin_status", "🟢 DB Connectivity", "Test connection to Supabase database"),
+        makeListRow("admin_stats", "📊 Bot Statistics", "View messaging and contacts metrics"),
+        makeListRow("admin_github", "🚗 GitHub Actions API", "Verify Actions integration connectivity"),
+        makeListRow("admin_deployments", "🚀 Recent Runs", "Inspect workflow execution logs"),
+        makeListRow("admin_logs", "🔎 Workflow Failures", "Inspect recent failing job steps"),
+      ],
+    },
+    {
+      title: "🔒 Security Actions",
+      rows: [
+        makeListRow("admin_agent_exit", "🔒 Close Lizzy", "Close private agent session"),
+      ],
+    },
+  ];
+
+  await sendListMessage(
+    phone,
+    body,
+    "Select Action",
+    sections,
+    "Lizzy Operations Suite",
+    "Authorized Admin Only",
+  );
 }
 
 /* =========================================================
@@ -119,37 +157,26 @@ async function checkBotStatus(): Promise<string> {
 
 async function getBotStats(): Promise<string> {
   const checks = await Promise.all([
-    supabase.from("contacts").select("id", {
-      count: "exact", head: true,
-    }),
-    supabase.from("messages").select("id", {
-      count: "exact", head: true,
-    }),
-    supabase.from("bot_orders").select("id", {
-      count: "exact", head: true,
-    }),
-    supabase.from("agent_requests").select("id", {
-      count: "exact", head: true,
-    }).eq("status", "NEW"),
+    supabase.from("contacts").select("id", { count: "exact", head: true }),
+    supabase.from("messages").select("id", { count: "exact", head: true }),
+    supabase.from("bot_orders").select("id", { count: "exact", head: true }),
+    supabase.from("agent_requests").select("id", { count: "exact", head: true }).eq("status", "PENDING"),
+    supabase.from("leads").select("id", { count: "exact", head: true }).gte("estimated_min_price", MIN_QUALIFYING_PRICE),
   ]);
 
   const labels = [
     "Contacts",
     "Messages",
     "Bot orders",
-    "New agent requests",
+    "Pending agent requests",
+    "High-value Leads",
   ];
 
   const lines = checks.map((result, index) => {
     if (result.error) {
-      console.error(
-        `[AdminAgent] Stats error (${labels[index]}):`,
-        result.error.message,
-      );
-
+      console.error(`[AdminAgent] Stats error (${labels[index]}):`, result.error.message);
       return `${labels[index]}: unavailable — query failed`;
     }
-
     return `${labels[index]}: ${result.count ?? 0}`;
   });
 
@@ -165,14 +192,518 @@ async function getBotStats(): Promise<string> {
 }
 
 /* =========================================================
+   SECURE ADMIN LEAD ASSISTANT
+   ========================================================= */
+
+/**
+ * Clean up leading and trailing punctuation from IDs.
+ */
+function sanitizeId(id: string): string {
+  return id.replace(/[^a-zA-Z0-9-]/g, "").trim();
+}
+
+/**
+ * Filter and format leads into a secure, redacted, non-sensitive list.
+ */
+async function listLeads(phone: string, filterType: "ALL" | "PENDING" | "APPROVED"): Promise<void> {
+  let query = supabase.from("leads").select("*");
+
+  if (filterType === "PENDING") {
+    query = query.or("requirements_json->admin_approved.eq.false,requirements_json->admin_approved.is.null");
+  } else if (filterType === "APPROVED") {
+    query = query.eq("requirements_json->admin_approved", "true");
+  }
+
+  const { data: leads, error } = await query
+    .gte("estimated_min_price", MIN_QUALIFYING_PRICE)
+    .order("created_at", { ascending: false })
+    .limit(8);
+
+  if (error || !leads) {
+    safeErrorLog("listLeads", error);
+    await sendTextMessage(phone, "⚠️ *Error retrieving lead records from Supabase.*");
+    return;
+  }
+
+  if (leads.length === 0) {
+    await sendTextMessage(phone, `ℹ️ *No qualifying leads found matching filter: ${filterType}*`);
+    return;
+  }
+
+  const listTitle = {
+    ALL: "💼 *HIGH-VALUE BUSINESS ENQUIRIES*",
+    PENDING: "⏳ *PENDING LEAD APPROVALS*",
+    APPROVED: "✅ *APPROVED LEAD ARCHIVES*",
+  }[filterType];
+
+  const sections = [
+    {
+      title: "Select Lead to Inspect",
+      rows: leads.map((lead) => {
+        const isApproved = lead.requirements_json?.admin_approved === "true" || lead.requirements_json?.admin_approved === true;
+        const approvalIcon = isApproved ? "🟢" : "⏳";
+        const serviceLabel = (lead.service_type || "General").replace(/_/g, " ").substring(0, 12);
+        
+        return makeListRow(
+          `admin_inspect_${lead.id}`,
+          `${approvalIcon} ${lead.business_name?.substring(0, 18) || "No Name"}`,
+          `${serviceLabel} • ${formatNaira(lead.estimated_min_price || 0)}`
+        );
+      })
+    }
+  ];
+
+  await sendListMessage(
+    phone,
+    `${listTitle}\n\nSelect a lead from the list below to assess detailed requirements and manage approval states securely.`,
+    "Assess Lead",
+    sections,
+    "Lead Assistant Desk",
+    `Threshold: >= ${formatNaira(MIN_QUALIFYING_PRICE)}`
+  );
+}
+
+/**
+ * Display secure details of a selected lead. Redacts customer PII before approval.
+ * Dynamically renders custom action buttons depending on current approval state.
+ */
+async function showLeadDetails(phone: string, inputId: string): Promise<void> {
+  const leadId = sanitizeId(inputId);
+  if (!leadId) {
+    await sendTextMessage(phone, "⚠️ Please provide a valid lead ID.");
+    return;
+  }
+
+  const { data: lead, error } = await supabase
+    .from("leads")
+    .select("*")
+    .or(`id.eq.${leadId},id.ilike.${leadId}%`)
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !lead) {
+    if (error) safeErrorLog("showLeadDetails", error);
+    await sendTextMessage(phone, `⚠️ Could not find a qualifying lead with ID matching: \`${leadId}\``);
+    return;
+  }
+
+  const isApproved = lead.requirements_json?.admin_approved === "true" || lead.requirements_json?.admin_approved === true;
+  const serviceLabel = (lead.service_type || "General Business").replace(/_/g, " ");
+
+  const details = [
+    `💼 *LEAD FILE: \`${lead.id.substring(0, 8)}\`*`,
+    `============================`,
+    `*Business Name:* ${lead.business_name || "N/A"}`,
+    `*Industry/Category:* ${lead.industry || "N/A"}`,
+    `*Service Requested:* ${serviceLabel}`,
+    `*Budget Range:* ${lead.budget_range || "N/A"}`,
+    `*Verified Pricing Estimate:* ${formatNaira(lead.estimated_min_price || 0)} - ${formatNaira(lead.estimated_max_price || 0)}`,
+    `*Enquiry Date:* ${new Date(lead.created_at).toLocaleString()}`,
+    `*Lead Status:* ${lead.status || "N/A"}`,
+    `*System Approval Status:* ${isApproved ? "🟢 Approved" : "⏳ Pending Approval"}`,
+    "",
+    `*Captured Client Requirements:*`,
+    `_${lead.requirements_json?.business_need || lead.requirements_json?.requirements || "No custom requirements summary available"}_`,
+    "",
+  ];
+
+  if (isApproved) {
+    const { data: contact } = await supabase
+      .from("contacts")
+      .select("*")
+      .eq("id", lead.contact_id)
+      .maybeSingle();
+
+    details.push(
+      `👤 *APPROVED CONTACT INFORMATION*`,
+      `• *Client Name:* ${contact?.name || "Customer"}`,
+      `• *Phone Number:* ${contact?.phone || "N/A"}`,
+      `• *Email Address:* ${lead.requirements_json?.client_email || "Not Provided"}`,
+      "",
+    );
+
+    await sendTextMessage(phone, details.join("\n"));
+
+    // RENDER INTERACTIVE DIRECT CHAT INITIATOR
+    await sendButtonMessage(
+      phone,
+      "Select next step for this approved lead:",
+      [
+        makeButton(`admin_chat_link_${lead.id}`, "💬 Chat with Client"),
+        makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+      ],
+      "Lead Approved"
+    );
+
+    // Audit contact disclosure access event
+    await logSalesEvent(phone, "CONTACT_DISCLOSURE_ACCESSED", lead.id, {
+      admin_phone: phone,
+      contact_id: lead.contact_id,
+    });
+  } else {
+    details.push(
+      "🔒 *CONTACT DETAILS REDACTED*",
+      "Client PII is hidden until explicitly approved by the administrator.",
+      "",
+    );
+
+    await sendTextMessage(phone, details.join("\n"));
+
+    // RENDER INTERACTIVE SECURE APPROVAL INITIATOR
+    await sendButtonMessage(
+      phone,
+      "Select next step for this pending lead:",
+      [
+        makeButton(`admin_approve_prep_${lead.id}`, "✅ Approve Lead"),
+        makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+      ],
+      "Lead Pending"
+    );
+  }
+}
+
+/**
+ * Explicit two-step approval flow.
+ * Steps:
+ * 1. Admin triggers `Approve Lead` button. Lizzy prompts for confirmation using interactive choice buttons.
+ * 2. Admin clicks `Confirm Approval` button. Lizzy persists approval and audits transaction.
+ */
+async function processLeadApproval(phone: string, inputId: string, isConfirm: boolean): Promise<void> {
+  const leadId = sanitizeId(inputId);
+  if (!leadId) {
+    await sendTextMessage(phone, "⚠️ Please provide a valid lead ID.");
+    return;
+  }
+
+  const { data: lead, error } = await supabase
+    .from("leads")
+    .select("*")
+    .or(`id.eq.${leadId},id.ilike.${leadId}%`)
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !lead) {
+    if (error) safeErrorLog("processLeadApproval", error);
+    await sendTextMessage(phone, `⚠️ Lead lookup failed. Could not find lead matching: \`${leadId}\``);
+    return;
+  }
+
+  // Enforce Verified Estimate rule
+  const minPrice = lead.estimated_min_price || 0;
+  if (minPrice < MIN_QUALIFYING_PRICE) {
+    await sendTextMessage(
+      phone,
+      `❌ *Lead Not Eligible for Private Assistant.* \n\n` +
+      `The verified estimate is ${formatNaira(minPrice)}, which is below the minimum qualifying threshold of ${formatNaira(MIN_QUALIFYING_PRICE)}.`
+    );
+    return;
+  }
+
+  const isApproved = lead.requirements_json?.admin_approved === "true" || lead.requirements_json?.admin_approved === true;
+  if (isApproved) {
+    await sendTextMessage(phone, `ℹ️ This lead is already approved.`);
+    await showLeadDetails(phone, lead.id);
+    return;
+  }
+
+  if (!isConfirm) {
+    // Stage 1: Explicit Confirmation Step
+    await sendTextMessage(phone, [
+      `⏳ *CONFIRM LEAD APPROVAL*`,
+      `----------------------------`,
+      `You are requesting approval for lead ID: \`${lead.id.substring(0, 8)}\``,
+      `*Business Name:* ${lead.business_name || "N/A"}`,
+      `*Service:* ${lead.service_type || "N/A"}`,
+      `*Estimate Range:* ${formatNaira(lead.estimated_min_price || 0)} - ${formatNaira(lead.estimated_max_price || 0)}`,
+      "",
+      `⚠️ _Approving will reveal the client's phone number and email address, and log an audit trail._`,
+    ].join("\n"));
+
+    await sendButtonMessage(
+      phone,
+      "Do you want to confirm this approval?",
+      [
+        makeButton(`admin_approve_confirm_${lead.id}`, "✅ Confirm Approval"),
+        makeButton("admin_agent_menu", "❌ Cancel"),
+      ],
+      "Explicit Confirmation"
+    );
+    return;
+  }
+
+  // Stage 2: Confirmed Approval Persisted securely to DB
+  try {
+    const updatedRequirements = {
+      ...(lead.requirements_json || {}),
+      admin_approved: true,
+      admin_approved_at: new Date().toISOString(),
+      approved_by_admin: phone,
+    };
+
+    // Fail Closed: Verify the write executes successfully before revealing anything
+    const { data: updatedLead, error: updateError } = await supabase
+      .from("leads")
+      .update({
+        requirements_json: updatedRequirements,
+        status: "AGENT_REQUESTED",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", lead.id)
+      .select("*")
+      .single();
+
+    if (updateError || !updatedLead) {
+      if (updateError) safeErrorLog("processLeadApproval.persist", updateError);
+      await sendTextMessage(phone, "❌ *Transaction Failed:* Could not save the approval record in the database. Contact details remain hidden.");
+      return;
+    }
+
+    // Insert to Agent Requests as an immutable audit record
+    await createAgentRequest(
+      lead.contact_id,
+      "QUOTATION",
+      `Lead Approved by Admin Lizzy Interface`,
+      "HIGH",
+      lead.id,
+      null,
+      `Admin Phone: ${phone} approved Lead ID ${lead.id}. Value: ${formatNaira(lead.estimated_min_price || 0)}`
+    );
+
+    // Insert sales events logs
+    await logSalesEvent(phone, "ADMIN_LEAD_APPROVED", lead.id, {
+      admin_phone: phone,
+      value_min: lead.estimated_min_price,
+    });
+
+    const { data: contact } = await supabase
+      .from("contacts")
+      .select("*")
+      .eq("id", lead.contact_id)
+      .maybeSingle();
+
+    await sendTextMessage(phone, [
+      `✅ *LEAD ID \`${lead.id.substring(0, 8)}\` APPROVED SUCCESSFULLY!*`,
+      `----------------------------`,
+      `*Client Name:* ${contact?.name || "Customer"}`,
+      `*Phone Number:* ${contact?.phone || "N/A"}`,
+      `*Email Address:* ${lead.requirements_json?.client_email || "Not Provided"}`,
+      "",
+      `Audit records have been persisted successfully.`,
+    ].join("\n"));
+
+    await sendButtonMessage(
+      phone,
+      "What would you like to do next?",
+      [
+        makeButton(`admin_chat_link_${lead.id}`, "💬 Chat with Client"),
+        makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+      ],
+      "Lead Approved"
+    );
+
+  } catch (err) {
+    safeErrorLog("processLeadApproval.catch", err);
+    await sendTextMessage(phone, "❌ *Fatal Error:* An exception occurred during approval. Access to client PII denied.");
+  }
+}
+
+/**
+ * Chat with Client Link Generator.
+ * Resolves the client's verified phone number and generates a standard Click-to-Chat link.
+ */
+async function initializeClientChat(phone: string, inputId: string): Promise<void> {
+  const leadId = sanitizeId(inputId);
+  if (!leadId) {
+    await sendTextMessage(phone, "⚠️ Please provide a valid lead ID.");
+    return;
+  }
+
+  const { data: lead, error } = await supabase
+    .from("leads")
+    .select("*")
+    .or(`id.eq.${leadId},id.ilike.${leadId}%`)
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !lead) {
+    if (error) safeErrorLog("initializeClientChat", error);
+    await sendTextMessage(phone, `⚠️ Could not find lead matching ID: \`${leadId}\``);
+    return;
+  }
+
+  // Verify approval status before releasing phone link
+  const isApproved = lead.requirements_json?.admin_approved === "true" || lead.requirements_json?.admin_approved === true;
+  if (!isApproved) {
+    await sendTextMessage(phone, `❌ *Access Denied:* You must approve this lead first before generating a client chat link.`);
+    return;
+  }
+
+  const { data: contact } = await supabase
+    .from("contacts")
+    .select("*")
+    .eq("id", lead.contact_id)
+    .maybeSingle();
+
+  if (!contact || !contact.phone) {
+    await sendTextMessage(phone, "❌ *Error:* Could not find a valid contact phone number associated with this lead.");
+    return;
+  }
+
+  // Parse and normalize international format cleanly (e.g. 23480...)
+  const normalizedClientPhone = normalizePhone(contact.phone);
+  if (!/^\d{10,15}$/.test(normalizedClientPhone)) {
+    await sendTextMessage(phone, `❌ *Error:* Client phone format is invalid or malformed: "${contact.phone}"`);
+    return;
+  }
+
+  const clientName = contact.name || "Customer";
+  const businessName = lead.business_name || "your business";
+  const serviceLabel = (lead.service_type || "Services").replace(/_/g, " ").toLowerCase();
+
+  const messageText = 
+    `Hello ${clientName}, my name is Ero from Xtop Retail Technologies. ` +
+    `Thank you for your enquiry about our ${serviceLabel} for *${businessName}*. ` +
+    `I would like to understand your requirements better so that we can recommend the right solution ` +
+    `and prepare an accurate quotation. Could you please confirm your key requirements and expected timeline?`;
+
+  const encodedMessage = encodeURIComponent(messageText);
+  const clickToChatUrl = `https://wa.me/${normalizedClientPhone}?text=${encodedMessage}`;
+
+  // Log contact details request event in audit trail
+  await logSalesEvent(phone, "CHAT_LINK_GENERATED", lead.id, {
+    admin_phone: phone,
+    client_phone: normalizedClientPhone,
+  });
+
+  await sendTextMessage(phone, [
+    `👤 *CHAT WITH CLIENT INITIALIZED*`,
+    `----------------------------`,
+    `*Client:* ${clientName}`,
+    `*Business:* ${businessName}`,
+    `*Number:* +${normalizedClientPhone}`,
+    "",
+    `🔗 *WhatsApp Direct Link:*`,
+    clickToChatUrl,
+    "",
+    `⚠️ _Clicking the link will launch the WhatsApp chat on your device. Lizzy does not send this automatically. You can edit the text before sending._`,
+  ].join("\n"));
+
+  await sendButtonMessage(
+    phone,
+    "Actions:",
+    [
+      makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+      makeButton("admin_leads", "💼 View Leads"),
+    ]
+  );
+}
+
+/* =========================================================
+   QUOTATION MANAGEMENT MODULE
+   ========================================================= */
+
+/**
+ * List all available quotations in the system with their status tags.
+ */
+async function listQuotations(phone: string): Promise<string> {
+  const { data: quotes, error } = await supabase
+    .from("quotations")
+    .select("*, leads(business_name, service_type)")
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  if (error || !quotes) {
+    if (error) safeErrorLog("listQuotations", error);
+    return "⚠️ *Error retrieving quotation records from Supabase.*";
+  }
+
+  if (quotes.length === 0) {
+    return "ℹ️ *No quotation records found in the database.*";
+  }
+
+  const lines = quotes.map((q: any) => {
+    const biz = q.leads?.business_name || "N/A";
+    const service = (q.leads?.service_type || "Project").replace(/_/g, " ");
+    const quoteStatus = q.status || "DRAFT";
+    const statusIcon = quoteStatus === "APPROVED" ? "🟢" : quoteStatus === "DRAFT" ? "⏳" : "🔵";
+
+    return [
+      `• *Ref:* \`${q.quotation_number}\``,
+      `  *Business:* ${biz}`,
+      `  *Project:* ${service}`,
+      `  *Estimate:* ${formatNaira(q.min_price || 0)} - ${formatNaira(q.max_price || 0)}`,
+      `  *Status:* ${statusIcon} ${quoteStatus}`,
+      `  _To approve, send:_ \`quote_approve ${q.id}\``,
+      "",
+    ].join("\n");
+  });
+
+  return [
+    "📋 *XTOP QUOTATION MANAGEMENT SYSTEM*",
+    "--------------------------------------",
+    ...lines,
+  ].join("\n");
+}
+
+/**
+ * Approve a draft quotation.
+ */
+async function approveDraftQuotation(phone: string, inputId: string): Promise<string> {
+  const quoteId = sanitizeId(inputId);
+  if (!quoteId) return "⚠️ Please provide a valid quotation ID.";
+
+  const { data: quote, error } = await supabase
+    .from("quotations")
+    .select("*, leads(business_name)")
+    .or(`id.eq.${quoteId},id.ilike.${quoteId}%`)
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !quote) {
+    if (error) safeErrorLog("approveDraftQuotation", error);
+    return `⚠️ Quotation lookup failed. No quote matched: \`${quoteId}\``;
+  }
+
+  if (quote.status === "APPROVED") {
+    return `ℹ️ Quotation \`${quote.quotation_number}\` is already approved.`;
+  }
+
+  const { data: updatedQuote, error: updateError } = await supabase
+    .from("quotations")
+    .update({
+      status: "APPROVED",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", quote.id)
+    .select("*")
+    .single();
+
+  if (updateError || !updatedQuote) {
+    if (updateError) safeErrorLog("approveDraftQuotation.persist", updateError);
+    return "❌ *Transaction Failed:* Could not write the quotation approval to the database.";
+  }
+
+  // Log quotation approval in sales event audits
+  await logSalesEvent(phone, "ADMIN_QUOTATION_APPROVED", quote.lead_id, {
+    admin_phone: phone,
+    quotation_number: quote.quotation_number,
+    quotation_id: quote.id,
+  });
+
+  return [
+    `✅ *QUOTATION APPROVED SUCCESSFULLY*`,
+    `----------------------------`,
+    `*Ref Number:* \`${quote.quotation_number}\``,
+    `*Business:* ${quote.leads?.business_name || "N/A"}`,
+    `*Estimate Range:* ${formatNaira(quote.min_price || 0)} - ${formatNaira(quote.max_price || 0)}`,
+    `*New Status:* 🟢 APPROVED`,
+    "",
+    "This quotation has been approved for dispatch to the client via the customer-facing interface.",
+  ].join("\n");
+}
+
+/* =========================================================
    GITHUB READ-ONLY DIAGNOSTICS
-
-   Required Supabase secrets:
-   GITHUB_TOKEN
-   GITHUB_OWNER
-   GITHUB_REPO
-
-   Never log or return the token.
    ========================================================= */
 
 type GitHubRun = {
@@ -208,9 +739,7 @@ type GitHubResult<T> = {
   error?: string;
 };
 
-function getGitHubConfig():
-  | { token: string; owner: string; repo: string }
-  | null {
+function getGitHubConfig(): { token: string; owner: string; repo: string } | null {
   const token = (Deno.env.get("GITHUB_TOKEN") || "").trim();
   const owner = (Deno.env.get("GITHUB_OWNER") || "").trim();
   const repo = (Deno.env.get("GITHUB_REPO") || "").trim();
@@ -228,49 +757,28 @@ function githubHeaders(token: string): HeadersInit {
   };
 }
 
-/**
- * Sanitizes GitHub error text before returning it to the administrator.
- * Never includes request headers or credentials.
- */
 function sanitizeGitHubMessage(value: unknown): string {
   if (typeof value !== "string") return "No readable message";
-
-  return value
-    .replace(/[\r\n\t]/g, " ")
-    .replace(/[^ -~]/g, "")
-    .slice(0, 160);
+  return value.replace(/[\r\n\t]/g, " ").replace(/[^ -~]/g, "").slice(0, 160);
 }
 
-async function githubGet<T>(
-  path: string,
-): Promise<GitHubResult<T>> {
+async function githubGet<T>(path: string): Promise<GitHubResult<T>> {
   const config = getGitHubConfig();
 
   if (!config) {
     console.error("[AdminAgent][GitHub] Missing configuration secret(s).");
-
     return {
-      error:
-        "Required GitHub secrets are missing. Check GITHUB_TOKEN, GITHUB_OWNER and GITHUB_REPO in Supabase.",
+      error: "Required GitHub secrets are missing. Check GITHUB_TOKEN, GITHUB_OWNER and GITHUB_REPO in Supabase.",
     };
   }
 
-  if (
-    !path.startsWith("/") ||
-    path.startsWith("//") ||
-    path.includes("://")
-  ) {
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) {
     console.error("[AdminAgent][GitHub] Rejected invalid API path.");
-
     return { error: "Invalid GitHub API path." };
   }
 
-  // FIX: The repository metadata endpoint should not end with "/".
-  // For all other endpoints, preserve their paths and query strings.
   const normalizedPath = path === "/" ? "" : path;
-
-  const url =
-    `${GITHUB_API}/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}${normalizedPath}`;
+  const url = `${GITHUB_API}/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}${normalizedPath}`;
 
   try {
     const response = await fetch(url, {
@@ -286,12 +794,10 @@ async function githubGet<T>(
         const body = await response.json();
         githubMessage = sanitizeGitHubMessage(body?.message);
       } catch {
-        // Keep the safe fallback.
+        // Keep fallback
       }
 
-      const requestId =
-        response.headers.get("x-github-request-id") || "not provided";
-
+      const requestId = response.headers.get("x-github-request-id") || "not provided";
       console.error("[AdminAgent][GitHub] Request failed", {
         status: response.status,
         owner: config.owner,
@@ -301,49 +807,27 @@ async function githubGet<T>(
         requestId,
       });
 
-      const diagnostic =
-        `HTTP ${response.status} | path: ${normalizedPath || "/"} | GitHub: ${githubMessage} | request ID: ${requestId}`;
+      const diagnostic = `HTTP ${response.status} | path: ${normalizedPath || "/"} | GitHub: ${githubMessage} | request ID: ${requestId}`;
 
       if (response.status === 401) {
-        return {
-          error:
-            `GitHub rejected the token. ${diagnostic}. Verify that GITHUB_TOKEN is the correct active token.`,
-        };
+        return { error: `GitHub rejected the token. ${diagnostic}. Verify that GITHUB_TOKEN is the correct active token.` };
       }
-
       if (response.status === 403) {
-        return {
-          error:
-            `GitHub denied access. ${diagnostic}. Check token permissions or rate limits.`,
-        };
+        return { error: `GitHub denied access. ${diagnostic}. Check token permissions or rate limits.` };
       }
-
       if (response.status === 404) {
-        return {
-          error:
-            `GitHub could not find the repository or API resource, or the token cannot access it. ${diagnostic}. Check GITHUB_OWNER, GITHUB_REPO and token access.`,
-        };
+        return { error: `GitHub could not find repository. ${diagnostic}. Check GITHUB_OWNER and GITHUB_REPO.` };
       }
-
       if (response.status === 429) {
-        return {
-          error: `GitHub rate limit reached. ${diagnostic}. Try again later.`,
-        };
+        return { error: `GitHub rate limit reached. ${diagnostic}. Try again later.` };
       }
 
-      return {
-        error: `GitHub API request failed. ${diagnostic}.`,
-      };
+      return { error: `GitHub API request failed. ${diagnostic}.` };
     }
 
-    return {
-      data: await response.json() as T,
-    };
+    return { data: await response.json() as T };
   } catch (error) {
-    const safeMessage = error instanceof Error
-      ? sanitizeGitHubMessage(error.message)
-      : "Unknown network error";
-
+    const safeMessage = error instanceof Error ? sanitizeGitHubMessage(error.message) : "Unknown network error";
     console.error("[AdminAgent][GitHub] Network request failed", {
       owner: config.owner,
       repo: config.repo,
@@ -351,16 +835,9 @@ async function githubGet<T>(
       message: safeMessage,
     });
 
-    return {
-      error:
-        `Could not reach GitHub API. Path: ${normalizedPath || "/"}. Error: ${safeMessage}. Check network access and try again.`,
-    };
+    return { error: `Could not reach GitHub API. Path: ${normalizedPath || "/"}. Error: ${safeMessage}.` };
   }
 }
-
-/* =========================================================
-   GITHUB CONNECTION CHECK
-   ========================================================= */
 
 async function checkGitHubConnection(): Promise<string> {
   const config = getGitHubConfig();
@@ -371,8 +848,6 @@ async function checkGitHubConnection(): Promise<string> {
       "",
       "One or more GitHub secrets are missing.",
       "Required: GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO.",
-      "",
-      "Add them in the Supabase project used by this bot.",
     ].join("\n");
   }
 
@@ -388,12 +863,6 @@ async function checkGitHubConnection(): Promise<string> {
       "🔴 *GITHUB CONNECTION FAILED*",
       "",
       result.error || "GitHub returned no repository information.",
-      "",
-      `Configured owner: ${config.owner}`,
-      `Configured repository: ${config.repo}`,
-      "",
-      "No changes were made to GitHub.",
-      "Send this diagnostic back for help if needed.",
     ].join("\n");
   }
 
@@ -404,15 +873,9 @@ async function checkGitHubConnection(): Promise<string> {
     `Default branch: ${result.data.default_branch || "Not reported"}`,
     `Visibility: ${result.data.private ? "Private" : "Public"}`,
     "",
-    "Repository metadata is accessible.",
-    "This test does not by itself confirm Actions run or job access.",
     result.data.html_url || "",
   ].filter(Boolean).join("\n");
 }
-
-/* =========================================================
-   RECENT GITHUB ACTIONS WORKFLOW RUNS
-   ========================================================= */
 
 async function getRecentDeployments(): Promise<string> {
   const result = await githubGet<{
@@ -424,44 +887,26 @@ async function getRecentDeployments(): Promise<string> {
     return [
       "⚠️ *COULD NOT READ GITHUB WORKFLOW RUNS*",
       "",
-      result.error || "GitHub returned no workflow data.",
-      "",
-      "Check the token's Actions read permission.",
+      result.error || "GitHub returned no data.",
     ].join("\n");
   }
 
   const runs = result.data.workflow_runs || [];
 
   if (!runs.length) {
-    return [
-      "ℹ️ *NO WORKFLOW RUNS RETURNED*",
-      "",
-      "GitHub returned no recent Actions runs.",
-      "Confirm that this repository has workflows.",
-    ].join("\n");
+    return ["ℹ️ *NO WORKFLOW RUNS RETURNED*"];
   }
 
   const lines = runs.map((run, index) => {
-    const title = (run.name || run.display_title || "Workflow")
-      .replace(/[\r\n]/g, " ")
-      .slice(0, 90);
-
+    const title = (run.name || run.display_title || "Workflow").replace(/[\r\n]/g, " ").slice(0, 90);
     const conclusion = run.conclusion || run.status || "unknown";
-
-    const icon = conclusion === "success"
-      ? "🟢"
-      : conclusion === "failure"
-      ? "🔴"
-      : conclusion === "cancelled"
-      ? "⚪"
-      : "🟡";
+    const icon = conclusion === "success" ? "🟢" : conclusion === "failure" ? "🔴" : conclusion === "cancelled" ? "⚪" : "🟡";
 
     return [
       `${index + 1}. ${icon} *${title}*`,
       `   Run ID: ${run.id}`,
       `   Result: ${conclusion}`,
       `   Branch: ${run.head_branch || "unknown"}`,
-      `   Updated: ${run.updated_at || run.created_at || "unknown"}`,
       run.html_url ? `   ${run.html_url}` : "",
     ].filter(Boolean).join("\n");
   });
@@ -469,26 +914,12 @@ async function getRecentDeployments(): Promise<string> {
   return [
     "🚀 *RECENT GITHUB WORKFLOW RUNS*",
     "",
-    `Runs returned: ${runs.length}`,
-    "",
     ...lines,
-    "",
-    "Use `logs` to inspect the latest run's jobs and failed steps.",
-    "These are workflow results, not a live bot health check.",
   ].join("\n");
 }
 
-/* =========================================================
-   WORKFLOW JOB / FAILED-STEP DIAGNOSTICS
-   ========================================================= */
-
-async function inspectWorkflowRun(
-  runIdInput?: string,
-): Promise<string> {
-  if (
-    runIdInput &&
-    (!/^\d+$/.test(runIdInput) || runIdInput.length > 20)
-  ) {
+async function inspectWorkflowRun(runIdInput?: string): Promise<string> {
+  if (runIdInput && (!/^\d+$/.test(runIdInput) || runIdInput.length > 20)) {
     return "Invalid run ID. Use `logs` or `logs RUN_ID` with a numeric GitHub Actions run ID.";
   }
 
@@ -496,113 +927,43 @@ async function inspectWorkflowRun(
   let selectedRun: GitHubRun | undefined;
 
   if (!runId) {
-    const result = await githubGet<{
-      workflow_runs?: GitHubRun[];
-    }>("/actions/runs?per_page=10");
-
-    if (result.error || !result.data) {
-      return [
-        "⚠️ *COULD NOT FIND A WORKFLOW RUN*",
-        "",
-        result.error || "GitHub returned no workflow data.",
-      ].join("\n");
-    }
+    const result = await githubGet<{ workflow_runs?: GitHubRun[] }>("/actions/runs?per_page=10");
+    if (result.error || !result.data) return "⚠️ *Could not fetch latest runs.*";
 
     const runs = result.data.workflow_runs || [];
-
-    selectedRun = runs.find((run) =>
-      run.conclusion === "failure" ||
-      run.conclusion === "cancelled"
-    ) || runs[0];
-
-    if (!selectedRun) {
-      return "No recent GitHub Actions runs were returned.";
-    }
-
+    selectedRun = runs.find((run) => run.conclusion === "failure" || run.conclusion === "cancelled") || runs[0];
+    if (!selectedRun) return "No runs returned.";
     runId = selectedRun.id;
   }
 
-  const jobsResult = await githubGet<{
-    jobs?: GitHubJob[];
-  }>(`/actions/runs/${runId}/jobs?per_page=30`);
-
-  if (jobsResult.error || !jobsResult.data) {
-    return [
-      "⚠️ *COULD NOT READ WORKFLOW JOBS*",
-      "",
-      jobsResult.error || "GitHub returned no job information.",
-      "",
-      "Confirm Actions read permission and verify the run ID.",
-    ].join("\n");
-  }
+  const jobsResult = await githubGet<{ jobs?: GitHubJob[] }>(`/actions/runs/${runId}/jobs?per_page=30`);
+  if (jobsResult.error || !jobsResult.data) return "⚠️ *Could not fetch job info.*";
 
   const jobs = jobsResult.data.jobs || [];
-
-  const failedJobs = jobs.filter((job) =>
-    job.conclusion === "failure" ||
-    (job.steps || []).some((step) => step.conclusion === "failure")
-  );
-
-  const cancelledJobs = jobs.filter((job) =>
-    job.conclusion === "cancelled"
-  );
-
   const lines: string[] = [];
 
   for (const job of jobs.slice(0, 10)) {
     const conclusion = job.conclusion || job.status || "unknown";
+    const icon = conclusion === "success" ? "🟢" : conclusion === "failure" ? "🔴" : "🟡";
 
-    const icon = conclusion === "success"
-      ? "🟢"
-      : conclusion === "failure"
-      ? "🔴"
-      : conclusion === "cancelled"
-      ? "⚪"
-      : "🟡";
-
-    lines.push(
-      `${icon} *${(job.name || "Unnamed job").slice(0, 100)}*`,
-    );
-    lines.push(`   Result: ${conclusion}`);
-
-    const failedSteps = (job.steps || []).filter((step) =>
-      step.conclusion === "failure"
-    );
+    lines.push(`${icon} *${(job.name || "Job").slice(0, 100)}*`);
+    const failedSteps = (job.steps || []).filter((s) => s.conclusion === "failure");
 
     for (const step of failedSteps.slice(0, 5)) {
-      lines.push(
-        `   ❌ Failed step: ${(step.name || "Unnamed step").slice(0, 120)}`,
-      );
-    }
-
-    if (conclusion === "failure" && failedSteps.length === 0) {
-      lines.push(
-        "   Job failed; no failed step was identified in the summary.",
-      );
+      lines.push(`   ❌ Failed: ${(step.name || "Step").slice(0, 120)}`);
     }
   }
 
   const config = getGitHubConfig();
-
-  const runUrl = selectedRun?.html_url ||
-    (config
-      ? `https://github.com/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}/actions/runs/${runId}`
-      : "");
+  const runUrl = selectedRun?.html_url || (config ? `https://github.com/${config.owner}/${config.repo}/actions/runs/${runId}` : "");
 
   return [
-    "🔎 *GITHUB WORKFLOW DIAGNOSTIC*",
+    "🔎 *GITHUB ACTIONS DIAGNOSTIC*",
     "",
     `Run ID: ${runId}`,
-    `Jobs returned: ${jobs.length}`,
-    `Failed jobs: ${failedJobs.length}`,
-    `Cancelled jobs: ${cancelledJobs.length}`,
+    ...lines,
     "",
-    ...(lines.length ? lines : ["No job details were returned."]),
-    "",
-    "This is a job and step summary, not the full raw log.",
     runUrl,
-    "",
-    "Lizzy has not changed or rerun anything.",
   ].join("\n");
 }
 
@@ -610,68 +971,24 @@ async function inspectWorkflowRun(
    AI ADVISER
    ========================================================= */
 
-async function askAdminAI(
-  phone: string,
-  question: string,
-): Promise<void> {
+async function askAdminAI(phone: string, question: string): Promise<void> {
   if (!Deno.env.get("AI_API_KEY")) {
-    await sendTextMessage(
-      phone,
-      "AI advice is not configured. Set the AI_API_KEY secret in Supabase. Database and GitHub diagnostics do not require an AI key.",
-    );
+    await sendTextMessage(phone, "AI advice is not configured. Set the AI_API_KEY secret in Supabase.");
     return;
   }
 
   const systemPrompt = `
-You are Lizzy, the private technical and business adviser
-for the administrator of Xtop Retail Technologies.
-
+You are Lizzy, the private technical and business adviser for the administrator of Xtop Retail Technologies.
 Be practical, concise, honest, and security-conscious.
-
-You may advise on TypeScript, Deno, Supabase, WhatsApp Cloud API,
-GitHub, debugging, and business operations.
-
-Available tools in this module:
-- Database status query
-- Database statistics queries
-- GitHub repository connection test
-- Recent GitHub Actions workflow run listing
-- GitHub workflow job and failed-step summaries
-
-IMPORTANT:
-- Only report results from tools that were actually called.
-- An advice request does not execute diagnostics.
-- This module does not retrieve full raw workflow logs.
-- Never claim to have run tests, changed files, or deployed code unless that happened.
-- Never invent credentials, configuration values, or test results.
-- Prefer small changes that preserve existing bot features.
-- Never ask the administrator to share API keys in chat.
-- Require human approval before production or destructive changes.
-- GitHub actions in this version are read-only.
-`.trim();
+You can advise on TypeScript, Deno, Supabase, WhatsApp API, GitHub, debugging, and business operations.
+`;
 
   try {
-    const answer = await callAI(
-      systemPrompt,
-      question,
-      [],
-      { temperature: 0.2, maxTokens: 500 },
-    );
-
-    await sendTextMessage(
-      phone,
-      `🤖 *LIZZY — ADMIN ADVISER*\n\n${answer}`,
-    );
+    const answer = await callAI(systemPrompt, question, [], { temperature: 0.2, maxTokens: 500 });
+    await sendTextMessage(phone, `🤖 *LIZZY — ADMIN ADVISER*\n\n${answer}`);
   } catch (error) {
-    console.error(
-      "[AdminAgent] AI error:",
-      error instanceof Error ? error.message : "Unknown error",
-    );
-
-    await sendTextMessage(
-      phone,
-      "I couldn't complete that advice request. Please try again later.",
-    );
+    console.error("[AdminAgent] AI error:", error);
+    await sendTextMessage(phone, "I couldn't complete that advice request. Please try again later.");
   }
 }
 
@@ -685,115 +1002,167 @@ export async function handleAdminAgent(
   interactiveId: string,
   conversationId: string,
 ): Promise<void> {
-  const command = (interactiveId || text).trim().toLowerCase();
+  const inputRaw = (interactiveId || text).trim();
+  const command = inputRaw.toLowerCase();
 
-  if (
-    ["exit", "quit", "close", "admin_agent_exit"].includes(command)
-  ) {
+  // Validate requester is authorized admin before executing any admin action
+  if (!isAdminPhone(phone)) {
+    console.warn(`[AdminAgent] Unauthorized access attempt blocked from: ${phone}`);
+    return;
+  }
+
+  if (["exit", "quit", "close", "admin_agent_exit"].includes(command)) {
     await updateConversation(conversationId, {
       current_module: "MAIN_MENU",
       current_state: "IDLE",
       context_json: {},
     });
 
-    await sendTextMessage(
-      phone,
-      "🔒 Private admin assistant closed.\n\nType *menu* to return to the public Xtop menu.",
-    );
+    await sendTextMessage(phone, "🔒 Private admin assistant closed.\n\nType *menu* to return to the public menu.");
     return;
   }
 
-  if (
-    ["menu", "help", "admin_agent_open", "0"].includes(command)
-  ) {
+  if (["menu", "help", "admin_agent_open", "admin_agent_menu", "0"].includes(command)) {
     await showAdminAgentMenu(phone);
     return;
   }
 
-  if (
-    ["1", "status", "health", "check status", "admin_agent_status"].includes(command)
-  ) {
+  // ── 1. DIAGNOSTICS & SYSTEM CHECKS ──
+  if (["admin_status", "status", "health", "check status", "admin_agent_status"].includes(command)) {
     await sendTextMessage(phone, "Checking database connectivity...");
     await sendTextMessage(phone, await checkBotStatus());
     return;
   }
 
-  if (
-    ["2", "stats", "statistics", "admin_agent_stats"].includes(command)
-  ) {
+  if (["admin_stats", "stats", "statistics", "admin_agent_stats"].includes(command)) {
     await sendTextMessage(phone, "Reading available bot statistics...");
     await sendTextMessage(phone, await getBotStats());
     return;
   }
 
-  if (
-    ["3", "github", "github status", "github check"].includes(command)
-  ) {
-    await sendTextMessage(
-      phone,
-      "Checking GitHub read-only connection...",
-    );
+  if (["admin_github", "github", "github status", "github check"].includes(command)) {
+    await sendTextMessage(phone, "Checking GitHub read-only connection...");
     await sendTextMessage(phone, await checkGitHubConnection());
     return;
   }
 
-  if (
-    ["4", "deployments", "deployment", "runs", "workflow runs"].includes(command)
-  ) {
-    await sendTextMessage(
-      phone,
-      "Reading recent GitHub Actions workflow runs...",
-    );
+  if (["admin_deployments", "deployments", "deployment", "runs", "workflow runs"].includes(command)) {
+    await sendTextMessage(phone, "Reading recent GitHub Actions runs...");
     await sendTextMessage(phone, await getRecentDeployments());
     return;
   }
 
-  if (
-    command === "5" ||
-    command === "logs" ||
-    command.startsWith("logs ")
-  ) {
-    const runId = command.startsWith("logs ")
-      ? command.slice(5).trim()
-      : undefined;
-
-    await sendTextMessage(
-      phone,
-      "Inspecting workflow jobs and failed steps...",
-    );
-
-    await sendTextMessage(
-      phone,
-      await inspectWorkflowRun(runId),
-    );
+  if (command === "admin_logs" || command === "logs" || command.startsWith("logs ")) {
+    const runId = command.startsWith("logs ") ? command.slice(5).trim() : undefined;
+    await sendTextMessage(phone, "Inspecting jobs and failed steps...");
+    await sendTextMessage(phone, await inspectWorkflowRun(runId));
     return;
   }
 
-  if (
-    ["advice", "admin_agent_advice"].includes(command)
-  ) {
-    await sendTextMessage(
-      phone,
-      "Type your question after the word advice.\n\nExample: advice Explain how to diagnose a failing webhook.",
-    );
+  // ── 2. SECURE LEAD ASSISTANT COMMANDS ──
+  if (command === "admin_leads" || command === "leads") {
+    await listLeads(phone, "ALL");
+    return;
+  }
+
+  if (command === "admin_pending" || command === "pending") {
+    await listLeads(phone, "PENDING");
+    return;
+  }
+
+  if (command === "admin_approved" || command === "approved") {
+    await listLeads(phone, "APPROVED");
+    return;
+  }
+
+  // Handle dynamic list inspect clicks
+  if (command.startsWith("admin_inspect_")) {
+    const leadId = inputRaw.substring("admin_inspect_".length).trim();
+    await sendTextMessage(phone, "Retrieving lead details...");
+    await showLeadDetails(phone, leadId);
+    return;
+  }
+
+  if (command.startsWith("lead ")) {
+    const leadId = inputRaw.slice(5).trim();
+    await sendTextMessage(phone, "Retrieving lead details...");
+    await showLeadDetails(phone, leadId);
+    return;
+  }
+
+  // Dynamic interactive button triggers
+  if (command.startsWith("admin_approve_prep_")) {
+    const leadId = inputRaw.substring("admin_approve_prep_".length).trim();
+    await sendTextMessage(phone, "Preparing lead approval...");
+    await processLeadApproval(phone, leadId, false);
+    return;
+  }
+
+  if (command.startsWith("admin_approve_confirm_")) {
+    const leadId = inputRaw.substring("admin_approve_confirm_".length).trim();
+    await sendTextMessage(phone, "Processing lead approval confirmation...");
+    await processLeadApproval(phone, leadId, true);
+    return;
+  }
+
+  if (command.startsWith("admin_chat_link_")) {
+    const leadId = inputRaw.substring("admin_chat_link_".length).trim();
+    await sendTextMessage(phone, "Initializing secure chat with client link...");
+    await initializeClientChat(phone, leadId);
+    return;
+  }
+
+  // Two-step text approval parsing
+  if (command.startsWith("approve confirm ")) {
+    const leadId = inputRaw.slice(16).trim();
+    await sendTextMessage(phone, "Processing lead approval confirmation...");
+    await processLeadApproval(phone, leadId, true);
+    return;
+  }
+
+  if (command.startsWith("approve ")) {
+    const leadId = inputRaw.slice(8).trim();
+    await sendTextMessage(phone, "Preparing lead approval...");
+    await processLeadApproval(phone, leadId, false);
+    return;
+  }
+
+  if (command.startsWith("chat ")) {
+    const leadId = inputRaw.slice(5).trim();
+    await sendTextMessage(phone, "Initializing secure chat with client link...");
+    await initializeClientChat(phone, leadId);
+    return;
+  }
+
+  // ── 3. QUOTATION TRACKING COMMANDS ──
+  if (command === "admin_quotes" || command === "quotes") {
+    await sendTextMessage(phone, "Loading quotation management files...");
+    await sendTextMessage(phone, await listQuotations(phone));
+    return;
+  }
+
+  if (command.startsWith("quote_approve ")) {
+    const quoteId = inputRaw.slice(14).trim();
+    await sendTextMessage(phone, "Processing quotation approval...");
+    await sendTextMessage(phone, await approveDraftQuotation(phone, quoteId));
+    return;
+  }
+
+  if (command === "advice" || command === "admin_agent_advice") {
+    await sendTextMessage(phone, "Type your question after advice.\n\nExample: `advice How to fix a timeout`");
     return;
   }
 
   if (command.startsWith("advice ")) {
-    const question = text.slice(7).trim();
-
+    const question = inputRaw.slice(7).trim();
     if (!question) {
-      await sendTextMessage(
-        phone,
-        "Please include a question after `advice`.",
-      );
+      await sendTextMessage(phone, "Please provide a question after advice.");
       return;
     }
-
     await askAdminAI(phone, question);
     return;
   }
 
-  // Unknown text is treated as a request for AI advice.
-  await askAdminAI(phone, text);
+  // Treat unrecognized text as generic advice requests
+  await askAdminAI(phone, inputRaw);
 }
