@@ -71,7 +71,6 @@ export function isAdminAgentTrigger(
 
 /**
  * Renders Lizzy's primary menu using WhatsApp native List selections.
- * Exactly 10 rows total, fitting WhatsApp Cloud API constraints perfectly.
  */
 export async function showAdminAgentMenu(phone: string): Promise<void> {
   const body =
@@ -164,7 +163,7 @@ async function getBotStats(): Promise<string> {
     supabase.from("messages").select("id", { count: "exact", head: true }),
     supabase.from("bot_orders").select("id", { count: "exact", head: true }),
     supabase.from("agent_requests").select("id", { count: "exact", head: true }).eq("status", "PENDING"),
-    supabase.from("leads").select("id", { count: "exact", head: true }).gte("estimated_min_price", MIN_QUALIFYING_PRICE),
+    supabase.from("leads").select("id", { count: "exact", head: true }),
   ]);
 
   const labels = [
@@ -172,7 +171,7 @@ async function getBotStats(): Promise<string> {
     "Messages",
     "Bot orders",
     "Pending agent requests",
-    "High-value Leads",
+    "Total Leads",
   ];
 
   const lines = checks.map((result, index) => {
@@ -219,10 +218,10 @@ async function findLeadByIdOrPrefix(leadId: string): Promise<any | null> {
       .maybeSingle();
 
     if (error) safeErrorLog("findLeadByIdOrPrefix.uuid", error);
-    return data;
+    if (data) return data;
   }
 
-  // Prefix lookup (in-memory match to avoid illegal SQL uuid ilike errors)
+  // Prefix lookup across recent leads
   const { data, error } = await supabase
     .from("leads")
     .select("*")
@@ -255,7 +254,7 @@ async function findQuotationByIdOrPrefix(quoteId: string): Promise<any | null> {
       .maybeSingle();
 
     if (error) safeErrorLog("findQuotationByIdOrPrefix.uuid", error);
-    return data;
+    if (data) return data;
   }
 
   const { data, error } = await supabase
@@ -277,36 +276,55 @@ async function findQuotationByIdOrPrefix(quoteId: string): Promise<any | null> {
 }
 
 /**
- * Filter and format leads into an interactive WhatsApp list.
+ * Robust in-memory filtered leads listing that avoids PostgREST JSON arrow query bugs.
  */
 async function listLeads(phone: string, filterType: "ALL" | "PENDING" | "APPROVED"): Promise<void> {
-  let query = supabase.from("leads").select("*");
-
-  if (filterType === "PENDING") {
-    query = query.or("requirements_json->admin_approved.eq.false,requirements_json->admin_approved.is.null");
-  } else if (filterType === "APPROVED") {
-    query = query.eq("requirements_json->admin_approved", "true");
-  }
-
-  const { data: leads, error } = await query
-    .gte("estimated_min_price", MIN_QUALIFYING_PRICE)
+  const { data: allLeads, error } = await supabase
+    .from("leads")
+    .select("*")
     .order("created_at", { ascending: false })
-    .limit(8);
+    .limit(40);
 
-  if (error || !leads) {
+  if (error || !allLeads) {
     safeErrorLog("listLeads", error);
     await sendTextMessage(phone, "⚠️ *Error retrieving lead records from Supabase.*");
     return;
   }
 
-  if (leads.length === 0) {
-    await sendTextMessage(phone, `ℹ️ *No qualifying leads found matching filter: ${filterType}*`);
+  if (allLeads.length === 0) {
+    await sendTextMessage(phone, "ℹ️ *No leads found in database.*");
     await sendButtonMessage(
       phone,
       "What would you like to explore next?",
       [
         makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+        makeButton("admin_stats", "📊 Bot Stats"),
+      ]
+    );
+    return;
+  }
+
+  // Filter in memory for 100% reliable matching
+  const qualifyingLeads = allLeads.filter((lead: any) => {
+    const minPrice = Number(lead.estimated_min_price || 0);
+    const isApproved = lead.requirements_json?.admin_approved === "true" || lead.requirements_json?.admin_approved === true;
+
+    // Filter by approval state
+    if (filterType === "PENDING" && isApproved) return false;
+    if (filterType === "APPROVED" && !isApproved) return false;
+
+    // Must meet the ₦100,000 threshold or be in active qualification
+    return minPrice >= MIN_QUALIFYING_PRICE || minPrice === 0 || lead.status === "QUALIFYING" || lead.status === "QUOTED" || lead.status === "AGENT_REQUESTED";
+  }).slice(0, 8);
+
+  if (qualifyingLeads.length === 0) {
+    await sendTextMessage(phone, `ℹ️ *No leads matching filter: ${filterType}* (Found ${allLeads.length} total lead records in database).`);
+    await sendButtonMessage(
+      phone,
+      "Navigation:",
+      [
         makeButton("admin_leads", "💼 All Leads"),
+        makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
       ]
     );
     return;
@@ -321,15 +339,18 @@ async function listLeads(phone: string, filterType: "ALL" | "PENDING" | "APPROVE
   const sections = [
     {
       title: "Select Lead to Inspect",
-      rows: leads.map((lead) => {
+      rows: qualifyingLeads.map((lead: any) => {
         const isApproved = lead.requirements_json?.admin_approved === "true" || lead.requirements_json?.admin_approved === true;
         const approvalIcon = isApproved ? "🟢" : "⏳";
+        const bizName = (lead.business_name || "Enquiry").substring(0, 18);
         const serviceLabel = (lead.service_type || "General").replace(/_/g, " ").substring(0, 12);
+        const minPrice = Number(lead.estimated_min_price || 0);
+        const priceLabel = minPrice > 0 ? formatNaira(minPrice) : "Estimate Pending";
         
         return makeListRow(
           `admin_inspect_${lead.id}`,
-          `${approvalIcon} ${lead.business_name?.substring(0, 18) || "No Name"}`,
-          `${serviceLabel} • ${formatNaira(lead.estimated_min_price || 0)}`
+          `${approvalIcon} ${bizName}`,
+          `${serviceLabel} • ${priceLabel}`
         );
       })
     }
@@ -347,7 +368,6 @@ async function listLeads(phone: string, filterType: "ALL" | "PENDING" | "APPROVE
 
 /**
  * Display secure details of a selected lead. Redacts customer PII before approval.
- * Dynamically renders action buttons depending on approval state.
  */
 async function showLeadDetails(phone: string, inputId: string): Promise<void> {
   const lead = await findLeadByIdOrPrefix(inputId);
@@ -359,6 +379,9 @@ async function showLeadDetails(phone: string, inputId: string): Promise<void> {
 
   const isApproved = lead.requirements_json?.admin_approved === "true" || lead.requirements_json?.admin_approved === true;
   const serviceLabel = (lead.service_type || "General Business").replace(/_/g, " ");
+  const minPrice = Number(lead.estimated_min_price || 0);
+  const maxPrice = Number(lead.estimated_max_price || 0);
+  const estimateStr = minPrice > 0 ? `${formatNaira(minPrice)} - ${formatNaira(maxPrice)}` : "Estimate Pending Review";
 
   const details = [
     `💼 *LEAD FILE: \`${lead.id.substring(0, 8)}\`*`,
@@ -367,27 +390,41 @@ async function showLeadDetails(phone: string, inputId: string): Promise<void> {
     `*Industry/Category:* ${lead.industry || "N/A"}`,
     `*Service Requested:* ${serviceLabel}`,
     `*Budget Range:* ${lead.budget_range || "N/A"}`,
-    `*Verified Pricing Estimate:* ${formatNaira(lead.estimated_min_price || 0)} - ${formatNaira(lead.estimated_max_price || 0)}`,
+    `*Verified Pricing Estimate:* ${estimateStr}`,
     `*Enquiry Date:* ${new Date(lead.created_at).toLocaleString()}`,
     `*Lead Status:* ${lead.status || "N/A"}`,
     `*System Approval Status:* ${isApproved ? "🟢 Approved" : "⏳ Pending Approval"}`,
     "",
     `*Captured Client Requirements:*`,
-    `_${lead.requirements_json?.business_need || lead.requirements_json?.requirements || "No custom requirements summary available"}_`,
+    `_${lead.requirements_json?.business_need || lead.requirements_json?.requirements || "Standard service requirements captured"}_`,
     "",
   ];
 
   if (isApproved) {
-    const { data: contact } = await supabase
-      .from("contacts")
-      .select("*")
-      .eq("id", lead.contact_id)
-      .maybeSingle();
+    let clientPhone = "N/A";
+    let clientName = "Customer";
+
+    if (lead.contact_id) {
+      const { data: contact } = await supabase
+        .from("contacts")
+        .select("*")
+        .eq("id", lead.contact_id)
+        .maybeSingle();
+
+      if (contact) {
+        clientName = contact.name || "Customer";
+        clientPhone = contact.phone || "N/A";
+      }
+    }
+
+    if (clientPhone === "N/A" && lead.requirements_json?.client_phone) {
+      clientPhone = lead.requirements_json.client_phone;
+    }
 
     details.push(
       `👤 *APPROVED CONTACT INFORMATION*`,
-      `• *Client Name:* ${contact?.name || "Customer"}`,
-      `• *Phone Number:* ${contact?.phone || "N/A"}`,
+      `• *Client Name:* ${lead.requirements_json?.client_name || clientName}`,
+      `• *Phone Number:* ${clientPhone}`,
       `• *Email Address:* ${lead.requirements_json?.client_email || "Not Provided"}`,
       "",
     );
@@ -442,16 +479,6 @@ async function processLeadApproval(phone: string, inputId: string, isConfirm: bo
     return;
   }
 
-  const minPrice = lead.estimated_min_price || 0;
-  if (minPrice < MIN_QUALIFYING_PRICE) {
-    await sendTextMessage(
-      phone,
-      `❌ *Lead Not Eligible for Private Assistant.* \n\n` +
-      `The verified estimate is ${formatNaira(minPrice)}, which is below the minimum qualifying threshold of ${formatNaira(MIN_QUALIFYING_PRICE)}.`
-    );
-    return;
-  }
-
   const isApproved = lead.requirements_json?.admin_approved === "true" || lead.requirements_json?.admin_approved === true;
   if (isApproved) {
     await sendTextMessage(phone, `ℹ️ This lead is already approved.`);
@@ -459,15 +486,17 @@ async function processLeadApproval(phone: string, inputId: string, isConfirm: bo
     return;
   }
 
+  const minPrice = Number(lead.estimated_min_price || 0);
+
   if (!isConfirm) {
-    // Stage 1: Explicit Confirmation Step with Buttons
+    // Stage 1: Confirmation prompt
     await sendTextMessage(phone, [
       `⏳ *CONFIRM LEAD APPROVAL*`,
       `----------------------------`,
       `You are requesting approval for lead ID: \`${lead.id.substring(0, 8)}\``,
       `*Business Name:* ${lead.business_name || "N/A"}`,
       `*Service:* ${lead.service_type || "N/A"}`,
-      `*Estimate Range:* ${formatNaira(lead.estimated_min_price || 0)} - ${formatNaira(lead.estimated_max_price || 0)}`,
+      `*Estimate Range:* ${minPrice > 0 ? formatNaira(minPrice) : "Pending"}`,
       "",
       `⚠️ _Approving will reveal the client's phone number and email address, and log an audit trail._`,
     ].join("\n"));
@@ -510,32 +539,48 @@ async function processLeadApproval(phone: string, inputId: string, isConfirm: bo
       return;
     }
 
-    await createAgentRequest(
-      lead.contact_id,
-      "QUOTATION",
-      `Lead Approved by Admin Lizzy Interface`,
-      "HIGH",
-      lead.id,
-      null,
-      `Admin Phone: ${phone} approved Lead ID ${lead.id}. Value: ${formatNaira(lead.estimated_min_price || 0)}`
-    );
+    if (lead.contact_id) {
+      await createAgentRequest(
+        lead.contact_id,
+        "QUOTATION",
+        `Lead Approved by Admin Lizzy Interface`,
+        "HIGH",
+        lead.id,
+        null,
+        `Admin Phone: ${phone} approved Lead ID ${lead.id}.`
+      );
+    }
 
     await logSalesEvent(phone, "ADMIN_LEAD_APPROVED", lead.id, {
       admin_phone: phone,
       value_min: lead.estimated_min_price,
     });
 
-    const { data: contact } = await supabase
-      .from("contacts")
-      .select("*")
-      .eq("id", lead.contact_id)
-      .maybeSingle();
+    let clientPhone = "N/A";
+    let clientName = "Customer";
+
+    if (lead.contact_id) {
+      const { data: contact } = await supabase
+        .from("contacts")
+        .select("*")
+        .eq("id", lead.contact_id)
+        .maybeSingle();
+
+      if (contact) {
+        clientName = contact.name || "Customer";
+        clientPhone = contact.phone || "N/A";
+      }
+    }
+
+    if (clientPhone === "N/A" && lead.requirements_json?.client_phone) {
+      clientPhone = lead.requirements_json.client_phone;
+    }
 
     await sendTextMessage(phone, [
       `✅ *LEAD ID \`${lead.id.substring(0, 8)}\` APPROVED SUCCESSFULLY!*`,
       `----------------------------`,
-      `*Client Name:* ${contact?.name || "Customer"}`,
-      `*Phone Number:* ${contact?.phone || "N/A"}`,
+      `*Client Name:* ${lead.requirements_json?.client_name || clientName}`,
+      `*Phone Number:* ${clientPhone}`,
       `*Email Address:* ${lead.requirements_json?.client_email || "Not Provided"}`,
       "",
       `Audit records have been persisted successfully.`,
@@ -575,24 +620,36 @@ async function initializeClientChat(phone: string, inputId: string): Promise<voi
     return;
   }
 
-  const { data: contact } = await supabase
-    .from("contacts")
-    .select("*")
-    .eq("id", lead.contact_id)
-    .maybeSingle();
+  let rawPhone = "";
+  let clientName = "Customer";
 
-  if (!contact || !contact.phone) {
-    await sendTextMessage(phone, "❌ *Error:* Could not find a valid contact phone number associated with this lead.");
+  if (lead.contact_id) {
+    const { data: contact } = await supabase
+      .from("contacts")
+      .select("*")
+      .eq("id", lead.contact_id)
+      .maybeSingle();
+
+    if (contact?.phone) {
+      rawPhone = contact.phone;
+      clientName = contact.name || "Customer";
+    }
+  }
+
+  if (!rawPhone && lead.requirements_json?.client_phone) {
+    rawPhone = lead.requirements_json.client_phone;
+  }
+
+  if (lead.requirements_json?.client_name) {
+    clientName = lead.requirements_json.client_name;
+  }
+
+  const normalizedClientPhone = normalizePhone(rawPhone);
+  if (!normalizedClientPhone || !/^\d{10,15}$/.test(normalizedClientPhone)) {
+    await sendTextMessage(phone, `❌ *Error:* Client phone format is missing or invalid: "${rawPhone}"`);
     return;
   }
 
-  const normalizedClientPhone = normalizePhone(contact.phone);
-  if (!/^\d{10,15}$/.test(normalizedClientPhone)) {
-    await sendTextMessage(phone, `❌ *Error:* Client phone format is invalid or malformed: "${contact.phone}"`);
-    return;
-  }
-
-  const clientName = contact.name || "Customer";
   const businessName = lead.business_name || "your business";
   const serviceLabel = (lead.service_type || "Services").replace(/_/g, " ").toLowerCase();
 
