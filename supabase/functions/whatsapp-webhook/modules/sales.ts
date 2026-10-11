@@ -108,15 +108,27 @@ function resolveStrict(
   numMap: Record<number, string>,
   textAliases?: Record<string, string>
 ): string | null {
-  const n = normalise(text);
-  if (idMap[text]) return idMap[text];
-  const num = extractSelection(text);
+  if (!text) return null;
+  const raw = text.trim();
+  const n = normalise(raw);
+
+  if (idMap[raw]) return idMap[raw];
+  if (idMap[n]) return idMap[n];
+
+  const num = extractSelection(raw);
   if (num !== null && numMap[num]) return numMap[num];
+
   if (textAliases) {
     for (const [alias, value] of Object.entries(textAliases)) {
       if (n === alias || n.startsWith(alias + " ")) return value;
     }
   }
+
+  // Fallback: match by descriptive value
+  for (const [, val] of Object.entries(idMap)) {
+    if (n === normalise(val) || n.includes(normalise(val))) return val;
+  }
+
   return null;
 }
 
@@ -586,7 +598,7 @@ async function handleBotFlow(
       break;
     }
 
-    case "ASK_INDUSTR;Y": {
+    case "ASK_INDUSTRY": {
       const r = resolveStrict(text, INDUSTRY_IDS, INDUSTRY_NUMS);
       if (!r) {
         await sendTextMessage(phone, "⚠️ Please select one of the industries from the list.");
@@ -1389,7 +1401,6 @@ async function generateAndShowQuotation(
   const serviceType = ctx.serviceType || flowToServiceType(ctx.flow);
   const allFeatures = [...ctx.features, ...ctx.webFeatures, ...ctx.autoActivities];
 
-  // Resolve Combo matching mismatch dynamically
   let allCodes: string[] = [];
   if (ctx.flow === "COMBO") {
     const botCodes = mapFeaturesToCodes(ctx.features, BOT_FEATURE_MAP);
@@ -1522,17 +1533,11 @@ async function handlePostQuoteAction(
 ): Promise<void> {
   const n = normalise(text);
 
-  // Return to the main menu when requested.
-  if (
-    n === "menu_home" ||
-    n === "main menu" ||
-    n === "menu"
-  ) {
+  if (n === "menu_home" || n === "main menu" || n === "menu") {
     await showMainMenu(phone, conv.id);
     return;
   }
 
-  // Record package selection without destroying the quotation context.
   if (n === "q_select" || n.includes("select")) {
     if (ctx.leadId) {
       await updateLead(ctx.leadId, {
@@ -1573,13 +1578,11 @@ async function handlePostQuoteAction(
     return;
   }
 
-  // Allow the customer to change requirements.
   if (n === "q_change" || n.includes("change")) {
     await showServiceTypeSelector(phone, conv.id);
     return;
   }
 
-  // Save the agent request before reporting success.
   if (
     n === "q_agent" ||
     n === "q_agent_now" ||
@@ -1617,7 +1620,6 @@ async function handlePostQuoteAction(
       summary
     );
 
-    // Do not claim success if the database did not save the request.
     if (!record || !record.id) {
       console.error(
         "[SALES AGENT REQUEST ERROR]",
@@ -1629,7 +1631,6 @@ async function handlePostQuoteAction(
         })
       );
 
-      // Preserve the quotation so the customer can retry.
       await updateConversation(conv.id, {
         current_module: "SALES",
         current_state: "SHOWING_QUOTE",
@@ -1639,8 +1640,7 @@ async function handlePostQuoteAction(
       await sendButtonMessage(
         phone,
         "⚠️ *We could not record your request right now.*\n\n" +
-          "Your quotation details are still available. Please try requesting an agent again shortly. " +
-          "Your request has not been confirmed as submitted.",
+          "Your quotation details are still available. Please try requesting an agent again shortly.",
         [
           makeButton("q_agent", "🔄 Try Again"),
           makeButton("menu_home", "🏠 Main Menu"),
@@ -1652,7 +1652,6 @@ async function handlePostQuoteAction(
       return;
     }
 
-    // Update lead and quotation only after the request is saved.
     if (ctx.leadId) {
       await updateLead(ctx.leadId, {
         status: "AGENT_REQUESTED",
@@ -1665,8 +1664,7 @@ async function handlePostQuoteAction(
       });
     }
 
-    const ticketRef =
-      `#REQ-${record.id.substring(0, 8).toUpperCase()}`;
+    const ticketRef = `#REQ-${record.id.substring(0, 8).toUpperCase()}`;
 
     await updateConversation(conv.id, {
       current_module: "MAIN_MENU",
@@ -1693,7 +1691,6 @@ async function handlePostQuoteAction(
     return;
   }
 
-  // Keep the quotation flow active for an unrecognised selection.
   await sendButtonMessage(
     phone,
     "What would you like to do with your quotation?",
