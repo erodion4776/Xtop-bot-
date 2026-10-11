@@ -1,9 +1,6 @@
-/**
- * supabase/functions/whatsapp-webhook/modules/demos/personalized.ts
- *
- * Personalized business demo token handling, structured business requests,
- * and interactive demo actions with robust multi-format field extraction.
- */
+// supabase/functions/whatsapp-webhook/modules/demos/personalized.ts
+// Personalized business demo engine with robust multi-format field extraction
+// Fully integrated with dynamic template resolvers and safe fallback behaviors
 
 import {
   Contact,
@@ -28,9 +25,10 @@ import {
 } from "./tokens.ts";
 
 import {
-  getTemplate,
-  getRelatedTemplates,
+  resolveTemplate,
   classifyCategory,
+  getRelatedTemplates,
+  getTemplateKey,
 } from "./templates.ts";
 
 /**
@@ -51,7 +49,7 @@ function logEvent(
 }
 
 /**
- * Field pattern definitions allowing flexible user inputs (with/without colons, dashes, etc.)
+ * Field patterns that allow flexible business inputs (with/without colons, dashes, or linebreaks)
  */
 const FIELD_LABELS = {
   name: [
@@ -100,7 +98,7 @@ function cleanExtractedValue(val: string): string {
 }
 
 /**
- * Extract field values even when punctuation, colons, or line breaks are omitted.
+ * Dynamic extraction patterns to safely retrieve values even without strict colons.
  */
 function extractFieldValue(text: string, labelPatterns: string[]): string {
   const labelGroup = `(?:${labelPatterns.join("|")})`;
@@ -119,11 +117,10 @@ function extractFieldValue(text: string, labelPatterns: string[]): string {
 }
 
 /**
- * Resolve the selected industry template from conversation context.
+ * Resolve the template key safely from context parameters.
  */
-function getTemplateKey(context: Record<string, unknown>): string {
+function getTemplateKeyFromContext(context: Record<string, unknown>): string {
   const selected = context.demoTemplate;
-
   if (typeof selected === "string" && selected.trim()) {
     return selected.trim().toLowerCase();
   }
@@ -137,8 +134,7 @@ function getTemplateKey(context: Record<string, unknown>): string {
 }
 
 /**
- * Get the business name stored in the personalized demo context.
- * Gracefully guards against "undefined", "null", or raw token placeholders.
+ * Safely parse business names to avoid "undefined", raw tokens, or NULL.
  */
 export function getBusinessName(context: Record<string, unknown>): string {
   const value = context.businessName;
@@ -157,16 +153,19 @@ export function getBusinessName(context: Record<string, unknown>): string {
 }
 
 /**
- * Show the welcome message and interactive menu for the selected template.
+ * Render the welcome screens using the scalable DB-backed resolver.
  */
 async function showPersonalizedTemplate(
   phone: string,
   conversationId: string,
   context: Record<string, unknown>,
-  templateKey = getTemplateKey(context),
+  templateKey = getTemplateKeyFromContext(context),
 ): Promise<void> {
   const businessName = getBusinessName(context);
-  const template = getTemplate(templateKey);
+  const mainNeed = typeof context.businessNeed === "string" ? context.businessNeed : undefined;
+
+  // Resolve template dynamically from Database (falls back to local registry dynamically)
+  const template = await resolveTemplate(templateKey, businessName, mainNeed);
 
   const updatedContext = {
     ...context,
@@ -180,13 +179,13 @@ async function showPersonalizedTemplate(
     context_json: updatedContext,
   });
 
-  // 1. Send personalized welcome greeting
+  // 1. Personalized welcome message
   await sendTextMessage(
     phone,
-    template.welcomeMessage(businessName, typeof context.businessNeed === "string" ? context.businessNeed : undefined),
+    template.welcomeMessage(businessName, mainNeed),
   );
 
-  // 2. Build Interactive List menu
+  // 2. Build Interactive List Row items
   const rows = template.menuOptions.map((option) =>
     makeListRow(
       option.id,
@@ -226,7 +225,7 @@ async function showPersonalizedTemplate(
     "Explore Demo",
     [
       {
-        title: `${businessName} Demo`,
+        title: `${businessName.substring(0, 20)} Demo`,
         rows,
       },
     ],
@@ -236,14 +235,14 @@ async function showPersonalizedTemplate(
 }
 
 /**
- * Display related industry templates.
+ * Display related templates dynamically.
  */
 async function showRelatedTemplates(
   phone: string,
   conversationId: string,
   context: Record<string, unknown>,
 ): Promise<void> {
-  const templateKey = getTemplateKey(context);
+  const templateKey = getTemplateKeyFromContext(context);
   const related = getRelatedTemplates(templateKey);
 
   if (related.length === 0) {
@@ -302,7 +301,7 @@ async function showRelatedTemplates(
 }
 
 /**
- * Handle a complete structured personalized demo request.
+ * Handle direct inputs for structured personalized demo request.
  */
 export async function handleStructuredPersonalizedDemoRequest(
   phone: string,
@@ -328,14 +327,16 @@ export async function handleStructuredPersonalizedDemoRequest(
   const businessCategory = extractFieldValue(text, FIELD_LABELS.category);
   const businessNeed = extractFieldValue(text, FIELD_LABELS.need);
 
-  // If core fields cannot be resolved, allow other handlers to process
+  // If core details can't be resolved, let next router handle the enquiry
   if (!businessName || (!businessCategory && !businessNeed)) {
     return false;
   }
 
   const effectiveCategory = businessCategory || "General Business";
   const templateKey = classifyCategory(effectiveCategory);
-  const template = getTemplate(templateKey);
+
+  // Fetch from Dynamic DB with Synchronous Fallback
+  const template = await resolveTemplate(templateKey, businessName, businessNeed);
 
   let leadId: string | null = null;
 
@@ -384,7 +385,6 @@ export async function handleStructuredPersonalizedDemoRequest(
     mainNeed: businessNeed,
   });
 
-  // Acknowledgment message with captured business details
   await sendTextMessage(
     phone,
     `Thank you! I have your personalized demo request.\n\n` +
@@ -409,7 +409,7 @@ export async function handleStructuredPersonalizedDemoRequest(
 }
 
 /**
- * Handle actions within an active personalized business demo.
+ * Handle dynamic interactive clicks/replies in a personalized demo.
  */
 export async function handlePersonalizedDemoAction(
   phone: string,
@@ -468,7 +468,7 @@ export async function handlePersonalizedDemoAction(
 
     if (rawInput.startsWith("demo_related_")) {
       const selectedKey = rawInput.slice("demo_related_".length);
-      const related = getRelatedTemplates(getTemplateKey(context));
+      const related = getRelatedTemplates(getTemplateKeyFromContext(context));
       const selected = related.find((item) => item.key === selectedKey);
 
       if (!selected) {
@@ -488,13 +488,15 @@ export async function handlePersonalizedDemoAction(
       return true;
     }
 
-    // Handle template sample responses with the dynamic business name
-    const template = getTemplate(getTemplateKey(context));
+    // Dynamic Database/Synchronous fallback evaluation for custom menu items
+    const templateKey = getTemplateKeyFromContext(context);
+    const businessName = getBusinessName(context);
+    const mainNeed = typeof context.businessNeed === "string" ? context.businessNeed : undefined;
+
+    const template = await resolveTemplate(templateKey, businessName, mainNeed);
     const sampleResponse = template.sampleResponses[rawInput];
 
     if (sampleResponse) {
-      const businessName = getBusinessName(context);
-
       await sendTextMessage(phone, sampleResponse(businessName));
 
       await sendButtonMessage(
@@ -523,7 +525,7 @@ export async function handlePersonalizedDemoAction(
 }
 
 /**
- * Handle a customer opening a personalized demo using a pre-generated link/token.
+ * Handle entry from dynamic token links.
  */
 export async function handlePersonalizedDemoToken(
   phone: string,
