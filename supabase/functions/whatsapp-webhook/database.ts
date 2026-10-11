@@ -692,6 +692,13 @@ export async function getActiveMagazineConfig(): Promise<MagazineConfig | null> 
 // 10. Agent & Support Requests
 // ==========================================
 
+// Helper to guarantee valid UUID or null
+function toValidUUID(val?: string | null): string | null {
+  if (!val || typeof val !== "string") return null;
+  const clean = val.trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean) ? clean : null;
+}
+
 export async function createAgentRequest(
   contactId?: string,
   requestType: string = "GENERAL_ENQUIRY",
@@ -703,16 +710,26 @@ export async function createAgentRequest(
 ): Promise<AgentRequest | null> {
   const sb = getSupabaseClient();
 
+  const msgText = message || summary || "Customer Agent Request";
+
+  // Build payload with UUID validation to prevent Postgres syntax crashes
   const payload: Record<string, unknown> = {
-    request_type: requestType,
-    message,
-    priority,
+    request_type: requestType || "GENERAL_ENQUIRY",
+    message: msgText,
+    description: msgText,
+    priority: priority || "NORMAL",
     status: "PENDING",
   };
 
-  if (contactId) payload.contact_id = contactId;
-  if (leadId) payload.lead_id = leadId;
-  if (quotationId) payload.quotation_id = quotationId;
+  const validContactId = toValidUUID(contactId);
+  if (validContactId) payload.contact_id = validContactId;
+
+  const validLeadId = toValidUUID(leadId);
+  if (validLeadId) payload.lead_id = validLeadId;
+
+  const validQuotationId = toValidUUID(quotationId);
+  if (validQuotationId) payload.quotation_id = validQuotationId;
+
   if (summary) payload.summary = summary;
 
   try {
@@ -724,14 +741,27 @@ export async function createAgentRequest(
 
     if (error) {
       safeErrorLog("createAgentRequest", error);
-      return null;
-    }
 
-    if (!data) {
-      console.error(
-        "[DB Error - createAgentRequest]: Insert returned no record."
-      );
-      return null;
+      // Fallback: retry with minimal safe payload if schema has column cache difference
+      const fallbackPayload = {
+        request_type: requestType || "GENERAL_ENQUIRY",
+        message: msgText,
+        description: msgText,
+        priority: "NORMAL",
+        status: "PENDING",
+      };
+      
+      const { data: retryData, error: retryErr } = await sb
+        .from("agent_requests")
+        .insert(fallbackPayload)
+        .select("*")
+        .single();
+
+      if (retryErr) {
+        safeErrorLog("createAgentRequest.retry", retryErr);
+        return null;
+      }
+      return retryData as AgentRequest;
     }
 
     return data as AgentRequest;
