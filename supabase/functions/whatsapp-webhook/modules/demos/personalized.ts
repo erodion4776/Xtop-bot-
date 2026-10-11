@@ -1,9 +1,8 @@
-
 /**
  * supabase/functions/whatsapp-webhook/modules/demos/personalized.ts
  *
  * Personalized business demo token handling, structured business requests,
- * and interactive demo actions.
+ * and interactive demo actions with robust multi-format field extraction.
  */
 
 import {
@@ -36,8 +35,6 @@ import {
 
 /**
  * Small local event logger.
- *
- * Deliberately avoids writing to an assumed database table.
  */
 function logEvent(
   phone: string,
@@ -54,11 +51,77 @@ function logEvent(
 }
 
 /**
+ * Field pattern definitions allowing flexible user inputs (with/without colons, dashes, etc.)
+ */
+const FIELD_LABELS = {
+  name: [
+    "business\\s*name",
+    "company\\s*name",
+    "brand\\s*name",
+    "restaurant\\s*name",
+    "hotel\\s*name",
+    "business",
+  ],
+  category: [
+    "business\\s*category",
+    "business\\s*type",
+    "category",
+    "industry",
+    "sector",
+  ],
+  need: [
+    "main\\s*need",
+    "business\\s*need",
+    "main\\s*needs",
+    "needs?",
+    "requirements?",
+    "use\\s*case",
+    "goal",
+  ],
+};
+
+const ALL_LABEL_PATTERNS = [
+  ...FIELD_LABELS.name,
+  ...FIELD_LABELS.category,
+  ...FIELD_LABELS.need,
+].join("|");
+
+/**
+ * Clean and sanitize extracted user values.
+ */
+function cleanExtractedValue(val: string): string {
+  return val
+    .trim()
+    .replace(/^[:=-]\s*/, "")
+    .replace(/[\s.?!;,]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
+}
+
+/**
+ * Extract field values even when punctuation, colons, or line breaks are omitted.
+ */
+function extractFieldValue(text: string, labelPatterns: string[]): string {
+  const labelGroup = `(?:${labelPatterns.join("|")})`;
+  const separatorGroup = `(?:\\s*[:=-]\\s*|\\s+is\\s+|\\s+)`;
+  const nextFieldBoundary = `(?=\\s*(?:[.;\\n]+\\s*|\\s+)(?:${ALL_LABEL_PATTERNS})(?:\\s*[:=-]|\\s+is|\\s+[A-Za-z0-9]|$)|$)`;
+
+  const pattern = new RegExp(
+    `${labelGroup}${separatorGroup}([\\s\\S]*?)${nextFieldBoundary}`,
+    "i",
+  );
+
+  const match = text.match(pattern);
+  if (!match || !match[1]) return "";
+
+  return cleanExtractedValue(match[1]);
+}
+
+/**
  * Resolve the selected industry template from conversation context.
  */
-function getTemplateKey(
-  context: Record<string, unknown>,
-): string {
+function getTemplateKey(context: Record<string, unknown>): string {
   const selected = context.demoTemplate;
 
   if (typeof selected === "string" && selected.trim()) {
@@ -75,19 +138,26 @@ function getTemplateKey(
 
 /**
  * Get the business name stored in the personalized demo context.
+ * Gracefully guards against "undefined", "null", or raw token placeholders.
  */
-function getBusinessName(
-  context: Record<string, unknown>,
-): string {
+export function getBusinessName(context: Record<string, unknown>): string {
   const value = context.businessName;
 
-  return typeof value === "string" && value.trim()
-    ? value.trim()
-    : "Your Business";
+  if (typeof value === "string" && value.trim()) {
+    const clean = cleanExtractedValue(value);
+    if (
+      clean.length > 0 &&
+      !/^(?:undefined|null|none|n\/a|your business|xtd_[a-z0-9_-]+)$/i.test(clean)
+    ) {
+      return clean;
+    }
+  }
+
+  return "Your Business";
 }
 
 /**
- * Show the welcome message and menu for the selected template.
+ * Show the welcome message and interactive menu for the selected template.
  */
 async function showPersonalizedTemplate(
   phone: string,
@@ -110,11 +180,13 @@ async function showPersonalizedTemplate(
     context_json: updatedContext,
   });
 
+  // 1. Send personalized welcome greeting
   await sendTextMessage(
     phone,
-    template.welcomeMessage(businessName),
+    template.welcomeMessage(businessName, typeof context.businessNeed === "string" ? context.businessNeed : undefined),
   );
 
+  // 2. Build Interactive List menu
   const rows = template.menuOptions.map((option) =>
     makeListRow(
       option.id,
@@ -154,7 +226,7 @@ async function showPersonalizedTemplate(
     "Explore Demo",
     [
       {
-        title: "Business Demo",
+        title: `${businessName} Demo`,
         rows,
       },
     ],
@@ -230,52 +302,7 @@ async function showRelatedTemplates(
 }
 
 /**
- * Read fields from a structured business-demo request.
- *
- * Field labels can appear in any order, provided all three required
- * labels are present:
- * Business name:
- * Business category:
- * Main need:
- */
-function readStructuredField(
-  text: string,
-  label: string,
-): string {
-  const labels =
-    "(?:business\\s*name|business\\s*category|main\\s*need)";
-
-  const pattern = new RegExp(
-    label +
-      "\\s*:\\s*([\\s\\S]*?)(?=\\s*(?:[.;\\n]\\s*)?" +
-      labels +
-      "\\s*:|$)",
-    "i",
-  );
-
-  const match = text.match(pattern);
-
-  return (match?.[1] || "")
-    .trim()
-    .replace(/[\s.?!;,]+$/g, "")
-    .trim()
-    .slice(0, 500);
-}
-
-/**
  * Handle a complete structured personalized demo request.
- *
- * Example:
- * Hello Xtop, I want to see a personalized WhatsApp demo for my business.
- * Business name: Sunrise Hotel Demo
- * Business category: Hotel and accommodation
- * Main need: Room enquiries and booking requests
- *
- * This request is not a token. Do not route it to the generic
- * appointment-booking intent.
- *
- * Returns true when handled, false when this is not a complete
- * structured personalized-demo request.
  */
 export async function handleStructuredPersonalizedDemoRequest(
   phone: string,
@@ -288,39 +315,26 @@ export async function handleStructuredPersonalizedDemoRequest(
   }
 
   const looksLikeDemoRequest =
-    /personalized\s+(?:whatsapp\s+)?demo|personalised\s+(?:whatsapp\s+)?demo/i
-      .test(text);
+    /personali[sz]ed\s+(?:whatsapp\s+)?demo/i.test(text) ||
+    (/demo/i.test(text) &&
+      /business\s*name|company\s*name/i.test(text) &&
+      (/category|industry|type/i.test(text) || /need|requirement/i.test(text)));
 
   if (!looksLikeDemoRequest) {
     return false;
   }
 
-  const businessName = readStructuredField(
-    text,
-    "business\\s*name",
-  );
+  const businessName = extractFieldValue(text, FIELD_LABELS.name);
+  const businessCategory = extractFieldValue(text, FIELD_LABELS.category);
+  const businessNeed = extractFieldValue(text, FIELD_LABELS.need);
 
-  const businessCategory = readStructuredField(
-    text,
-    "business\\s*category",
-  );
-
-  const businessNeed = readStructuredField(
-    text,
-    "main\\s*need",
-  );
-
-  // Do not intercept incomplete requests. They can continue through
-  // the existing bot workflow instead.
-  if (
-    !businessName ||
-    !businessCategory ||
-    !businessNeed
-  ) {
+  // If core fields cannot be resolved, allow other handlers to process
+  if (!businessName || (!businessCategory && !businessNeed)) {
     return false;
   }
 
-  const templateKey = classifyCategory(businessCategory);
+  const effectiveCategory = businessCategory || "General Business";
+  const templateKey = classifyCategory(effectiveCategory);
   const template = getTemplate(templateKey);
 
   let leadId: string | null = null;
@@ -330,16 +344,13 @@ export async function handleStructuredPersonalizedDemoRequest(
       phone,
       contact.name || "Prospect",
       businessName,
-      businessCategory,
+      effectiveCategory,
       template.existingDemoId || template.key,
       `${businessName} — ${template.label} Personalized Demo`,
-      `Main need: ${businessNeed}`,
+      `Main need: ${businessNeed || "General Enquiry"}`,
     );
 
-    leadId =
-      typeof lead?.id === "string"
-        ? lead.id
-        : null;
+    leadId = typeof lead?.id === "string" ? lead.id : null;
   } catch (error) {
     safeErrorLog(
       "handleStructuredPersonalizedDemoRequest: lead creation failed",
@@ -350,50 +361,43 @@ export async function handleStructuredPersonalizedDemoRequest(
   const context: Record<string, unknown> = {
     personalizedDemo: true,
     businessName,
-    businessCategory,
+    businessCategory: effectiveCategory,
     demoTemplate: template.key,
-    businessNeed,
-    requirements: `Main need: ${businessNeed}`,
+    businessNeed: businessNeed || "General Enquiry",
+    requirements: `Main need: ${businessNeed || "General Enquiry"}`,
     businessConfigId: null,
     tokenPrefix: "DIRECT",
     leadId,
     onboardingComplete: true,
   };
 
-  // Save the personalized demo state before sending messages.
   await updateConversation(conversation.id, {
     current_module: "DEMOS",
     current_state: "PERSONALIZED_MENU",
     context_json: context,
   });
 
-  logEvent(
-    phone,
-    "structured_demo_request",
-    leadId,
-    {
-      business: businessName,
-      category: businessCategory,
-      template: template.key,
-      mainNeed: businessNeed,
-    },
-  );
+  logEvent(phone, "structured_demo_request", leadId, {
+    business: businessName,
+    category: effectiveCategory,
+    template: template.key,
+    mainNeed: businessNeed,
+  });
 
+  // Acknowledgment message with captured business details
   await sendTextMessage(
     phone,
     `Thank you! I have your personalized demo request.\n\n` +
       `*Business:* ${businessName}\n` +
-      `*Category:* ${businessCategory}\n` +
-      `*Main need:* ${businessNeed}\n\n` +
+      `*Category:* ${effectiveCategory}\n` +
+      `*Main need:* ${businessNeed || "General Demo"}\n\n` +
       `Opening your ${template.label} demo now.` +
-      (
-        leadId
-          ? "\n\nYour enquiry has also been recorded for the Xtop team."
-          : "\n\n_Note: Your enquiry could not be saved just now, but you can still explore the demo._"
-      ),
+      (leadId
+        ? "\n\nYour enquiry has also been recorded for the Xtop team."
+        : "\n\n_Note: Your enquiry could not be saved just now, but you can still explore the demo._"),
   );
 
-  // Open the actual category-specific template and its interactive menu.
+  // Open the customized category template
   await showPersonalizedTemplate(
     phone,
     conversation.id,
@@ -406,9 +410,6 @@ export async function handleStructuredPersonalizedDemoRequest(
 
 /**
  * Handle actions within an active personalized business demo.
- *
- * Returns true when this function handled the message.
- * Returns false when the message belongs to another workflow.
  */
 export async function handlePersonalizedDemoAction(
   phone: string,
@@ -419,56 +420,41 @@ export async function handlePersonalizedDemoAction(
   const rawInput = (interactiveId || text || "").trim();
   const normalized = normalise(rawInput);
 
-  const context = (
-    conversation.context_json || {}
-  ) as Record<string, unknown>;
+  const context = (conversation.context_json || {}) as Record<string, unknown>;
 
   if (context.personalizedDemo !== true) {
     return false;
   }
 
   try {
-    // View or return to the personalized demo.
     if (
       rawInput === "demo_view_my_biz" ||
       normalized === "view my demo" ||
       normalized === "my demo"
     ) {
-      await showPersonalizedTemplate(
-        phone,
-        conversation.id,
-        context,
-      );
+      await showPersonalizedTemplate(phone, conversation.id, context);
       return true;
     }
 
-    // Show related industries.
     if (
       rawInput === "demo_try_related" ||
       normalized === "related demos" ||
       normalized === "related demo"
     ) {
-      await showRelatedTemplates(
-        phone,
-        conversation.id,
-        context,
-      );
+      await showRelatedTemplates(phone, conversation.id, context);
       return true;
     }
 
-    // Launch the existing Xtop Tools menu.
     if (
       rawInput === "demo_try_tools" ||
       normalized === "free xtop tools" ||
       normalized === "xtop tools"
     ) {
       const { showToolsMenu } = await import("../tools.ts");
-
       await showToolsMenu(phone, conversation.id);
       return true;
     }
 
-    // Route agent requests to the existing agent menu.
     if (
       rawInput === "demo_agent" ||
       normalized === "agent" ||
@@ -476,24 +462,14 @@ export async function handlePersonalizedDemoAction(
       normalized === "talk to agent"
     ) {
       const { showAgentCategories } = await import("../agents.ts");
-
       await showAgentCategories(phone, conversation.id);
       return true;
     }
 
-    // Switch to a related industry template.
     if (rawInput.startsWith("demo_related_")) {
-      const selectedKey = rawInput.slice(
-        "demo_related_".length,
-      );
-
-      const related = getRelatedTemplates(
-        getTemplateKey(context),
-      );
-
-      const selected = related.find(
-        (item) => item.key === selectedKey,
-      );
+      const selectedKey = rawInput.slice("demo_related_".length);
+      const related = getRelatedTemplates(getTemplateKey(context));
+      const selected = related.find((item) => item.key === selectedKey);
 
       if (!selected) {
         await sendTextMessage(
@@ -509,38 +485,25 @@ export async function handlePersonalizedDemoAction(
         context,
         selected.key,
       );
-
       return true;
     }
 
-    // Handle industry-specific sample menu selections.
+    // Handle template sample responses with the dynamic business name
     const template = getTemplate(getTemplateKey(context));
     const sampleResponse = template.sampleResponses[rawInput];
 
     if (sampleResponse) {
       const businessName = getBusinessName(context);
 
-      await sendTextMessage(
-        phone,
-        sampleResponse(businessName),
-      );
+      await sendTextMessage(phone, sampleResponse(businessName));
 
       await sendButtonMessage(
         phone,
         "What would you like to do next?",
         [
-          makeButton(
-            "demo_view_my_biz",
-            "Business Menu",
-          ),
-          makeButton(
-            "demo_try_related",
-            "Related Demos",
-          ),
-          makeButton(
-            "demo_try_tools",
-            "Free Tools",
-          ),
+          makeButton("demo_view_my_biz", "Business Menu"),
+          makeButton("demo_try_related", "Related Demos"),
+          makeButton("demo_try_tools", "Free Tools"),
         ],
         "Personalized Demo",
       );
@@ -548,25 +511,19 @@ export async function handlePersonalizedDemoAction(
       return true;
     }
 
-    // Unknown actions are left for the other Demo Centre handlers.
     return false;
   } catch (error) {
-    safeErrorLog(
-      "handlePersonalizedDemoAction",
-      error,
-    );
-
+    safeErrorLog("handlePersonalizedDemoAction", error);
     await sendTextMessage(
       phone,
       "⚠️ We could not open that demo option right now. Please try again or type *menu*.",
     );
-
     return true;
   }
 }
 
 /**
- * Handle a customer opening a personalized demo using a token.
+ * Handle a customer opening a personalized demo using a pre-generated link/token.
  */
 export async function handlePersonalizedDemoToken(
   phone: string,
@@ -580,16 +537,11 @@ export async function handlePersonalizedDemoToken(
   try {
     validated = await validateToken(token, text);
   } catch (error) {
-    safeErrorLog(
-      "handlePersonalizedDemoToken: validation failed",
-      error,
-    );
-
+    safeErrorLog("handlePersonalizedDemoToken: validation failed", error);
     await sendTextMessage(
       phone,
       "⚠️ We could not verify that demo reference right now.\n\nPlease try again shortly, or type *menu* to explore our demos.",
     );
-
     return true;
   }
 
@@ -602,7 +554,6 @@ export async function handlePersonalizedDemoToken(
       phone,
       "⚠️ This demo reference is invalid, expired, or unavailable.\n\nYou can still explore our demos. Type *menu* to continue.",
     );
-
     return true;
   }
 
@@ -621,24 +572,11 @@ export async function handlePersonalizedDemoToken(
 
     leadId = lead?.id || null;
   } catch (error) {
-    safeErrorLog(
-      "handlePersonalizedDemoToken: lead creation failed",
-      error,
-    );
-  }
-
-  if (!leadId) {
-    await sendTextMessage(
-      phone,
-      "⚠️ Your demo reference is valid, but we could not save your enquiry right now.\n\nPlease try again shortly or contact Xtop on 08024988555.",
-    );
-
-    return true;
+    safeErrorLog("handlePersonalizedDemoToken: lead creation failed", error);
   }
 
   const templateKey =
-    validated.demoTemplate ||
-    classifyCategory(validated.businessCategory);
+    validated.demoTemplate || classifyCategory(validated.businessCategory);
 
   const updatedContext = {
     personalizedDemo: true,
@@ -661,37 +599,11 @@ export async function handlePersonalizedDemoToken(
     context_json: updatedContext,
   });
 
-  await sendTextMessage(
+  await showPersonalizedTemplate(
     phone,
-    `Hello *${validated.businessName}*! 👋\n\n` +
-      "Welcome to your personalized Xtop WhatsApp business demo.\n\n" +
-      "Explore how a WhatsApp system could help your business present services, handle enquiries, collect leads, and connect customers to your team.\n\n" +
-      "All examples use demonstration data. No real transactions are processed.",
-  );
-
-  await sendButtonMessage(
-    phone,
-    "👇 Choose an option:",
-    [
-      makeButton(
-        "demo_view_my_biz",
-        "View My Demo",
-      ),
-      makeButton(
-        "demo_try_related",
-        "Related Demos",
-      ),
-      makeButton(
-        "demo_try_tools",
-        "Free Xtop Tools",
-      ),
-    ],
-    "Personalized Demo",
-  );
-
-  await sendTextMessage(
-    phone,
-    "Or type *agent* anytime to talk to our team.",
+    conversation.id,
+    updatedContext,
+    templateKey,
   );
 
   return true;
