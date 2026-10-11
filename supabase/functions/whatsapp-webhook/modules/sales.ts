@@ -586,7 +586,7 @@ async function handleBotFlow(
       break;
     }
 
-    case "ASK_INDUSTRY": {
+    case "ASK_INDUSTR;Y": {
       const r = resolveStrict(text, INDUSTRY_IDS, INDUSTRY_NUMS);
       if (!r) {
         await sendTextMessage(phone, "⚠️ Please select one of the industries from the list.");
@@ -662,36 +662,12 @@ async function handleBotFlow(
     }
 
     case "ASK_BOT_FEATURES_MORE": {
-      // FIX #1: Check button IDs before normalising
-      if (text === "feat_more") {
-        ctx.step = "ASK_BOT_FEATURES";
-        await saveCtx(conv.id, ctx);
-        await sendBotFeaturesQuestion(phone, ctx.features);
-        return;
-      }
-      if (text === "feat_done") {
-        if (ctx.features.length === 0) {
-          await sendTextMessage(phone, "⚠️ Please select at least one feature.");
-          ctx.step = "ASK_BOT_FEATURES";
-          await saveCtx(conv.id, ctx);
-          await sendBotFeaturesQuestion(phone, ctx.features);
-          return;
-        }
-        ctx.step = "ASK_WA_BIZ";
-        await saveCtx(conv.id, ctx);
-        await sendYesNoQuestion(phone,
-          "*Do you already have a WhatsApp Business number?*",
-          "wa_yes", "wa_no", "wa_unsure");
-        return;
-      }
-
-      // FIX #2: Normalise only if not a button ID
       const n = normalise(text);
-      if (n === "add another" || n === "add" || n === "yes" || n === "1") {
+      if (text === "feat_more" || n === "add another" || n === "add" || n === "yes" || n === "1") {
         ctx.step = "ASK_BOT_FEATURES";
         await saveCtx(conv.id, ctx);
         await sendBotFeaturesQuestion(phone, ctx.features);
-      } else if (n === "done" || n === "no" || n === "2") {
+      } else if (text === "feat_done" || n === "done" || n === "no" || n === "2") {
         if (ctx.features.length === 0) {
           await sendTextMessage(phone, "⚠️ Please select at least one feature.");
           ctx.step = "ASK_BOT_FEATURES";
@@ -931,14 +907,12 @@ async function handleWebFlow(
     }
 
     case "ASK_WEB_FEATURES_MORE": {
-      // FIX: Check button IDs before normalising
-      if (text === "feat_more") {
+      const n = normalise(text);
+      if (text === "feat_more" || n === "add another" || n === "add" || n === "yes" || n === "1") {
         ctx.step = "ASK_WEB_FEATURES";
         await saveCtx(conv.id, ctx);
         await sendWebFeaturesQuestion(phone, ctx.webFeatures);
-        return;
-      }
-      if (text === "feat_done") {
+      } else if (text === "feat_done" || n === "done" || n === "no" || n === "2") {
         if (ctx.webFeatures.length === 0) {
           await sendTextMessage(phone, "⚠️ Please select at least one feature.");
           ctx.step = "ASK_WEB_FEATURES";
@@ -949,25 +923,6 @@ async function handleWebFlow(
         await saveCtx(conv.id, ctx);
         await sendYesNoQuestion(phone,
           "*Do you already have a domain name (e.g. .com, .ng)?*",
-          "dom_yes", "dom_no", "dom_unsure");
-        return;
-      }
-
-      const n = normalise(text);
-      if (n === "add another" || n === "add" || n === "yes" || n === "1") {
-        ctx.step = "ASK_WEB_FEATURES";
-        await saveCtx(conv.id, ctx);
-        await sendWebFeaturesQuestion(phone, ctx.webFeatures);
-      } else if (n === "done" || n === "no" || n === "2") {
-        if (ctx.webFeatures.length === 0) {
-          await sendTextMessage(phone, "⚠️ Please select at least one feature.");
-          ctx.step = "ASK_WEB_FEATURES";
-          await saveCtx(conv.id, ctx);
-          await sendWebFeaturesQuestion(phone, ctx.webFeatures); return;
-        }
-        ctx.step = "ASK_DOMAIN";
-        await saveCtx(conv.id, ctx);
-        await sendYesNoQuestion(phone, "*Do you already have a domain name?*",
           "dom_yes", "dom_no", "dom_unsure");
       } else {
         await sendTextMessage(phone, "⚠️ Please tap one of the buttons below.");
@@ -1258,32 +1213,12 @@ async function handleAutoFlow(
     }
 
     case "ASK_AUTO_ACTIVITIES_MORE": {
-      // FIX: Check button IDs before normalising
-      if (text === "feat_more") {
-        ctx.step = "ASK_AUTO_ACTIVITIES";
-        await saveCtx(conv.id, ctx);
-        await sendAutoActivitiesQuestion(phone, ctx.autoActivities);
-        return;
-      }
-      if (text === "feat_done") {
-        if (ctx.autoActivities.length === 0) {
-          await sendTextMessage(phone, "⚠️ Please select at least one activity.");
-          ctx.step = "ASK_AUTO_ACTIVITIES";
-          await saveCtx(conv.id, ctx);
-          await sendAutoActivitiesQuestion(phone, ctx.autoActivities); return;
-        }
-        ctx.step = "ASK_AUTO_PROCESS";
-        await saveCtx(conv.id, ctx);
-        await sendAutoProcessQuestion(phone);
-        return;
-      }
-
       const n = normalise(text);
-      if (n === "add another" || n === "add" || n === "yes" || n === "1") {
+      if (text === "feat_more" || n === "add another" || n === "add" || n === "yes" || n === "1") {
         ctx.step = "ASK_AUTO_ACTIVITIES";
         await saveCtx(conv.id, ctx);
         await sendAutoActivitiesQuestion(phone, ctx.autoActivities);
-      } else if (n === "done" || n === "no" || n === "2") {
+      } else if (text === "feat_done" || n === "done" || n === "no" || n === "2") {
         if (ctx.autoActivities.length === 0) {
           await sendTextMessage(phone, "⚠️ Please select at least one activity.");
           ctx.step = "ASK_AUTO_ACTIVITIES";
@@ -1367,26 +1302,12 @@ async function handleAutoFlow(
     }
 
     case "ASK_AUTO_INT_MORE": {
-      // FIX: Check button IDs before normalising
-      if (text === "feat_more") {
-        ctx.step = "ASK_AUTO_INTEGRATIONS";
-        await saveCtx(conv.id, ctx);
-        await sendAutoIntegrationsQuestion(phone, ctx.autoIntegrations);
-        return;
-      }
-      if (text === "feat_done") {
-        ctx.step = "ASK_BUDGET";
-        await saveCtx(conv.id, ctx);
-        await sendBudgetQuestion(phone);
-        return;
-      }
-
       const n = normalise(text);
-      if (n === "add another" || n === "add" || n === "yes" || n === "1") {
+      if (text === "feat_more" || n === "add another" || n === "add" || n === "yes" || n === "1") {
         ctx.step = "ASK_AUTO_INTEGRATIONS";
         await saveCtx(conv.id, ctx);
         await sendAutoIntegrationsQuestion(phone, ctx.autoIntegrations);
-      } else if (n === "done" || n === "no" || n === "2") {
+      } else if (text === "feat_done" || n === "done" || n === "no" || n === "2") {
         ctx.step = "ASK_BUDGET";
         await saveCtx(conv.id, ctx);
         await sendBudgetQuestion(phone);
@@ -1589,7 +1510,7 @@ function buildLeadFields(
 }
 
 // ═══════════════════════════════════════════════════════
-// POST-QUOTATION ACTIONS — FIXED
+// POST-QUOTATION ACTIONS
 // ═══════════════════════════════════════════════════════
 
 async function handlePostQuoteAction(
@@ -1599,14 +1520,20 @@ async function handlePostQuoteAction(
   conv: Conversation,
   ctx: SalesCtx
 ): Promise<void> {
-  // FIX #1: Check button IDs FIRST (exact match, case-sensitive)
-  if (text === "menu_home") {
+  const n = normalise(text);
+
+  // Return to the main menu when requested.
+  if (
+    n === "menu_home" ||
+    n === "main menu" ||
+    n === "menu"
+  ) {
     await showMainMenu(phone, conv.id);
     return;
   }
 
-  if (text === "q_select") {
-    // Record package selection without destroying the quotation context
+  // Record package selection without destroying the quotation context.
+  if (n === "q_select" || n.includes("select")) {
     if (ctx.leadId) {
       await updateLead(ctx.leadId, {
         status: "PACKAGE_SELECTED",
@@ -1621,6 +1548,7 @@ async function handlePostQuoteAction(
     }
 
     ctx.step = "SHOWING_QUOTE";
+
     await updateConversation(conv.id, {
       current_module: "SALES",
       current_state: "SHOWING_QUOTE",
@@ -1635,7 +1563,7 @@ async function handlePostQuoteAction(
         `*Estimate:* ${formatNaira(ctx.estimatedMin || 0)} – ${formatNaira(ctx.estimatedMax || 0)}\n\n` +
         "An Xtop agent will confirm the final scope. You can request an agent now or return to the main menu.",
       [
-        makeButton("q_agent", "👤 Talk to Agent"),
+        makeButton("q_agent_now", "👤 Talk to Agent"),
         makeButton("menu_home", "🏠 Main Menu"),
       ],
       "Package Selected",
@@ -1645,14 +1573,19 @@ async function handlePostQuoteAction(
     return;
   }
 
-  if (text === "q_change") {
-    // Allow the customer to change requirements
+  // Allow the customer to change requirements.
+  if (n === "q_change" || n.includes("change")) {
     await showServiceTypeSelector(phone, conv.id);
     return;
   }
 
-  if (text === "q_agent") {
-    // Save the agent request before reporting success
+  // Save the agent request before reporting success.
+  if (
+    n === "q_agent" ||
+    n === "q_agent_now" ||
+    n.includes("agent") ||
+    n.includes("talk")
+  ) {
     const summary =
       `Client: ${ctx.clientName || contact.name || "N/A"}\n` +
       `Email: ${ctx.clientEmail || "N/A"}\n` +
@@ -1684,7 +1617,7 @@ async function handlePostQuoteAction(
       summary
     );
 
-    // FIX #2: Do not claim success if the database did not save the request
+    // Do not claim success if the database did not save the request.
     if (!record || !record.id) {
       console.error(
         "[SALES AGENT REQUEST ERROR]",
@@ -1696,7 +1629,7 @@ async function handlePostQuoteAction(
         })
       );
 
-      // Preserve the quotation context so the customer can retry
+      // Preserve the quotation so the customer can retry.
       await updateConversation(conv.id, {
         current_module: "SALES",
         current_state: "SHOWING_QUOTE",
@@ -1719,7 +1652,7 @@ async function handlePostQuoteAction(
       return;
     }
 
-    // FIX #3: Update lead and quotation ONLY after the request is saved
+    // Update lead and quotation only after the request is saved.
     if (ctx.leadId) {
       await updateLead(ctx.leadId, {
         status: "AGENT_REQUESTED",
@@ -1760,15 +1693,7 @@ async function handlePostQuoteAction(
     return;
   }
 
-  // FIX #4: Check free-text variations only AFTER checking button IDs
-  const n = normalise(text);
-
-  if (n === "main menu" || n === "menu") {
-    await showMainMenu(phone, conv.id);
-    return;
-  }
-
-  // Keep the quotation flow active for an unrecognised selection
+  // Keep the quotation flow active for an unrecognised selection.
   await sendButtonMessage(
     phone,
     "What would you like to do with your quotation?",
