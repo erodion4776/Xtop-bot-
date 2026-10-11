@@ -1,6 +1,7 @@
 // supabase/functions/whatsapp-webhook/modules/demos/personalized.ts
 // Personalized business demo engine with robust multi-format field extraction
 // Fully integrated with dynamic template resolvers and safe fallback behaviors
+// Implements rich, highly realistic interactive checkout, billing, and booking simulations
 
 import {
   Contact,
@@ -117,23 +118,6 @@ function extractFieldValue(text: string, labelPatterns: string[]): string {
 }
 
 /**
- * Resolve the template key safely from context parameters.
- */
-function getTemplateKeyFromContext(context: Record<string, unknown>): string {
-  const selected = context.demoTemplate;
-  if (typeof selected === "string" && selected.trim()) {
-    return selected.trim().toLowerCase();
-  }
-
-  const category =
-    typeof context.businessCategory === "string"
-      ? context.businessCategory
-      : "";
-
-  return classifyCategory(category);
-}
-
-/**
  * Safely parse business names to avoid "undefined", raw tokens, or NULL.
  */
 export function getBusinessName(context: Record<string, unknown>): string {
@@ -159,7 +143,7 @@ async function showPersonalizedTemplate(
   phone: string,
   conversationId: string,
   context: Record<string, unknown>,
-  templateKey = getTemplateKeyFromContext(context),
+  templateKey = getTemplateKey(context),
 ): Promise<void> {
   const businessName = getBusinessName(context);
   const mainNeed = typeof context.businessNeed === "string" ? context.businessNeed : undefined;
@@ -242,7 +226,7 @@ async function showRelatedTemplates(
   conversationId: string,
   context: Record<string, unknown>,
 ): Promise<void> {
-  const templateKey = getTemplateKeyFromContext(context);
+  const templateKey = getTemplateKey(context);
   const related = getRelatedTemplates(templateKey);
 
   if (related.length === 0) {
@@ -466,30 +450,64 @@ export async function handlePersonalizedDemoAction(
       return true;
     }
 
+    // Direct routing for all dynamic/related demo keys
     if (rawInput.startsWith("demo_related_")) {
       const selectedKey = rawInput.slice("demo_related_".length);
-      const related = getRelatedTemplates(getTemplateKeyFromContext(context));
-      const selected = related.find((item) => item.key === selectedKey);
-
-      if (!selected) {
-        await sendTextMessage(
-          phone,
-          "That related demo is unavailable. Please choose an option from the list.",
-        );
-        return true;
-      }
 
       await showPersonalizedTemplate(
         phone,
         conversation.id,
         context,
-        selected.key,
+        selectedKey,
+      );
+      return true;
+    }
+
+    // INTERACTIVE TRANSACTION SIMULATIONS
+    // These actions simulate complete transactional checkout systems and checkouts
+    if (rawInput === "demo_pay_card" || normalized === "simulated card") {
+      await sendTextMessage(
+        phone,
+        `💳 *Simulating Paystack Secure Gateway — ${getBusinessName(context)}*\n\n` +
+        "⚡ _Initializing payment transaction for ₦8,500..._\n\n" +
+        "🔒 *Status:* 3D-Secure Authentication Successful!\n" +
+        "✅ *Simulated Status:* Payment Completed Successfully.\n\n" +
+        "This demonstrates how easily customers pay directly in your WhatsApp checkout, instantly dispatching receipts and updating your CRM database."
+      );
+      await sendButtonMessage(
+        phone,
+        "What would you like to explore next?",
+        [
+          makeButton("demo_view_my_biz", "Back to Menu"),
+          makeButton("demo_try_related", "Related Demos"),
+        ]
+      );
+      return true;
+    }
+
+    if (rawInput === "demo_pay_transfer" || normalized === "simulated bank transfer") {
+      await sendTextMessage(
+        phone,
+        `🏦 *Simulating Instant Bank Transfer — ${getBusinessName(context)}*\n\n` +
+        "Placing your order under temporary escrow...\n\n" +
+        "📌 *Bank Name:* Xtop Demo Settlement Bank\n" +
+        "📌 *Account Number:* 9901827364 (Simulated)\n" +
+        "📌 *Amount:* ₦8,500\n\n" +
+        "⚡ _A live system automatically verifies this transfer via webhooks within 5 seconds without manual human checking!_"
+      );
+      await sendButtonMessage(
+        phone,
+        "Confirm payment mock simulation:",
+        [
+          makeButton("demo_pay_card", "Simulate Paid"),
+          makeButton("demo_view_my_biz", "Back to Menu"),
+        ]
       );
       return true;
     }
 
     // Dynamic Database/Synchronous fallback evaluation for custom menu items
-    const templateKey = getTemplateKeyFromContext(context);
+    const templateKey = getTemplateKey(context);
     const businessName = getBusinessName(context);
     const mainNeed = typeof context.businessNeed === "string" ? context.businessNeed : undefined;
 
@@ -499,16 +517,30 @@ export async function handlePersonalizedDemoAction(
     if (sampleResponse) {
       await sendTextMessage(phone, sampleResponse(businessName));
 
-      await sendButtonMessage(
-        phone,
-        "What would you like to do next?",
-        [
-          makeButton("demo_view_my_biz", "Business Menu"),
-          makeButton("demo_try_related", "Related Demos"),
-          makeButton("demo_try_tools", "Free Tools"),
-        ],
-        "Personalized Demo",
-      );
+      // If they clicked the '🍔 Order Food' option, show simulated Paystack buttons
+      if (rawInput === "demo_order") {
+        await sendButtonMessage(
+          phone,
+          "💳 Choose your simulated payment option:",
+          [
+            makeButton("demo_pay_card", "Simulated Card"),
+            makeButton("demo_pay_transfer", "Simulated Transfer"),
+            makeButton("demo_view_my_biz", "Cancel Order"),
+          ],
+          "Payment Simulation"
+        );
+      } else {
+        await sendButtonMessage(
+          phone,
+          "What would you like to do next?",
+          [
+            makeButton("demo_view_my_biz", "Business Menu"),
+            makeButton("demo_try_related", "Related Demos"),
+            makeButton("demo_try_tools", "Free Tools"),
+          ],
+          "Personalized Demo",
+        );
+      }
 
       return true;
     }
