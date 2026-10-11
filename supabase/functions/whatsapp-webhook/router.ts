@@ -1,5 +1,4 @@
-
- // supabase/functions/whatsapp-webhook/router.ts
+// supabase/functions/whatsapp-webhook/router.ts
 
 import {
   Contact,
@@ -78,6 +77,7 @@ import {
 import {
   handlePersonalizedDemoToken,
   handleStructuredPersonalizedDemoRequest,
+  handlePersonalizedDemoAction,
 } from "./modules/demos/personalized.ts";
 
 import { extractTokenFromText } from "./modules/demos/tokens.ts";
@@ -449,7 +449,21 @@ export async function routeMessage(
     }
 
     // Demo workflow.
+    // CRITICAL FIX: Check personalized demo actions FIRST before
+    // falling back to the generic Demo Centre handler. This ensures
+    // that interactive menu taps (e.g. demo_menu, demo_order) inside
+    // an active personalized demo are routed to the correct handler
+    // instead of resetting to the generic demo catalogue.
     if (currentModule === "DEMOS") {
+      const personalizedHandled = await handlePersonalizedDemoAction(
+        phone,
+        text,
+        interactiveId,
+        conversation,
+      );
+
+      if (personalizedHandled) return;
+
       await handleDemos(
         phone,
         text,
@@ -565,7 +579,19 @@ export async function routeMessage(
     }
 
     // Demo Centre, including category and demo pagination.
+    // CRITICAL FIX: Check personalized demo actions FIRST so that
+    // taps like demo_menu, demo_order, demo_reserve inside an active
+    // personalized demo session are handled correctly.
     if (isDemoInteractiveAction(interactiveId)) {
+      const personalizedHandled = await handlePersonalizedDemoAction(
+        phone,
+        text,
+        interactiveId,
+        conversation,
+      );
+
+      if (personalizedHandled) return;
+
       await handleDemos(
         phone,
         text,
