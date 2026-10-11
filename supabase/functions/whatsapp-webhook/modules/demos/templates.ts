@@ -1,8 +1,8 @@
+// supabase/functions/whatsapp-webhook/modules/demos/templates.ts
+// Scalable business template registry & database-backed template engine.
+// All template strings are compiled dynamically with strict placeholder mappings.
 
- // modules/demos/templates.ts
-// Generic, data-driven business template registry.
-// 14 industry categories.
-// All sample responses are explicitly labelled as demonstrations.
+import { getSupabaseClient, safeErrorLog } from "../../database.ts";
 
 export interface DemoMenuOption {
   id: string;
@@ -15,7 +15,7 @@ export interface IndustryTemplate {
   label: string;
   icon: string;
   existingDemoId: string | null;
-  welcomeMessage: (biz: string) => string;
+  welcomeMessage: (biz: string, need?: string) => string;
   menuBody: (biz: string) => string;
   menuOptions: DemoMenuOption[];
   relatedDemoIds: string[];
@@ -25,7 +25,7 @@ export interface IndustryTemplate {
 }
 
 // ─────────────────────────────────────────────
-// TEMPLATE REGISTRY
+// LOCAL SYNCHRONOUS FALLBACK REGISTRY
 // ─────────────────────────────────────────────
 
 const T: Record<string, IndustryTemplate> = {
@@ -34,11 +34,12 @@ const T: Record<string, IndustryTemplate> = {
     label: "Hotel & Accommodation",
     icon: "🏨",
     existingDemoId: "appointment_booking",
-    welcomeMessage: (b) =>
+    welcomeMessage: (b, n) =>
       `Welcome to the *${b}* hotel demo! 🏨\n\n` +
-      "Explore how guests could browse room options, enquire about availability, " +
-      "and request reservations through WhatsApp.\n\n" +
-      "⚠️ _Demo only. Sample data is illustrative; no real bookings are made._",
+      `Explore how guests could browse room options, enquire about availability, ` +
+      `and request reservations through WhatsApp.` +
+      (n ? `\n\n*Your Main Need:* ${n}` : "") +
+      `\n\n⚠️ _Demo only. Sample data is illustrative; no real bookings are made._`,
     menuBody: (b) => `*${b} — Hotel Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_rooms", title: "🛏️ View Rooms", description: "Sample room types and rates" },
@@ -77,11 +78,12 @@ const T: Record<string, IndustryTemplate> = {
     label: "Short-Let Apartments",
     icon: "🏠",
     existingDemoId: "appointment_booking",
-    welcomeMessage: (b) =>
+    welcomeMessage: (b, n) =>
       `Welcome to the *${b}* short-let demo! 🏠\n\n` +
-      "Explore how guests could browse apartments, enquire about dates, " +
-      "and submit booking requests through WhatsApp.\n\n" +
-      "⚠️ _Demo only. Sample listings and rates are illustrative._",
+      `Explore how guests could browse apartments, enquire about dates, ` +
+      `and submit booking requests through WhatsApp.` +
+      (n ? `\n\n*Your Main Need:* ${n}` : "") +
+      `\n\n⚠️ _Demo only. Sample listings and rates are illustrative._`,
     menuBody: (b) => `*${b} — Short-Let Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_apartments", title: "🏘️ View Apartments", description: "Sample listings and rates" },
@@ -119,11 +121,12 @@ const T: Record<string, IndustryTemplate> = {
     label: "School & Education",
     icon: "🎓",
     existingDemoId: null,
-    welcomeMessage: (b) =>
+    welcomeMessage: (b, n) =>
       `Welcome to the *${b}* education demo! 🎓\n\n` +
-      "Explore how parents and students could enquire about admissions, " +
-      "check school information, and receive announcements through WhatsApp.\n\n" +
-      "⚠️ _Demo only. School information and figures are sample data._",
+      `Explore how parents and students could enquire about admissions, ` +
+      `check school information, and receive announcements through WhatsApp.` +
+      (n ? `\n\n*Your Main Need:* ${n}` : "") +
+      `\n\n⚠️ _Demo only. School information and figures are sample data._`,
     menuBody: (b) => `*${b} — School Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_admissions", title: "📝 Admissions", description: "Sample requirements" },
@@ -159,11 +162,12 @@ const T: Record<string, IndustryTemplate> = {
     label: "Event Centre & Planner",
     icon: "🎉",
     existingDemoId: "appointment_booking",
-    welcomeMessage: (b) =>
+    welcomeMessage: (b, n) =>
       `Welcome to the *${b}* event demo! 🎉\n\n` +
-      "Explore how clients could view venues, compare packages, " +
-      "and submit booking enquiries through WhatsApp.\n\n" +
-      "⚠️ _Demo only. Venue details and prices are illustrative._",
+      `Explore how clients could view venues, compare packages, ` +
+      `and submit booking enquiries through WhatsApp.` +
+      (n ? `\n\n*Your Main Need:* ${n}` : "") +
+      `\n\n⚠️ _Demo only. Venue details and prices are illustrative._`,
     menuBody: (b) => `*${b} — Event Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_venues", title: "🏛️ View Venues", description: "Sample halls and capacities" },
@@ -200,11 +204,12 @@ const T: Record<string, IndustryTemplate> = {
     label: "Car Dealer & Automobile",
     icon: "🚗",
     existingDemoId: "auto_workshop",
-    welcomeMessage: (b) =>
+    welcomeMessage: (b, n) =>
       `Welcome to the *${b}* auto demo! 🚗\n\n` +
-      "Explore how customers could browse vehicles, request test drives, " +
-      "and submit purchase enquiries through WhatsApp.\n\n" +
-      "⚠️ _Demo only. Vehicles and prices are illustrative._",
+      `Explore how customers could browse vehicles, request test drives, ` +
+      `and submit purchase enquiries through WhatsApp.` +
+      (n ? `\n\n*Your Main Need:* ${n}` : "") +
+      `\n\n⚠️ _Demo only. Vehicles and prices are illustrative._`,
     menuBody: (b) => `*${b} — Auto Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_inventory", title: "🚘 View Vehicles", description: "Sample catalogue" },
@@ -241,11 +246,12 @@ const T: Record<string, IndustryTemplate> = {
     label: "Real Estate",
     icon: "🏗️",
     existingDemoId: "real_estate",
-    welcomeMessage: (b) =>
+    welcomeMessage: (b, n) =>
       `Welcome to the *${b}* property demo! 🏗️\n\n` +
-      "Explore how clients could browse property listings, request inspections, " +
-      "and submit enquiries through WhatsApp.\n\n" +
-      "⚠️ _Demo only. Listings and prices are illustrative._",
+      `Explore how clients could browse property listings, request inspections, ` +
+      `and submit enquiries through WhatsApp.` +
+      (n ? `\n\n*Your Main Need:* ${n}` : "") +
+      `\n\n⚠️ _Demo only. Listings and prices are illustrative._`,
     menuBody: (b) => `*${b} — Real Estate Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_listings", title: "🏘️ View Properties", description: "Sample listings" },
@@ -281,11 +287,12 @@ const T: Record<string, IndustryTemplate> = {
     label: "Retail Shop & Supermarket",
     icon: "🛒",
     existingDemoId: "online_store",
-    welcomeMessage: (b) =>
+    welcomeMessage: (b, n) =>
       `Welcome to the *${b}* retail demo! 🛒\n\n` +
-      "Explore how customers could browse a catalogue, submit orders, " +
-      "and enquire about deliveries through WhatsApp.\n\n" +
-      "⚠️ _Demo only. Product details and prices are illustrative._",
+      `Explore how customers could browse a catalogue, submit orders, ` +
+      `and enquire about deliveries through WhatsApp.` +
+      (n ? `\n\n*Your Main Need:* ${n}` : "") +
+      `\n\n⚠️ _Demo only. Product details and prices are illustrative._`,
     menuBody: (b) => `*${b} — Retail Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_catalogue", title: "📦 Catalogue", description: "Browse sample products" },
@@ -323,12 +330,16 @@ const T: Record<string, IndustryTemplate> = {
     label: "Restaurant & Food Business",
     icon: "🍽️",
     existingDemoId: "restaurant",
-    welcomeMessage: (b) =>
-      `Welcome to the *${b}* restaurant demo! 🍽️\n\n` +
-      "Explore how customers could view a menu, enquire about orders, " +
-      "and request table reservations through WhatsApp.\n\n" +
-      "⚠️ _Demo only. Menu items and prices are illustrative._",
-    menuBody: (b) => `*${b} — Restaurant Demo*\n\nWhat would you like to explore?`,
+    welcomeMessage: (b, n) =>
+      `🍽️ Welcome to the *${b}* WhatsApp demo!\n\n` +
+      `See how your restaurant could use WhatsApp to:\n` +
+      `• Display food menus and catalogs.\n` +
+      `• Answer food and pricing enquiries.\n` +
+      `• Receive customer booking requests.\n` +
+      `• Guide customers through interactive food ordering.` +
+      (n ? `\n\n*Your Main Need:* ${n}` : "") +
+      `\n\n⚠️ _This is an interactive demonstration. No real orders or bookings will be created._`,
+    menuBody: (b) => `*${b} — Dynamic Food Catalog*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_menu", title: "📋 View Menu", description: "Sample food and prices" },
       { id: "demo_order", title: "🍔 Order Food", description: "Simulate an order" },
@@ -365,11 +376,12 @@ const T: Record<string, IndustryTemplate> = {
     label: "Digital Agency & IT Services",
     icon: "💻",
     existingDemoId: "custom_automation",
-    welcomeMessage: (b) =>
+    welcomeMessage: (b, n) =>
       `Welcome to the *${b}* agency demo! 💻\n\n` +
-      "Explore how clients could review services, request quotations, " +
-      "and submit project briefs through WhatsApp.\n\n" +
-      "⚠️ _Demo only. Services and prices are illustrative._",
+      `Explore how clients could review services, request quotations, ` +
+      `and submit project briefs through WhatsApp.` +
+      (n ? `\n\n*Your Main Need:* ${n}` : "") +
+      `\n\n⚠️ _Demo only. Services and prices are illustrative._`,
     menuBody: (b) => `*${b} — Agency Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_services", title: "⚙️ Services", description: "Sample offerings" },
@@ -407,11 +419,12 @@ const T: Record<string, IndustryTemplate> = {
     label: "Clinic & Healthcare",
     icon: "🏥",
     existingDemoId: "appointment_booking",
-    welcomeMessage: (b) =>
+    welcomeMessage: (b, n) =>
       `Welcome to the *${b}* healthcare demo! 🏥\n\n` +
-      "Explore how patients could view clinic information, enquire about appointments, " +
-      "and receive reminders through WhatsApp.\n\n" +
-      "⚠️ _Demo only. This system does not provide medical advice or book real appointments._",
+      `Explore how patients could view clinic information, enquire about appointments, ` +
+      `and receive reminders through WhatsApp.` +
+      (n ? `\n\n*Your Main Need:* ${n}` : "") +
+      `\n\n⚠️ _Demo only. This system does not provide medical advice or book real appointments._`,
     menuBody: (b) => `*${b} — Clinic Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_departments", title: "🩺 Departments", description: "Sample specialties" },
@@ -446,11 +459,12 @@ const T: Record<string, IndustryTemplate> = {
     label: "Professional Services",
     icon: "💼",
     existingDemoId: "crm",
-    welcomeMessage: (b) =>
+    welcomeMessage: (b, n) =>
       `Welcome to the *${b}* professional services demo! 💼\n\n` +
-      "Explore how clients could review services, request consultations, " +
-      "and submit enquiries through WhatsApp.\n\n" +
-      "⚠️ _Demo only. Service details are illustrative._",
+      `Explore how clients could review services, request consultations, ` +
+      `and submit enquiries through WhatsApp.` +
+      (n ? `\n\n*Your Main Need:* ${n}` : "") +
+      `\n\n⚠️ _Demo only. Service details are illustrative._`,
     menuBody: (b) => `*${b} — Services Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_services", title: "📋 Services", description: "Sample offerings" },
@@ -484,11 +498,12 @@ const T: Record<string, IndustryTemplate> = {
     label: "Beauty & Personal Care",
     icon: "💇",
     existingDemoId: "appointment_booking",
-    welcomeMessage: (b) =>
+    welcomeMessage: (b, n) =>
       `Welcome to the *${b}* beauty demo! 💇\n\n` +
-      "Explore how clients could view services, enquire about appointments, " +
-      "and receive aftercare information through WhatsApp.\n\n" +
-      "⚠️ _Demo only. Services and prices are illustrative._",
+      `Explore how clients could view services, enquire about appointments, ` +
+      `and receive aftercare information through WhatsApp.` +
+      (n ? `\n\n*Your Main Need:* ${n}` : "") +
+      `\n\n⚠️ _Demo only. Services and prices are illustrative._`,
     menuBody: (b) => `*${b} — Beauty Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_services", title: "💅 Services & Prices", description: "Sample service menu" },
@@ -525,11 +540,12 @@ const T: Record<string, IndustryTemplate> = {
     label: "Logistics & Delivery",
     icon: "🚚",
     existingDemoId: "inventory",
-    welcomeMessage: (b) =>
+    welcomeMessage: (b, n) =>
       `Welcome to the *${b}* logistics demo! 🚚\n\n` +
-      "Explore how customers could request pickups, enquire about delivery costs, " +
-      "and track shipments through WhatsApp.\n\n" +
-      "⚠️ _Demo only. Prices and tracking information are illustrative._",
+      `Explore how customers could request pickups, enquire about delivery costs, ` +
+      `and track shipments through WhatsApp.` +
+      (n ? `\n\n*Your Main Need:* ${n}` : "") +
+      `\n\n⚠️ _Demo only. Prices and tracking information are illustrative._`,
     menuBody: (b) => `*${b} — Logistics Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_quote", title: "💰 Get a Quote", description: "Sample delivery pricing" },
@@ -567,11 +583,12 @@ const T: Record<string, IndustryTemplate> = {
     label: "Other Business",
     icon: "🏢",
     existingDemoId: "business_calculator",
-    welcomeMessage: (b) =>
+    welcomeMessage: (b, n) =>
       `Welcome to the *${b}* business demo! 🏢\n\n` +
-      "Explore how customers could browse services, submit enquiries, " +
-      "and receive information about a business through WhatsApp.\n\n" +
-      "⚠️ _Demo only. All sample content is illustrative._",
+      `Explore how customers could browse services, submit enquiries, ` +
+      `and receive information about a business through WhatsApp.` +
+      (n ? `\n\n*Your Main Need:* ${n}` : "") +
+      `\n\n⚠️ _Demo only. All sample content is illustrative._`,
     menuBody: (b) => `*${b} — Business Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_services", title: "📋 Services", description: "Sample offerings" },
@@ -601,10 +618,89 @@ const T: Record<string, IndustryTemplate> = {
 };
 
 // ─────────────────────────────────────────────
-// PUBLIC API
+// COMPILER CORE: COMPILING THE DYNAMIC PLACEHOLDERS
 // ─────────────────────────────────────────────
 
-/** Get a template by key. Falls back to 'other'. */
+export function compileTemplateString(
+  templateStr: string,
+  bizName: string,
+  mainNeed?: string
+): string {
+  if (!templateStr) return "";
+  return templateStr
+    .replace(/\{\{business_name\}\}/gi, bizName)
+    .replace(/\{\{main_need\}\}/gi, mainNeed || "General Enquiry");
+}
+
+// ─────────────────────────────────────────────
+// HIGHLY OPTIMIZED ASYNC DATABASE RESOLVER (SCALABLE TO 50K+)
+// ─────────────────────────────────────────────
+
+export async function resolveTemplate(
+  key: string,
+  bizName: string,
+  mainNeed?: string
+): Promise<IndustryTemplate> {
+  const normalizedKey = typeof key === "string" ? key.trim().toLowerCase() : "";
+  const sb = getSupabaseClient();
+
+  try {
+    const { data: dbTemplate, error } = await sb
+      .from("demo_templates")
+      .select("*, demo_menu_options(*), demo_sample_responses(*)")
+      .eq("key", normalizedKey)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (error || !dbTemplate) {
+      if (error) safeErrorLog("resolveTemplate.dbFetch", error);
+      return getTemplate(key); // Fallback cleanly to local in-memory template
+    }
+
+    // Dynamic reconstruction of database-backed configs
+    const menuOptions: DemoMenuOption[] = (dbTemplate.demo_menu_options || [])
+      .sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0))
+      .map((opt: any) => ({
+        id: opt.option_id,
+        title: opt.title,
+        description: opt.description,
+      }));
+
+    const sampleResponses: Record<string, (biz: string) => string> = {};
+    if (Array.isArray(dbTemplate.demo_sample_responses)) {
+      dbTemplate.demo_sample_responses.forEach((resp: any) => {
+        sampleResponses[resp.option_id] = (biz: string) =>
+          compileTemplateString(resp.response_template, biz, mainNeed);
+      });
+    }
+
+    return {
+      key: dbTemplate.key,
+      label: dbTemplate.label,
+      icon: dbTemplate.icon,
+      existingDemoId: dbTemplate.existing_demo_id || null,
+      welcomeMessage: (biz: string, need?: string) =>
+        compileTemplateString(dbTemplate.welcome_message_template, biz, need || mainNeed),
+      menuBody: (biz: string) =>
+        compileTemplateString(dbTemplate.menu_body_template, biz, mainNeed),
+      menuOptions,
+      relatedDemoIds: dbTemplate.related_demo_keys || [],
+      sampleResponses,
+      dataFields: dbTemplate.data_fields || [],
+      agentHandover: (biz: string) =>
+        compileTemplateString(dbTemplate.agent_handover_template, biz, mainNeed),
+    };
+  } catch (err) {
+    safeErrorLog("resolveTemplate.catch", err);
+    return getTemplate(key); // Gracefully return synchronous fallback on exception
+  }
+}
+
+// ─────────────────────────────────────────────
+// PUBLIC REGISTRY FALLBACK API
+// ─────────────────────────────────────────────
+
+/** Get a template by key synchronously. Falls back to 'other'. */
 export function getTemplate(key: string): IndustryTemplate {
   const normalizedKey = typeof key === "string" ? key.trim().toLowerCase() : "";
   return T[normalizedKey] || T.other;
@@ -694,10 +790,6 @@ export function classifyCategory(input: string): string {
 
 /**
  * Get related industry templates.
- *
- * relatedDemoIds now contains template keys, not legacy demo IDs.
- * This avoids selecting the wrong industry when several templates share
- * the same existingDemoId.
  */
 export function getRelatedTemplates(
   categoryKey: string
