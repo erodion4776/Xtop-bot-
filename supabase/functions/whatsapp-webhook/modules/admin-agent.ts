@@ -2,7 +2,7 @@
 // Private technical, diagnostic, and secure Lead Assistant (Lizzy)
 // Enforces strict verification checks, ₦100k minimum qualifying threshold,
 // redacted customer PII, explicit two-step approvals, and robust auditing.
-// Fully button and list-menu driven for absolute mobile convenience.
+// Fully button, list-menu, and text-command driven for mobile efficiency.
 
 import {
   getSupabaseClient,
@@ -11,6 +11,7 @@ import {
   updateQuotation,
   createAgentRequest,
   logSalesEvent,
+  safeErrorLog,
 } from "../database.ts";
 
 import {
@@ -59,8 +60,10 @@ export function isAdminAgentTrigger(
   text: string,
   interactiveId = "",
 ): boolean {
+  const clean = text.trim().toLowerCase();
   return (
-    text.trim().toLowerCase() === "lizzy" ||
+    clean === "lizzy" ||
+    clean === "admin" ||
     interactiveId === "admin_agent_open" ||
     interactiveId === "admin_agent_menu"
   );
@@ -68,13 +71,13 @@ export function isAdminAgentTrigger(
 
 /**
  * Renders Lizzy's primary menu using WhatsApp native List selections.
- * Exactly 10 rows total, fitting WhatsApp constraints perfectly without clipping.
+ * Exactly 10 rows total, fitting WhatsApp Cloud API constraints perfectly.
  */
 export async function showAdminAgentMenu(phone: string): Promise<void> {
   const body =
     "🔐 *XTOP PRIVATE ADMIN ASSISTANT (LIZZY)*\n\n" +
     "Welcome, Authorized Admin.\n\n" +
-    "Use the dynamic menu below to assess high-value leads, approve client details, " +
+    "Use the interactive menu below to assess high-value leads, approve client details, " +
     "track quotations, check system health, or consult the AI advisory engine.";
 
   const sections = [
@@ -195,15 +198,12 @@ async function getBotStats(): Promise<string> {
    SECURE ADMIN LEAD ASSISTANT
    ========================================================= */
 
-/**
- * Clean up leading and trailing punctuation from IDs.
- */
 function sanitizeId(id: string): string {
   return id.replace(/[^a-zA-Z0-9-]/g, "").trim();
 }
 
 /**
- * Filter and format leads into a secure, redacted, non-sensitive list.
+ * Filter and format leads into an interactive WhatsApp list.
  */
 async function listLeads(phone: string, filterType: "ALL" | "PENDING" | "APPROVED"): Promise<void> {
   let query = supabase.from("leads").select("*");
@@ -227,6 +227,14 @@ async function listLeads(phone: string, filterType: "ALL" | "PENDING" | "APPROVE
 
   if (leads.length === 0) {
     await sendTextMessage(phone, `ℹ️ *No qualifying leads found matching filter: ${filterType}*`);
+    await sendButtonMessage(
+      phone,
+      "What would you like to explore next?",
+      [
+        makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+        makeButton("admin_leads", "💼 All Leads"),
+      ]
+    );
     return;
   }
 
@@ -265,7 +273,7 @@ async function listLeads(phone: string, filterType: "ALL" | "PENDING" | "APPROVE
 
 /**
  * Display secure details of a selected lead. Redacts customer PII before approval.
- * Dynamically renders custom action buttons depending on current approval state.
+ * Dynamically renders action buttons depending on approval state.
  */
 async function showLeadDetails(phone: string, inputId: string): Promise<void> {
   const leadId = sanitizeId(inputId);
@@ -324,18 +332,17 @@ async function showLeadDetails(phone: string, inputId: string): Promise<void> {
 
     await sendTextMessage(phone, details.join("\n"));
 
-    // RENDER INTERACTIVE DIRECT CHAT INITIATOR
     await sendButtonMessage(
       phone,
       "Select next step for this approved lead:",
       [
         makeButton(`admin_chat_link_${lead.id}`, "💬 Chat with Client"),
+        makeButton("admin_leads", "💼 View Leads"),
         makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
       ],
       "Lead Approved"
     );
 
-    // Audit contact disclosure access event
     await logSalesEvent(phone, "CONTACT_DISCLOSURE_ACCESSED", lead.id, {
       admin_phone: phone,
       contact_id: lead.contact_id,
@@ -349,12 +356,12 @@ async function showLeadDetails(phone: string, inputId: string): Promise<void> {
 
     await sendTextMessage(phone, details.join("\n"));
 
-    // RENDER INTERACTIVE SECURE APPROVAL INITIATOR
     await sendButtonMessage(
       phone,
       "Select next step for this pending lead:",
       [
         makeButton(`admin_approve_prep_${lead.id}`, "✅ Approve Lead"),
+        makeButton("admin_pending", "⏳ Pending List"),
         makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
       ],
       "Lead Pending"
@@ -363,10 +370,7 @@ async function showLeadDetails(phone: string, inputId: string): Promise<void> {
 }
 
 /**
- * Explicit two-step approval flow.
- * Steps:
- * 1. Admin triggers `Approve Lead` button. Lizzy prompts for confirmation using interactive choice buttons.
- * 2. Admin clicks `Confirm Approval` button. Lizzy persists approval and audits transaction.
+ * Explicit two-step approval flow with interactive confirmation buttons.
  */
 async function processLeadApproval(phone: string, inputId: string, isConfirm: boolean): Promise<void> {
   const leadId = sanitizeId(inputId);
@@ -388,7 +392,6 @@ async function processLeadApproval(phone: string, inputId: string, isConfirm: bo
     return;
   }
 
-  // Enforce Verified Estimate rule
   const minPrice = lead.estimated_min_price || 0;
   if (minPrice < MIN_QUALIFYING_PRICE) {
     await sendTextMessage(
@@ -407,7 +410,7 @@ async function processLeadApproval(phone: string, inputId: string, isConfirm: bo
   }
 
   if (!isConfirm) {
-    // Stage 1: Explicit Confirmation Step
+    // Stage 1: Explicit Confirmation Step with Buttons
     await sendTextMessage(phone, [
       `⏳ *CONFIRM LEAD APPROVAL*`,
       `----------------------------`,
@@ -431,7 +434,7 @@ async function processLeadApproval(phone: string, inputId: string, isConfirm: bo
     return;
   }
 
-  // Stage 2: Confirmed Approval Persisted securely to DB
+  // Stage 2: Confirmed Approval Persisted to Database (Fail-Closed)
   try {
     const updatedRequirements = {
       ...(lead.requirements_json || {}),
@@ -440,7 +443,6 @@ async function processLeadApproval(phone: string, inputId: string, isConfirm: bo
       approved_by_admin: phone,
     };
 
-    // Fail Closed: Verify the write executes successfully before revealing anything
     const { data: updatedLead, error: updateError } = await supabase
       .from("leads")
       .update({
@@ -458,7 +460,6 @@ async function processLeadApproval(phone: string, inputId: string, isConfirm: bo
       return;
     }
 
-    // Insert to Agent Requests as an immutable audit record
     await createAgentRequest(
       lead.contact_id,
       "QUOTATION",
@@ -469,7 +470,6 @@ async function processLeadApproval(phone: string, inputId: string, isConfirm: bo
       `Admin Phone: ${phone} approved Lead ID ${lead.id}. Value: ${formatNaira(lead.estimated_min_price || 0)}`
     );
 
-    // Insert sales events logs
     await logSalesEvent(phone, "ADMIN_LEAD_APPROVED", lead.id, {
       admin_phone: phone,
       value_min: lead.estimated_min_price,
@@ -496,6 +496,7 @@ async function processLeadApproval(phone: string, inputId: string, isConfirm: bo
       "What would you like to do next?",
       [
         makeButton(`admin_chat_link_${lead.id}`, "💬 Chat with Client"),
+        makeButton("admin_leads", "💼 View Leads"),
         makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
       ],
       "Lead Approved"
@@ -509,7 +510,6 @@ async function processLeadApproval(phone: string, inputId: string, isConfirm: bo
 
 /**
  * Chat with Client Link Generator.
- * Resolves the client's verified phone number and generates a standard Click-to-Chat link.
  */
 async function initializeClientChat(phone: string, inputId: string): Promise<void> {
   const leadId = sanitizeId(inputId);
@@ -531,7 +531,6 @@ async function initializeClientChat(phone: string, inputId: string): Promise<voi
     return;
   }
 
-  // Verify approval status before releasing phone link
   const isApproved = lead.requirements_json?.admin_approved === "true" || lead.requirements_json?.admin_approved === true;
   if (!isApproved) {
     await sendTextMessage(phone, `❌ *Access Denied:* You must approve this lead first before generating a client chat link.`);
@@ -549,7 +548,6 @@ async function initializeClientChat(phone: string, inputId: string): Promise<voi
     return;
   }
 
-  // Parse and normalize international format cleanly (e.g. 23480...)
   const normalizedClientPhone = normalizePhone(contact.phone);
   if (!/^\d{10,15}$/.test(normalizedClientPhone)) {
     await sendTextMessage(phone, `❌ *Error:* Client phone format is invalid or malformed: "${contact.phone}"`);
@@ -569,7 +567,6 @@ async function initializeClientChat(phone: string, inputId: string): Promise<voi
   const encodedMessage = encodeURIComponent(messageText);
   const clickToChatUrl = `https://wa.me/${normalizedClientPhone}?text=${encodedMessage}`;
 
-  // Log contact details request event in audit trail
   await logSalesEvent(phone, "CHAT_LINK_GENERATED", lead.id, {
     admin_phone: phone,
     client_phone: normalizedClientPhone,
@@ -585,15 +582,15 @@ async function initializeClientChat(phone: string, inputId: string): Promise<voi
     `🔗 *WhatsApp Direct Link:*`,
     clickToChatUrl,
     "",
-    `⚠️ _Clicking the link will launch the WhatsApp chat on your device. Lizzy does not send this automatically. You can edit the text before sending._`,
+    `⚠️ _Clicking the link will launch the WhatsApp chat on your device. Lizzy does not send this automatically. You can review and edit the text before sending._`,
   ].join("\n"));
 
   await sendButtonMessage(
     phone,
-    "Actions:",
+    "Navigation Actions:",
     [
-      makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
       makeButton("admin_leads", "💼 View Leads"),
+      makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
     ]
   );
 }
@@ -602,9 +599,6 @@ async function initializeClientChat(phone: string, inputId: string): Promise<voi
    QUOTATION MANAGEMENT MODULE
    ========================================================= */
 
-/**
- * List all available quotations in the system with their status tags.
- */
 async function listQuotations(phone: string): Promise<string> {
   const { data: quotes, error } = await supabase
     .from("quotations")
@@ -645,9 +639,6 @@ async function listQuotations(phone: string): Promise<string> {
   ].join("\n");
 }
 
-/**
- * Approve a draft quotation.
- */
 async function approveDraftQuotation(phone: string, inputId: string): Promise<string> {
   const quoteId = sanitizeId(inputId);
   if (!quoteId) return "⚠️ Please provide a valid quotation ID.";
@@ -683,7 +674,6 @@ async function approveDraftQuotation(phone: string, inputId: string): Promise<st
     return "❌ *Transaction Failed:* Could not write the quotation approval to the database.";
   }
 
-  // Log quotation approval in sales event audits
   await logSalesEvent(phone, "ADMIN_QUOTATION_APPROVED", quote.lead_id, {
     admin_phone: phone,
     quotation_number: quote.quotation_number,
@@ -993,7 +983,7 @@ You can advise on TypeScript, Deno, Supabase, WhatsApp API, GitHub, debugging, a
 }
 
 /* =========================================================
-   COMMAND ROUTER
+   COMMAND ROUTER (HYBRID: LISTS + BUTTONS + TEXT COMMANDS)
    ========================================================= */
 
 export async function handleAdminAgent(
@@ -1005,7 +995,7 @@ export async function handleAdminAgent(
   const inputRaw = (interactiveId || text).trim();
   const command = inputRaw.toLowerCase();
 
-  // Validate requester is authorized admin before executing any admin action
+  // Guard: Validate requester is authorized admin
   if (!isAdminPhone(phone)) {
     console.warn(`[AdminAgent] Unauthorized access attempt blocked from: ${phone}`);
     return;
@@ -1031,12 +1021,28 @@ export async function handleAdminAgent(
   if (["admin_status", "status", "health", "check status", "admin_agent_status"].includes(command)) {
     await sendTextMessage(phone, "Checking database connectivity...");
     await sendTextMessage(phone, await checkBotStatus());
+    await sendButtonMessage(
+      phone,
+      "Diagnostics Navigation:",
+      [
+        makeButton("admin_stats", "📊 Stats"),
+        makeButton("admin_agent_menu", "🏠 Menu"),
+      ]
+    );
     return;
   }
 
   if (["admin_stats", "stats", "statistics", "admin_agent_stats"].includes(command)) {
     await sendTextMessage(phone, "Reading available bot statistics...");
     await sendTextMessage(phone, await getBotStats());
+    await sendButtonMessage(
+      phone,
+      "Diagnostics Navigation:",
+      [
+        makeButton("admin_leads", "💼 View Leads"),
+        makeButton("admin_agent_menu", "🏠 Menu"),
+      ]
+    );
     return;
   }
 
@@ -1075,7 +1081,7 @@ export async function handleAdminAgent(
     return;
   }
 
-  // Handle dynamic list inspect clicks
+  // Handle dynamic list inspect clicks (from interactive list)
   if (command.startsWith("admin_inspect_")) {
     const leadId = inputRaw.substring("admin_inspect_".length).trim();
     await sendTextMessage(phone, "Retrieving lead details...");
