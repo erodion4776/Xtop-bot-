@@ -25,7 +25,7 @@ export function safeErrorLog(context: string, error: unknown): void {
 
 /**
  * Helper to validate if a string is a genuine UUID format to prevent 
- * PostgreSQL cast type crashes (e.g. converting text to uuid).
+ * PostgreSQL cast type crashes.
  */
 function toValidUUID(val?: string | null): string | null {
   if (!val || typeof val !== "string") return null;
@@ -751,7 +751,7 @@ export async function createAgentRequest(
       safeErrorLog("createAgentRequest.attempt1", error);
     }
 
-    // Attempt 2: Unlinked fallback retry (Bypasses foreign keys if database cache mismatch occurs)
+    // Attempt 2: Unlinked fallback retry
     const fallbackPayload = {
       request_type: requestType || "QUOTATION",
       message: msgText,
@@ -1393,7 +1393,8 @@ export async function updateDemoSession(
   fields: Partial<DemoSession>
 ): Promise<DemoSession | null> {
   const sb = getSupabaseClient();
-  const { data, error } = await sb.from("demo_sessions")
+  const { data, error } = await sb
+    .from("demo_sessions")
     .update(fields).eq("id", sessionId).select("*").single();
   if (error) { safeErrorLog("updateDemoSession", error); return null; }
   return data as DemoSession;
@@ -1541,7 +1542,7 @@ export async function logWebsiteCheck(
   } catch (e) { safeErrorLog("logWebsiteCheck", e); }
 }
 
-export async function logWebsiteDomainCheck(
+export async function logDnsCheck(
   phone: string, domain: string,
   recordType: string, records: any[]
 ): Promise<void> {
@@ -1550,8 +1551,11 @@ export async function logWebsiteDomainCheck(
     await sb.from("dns_checks").insert({
       phone, domain, record_type: recordType, records,
     });
-  } catch (e) { safeErrorLog("logWebsiteDomainCheck", e); }
+  } catch (e) { safeErrorLog("logDnsCheck", e); }
 }
+
+// Alias for compatibility
+export const logWebsiteDomainCheck = logDnsCheck;
 
 // ==========================================
 // 17. Flight Checker Logging
