@@ -67,7 +67,7 @@ const T: Record<string, IndustryTemplate> = {
         "⚠️ _No call has been placed and no staff member has been notified._",
       demo_staff: () =>
         "💬 *Live Chat Demonstration*\n\n" +
-        "\u201cWelcome! How can we assist you today?\u201d\n\n" +
+        "“Welcome! How can we assist you today?”\n\n" +
         "⚠️ _This is a simulation, not a live staff connection._",
     },
     dataFields: ["business_name", "room_count", "location", "star_rating"],
@@ -319,7 +319,7 @@ const T: Record<string, IndustryTemplate> = {
         "⚠️ _No real delivery is being tracked._",
       demo_support: () =>
         "💬 *Support Simulation*\n\n" +
-        "\u201cWelcome to customer support! How can we help?\u201d\n\n" +
+        "“Welcome to customer support! How can we help?”\n\n" +
         "⚠️ _This is not a live support conversation._",
     },
     dataFields: ["business_name", "product_categories", "branch_count", "delivery_area"],
@@ -356,10 +356,13 @@ const T: Record<string, IndustryTemplate> = {
         "🍕 Margherita pizza — ₦5,000\n" +
         "🥤 Chapman — ₦1,500\n\n" +
         "⚠️ _Illustrative menu and prices only._",
-      demo_order: () =>
-        "🍔 *Sample Order Summary*\n\n" +
-        "2 × Jollof rice + 1 × Chapman\nIllustrative total: ₦8,500\n\n" +
-        "⚠️ _No real order was placed and no payment was taken._",
+      demo_order: (b) =>
+        `🍔 *${b} — Interactive Simulated Checkout*\n\n` +
+        "Simulate placing a food order of *₦8,500*.\n\n" +
+        "Select your payment option:\n" +
+        "• Option A: Paystack Simulated Card Payment\n" +
+        "• Option B: Simulated Instant Bank Transfer\n\n" +
+        "💡 _Tap one of the checkout simulation choices below to experience the process!_",
       demo_reserve: () =>
         "📅 *Sample Table Reservation*\n\n" +
         "Date: Sample Saturday\nTime: 7 PM\nGuests: 4\n\n" +
@@ -445,7 +448,7 @@ const T: Record<string, IndustryTemplate> = {
         "⚠️ _No appointment has been booked. No doctor or time has been confirmed._",
       demo_reminder: () =>
         "🔔 *Sample Reminder Message*\n\n" +
-        "\u201cThis is a sample reminder for an upcoming appointment. Please contact your clinic to confirm your details.\u201d\n\n" +
+        "“This is a sample reminder for an upcoming appointment. Please contact your clinic to confirm your details.”\n\n" +
         "⚠️ _No reminder has been sent to a patient._",
       demo_contact: () =>
         "📞 *Sample Clinic Contact Request*\n\n" +
@@ -634,7 +637,7 @@ export function compileTemplateString(
 ): string {
   if (!templateStr) return "";
   return templateStr
-    .replace(/\\n/g, "\n")
+    .replace(/\\n/gi, "\n")
     .replace(/\{\{business_name\}\}/gi, bizName)
     .replace(/\{\{main_need\}\}/gi, mainNeed || "General Enquiry");
 }
@@ -792,4 +795,53 @@ export function classifyCategory(input: string): string {
   }
 
   if (containsPhrase(s, "beauty") || containsPhrase(s, "hair") ||
-      containsPhrase(s, "bar
+      containsPhrase(s, "barber") || containsPhrase(s, "nail")) {
+    return "beauty";
+  }
+
+  return "other";
+}
+
+/**
+ * Get related industry templates.
+ */
+export function getRelatedTemplates(
+  categoryKey: string
+): { key: string; label: string; icon: string }[] {
+  const template = getTemplate(categoryKey);
+  const seen = new Set<string>([template.key]);
+  const related: { key: string; label: string; icon: string }[] = [];
+
+  for (const key of template.relatedDemoIds) {
+    const match = T[key];
+
+    // Ignore unknown keys and prevent duplicate/self recommendations.
+    if (!match || seen.has(match.key)) continue;
+
+    seen.add(match.key);
+    related.push({
+      key: match.key,
+      label: match.label,
+      icon: match.icon,
+    });
+  }
+
+  return related;
+}
+
+/**
+ * Resolve the template key safely from context parameters.
+ */
+export function getTemplateKey(context: Record<string, unknown>): string {
+  const selected = context.demoTemplate;
+  if (typeof selected === "string" && selected.trim()) {
+    return selected.trim().toLowerCase();
+  }
+
+  const category =
+    typeof context.businessCategory === "string"
+      ? context.businessCategory
+      : "";
+
+  return classifyCategory(category);
+}
