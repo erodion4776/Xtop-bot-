@@ -1,6 +1,7 @@
 // supabase/functions/whatsapp-webhook/modules/demos/templates.ts
 // Scalable business template registry & database-backed template engine.
-// All template strings are compiled dynamically with strict placeholder mappings.
+// 14 industry categories with dynamic DB resolution and synchronous fallback.
+// All sample responses are explicitly labelled as demonstrations.
 
 import { getSupabaseClient, safeErrorLog } from "../../database.ts";
 
@@ -25,7 +26,7 @@ export interface IndustryTemplate {
 }
 
 // ─────────────────────────────────────────────
-// LOCAL SYNCHRONOUS FALLBACK REGISTRY
+// TEMPLATE REGISTRY (SYNCHRONOUS FALLBACK)
 // ─────────────────────────────────────────────
 
 const T: Record<string, IndustryTemplate> = {
@@ -36,10 +37,10 @@ const T: Record<string, IndustryTemplate> = {
     existingDemoId: "appointment_booking",
     welcomeMessage: (b, n) =>
       `Welcome to the *${b}* hotel demo! 🏨\n\n` +
-      `Explore how guests could browse room options, enquire about availability, ` +
-      `and request reservations through WhatsApp.` +
+      "Explore how guests could browse room options, enquire about availability, " +
+      "and request reservations through WhatsApp." +
       (n ? `\n\n*Your Main Need:* ${n}` : "") +
-      `\n\n⚠️ _Demo only. Sample data is illustrative; no real bookings are made._`,
+      "\n\n⚠️ _Demo only. Sample data is illustrative; no real bookings are made._",
     menuBody: (b) => `*${b} — Hotel Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_rooms", title: "🛏️ View Rooms", description: "Sample room types and rates" },
@@ -66,7 +67,7 @@ const T: Record<string, IndustryTemplate> = {
         "⚠️ _No call has been placed and no staff member has been notified._",
       demo_staff: () =>
         "💬 *Live Chat Demonstration*\n\n" +
-        "“Welcome! How can we assist you today?”\n\n" +
+        "\u201cWelcome! How can we assist you today?\u201d\n\n" +
         "⚠️ _This is a simulation, not a live staff connection._",
     },
     dataFields: ["business_name", "room_count", "location", "star_rating"],
@@ -80,10 +81,10 @@ const T: Record<string, IndustryTemplate> = {
     existingDemoId: "appointment_booking",
     welcomeMessage: (b, n) =>
       `Welcome to the *${b}* short-let demo! 🏠\n\n` +
-      `Explore how guests could browse apartments, enquire about dates, ` +
-      `and submit booking requests through WhatsApp.` +
+      "Explore how guests could browse apartments, enquire about dates, " +
+      "and submit booking requests through WhatsApp." +
       (n ? `\n\n*Your Main Need:* ${n}` : "") +
-      `\n\n⚠️ _Demo only. Sample listings and rates are illustrative._`,
+      "\n\n⚠️ _Demo only. Sample listings and rates are illustrative._",
     menuBody: (b) => `*${b} — Short-Let Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_apartments", title: "🏘️ View Apartments", description: "Sample listings and rates" },
@@ -123,10 +124,10 @@ const T: Record<string, IndustryTemplate> = {
     existingDemoId: null,
     welcomeMessage: (b, n) =>
       `Welcome to the *${b}* education demo! 🎓\n\n` +
-      `Explore how parents and students could enquire about admissions, ` +
-      `check school information, and receive announcements through WhatsApp.` +
+      "Explore how parents and students could enquire about admissions, " +
+      "check school information, and receive announcements through WhatsApp." +
       (n ? `\n\n*Your Main Need:* ${n}` : "") +
-      `\n\n⚠️ _Demo only. School information and figures are sample data._`,
+      "\n\n⚠️ _Demo only. School information and figures are sample data._",
     menuBody: (b) => `*${b} — School Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_admissions", title: "📝 Admissions", description: "Sample requirements" },
@@ -164,10 +165,10 @@ const T: Record<string, IndustryTemplate> = {
     existingDemoId: "appointment_booking",
     welcomeMessage: (b, n) =>
       `Welcome to the *${b}* event demo! 🎉\n\n` +
-      `Explore how clients could view venues, compare packages, ` +
-      `and submit booking enquiries through WhatsApp.` +
+      "Explore how clients could view venues, compare packages, " +
+      "and submit booking enquiries through WhatsApp." +
       (n ? `\n\n*Your Main Need:* ${n}` : "") +
-      `\n\n⚠️ _Demo only. Venue details and prices are illustrative._`,
+      "\n\n⚠️ _Demo only. Venue details and prices are illustrative._",
     menuBody: (b) => `*${b} — Event Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_venues", title: "🏛️ View Venues", description: "Sample halls and capacities" },
@@ -206,10 +207,10 @@ const T: Record<string, IndustryTemplate> = {
     existingDemoId: "auto_workshop",
     welcomeMessage: (b, n) =>
       `Welcome to the *${b}* auto demo! 🚗\n\n` +
-      `Explore how customers could browse vehicles, request test drives, ` +
-      `and submit purchase enquiries through WhatsApp.` +
+      "Explore how customers could browse vehicles, request test drives, " +
+      "and submit purchase enquiries through WhatsApp." +
       (n ? `\n\n*Your Main Need:* ${n}` : "") +
-      `\n\n⚠️ _Demo only. Vehicles and prices are illustrative._`,
+      "\n\n⚠️ _Demo only. Vehicles and prices are illustrative._",
     menuBody: (b) => `*${b} — Auto Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_inventory", title: "🚘 View Vehicles", description: "Sample catalogue" },
@@ -248,10 +249,10 @@ const T: Record<string, IndustryTemplate> = {
     existingDemoId: "real_estate",
     welcomeMessage: (b, n) =>
       `Welcome to the *${b}* property demo! 🏗️\n\n` +
-      `Explore how clients could browse property listings, request inspections, ` +
-      `and submit enquiries through WhatsApp.` +
+      "Explore how clients could browse property listings, request inspections, " +
+      "and submit enquiries through WhatsApp." +
       (n ? `\n\n*Your Main Need:* ${n}` : "") +
-      `\n\n⚠️ _Demo only. Listings and prices are illustrative._`,
+      "\n\n⚠️ _Demo only. Listings and prices are illustrative._",
     menuBody: (b) => `*${b} — Real Estate Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_listings", title: "🏘️ View Properties", description: "Sample listings" },
@@ -289,10 +290,10 @@ const T: Record<string, IndustryTemplate> = {
     existingDemoId: "online_store",
     welcomeMessage: (b, n) =>
       `Welcome to the *${b}* retail demo! 🛒\n\n` +
-      `Explore how customers could browse a catalogue, submit orders, ` +
-      `and enquire about deliveries through WhatsApp.` +
+      "Explore how customers could browse a catalogue, submit orders, " +
+      "and enquire about deliveries through WhatsApp." +
       (n ? `\n\n*Your Main Need:* ${n}` : "") +
-      `\n\n⚠️ _Demo only. Product details and prices are illustrative._`,
+      "\n\n⚠️ _Demo only. Product details and prices are illustrative._",
     menuBody: (b) => `*${b} — Retail Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_catalogue", title: "📦 Catalogue", description: "Browse sample products" },
@@ -318,7 +319,7 @@ const T: Record<string, IndustryTemplate> = {
         "⚠️ _No real delivery is being tracked._",
       demo_support: () =>
         "💬 *Support Simulation*\n\n" +
-        "“Welcome to customer support! How can we help?”\n\n" +
+        "\u201cWelcome to customer support! How can we help?\u201d\n\n" +
         "⚠️ _This is not a live support conversation._",
     },
     dataFields: ["business_name", "product_categories", "branch_count", "delivery_area"],
@@ -332,14 +333,14 @@ const T: Record<string, IndustryTemplate> = {
     existingDemoId: "restaurant",
     welcomeMessage: (b, n) =>
       `🍽️ Welcome to the *${b}* WhatsApp demo!\n\n` +
-      `See how your restaurant could use WhatsApp to:\n` +
-      `• Display food menus and catalogs.\n` +
-      `• Answer food and pricing enquiries.\n` +
-      `• Receive customer booking requests.\n` +
-      `• Guide customers through interactive food ordering.` +
+      "See how your restaurant could use WhatsApp to:\n" +
+      "• Display food menus and catalogs.\n" +
+      "• Answer food and pricing enquiries.\n" +
+      "• Receive customer booking requests.\n" +
+      "• Guide customers through interactive food ordering." +
       (n ? `\n\n*Your Main Need:* ${n}` : "") +
-      `\n\n⚠️ _This is an interactive demonstration. No real orders or bookings will be created._`,
-    menuBody: (b) => `*${b} — Dynamic Food Catalog*\n\nWhat would you like to explore?`,
+      "\n\n⚠️ _This is an interactive demonstration. No real orders or bookings will be created._",
+    menuBody: (b) => `*${b} — Restaurant Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_menu", title: "📋 View Menu", description: "Sample food and prices" },
       { id: "demo_order", title: "🍔 Order Food", description: "Simulate an order" },
@@ -378,10 +379,10 @@ const T: Record<string, IndustryTemplate> = {
     existingDemoId: "custom_automation",
     welcomeMessage: (b, n) =>
       `Welcome to the *${b}* agency demo! 💻\n\n` +
-      `Explore how clients could review services, request quotations, ` +
-      `and submit project briefs through WhatsApp.` +
+      "Explore how clients could review services, request quotations, " +
+      "and submit project briefs through WhatsApp." +
       (n ? `\n\n*Your Main Need:* ${n}` : "") +
-      `\n\n⚠️ _Demo only. Services and prices are illustrative._`,
+      "\n\n⚠️ _Demo only. Services and prices are illustrative._",
     menuBody: (b) => `*${b} — Agency Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_services", title: "⚙️ Services", description: "Sample offerings" },
@@ -421,10 +422,10 @@ const T: Record<string, IndustryTemplate> = {
     existingDemoId: "appointment_booking",
     welcomeMessage: (b, n) =>
       `Welcome to the *${b}* healthcare demo! 🏥\n\n` +
-      `Explore how patients could view clinic information, enquire about appointments, ` +
-      `and receive reminders through WhatsApp.` +
+      "Explore how patients could view clinic information, enquire about appointments, " +
+      "and receive reminders through WhatsApp." +
       (n ? `\n\n*Your Main Need:* ${n}` : "") +
-      `\n\n⚠️ _Demo only. This system does not provide medical advice or book real appointments._`,
+      "\n\n⚠️ _Demo only. This system does not provide medical advice or book real appointments._",
     menuBody: (b) => `*${b} — Clinic Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_departments", title: "🩺 Departments", description: "Sample specialties" },
@@ -444,7 +445,7 @@ const T: Record<string, IndustryTemplate> = {
         "⚠️ _No appointment has been booked. No doctor or time has been confirmed._",
       demo_reminder: () =>
         "🔔 *Sample Reminder Message*\n\n" +
-        "“This is a sample reminder for an upcoming appointment. Please contact your clinic to confirm your details.”\n\n" +
+        "\u201cThis is a sample reminder for an upcoming appointment. Please contact your clinic to confirm your details.\u201d\n\n" +
         "⚠️ _No reminder has been sent to a patient._",
       demo_contact: () =>
         "📞 *Sample Clinic Contact Request*\n\n" +
@@ -461,10 +462,10 @@ const T: Record<string, IndustryTemplate> = {
     existingDemoId: "crm",
     welcomeMessage: (b, n) =>
       `Welcome to the *${b}* professional services demo! 💼\n\n` +
-      `Explore how clients could review services, request consultations, ` +
-      `and submit enquiries through WhatsApp.` +
+      "Explore how clients could review services, request consultations, " +
+      "and submit enquiries through WhatsApp." +
       (n ? `\n\n*Your Main Need:* ${n}` : "") +
-      `\n\n⚠️ _Demo only. Service details are illustrative._`,
+      "\n\n⚠️ _Demo only. Service details are illustrative._",
     menuBody: (b) => `*${b} — Services Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_services", title: "📋 Services", description: "Sample offerings" },
@@ -500,10 +501,10 @@ const T: Record<string, IndustryTemplate> = {
     existingDemoId: "appointment_booking",
     welcomeMessage: (b, n) =>
       `Welcome to the *${b}* beauty demo! 💇\n\n` +
-      `Explore how clients could view services, enquire about appointments, ` +
-      `and receive aftercare information through WhatsApp.` +
+      "Explore how clients could view services, enquire about appointments, " +
+      "and receive aftercare information through WhatsApp." +
       (n ? `\n\n*Your Main Need:* ${n}` : "") +
-      `\n\n⚠️ _Demo only. Services and prices are illustrative._`,
+      "\n\n⚠️ _Demo only. Services and prices are illustrative._",
     menuBody: (b) => `*${b} — Beauty Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_services", title: "💅 Services & Prices", description: "Sample service menu" },
@@ -542,10 +543,10 @@ const T: Record<string, IndustryTemplate> = {
     existingDemoId: "inventory",
     welcomeMessage: (b, n) =>
       `Welcome to the *${b}* logistics demo! 🚚\n\n` +
-      `Explore how customers could request pickups, enquire about delivery costs, ` +
-      `and track shipments through WhatsApp.` +
+      "Explore how customers could request pickups, enquire about delivery costs, " +
+      "and track shipments through WhatsApp." +
       (n ? `\n\n*Your Main Need:* ${n}` : "") +
-      `\n\n⚠️ _Demo only. Prices and tracking information are illustrative._`,
+      "\n\n⚠️ _Demo only. Prices and tracking information are illustrative._",
     menuBody: (b) => `*${b} — Logistics Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_quote", title: "💰 Get a Quote", description: "Sample delivery pricing" },
@@ -585,10 +586,10 @@ const T: Record<string, IndustryTemplate> = {
     existingDemoId: "business_calculator",
     welcomeMessage: (b, n) =>
       `Welcome to the *${b}* business demo! 🏢\n\n` +
-      `Explore how customers could browse services, submit enquiries, ` +
-      `and receive information about a business through WhatsApp.` +
+      "Explore how customers could browse services, submit enquiries, " +
+      "and receive information about a business through WhatsApp." +
       (n ? `\n\n*Your Main Need:* ${n}` : "") +
-      `\n\n⚠️ _Demo only. All sample content is illustrative._`,
+      "\n\n⚠️ _Demo only. All sample content is illustrative._",
     menuBody: (b) => `*${b} — Business Demo*\n\nWhat would you like to explore?`,
     menuOptions: [
       { id: "demo_services", title: "📋 Services", description: "Sample offerings" },
@@ -618,28 +619,41 @@ const T: Record<string, IndustryTemplate> = {
 };
 
 // ─────────────────────────────────────────────
-// COMPILER CORE: COMPILING THE DYNAMIC PLACEHOLDERS
+// COMPILER CORE: DYNAMIC PLACEHOLDER SUBSTITUTION
 // ─────────────────────────────────────────────
 
+/**
+ * Compile a template string by replacing {{business_name}} and {{main_need}}
+ * placeholders with actual customer values. Also converts escaped \n sequences
+ * from database storage into real newline characters for WhatsApp rendering.
+ */
 export function compileTemplateString(
   templateStr: string,
   bizName: string,
-  mainNeed?: string
+  mainNeed?: string,
 ): string {
   if (!templateStr) return "";
   return templateStr
+    .replace(/\\n/g, "\n")
     .replace(/\{\{business_name\}\}/gi, bizName)
     .replace(/\{\{main_need\}\}/gi, mainNeed || "General Enquiry");
 }
 
 // ─────────────────────────────────────────────
-// HIGHLY OPTIMIZED ASYNC DATABASE RESOLVER (SCALABLE TO 50K+)
+// ASYNC DATABASE RESOLVER (SCALABLE TO 50K+)
 // ─────────────────────────────────────────────
 
+/**
+ * Resolve a template by key from the database. Falls back to the local
+ * in-memory registry if the database query fails or returns no result.
+ *
+ * Uses a single indexed query on demo_templates(key, is_active) for
+ * O(log n) lookup even with 50,000+ configurations.
+ */
 export async function resolveTemplate(
   key: string,
   bizName: string,
-  mainNeed?: string
+  mainNeed?: string,
 ): Promise<IndustryTemplate> {
   const normalizedKey = typeof key === "string" ? key.trim().toLowerCase() : "";
   const sb = getSupabaseClient();
@@ -654,10 +668,9 @@ export async function resolveTemplate(
 
     if (error || !dbTemplate) {
       if (error) safeErrorLog("resolveTemplate.dbFetch", error);
-      return getTemplate(key); // Fallback cleanly to local in-memory template
+      return getTemplate(key);
     }
 
-    // Dynamic reconstruction of database-backed configs
     const menuOptions: DemoMenuOption[] = (dbTemplate.demo_menu_options || [])
       .sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0))
       .map((opt: any) => ({
@@ -692,7 +705,7 @@ export async function resolveTemplate(
     };
   } catch (err) {
     safeErrorLog("resolveTemplate.catch", err);
-    return getTemplate(key); // Gracefully return synchronous fallback on exception
+    return getTemplate(key);
   }
 }
 
@@ -745,7 +758,6 @@ export function classifyCategory(input: string): string {
   const s = normalizeCategoryInput(typeof input === "string" ? input : "");
   if (!s) return "other";
 
-  // More specific categories are checked before broad categories.
   const rules: [string[], string][] = [
     [["short-let", "shortlet", "short let", "airbnb", "apartment rental", "furnished apartment"], "shortlet"],
     [["real estate", "property", "estate agent", "realtor", "housing", "land sale", "property sales", "apartment sale"], "real_estate"],
@@ -768,7 +780,6 @@ export function classifyCategory(input: string): string {
     }
   }
 
-  // Handle short terms only as whole words.
   if (containsPhrase(s, "car") || containsPhrase(s, "auto") ||
       containsPhrase(s, "vehicle") || containsPhrase(s, "motor")) {
     return "car_dealer";
@@ -781,36 +792,4 @@ export function classifyCategory(input: string): string {
   }
 
   if (containsPhrase(s, "beauty") || containsPhrase(s, "hair") ||
-      containsPhrase(s, "barber") || containsPhrase(s, "nail")) {
-    return "beauty";
-  }
-
-  return "other";
-}
-
-/**
- * Get related industry templates.
- */
-export function getRelatedTemplates(
-  categoryKey: string
-): { key: string; label: string; icon: string }[] {
-  const template = getTemplate(categoryKey);
-  const seen = new Set<string>([template.key]);
-  const related: { key: string; label: string; icon: string }[] = [];
-
-  for (const key of template.relatedDemoIds) {
-    const match = T[key];
-
-    // Ignore unknown keys and prevent duplicate/self recommendations.
-    if (!match || seen.has(match.key)) continue;
-
-    seen.add(match.key);
-    related.push({
-      key: match.key,
-      label: match.label,
-      icon: match.icon,
-    });
-  }
-
-  return related;
-}
+      containsPhrase(s, "bar
