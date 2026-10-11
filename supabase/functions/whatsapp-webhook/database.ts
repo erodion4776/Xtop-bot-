@@ -23,6 +23,16 @@ export function safeErrorLog(context: string, error: unknown): void {
   console.error(`[DB Error - ${context}]:`, error);
 }
 
+/**
+ * Helper to validate if a string is a genuine UUID format to prevent 
+ * PostgreSQL cast type crashes (e.g. converting text to uuid).
+ */
+function toValidUUID(val?: string | null): string | null {
+  if (!val || typeof val !== "string") return null;
+  const clean = val.trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean) ? clean : null;
+}
+
 // ==========================================
 // 2. Types & Interfaces
 // ==========================================
@@ -113,6 +123,7 @@ export interface AgentRequest {
   contact_id?: string | null;
   request_type: string;
   message: string;
+  description?: string;
   priority?: string;
   lead_id?: string | null;
   quotation_id?: string | null;
@@ -298,7 +309,7 @@ export async function updateConversation(
 }
 
 // ==========================================
-// 4. Message Storage (Fixed for missing 'body' column)
+// 4. Message Storage
 // ==========================================
 export async function storeMessage(
   contactId?: string,
@@ -689,15 +700,8 @@ export async function getActiveMagazineConfig(): Promise<MagazineConfig | null> 
 }
 
 // ==========================================
-// 10. Agent & Support Requests
+// 10. Agent & Support Requests (Resilient UUID & Fail-Safe Fallbacks)
 // ==========================================
-
-// Helper: Validate string is a genuine UUID format
-function toValidUUID(val?: string | null): string | null {
-  if (!val || typeof val !== "string") return null;
-  const clean = val.trim();
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean) ? clean : null;
-}
 
 export async function createAgentRequest(
   contactId?: string,
@@ -711,7 +715,7 @@ export async function createAgentRequest(
   const sb = getSupabaseClient();
   const msgText = message || summary || "Customer Agent Request";
 
-  // Build primary payload
+  // Build primary payload with strict UUID formats
   const payload: Record<string, unknown> = {
     request_type: requestType || "QUOTATION",
     message: msgText,
@@ -732,7 +736,7 @@ export async function createAgentRequest(
   if (summary) payload.summary = summary;
 
   try {
-    // Attempt 1: Full payload insert
+    // Attempt 1: Safe fully-linked insertion
     const { data, error } = await sb
       .from("agent_requests")
       .insert(payload)
@@ -747,7 +751,7 @@ export async function createAgentRequest(
       safeErrorLog("createAgentRequest.attempt1", error);
     }
 
-    // Attempt 2: Unlinked fallback insert (removes IDs if any ID failed validation)
+    // Attempt 2: Unlinked fallback retry (Bypasses foreign keys if database cache mismatch occurs)
     const fallbackPayload = {
       request_type: requestType || "QUOTATION",
       message: msgText,
@@ -774,7 +778,6 @@ export async function createAgentRequest(
     return null;
   }
 }
-
 
 // ==========================================
 // 11. Student & Attendance Functions
@@ -1538,7 +1541,7 @@ export async function logWebsiteCheck(
   } catch (e) { safeErrorLog("logWebsiteCheck", e); }
 }
 
-export async function logDnsCheck(
+export async function logWebsiteDomainCheck(
   phone: string, domain: string,
   recordType: string, records: any[]
 ): Promise<void> {
@@ -1547,7 +1550,7 @@ export async function logDnsCheck(
     await sb.from("dns_checks").insert({
       phone, domain, record_type: recordType, records,
     });
-  } catch (e) { safeErrorLog("logDnsCheck", e); }
+  } catch (e) { safeErrorLog("logWebsiteDomainCheck", e); }
 }
 
 // ==========================================
