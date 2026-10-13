@@ -1,6 +1,6 @@
 // supabase/functions/whatsapp-webhook/modules/onboarding.ts
 // Multi-Tenant Meta Embedded Signup Onboarding Portal & Flow Handler
-// Serves the mobile-optimized onboarding portal and processes Meta OAuth callbacks.
+// Guaranteed text/html response headers for all mobile browsers.
 
 import {
   getSupabaseClient,
@@ -18,20 +18,13 @@ import { encryptToken } from "../lib/encryption.ts";
 
 const sb = getSupabaseClient();
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-};
-
 export function htmlResponse(html: string, status = 200): Response {
-  const encoder = new TextEncoder();
-  return new Response(encoder.encode(html), {
+  return new Response(html, {
     status,
     headers: {
-      ...corsHeaders,
-      "Content-Type": "text/html; charset=utf-8",
-      "X-Content-Type-Options": "nosniff",
+      "content-type": "text/html; charset=utf-8",
+      "access-control-allow-origin": "*",
+      "cache-control": "no-cache, no-store, must-revalidate",
     },
   });
 }
@@ -39,7 +32,10 @@ export function htmlResponse(html: string, status = 200): Response {
 export function jsonResponse(body: any, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      "access-control-allow-origin": "*",
+    },
   });
 }
 
@@ -188,7 +184,6 @@ async function exchangeMetaAuthCode(authCode: string, redirectUri: string) {
   const systemToken = Deno.env.get("META_SYSTEM_USER_TOKEN") || "";
   const graphApi = "https://graph.facebook.com/v21.0";
 
-  // Step 1: Exchange code for user token
   const tokenUrl =
     `${graphApi}/oauth/access_token?client_id=${appId}` +
     `&client_secret=${encodeURIComponent(appSecret)}` +
@@ -204,14 +199,12 @@ async function exchangeMetaAuthCode(authCode: string, redirectUri: string) {
   const userToken = tokenData.access_token;
   if (!userToken) return null;
 
-  // Step 2: Get WABA ID
   const wabaResp = await fetch(`${graphApi}/me/whatsapp_business_accounts?access_token=${userToken}`);
   if (!wabaResp.ok) return null;
   const wabaData = await wabaResp.json();
   const wabaId = wabaData.data?.[0]?.id;
   if (!wabaId) return null;
 
-  // Step 3: Get phone number ID
   const activeToken = systemToken || userToken;
   const phoneResp = await fetch(`${graphApi}/${wabaId}/phone_numbers?access_token=${activeToken}`);
   if (!phoneResp.ok) return null;
@@ -221,7 +214,6 @@ async function exchangeMetaAuthCode(authCode: string, redirectUri: string) {
   const verifiedName = phoneData.data?.[0]?.verified_name || "";
   if (!phoneNumberId) return null;
 
-  // Step 4: Subscribe webhook
   await fetch(`${graphApi}/${wabaId}/subscribed_apps?access_token=${activeToken}`, { method: "POST" });
 
   return { accessToken: activeToken, wabaId, phoneNumberId, displayPhone, verifiedName };
@@ -370,7 +362,7 @@ export async function handleOnboardingCallback(req: Request): Promise<Response> 
 }
 
 // ══════════════════════════════════════════════════════
-// 5. HTML TEMPLATES (CLEAN ENTITIES & MOBILE-FIRST)
+// 5. HTML TEMPLATES
 // ══════════════════════════════════════════════════════
 
 function getOnboardingHtml(
@@ -518,7 +510,7 @@ async function handleReturnedCode(code) {
   try {
     const resp = await fetch(window.location.href, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         session_token: SESSION_TOKEN,
         auth_code: code,
