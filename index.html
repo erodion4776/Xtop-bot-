@@ -27,11 +27,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
 .btn-primary{background:#25D366;color:#fff}
 .btn-primary:active{background:#1ea952}
 .btn-secondary{background:#e4e6eb;color:#1c1e21;margin-top:8px}
+.btn-outline{background:transparent;border:2px solid #1877f2;color:#1877f2;margin-top:10px}
 .status{text-align:center;padding:24px 12px}
 .success-icon{font-size:56px;margin-bottom:12px}
 .error{color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;text-align:center;margin-top:12px;font-size:14px;line-height:1.4}
+.tip-box{background:#e8f4fd;border-left:4px solid #1877f2;padding:12px;border-radius:6px;font-size:13px;color:#0c5460;margin-top:14px;line-height:1.4}
 .loading{display:inline-block;width:18px;height:18px;border:2.5px solid #fff;border-radius:50%;border-top-color:transparent;animation:spin 0.8s linear infinite;margin-right:8px;vertical-align:middle}
-.direct-link{display:block;text-align:center;margin-top:14px;color:#1877f2;font-size:13px;text-decoration:underline;cursor:pointer}
 @keyframes spin{to{transform:rotate(360deg)}}
 .hidden{display:none}
 </style>
@@ -87,17 +88,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
     <button class="btn btn-primary" id="btnNext" onclick="goToStep2()">Continue to Connect WhatsApp</button>
   </div>
 
-  <!-- STEP 2: META LOGIN & DIRECT LINK -->
+  <!-- STEP 2: CONNECT WHATSAPP WITH META -->
   <div class="step hidden" id="step2">
     <h2>Step 2: Connect Your WhatsApp Account</h2>
-    <p style="font-size:14px;color:#65676b;line-height:1.5;margin-bottom:16px">
-      Log into Facebook with Meta to select or create your WhatsApp Business Account and verify your phone number.
+    <p style="font-size:14px;color:#65676b;line-height:1.5;margin-bottom:12px">
+      You will connect with Meta to select or create your WhatsApp Business Account and verify your phone number.
     </p>
 
-    <!-- Direct Native Anchor Link: Bypasses mobile webview blockers -->
-    <a href="#" id="btnConnect" class="btn btn-primary" onclick="handleConnectClick(event)">
+    <button id="btnConnect" class="btn btn-primary" onclick="triggerMetaAuth()">
       &#128279; Connect WhatsApp with Meta
-    </a>
+    </button>
+
+    <div id="webviewTip" class="tip-box hidden">
+      <strong>📱 Opening from WhatsApp?</strong><br>
+      If the Facebook screen does not open, tap the <strong>three dots (&#8942;)</strong> at the top right of your screen and select <strong>"Open in Chrome / Browser"</strong>.
+    </div>
 
     <button class="btn btn-secondary" onclick="goToStep1()">&#8592; Back</button>
     <div class="error hidden" id="errorMsg"></div>
@@ -113,13 +118,32 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
   </div>
 </div>
 
+<!-- Facebook JavaScript SDK -->
+<script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js"></script>
+
 <script>
 const SUPABASE_API_URL = "https://mldywarnnwjitfvqpgis.supabase.co/functions/v1/whatsapp-webhook?action=onboard";
 const META_APP_ID = "1947931015867084";
 
 let selectedPackage = 'STANDARD';
+let fbSdkLoaded = false;
 const urlParams = new URLSearchParams(window.location.search);
 const SESSION_TOKEN = urlParams.get('token') || urlParams.get('state') || safeStorageGet('xtop_session_token') || '';
+
+// Initialize Facebook SDK
+window.fbAsyncInit = function() {
+  try {
+    FB.init({
+      appId: META_APP_ID,
+      cookie: true,
+      xfbml: false,
+      version: 'v21.0'
+    });
+    fbSdkLoaded = true;
+  } catch (e) {
+    console.warn("FB SDK init warning:", e);
+  }
+};
 
 function safeStorageSet(key, val) {
   try { sessionStorage.setItem(key, val); localStorage.setItem(key, val); } catch (e) {}
@@ -134,7 +158,29 @@ function selectPackage(code) {
   document.querySelectorAll('.pkg-card').forEach(c => c.classList.remove('selected'));
   const card = document.querySelector('[data-code="' + code + '"]');
   if (card) card.classList.add('selected');
-  updateMetaLink();
+  safeStorageSet('xtop_package_code', selectedPackage);
+}
+
+function goToStep1() {
+  document.getElementById('step1').classList.remove('hidden');
+  document.getElementById('step2').classList.add('hidden');
+}
+
+function goToStep2() {
+  if (!SESSION_TOKEN) {
+    showError("Missing session token. Please type <strong>'I want a bot'</strong> on WhatsApp to generate a fresh link.");
+    return;
+  }
+  safeStorageSet('xtop_session_token', SESSION_TOKEN);
+  safeStorageSet('xtop_package_code', selectedPackage);
+  document.getElementById('step1').classList.add('hidden');
+  document.getElementById('step2').classList.remove('hidden');
+
+  // Detect if inside WhatsApp / in-app browser
+  const ua = navigator.userAgent || navigator.vendor || window.opera || '';
+  if (/WhatsApp|FBAN|FBAV|Instagram/i.test(ua)) {
+    document.getElementById('webviewTip').classList.remove('hidden');
+  }
 }
 
 function getExactRedirectUri() {
@@ -151,41 +197,44 @@ function buildMetaOAuthUrl() {
     '&state=' + encodeURIComponent(SESSION_TOKEN);
 }
 
-function updateMetaLink() {
+function triggerMetaAuth() {
+  const btn = document.getElementById('btnConnect');
+  btn.innerHTML = '<span class="loading"></span> Connecting with Meta...';
+  document.getElementById('errorMsg').classList.add('hidden');
+
   safeStorageSet('xtop_package_code', selectedPackage);
-  if (SESSION_TOKEN) {
-    safeStorageSet('xtop_session_token', SESSION_TOKEN);
-  }
-  const btn = document.getElementById('btnConnect');
-  if (btn) {
-    btn.href = buildMetaOAuthUrl();
-  }
-}
+  safeStorageSet('xtop_session_token', SESSION_TOKEN);
 
-function goToStep1() {
-  document.getElementById('step1').classList.remove('hidden');
-  document.getElementById('step2').classList.add('hidden');
-}
-
-function goToStep2() {
-  if (!SESSION_TOKEN) {
-    showError("Missing session token. Please type <strong>'I want a bot'</strong> on WhatsApp to generate a fresh link.");
-    return;
+  // Method 1: Try Facebook JS SDK popup if available
+  if (fbSdkLoaded && typeof FB !== 'undefined') {
+    try {
+      FB.login(function(response) {
+        if (response && response.authResponse && response.authResponse.code) {
+          handleReturnedCode(response.authResponse.code);
+        } else if (response && response.authResponse && response.authResponse.accessToken) {
+          // Token directly returned
+          handleReturnedCode(response.authResponse.accessToken);
+        } else {
+          // User closed popup or cancelled
+          btn.innerHTML = '&#128279; Connect WhatsApp with Meta';
+          if (response && response.status === 'not_authorized') {
+            showError("Meta login cancelled. Please tap Connect to try again.");
+          }
+        }
+      }, {
+        scope: 'whatsapp_business_management,whatsapp_business_messaging',
+        response_type: 'code',
+        return_scopes: true
+      });
+      return;
+    } catch (e) {
+      console.warn("FB.login failed, falling back to direct redirect:", e);
+    }
   }
-  updateMetaLink();
-  document.getElementById('step1').classList.add('hidden');
-  document.getElementById('step2').classList.remove('hidden');
-}
 
-function handleConnectClick(e) {
-  if (!SESSION_TOKEN) {
-    e.preventDefault();
-    showError("Missing session token. Please generate a new link on WhatsApp.");
-    return;
-  }
-  const btn = document.getElementById('btnConnect');
-  btn.innerHTML = '<span class="loading"></span> Opening Meta Login...';
-  // Allow the native link navigation to execute immediately
+  // Method 2: Direct standard OAuth redirect
+  const metaUrl = buildMetaOAuthUrl();
+  window.location.href = metaUrl;
 }
 
 async function handleReturnedCode(code) {
@@ -193,7 +242,6 @@ async function handleReturnedCode(code) {
   document.getElementById('step2').classList.remove('hidden');
   const btn = document.getElementById('btnConnect');
   btn.innerHTML = '<span class="loading"></span> Activating your WhatsApp bot...';
-  btn.style.pointerEvents = 'none';
 
   const savedPackage = safeStorageGet('xtop_package_code') || selectedPackage;
   const savedToken = safeStorageGet('xtop_session_token') || SESSION_TOKEN;
@@ -224,12 +272,10 @@ async function handleReturnedCode(code) {
     } else {
       showError(data.error || 'Setup could not be completed. Please try again.');
       btn.innerHTML = '&#128279; Connect WhatsApp with Meta';
-      btn.style.pointerEvents = 'auto';
     }
   } catch (err) {
     showError('Network error during activation. Please tap Connect to try again.');
     btn.innerHTML = '&#128279; Connect WhatsApp with Meta';
-    btn.style.pointerEvents = 'auto';
   }
 }
 
@@ -240,9 +286,7 @@ function showError(msg) {
 }
 
 window.addEventListener('load', () => {
-  updateMetaLink();
-
-  // 1. Check for Meta OAuth Cancellation or Error in URL
+  // Check for Meta OAuth Cancellation or Error in URL
   const metaError = urlParams.get('error_description') || urlParams.get('error_message') || urlParams.get('error');
   if (metaError) {
     document.getElementById('step1').classList.add('hidden');
@@ -251,7 +295,7 @@ window.addEventListener('load', () => {
     return;
   }
 
-  // 2. Check for returned Authorization Code
+  // Check for returned Authorization Code
   const code = urlParams.get('code');
   if (code) {
     handleReturnedCode(code);
