@@ -25,9 +25,14 @@ const corsHeaders = {
 };
 
 export function htmlResponse(html: string, status = 200): Response {
-  return new Response(html, {
+  const encoder = new TextEncoder();
+  return new Response(encoder.encode(html), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" },
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "text/html; charset=utf-8",
+      "X-Content-Type-Options": "nosniff",
+    },
   });
 }
 
@@ -365,7 +370,7 @@ export async function handleOnboardingCallback(req: Request): Promise<Response> 
 }
 
 // ══════════════════════════════════════════════════════
-// 5. HTML TEMPLATES
+// 5. HTML TEMPLATES (CLEAN ENTITIES & MOBILE-FIRST)
 // ══════════════════════════════════════════════════════
 
 function getOnboardingHtml(
@@ -377,20 +382,20 @@ function getOnboardingHtml(
 ): string {
   const packageCards = packages.map((pkg: any) => `
     <div class="pkg-card ${pkg.code === 'STANDARD' ? 'selected' : ''}" data-code="${pkg.code}" onclick="selectPackage('${pkg.code}')">
-      ${pkg.code === 'STANDARD' ? '<div class="pkg-badge">⭐ POPULAR</div>' : ''}
+      ${pkg.code === 'STANDARD' ? '<div class="pkg-badge">&#11088; POPULAR</div>' : ''}
       <h3>${pkg.name}</h3>
-      <div class="pkg-price">₦${Number(pkg.monthly_fee_ngn).toLocaleString()}<span>/mo</span></div>
-      <div class="pkg-trial">${pkg.trial_days || 14}-day free trial (₦0 today)</div>
-      <ul>${(pkg.features || []).map((f: string) => `<li>✓ ${f}</li>`).join("")}</ul>
+      <div class="pkg-price">&#8358;${Number(pkg.monthly_fee_ngn).toLocaleString()}<span>/mo</span></div>
+      <div class="pkg-trial">${pkg.trial_days || 14}-day free trial (&#8358;0 today)</div>
+      <ul>${(pkg.features || []).map((f: string) => `<li>&#10003; ${f}</li>`).join("")}</ul>
     </div>
   `).join("");
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Connect WhatsApp — Xtop</title>
+<title>Connect WhatsApp &mdash; Xtop</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f0f2f5;color:#1c1e21;min-height:100vh}
@@ -425,7 +430,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
 <body>
 <div class="container">
   <div class="header">
-    <h1>🟢 Xtop WhatsApp Bot</h1>
+    <h1>&#128994; Xtop WhatsApp Bot</h1>
     <p>Connect <strong>${tenantName}</strong> to your WhatsApp Business number</p>
   </div>
 
@@ -441,15 +446,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
       You will log into Facebook with Meta, choose or create your WhatsApp Business Account, and verify your phone number.
     </p>
     <button class="btn btn-primary" id="btnConnect" onclick="startMetaSignup()">
-      🔗 Connect WhatsApp with Meta
+      &#128279; Connect WhatsApp with Meta
     </button>
-    <button class="btn btn-secondary" onclick="goToStep1()">← Back</button>
+    <button class="btn btn-secondary" onclick="goToStep1()">&#8592; Back</button>
     <div class="error hidden" id="errorMsg"></div>
   </div>
 
   <div class="step hidden" id="step3">
     <div class="status">
-      <div class="success-icon">🎉</div>
+      <div class="success-icon">&#127881;</div>
       <h2 style="color:#25D366;font-size:20px">Your Bot is Live!</h2>
       <p id="successMsg" style="margin-top:12px;font-size:14px;line-height:1.6;color:#444"></p>
     </div>
@@ -529,18 +534,18 @@ async function handleReturnedCode(code) {
       document.getElementById('step3').classList.remove('hidden');
       document.getElementById('successMsg').innerHTML =
         'Your WhatsApp Business number <strong>' + (data.phone || 'Connected') + '</strong> is now active.<br><br>' +
-        '📦 Package: <strong>' + data.package + '</strong><br>' +
-        '🗓️ 14-Day Free Trial Ends: <strong>' + new Date(data.trial_ends).toLocaleDateString() + '</strong><br><br>' +
-        '👉 <strong>Send "hi" to your new WhatsApp number to test your bot!</strong>';
+        '&#128230; Package: <strong>' + data.package + '</strong><br>' +
+        '&#128197; 14-Day Free Trial Ends: <strong>' + new Date(data.trial_ends).toLocaleDateString() + '</strong><br><br>' +
+        '&#128073; <strong>Send "hi" to your new WhatsApp number to test your bot!</strong>';
     } else {
       showError(data.error || 'Setup could not be completed. Please try again.');
       btn.disabled = false;
-      btn.textContent = '🔗 Connect WhatsApp with Meta';
+      btn.textContent = '&#128279; Connect WhatsApp with Meta';
     }
   } catch (err) {
     showError('Network error during setup. Please refresh and try again.');
     btn.disabled = false;
-    btn.textContent = '🔗 Connect WhatsApp with Meta';
+    btn.textContent = '&#128279; Connect WhatsApp with Meta';
   }
 }
 
@@ -563,21 +568,21 @@ window.addEventListener('load', () => {
 }
 
 function getExpiredPage(): string {
-  return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Link Expired — Xtop</title>
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Link Expired &mdash; Xtop</title>
 <style>body{font-family:sans-serif;text-align:center;padding:60px 20px;background:#f0f2f5}
 h1{color:#e74c3c}p{color:#65676b;margin-top:12px;font-size:15px}</style></head>
-<body><h1>⏰ Link Expired or Invalid</h1>
+<body><h1>&#9200; Link Expired or Invalid</h1>
 <p>This onboarding session link is no longer valid or has expired.<br><br>Please type <strong>"I want a bot"</strong> on WhatsApp to generate a fresh signup link.</p>
 </body></html>`;
 }
 
 function getSuccessPage(session: any): string {
-  return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Setup Complete — Xtop</title>
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Setup Complete &mdash; Xtop</title>
 <style>body{font-family:sans-serif;text-align:center;padding:60px 20px;background:#f0f2f5}
 h1{color:#25D366}p{color:#65676b;margin-top:12px;font-size:15px}</style></head>
-<body><h1>🎉 Setup Already Complete!</h1>
+<body><h1>&#127881; Setup Already Complete!</h1>
 <p>Your WhatsApp bot is already connected and running.<br><br>Send <strong>"hi"</strong> to your WhatsApp Business number to start chatting with your bot.</p>
 </body></html>`;
 }
