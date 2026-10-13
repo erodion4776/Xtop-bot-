@@ -302,3 +302,52 @@ export function makeListRow(id: string, title: string, description?: string): Wh
     description: description?.substring(0, 72),
   };
 }
+/**
+ * Send a text message using a specific tenant's credentials.
+ * Falls back to system credentials if tenant context is not provided.
+ */
+export async function sendTenantTextMessage(
+  to: string,
+  body: string,
+  tenantPhoneNumberId?: string,
+  tenantAccessToken?: string
+): Promise<string | null> {
+  const phoneId = tenantPhoneNumberId || getPhoneNumberId();
+  const token = tenantAccessToken || Deno.env.get("WHATSAPP_ACCESS_TOKEN");
+
+  if (!token) {
+    safeErrorLog("sendTenantTextMessage", new Error("No access token available"));
+    return null;
+  }
+
+  const url = `${WA_API_BASE}/${phoneId}/messages`;
+
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to,
+        type: "text",
+        text: { preview_url: false, body },
+      }),
+    });
+
+    if (!resp.ok) {
+      const errBody = await resp.text();
+      safeErrorLog("sendTenantTextMessage:response", new Error(`${resp.status}: ${errBody}`));
+      return null;
+    }
+
+    const data = await resp.json();
+    return data?.messages?.[0]?.id || null;
+  } catch (err) {
+    safeErrorLog("sendTenantTextMessage", err);
+    return null;
+  }
+}
