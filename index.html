@@ -135,6 +135,10 @@ function goToStep2() {
   document.getElementById('step2').classList.remove('hidden');
 }
 
+function getCleanRedirectUri() {
+  return window.location.origin + window.location.pathname;
+}
+
 function startMetaSignup() {
   const btn = document.getElementById('btnConnect');
   btn.disabled = true;
@@ -144,7 +148,7 @@ function startMetaSignup() {
   sessionStorage.setItem('xtop_package_code', selectedPackage);
   sessionStorage.setItem('xtop_session_token', SESSION_TOKEN);
 
-  const redirectUri = window.location.origin + window.location.pathname;
+  const redirectUri = getCleanRedirectUri();
   const metaUrl = 'https://www.facebook.com/v21.0/dialog/oauth' +
     '?client_id=' + encodeURIComponent(META_APP_ID) +
     '&redirect_uri=' + encodeURIComponent(redirectUri) +
@@ -164,7 +168,7 @@ async function handleReturnedCode(code) {
 
   const savedPackage = sessionStorage.getItem('xtop_package_code') || selectedPackage;
   const savedToken = sessionStorage.getItem('xtop_session_token') || SESSION_TOKEN;
-  const redirectUri = window.location.origin + window.location.pathname;
+  const redirectUri = getCleanRedirectUri();
 
   try {
     const resp = await fetch(SUPABASE_API_URL, {
