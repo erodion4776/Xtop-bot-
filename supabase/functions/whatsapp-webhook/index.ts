@@ -163,7 +163,7 @@ serve(async (req: Request) => {
 
       const waMsgId = sendResult?.messages?.[0]?.id || null;
 
-      // Insert message with all possible column variations
+      // Insert message record
       const msgRecord = {
         contact_id: contactId,
         phone_number: cleanPhone,
@@ -296,6 +296,10 @@ serve(async (req: Request) => {
         });
       }
 
+      // Multi-tenant metadata resolution: extracts Meta's receiving phone_number_id
+      const metadata = value?.metadata;
+      const phoneNumberId = metadata?.phone_number_id || "";
+
       let text = "";
       let interactiveId = "";
 
@@ -322,6 +326,7 @@ serve(async (req: Request) => {
         interactiveId,
         profileName: contactObj?.profile?.name || "Customer",
         timestamp: messageObj.timestamp,
+        phoneNumberId, // Passed for tenant resolution & isolated account dispatching
       };
 
       routeMessage(incoming).catch((err) => {
