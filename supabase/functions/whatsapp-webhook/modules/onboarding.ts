@@ -39,8 +39,13 @@ export async function createOnboardingSession(
     return null;
   }
 
-  const baseUrl = Deno.env.get("ONBOARDING_BASE_URL") || "";
-  return `${baseUrl}/onboard/${sessionToken}`;
+  const rawBaseUrl = Deno.env.get("ONBOARDING_BASE_URL") || "";
+  const baseUrl = rawBaseUrl.replace(/\/+$/, "").replace(/\/functions\/v1\/.*$/, "");
+  const functionUrl = baseUrl ? `${baseUrl}/functions/v1/onboard` : "";
+
+  return functionUrl
+    ? `${functionUrl}/${sessionToken}`
+    : `https://mldywarnnwjitfvqpgis.supabase.co/functions/v1/onboard/${sessionToken}`;
 }
 
 /**
@@ -57,15 +62,28 @@ export async function handleOnboardingRequest(
 
   const isOnboardingIntent =
     lower.includes("i want a bot") ||
+    lower.includes("i need a bot") ||
     lower.includes("get my own bot") ||
     lower.includes("set up my bot") ||
+    lower.includes("setup bot") ||
     lower.includes("connect my whatsapp") ||
-    lower.includes("i need a bot for my business") ||
+    lower.includes("connect whatsapp") ||
+    lower.includes("build a bot") ||
+    lower.includes("create a bot") ||
+    lower.includes("start trial") ||
+    lower.includes("free trial") ||
     lower.includes("onboard") ||
     lower === "signup" ||
     lower === "sign up";
 
   if (!isOnboardingIntent) return false;
+
+  // Clear any stuck sales/quotation state immediately
+  await updateConversation(conversationId, {
+    current_module: "MAIN_MENU",
+    current_state: "IDLE",
+    context_json: {},
+  });
 
   await sendTextMessage(
     phone,
