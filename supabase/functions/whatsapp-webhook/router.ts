@@ -82,6 +82,8 @@ import {
 
 import { extractTokenFromText } from "./modules/demos/tokens.ts";
 
+import { handleOnboardingRequest } from "./modules/onboarding.ts";
+
 // =====================================================
 // PRIVATE ADMIN AGENT
 // =====================================================
@@ -450,10 +452,7 @@ export async function routeMessage(
 
     // Demo workflow.
     // CRITICAL FIX: Check personalized demo actions FIRST before
-    // falling back to the generic Demo Centre handler. This ensures
-    // that interactive menu taps (e.g. demo_menu, demo_order) inside
-    // an active personalized demo are routed to the correct handler
-    // instead of resetting to the generic demo catalogue.
+    // falling back to the generic Demo Centre handler.
     if (currentModule === "DEMOS") {
       const personalizedHandled = await handlePersonalizedDemoAction(
         phone,
@@ -579,9 +578,7 @@ export async function routeMessage(
     }
 
     // Demo Centre, including category and demo pagination.
-    // CRITICAL FIX: Check personalized demo actions FIRST so that
-    // taps like demo_menu, demo_order, demo_reserve inside an active
-    // personalized demo session are handled correctly.
+    // CRITICAL FIX: Check personalized demo actions FIRST.
     if (isDemoInteractiveAction(interactiveId)) {
       const personalizedHandled = await handlePersonalizedDemoAction(
         phone,
@@ -704,6 +701,34 @@ export async function routeMessage(
     if (isAgentRequest(text)) {
       await showAgentCategories(phone, conversation.id);
       return;
+    }
+
+    // =====================================================
+    // 10.5 ONBOARDING INTERCEPTION (New Multi-Tenant Signup)
+    //
+    // Must run BEFORE detectIntent() because phrases like
+    // "I want a bot for my business" contain "bot" which
+    // would otherwise route to the old sales/services flow.
+    //
+    // Does NOT intercept:
+    // - Academic workflows (Learning/Exams)
+    // - Interactive button/list payloads
+    // - Customers already inside the Sales quotation flow
+    // =====================================================
+
+    if (
+      !isAcademicWorkflow &&
+      !isInteractivePayload(incoming) &&
+      currentModule !== "SALES"
+    ) {
+      const onboardingHandled = await handleOnboardingRequest(
+        phone,
+        text,
+        contact.id || "",
+        conversation.id,
+      );
+
+      if (onboardingHandled) return;
     }
 
     // =====================================================
