@@ -3,10 +3,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { routeMessage } from "./router.ts";
 import { IncomingMessage, sendTextMessage } from "./whatsapp.ts";
-import {
-  serveOnboardingPortal,
-  handleOnboardingCallback,
-} from "./modules/onboarding.ts";
+import { handleOnboardingCallback, jsonResponse } from "./modules/onboarding.ts";
 
 const VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "xtop_webhook_secret";
 
@@ -24,13 +21,6 @@ function normalizePhone(raw: string): string {
   return clean;
 }
 
-function jsonResponse(body: any, status: number = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "content-type": "application/json" },
-  });
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -40,15 +30,10 @@ Deno.serve(async (req: Request) => {
   const action = url.searchParams.get("action");
 
   // ══════════════════════════════════════════════════════
-  // 1. ONBOARDING PORTAL (GET to view page / POST to exchange Meta token)
+  // 1. ONBOARDING API (Receives Meta code from Netlify frontend)
   // ══════════════════════════════════════════════════════
-  if (action === "onboard") {
-    if (req.method === "GET") {
-      return await serveOnboardingPortal(url);
-    }
-    if (req.method === "POST") {
-      return await handleOnboardingCallback(req);
-    }
+  if (action === "onboard" && req.method === "POST") {
+    return await handleOnboardingCallback(req);
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
