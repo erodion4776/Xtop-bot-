@@ -176,27 +176,44 @@ async function exchangeMetaAuthCode(authCode: string, redirectUri: string) {
   const systemToken = Deno.env.get("META_SYSTEM_USER_TOKEN") || "";
   const graphApi = "https://graph.facebook.com/v21.0";
 
-  // Clean redirect URI to match Meta exact string
-  const cleanUri = redirectUri.replace(/\/+$/, "");
+  let userToken = "";
 
-  // Step 1: Exchange code for user token
-  const tokenUrl =
-    `${graphApi}/oauth/access_token?client_id=${appId}` +
-    `&client_secret=${encodeURIComponent(appSecret)}` +
-    `&code=${encodeURIComponent(authCode)}` +
-    `&redirect_uri=${encodeURIComponent(cleanUri)}`;
+  // If code is already a token (from direct FB.login)
+  if (authCode.startsWith("EAA") && authCode.length > 50) {
+    userToken = authCode;
+  } else {
+    // Exchange code for token (tries both clean URI and URI with trailing slash)
+    const cleanUri = redirectUri ? redirectUri.replace(/\/+$/, "") : "";
+    const tokenUrl =
+      `${graphApi}/oauth/access_token?client_id=${appId}` +
+      `&client_secret=${encodeURIComponent(appSecret)}` +
+      `&code=${encodeURIComponent(authCode)}` +
+      (cleanUri ? `&redirect_uri=${encodeURIComponent(cleanUri)}` : "");
 
-  const tokenResp = await fetch(tokenUrl);
-  if (!tokenResp.ok) {
-    const errText = await tokenResp.text();
-    console.error("[Meta Exchange Error - Token Step]:", errText);
-    return { error: `Meta token exchange rejected: ${errText}` };
+    let tokenResp = await fetch(tokenUrl);
+    if (!tokenResp.ok && cleanUri) {
+      // Retry with trailing slash if required by Meta app settings
+      const retryUrl =
+        `${graphApi}/oauth/access_token?client_id=${appId}` +
+        `&client_secret=${encodeURIComponent(appSecret)}` +
+        `&code=${encodeURIComponent(authCode)}` +
+        `&redirect_uri=${encodeURIComponent(cleanUri + "/")}`;
+      tokenResp = await fetch(retryUrl);
+    }
+
+    if (!tokenResp.ok) {
+      const errText = await tokenResp.text();
+      console.error("[Meta Exchange Error - Token Step]:", errText);
+      return { error: `Meta token exchange rejected: ${errText}` };
+    }
+
+    const tokenData = await tokenResp.json();
+    userToken = tokenData.access_token;
   }
-  const tokenData = await tokenResp.json();
-  const userToken = tokenData.access_token;
+
   if (!userToken) return { error: "No access token received from Meta" };
 
-  // Step 2: Get WhatsApp Business Account ID (Checks multiple Meta scopes)
+  // Step 2: Get WhatsApp Business Account ID
   let wabaId = "";
 
   const wabaResp = await fetch(`${graphApi}/me/whatsapp_business_accounts?access_token=${userToken}`);
@@ -205,7 +222,6 @@ async function exchangeMetaAuthCode(authCode: string, redirectUri: string) {
     wabaId = wabaData.data?.[0]?.id || "";
   }
 
-  // Fallback: Check debug_token granular scopes if not in /me
   if (!wabaId) {
     const debugResp = await fetch(`${graphApi}/debug_token?input_token=${userToken}&access_token=${appId}|${appSecret}`);
     if (debugResp.ok) {
