@@ -167,7 +167,7 @@ export async function handleOnboardingRequest(
 }
 
 // ══════════════════════════════════════════════════════
-// 3. META AUTH CODE EXCHANGE
+// 3. META AUTH CODE EXCHANGE (ROBUST WABA RESOLVER)
 // ══════════════════════════════════════════════════════
 
 async function exchangeMetaAuthCode(authCode: string, redirectUri: string) {
@@ -176,39 +176,78 @@ async function exchangeMetaAuthCode(authCode: string, redirectUri: string) {
   const systemToken = Deno.env.get("META_SYSTEM_USER_TOKEN") || "";
   const graphApi = "https://graph.facebook.com/v21.0";
 
+  // Clean redirect URI to match Meta exact string
+  const cleanUri = redirectUri.replace(/\/+$/, "");
+
+  // Step 1: Exchange code for user token
   const tokenUrl =
     `${graphApi}/oauth/access_token?client_id=${appId}` +
     `&client_secret=${encodeURIComponent(appSecret)}` +
     `&code=${encodeURIComponent(authCode)}` +
-    `&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    `&redirect_uri=${encodeURIComponent(cleanUri)}`;
 
   const tokenResp = await fetch(tokenUrl);
   if (!tokenResp.ok) {
-    console.error("[Meta Exchange Error]:", await tokenResp.text());
-    return null;
+    const errText = await tokenResp.text();
+    console.error("[Meta Exchange Error - Token Step]:", errText);
+    return { error: `Meta token exchange rejected: ${errText}` };
   }
   const tokenData = await tokenResp.json();
   const userToken = tokenData.access_token;
-  if (!userToken) return null;
+  if (!userToken) return { error: "No access token received from Meta" };
+
+  // Step 2: Get WhatsApp Business Account ID (Checks multiple Meta scopes)
+  let wabaId = "";
 
   const wabaResp = await fetch(`${graphApi}/me/whatsapp_business_accounts?access_token=${userToken}`);
-  if (!wabaResp.ok) return null;
-  const wabaData = await wabaResp.json();
-  const wabaId = wabaData.data?.[0]?.id;
-  if (!wabaId) return null;
+  if (wabaResp.ok) {
+    const wabaData = await wabaResp.json();
+    wabaId = wabaData.data?.[0]?.id || "";
+  }
 
+  // Fallback: Check debug_token granular scopes if not in /me
+  if (!wabaId) {
+    const debugResp = await fetch(`${graphApi}/debug_token?input_token=${userToken}&access_token=${appId}|${appSecret}`);
+    if (debugResp.ok) {
+      const debugData = await debugResp.json();
+      const scopes = debugData.data?.granular_scopes || [];
+      const waScope = scopes.find((s: any) => s.scope === "whatsapp_business_management");
+      wabaId = waScope?.target_ids?.[0] || "";
+    }
+  }
+
+  if (!wabaId) {
+    return { error: "No WhatsApp Business Account found associated with this Facebook login." };
+  }
+
+  // Step 3: Get Phone Number ID
   const activeToken = systemToken || userToken;
   const phoneResp = await fetch(`${graphApi}/${wabaId}/phone_numbers?access_token=${activeToken}`);
-  if (!phoneResp.ok) return null;
+  if (!phoneResp.ok) {
+    const errText = await phoneResp.text();
+    console.error("[Meta Exchange Error - Phone Step]:", errText);
+    return { error: `Could not retrieve phone numbers: ${errText}` };
+  }
+
   const phoneData = await phoneResp.json();
   const phoneNumberId = phoneData.data?.[0]?.id;
   const displayPhone = phoneData.data?.[0]?.display_phone_number || "";
   const verifiedName = phoneData.data?.[0]?.verified_name || "";
-  if (!phoneNumberId) return null;
 
+  if (!phoneNumberId) {
+    return { error: "No verified WhatsApp phone number found on this WhatsApp Business Account." };
+  }
+
+  // Step 4: Subscribe webhook
   await fetch(`${graphApi}/${wabaId}/subscribed_apps?access_token=${activeToken}`, { method: "POST" });
 
-  return { accessToken: activeToken, wabaId, phoneNumberId, displayPhone, verifiedName };
+  return {
+    accessToken: activeToken,
+    wabaId,
+    phoneNumberId,
+    displayPhone,
+    verifiedName,
+  };
 }
 
 // ══════════════════════════════════════════════════════
@@ -230,14 +269,19 @@ export async function handleOnboardingCallback(req: Request): Promise<Response> 
       .eq("session_token", session_token)
       .maybeSingle();
 
-    if (!session) return jsonResponse({ error: "Invalid session" }, 404);
-    if (new Date(session.expires_at) < new Date()) return jsonResponse({ error: "Session expired" }, 410);
-    if (session.status === "TRIAL_ACTIVATED") return jsonResponse({ error: "Already completed" }, 409);
+    if (!session) return jsonResponse({ error: "Invalid onboarding session" }, 404);
+    if (new Date(session.expires_at) < new Date()) return jsonResponse({ error: "This onboarding link has expired" }, 410);
+    if (session.status === "TRIAL_ACTIVATED") return jsonResponse({ error: "This account has already completed onboarding" }, 409);
 
-    const result = await exchangeMetaAuthCode(auth_code, redirect_uri);
-    if (!result) {
-      await sb.from("onboarding_sessions").update({ status: "FAILED", error_message: "Token exchange failed" }).eq("id", session.id);
-      return jsonResponse({ error: "Meta authorization failed. Please try again." }, 500);
+    const result = await exchangeMetaAuthCode(auth_code, redirect_uri || "https://xtopbot.netlify.app");
+
+    if ("error" in result || !result.accessToken) {
+      await sb.from("onboarding_sessions").update({
+        status: "FAILED",
+        error_message: (result as any).error || "Token exchange failed",
+      }).eq("id", session.id);
+
+      return jsonResponse({ error: (result as any).error || "Meta authorization failed" }, 400);
     }
 
     const encryptedToken = await encryptToken(result.accessToken);
@@ -289,7 +333,7 @@ export async function handleOnboardingCallback(req: Request): Promise<Response> 
       package: selectedPkg,
     });
   } catch (err) {
-    console.error("[Onboard Callback Error]:", err);
-    return jsonResponse({ error: "Internal error during setup" }, 500);
+    console.error("[Onboard Callback Catch]:", err);
+    return jsonResponse({ error: "Internal setup error. Please try again." }, 500);
   }
 }
