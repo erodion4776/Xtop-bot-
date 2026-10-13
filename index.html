@@ -26,11 +26,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
 .btn{display:block;width:100%;padding:15px;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;text-align:center;margin-top:14px}
 .btn-primary{background:#25D366;color:#fff}
 .btn-primary:active{background:#1ea952}
+.btn-primary:disabled{background:#a8dfc1;cursor:not-allowed}
 .btn-secondary{background:#e4e6eb;color:#1c1e21;margin-top:8px}
 .status{text-align:center;padding:24px 12px}
 .success-icon{font-size:56px;margin-bottom:12px}
-.error{color:#e74c3c;background:#fde8e8;border-radius:8px;padding:12px;text-align:center;margin-top:12px;font-size:14px}
-.loading{display:inline-block;width:20px;height:20px;border:3px solid #fff;border-radius:50%;border-top-color:transparent;animation:spin 1s linear infinite;margin-right:8px;vertical-align:middle}
+.error{color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;text-align:center;margin-top:12px;font-size:14px;line-height:1.4}
+.loading{display:inline-block;width:18px;height:18px;border:2.5px solid #fff;border-radius:50%;border-top-color:transparent;animation:spin 0.8s linear infinite;margin-right:8px;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
 .hidden{display:none}
 </style>
@@ -88,7 +89,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
   <div class="step hidden" id="step2">
     <h2>Step 2: Connect Your WhatsApp Account</h2>
     <p style="font-size:14px;color:#65676b;line-height:1.5;margin-bottom:16px">
-      You will log into Facebook with Meta, choose or create your WhatsApp Business Account, and verify your phone number.
+      Log into Facebook with Meta, choose or create your WhatsApp Business Account, and verify your phone number.
     </p>
     <button class="btn btn-primary" id="btnConnect" onclick="startMetaSignup()">
       &#128279; Connect WhatsApp with Meta
@@ -112,7 +113,7 @@ const META_APP_ID = "1947931015867084";
 
 let selectedPackage = 'STANDARD';
 const urlParams = new URLSearchParams(window.location.search);
-const SESSION_TOKEN = urlParams.get('token') || urlParams.get('state') || '';
+const SESSION_TOKEN = urlParams.get('token') || urlParams.get('state') || sessionStorage.getItem('xtop_session_token') || '';
 
 function selectPackage(code) {
   selectedPackage = code;
@@ -128,27 +129,27 @@ function goToStep1() {
 
 function goToStep2() {
   if (!SESSION_TOKEN) {
-    showError("Missing session token. Please generate a new signup link on WhatsApp.");
+    showError("Missing session reference. Please generate a new signup link on WhatsApp by typing 'I want a bot'.");
     return;
   }
   document.getElementById('step1').classList.add('hidden');
   document.getElementById('step2').classList.remove('hidden');
 }
 
-function getCleanRedirectUri() {
+function getExactRedirectUri() {
   return window.location.origin + window.location.pathname;
 }
 
 function startMetaSignup() {
   const btn = document.getElementById('btnConnect');
   btn.disabled = true;
-  btn.innerHTML = '<span class="loading"></span> Connecting with Meta...';
+  btn.innerHTML = '<span class="loading"></span> Redirecting to Meta...';
   document.getElementById('errorMsg').classList.add('hidden');
 
   sessionStorage.setItem('xtop_package_code', selectedPackage);
   sessionStorage.setItem('xtop_session_token', SESSION_TOKEN);
 
-  const redirectUri = getCleanRedirectUri();
+  const redirectUri = getExactRedirectUri();
   const metaUrl = 'https://www.facebook.com/v21.0/dialog/oauth' +
     '?client_id=' + encodeURIComponent(META_APP_ID) +
     '&redirect_uri=' + encodeURIComponent(redirectUri) +
@@ -168,7 +169,11 @@ async function handleReturnedCode(code) {
 
   const savedPackage = sessionStorage.getItem('xtop_package_code') || selectedPackage;
   const savedToken = sessionStorage.getItem('xtop_session_token') || SESSION_TOKEN;
-  const redirectUri = getCleanRedirectUri();
+  const redirectUri = getExactRedirectUri();
+
+  // 15-second timeout controller
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 18000);
 
   try {
     const resp = await fetch(SUPABASE_API_URL, {
@@ -179,9 +184,11 @@ async function handleReturnedCode(code) {
         auth_code: code,
         package_code: savedPackage,
         redirect_uri: redirectUri
-      })
+      }),
+      signal: controller.signal
     });
 
+    clearTimeout(timeoutId);
     const data = await resp.json();
 
     if (data.success) {
@@ -198,7 +205,12 @@ async function handleReturnedCode(code) {
       btn.textContent = '&#128279; Connect WhatsApp with Meta';
     }
   } catch (err) {
-    showError('Network error during setup. Please refresh and try again.');
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      showError('The request timed out. Please check your network and tap Connect again.');
+    } else {
+      showError('Connection error during setup. Please tap Connect to retry.');
+    }
     btn.disabled = false;
     btn.textContent = '&#128279; Connect WhatsApp with Meta';
   }
@@ -206,11 +218,21 @@ async function handleReturnedCode(code) {
 
 function showError(msg) {
   const el = document.getElementById('errorMsg');
-  el.textContent = msg;
+  el.innerHTML = msg;
   el.classList.remove('hidden');
 }
 
 window.addEventListener('load', () => {
+  // 1. Check for Meta OAuth Errors returned in URL
+  const metaError = urlParams.get('error_description') || urlParams.get('error_message') || urlParams.get('error');
+  if (metaError) {
+    document.getElementById('step1').classList.add('hidden');
+    document.getElementById('step2').classList.remove('hidden');
+    showError("Meta login cancelled or denied: " + metaError);
+    return;
+  }
+
+  // 2. Check for returned Authorization Code
   const code = urlParams.get('code');
   if (code) {
     handleReturnedCode(code);
