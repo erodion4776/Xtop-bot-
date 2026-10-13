@@ -44,10 +44,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
     <p>Connect your business to your WhatsApp Business number</p>
   </div>
 
-  <!-- WHATSAPP WEBVIEW ALERT & 1-TAP CHROME LAUNCHER -->
+  <!-- WHATSAPP IN-APP BROWSER ALERT & 1-TAP CHROME LAUNCHER -->
   <div id="webviewBanner" class="alert-box hidden">
     <strong>📱 Notice for WhatsApp Users:</strong><br>
-    Meta requires browser setup to verify your business. Tap below to launch directly in Chrome:
+    Meta requires standard browser navigation to verify your account. Tap below to open directly in Chrome:
     <a id="btnOpenChrome" class="btn btn-chrome" href="#">🌐 Open in Chrome Browser</a>
   </div>
 
@@ -102,7 +102,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
       Log into Facebook with Meta to select or create your WhatsApp Business Account and verify your phone number.
     </p>
 
-    <!-- NATIVE ANCHOR WITH AUTH RE-REQUEST -->
     <a href="#" id="btnConnect" class="btn btn-primary" onclick="handleConnectTap(event)">
       &#128279; Connect WhatsApp with Meta
     </a>
@@ -116,7 +115,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
     <div class="status">
       <div class="success-icon">&#127881;</div>
       <h2 style="color:#25D366;font-size:20px">Your Bot is Live!</h2>
-      <p id="successMsg" style="margin-top:12px;font-size:14px;line-height:1.6;color:#444"></p>
+      <div id="successMsg" style="margin-top:12px;font-size:14px;line-height:1.6;color:#444"></div>
     </div>
   </div>
 </div>
@@ -197,15 +196,29 @@ function handleConnectTap(e) {
 }
 
 async function handleReturnedCode(code) {
-  document.getElementById('step1').classList.add('hidden');
-  document.getElementById('step2').classList.remove('hidden');
+  const step1 = document.getElementById('step1');
+  const step2 = document.getElementById('step2');
+  const step3 = document.getElementById('step3');
   const btn = document.getElementById('btnConnect');
+
+  step1.classList.add('hidden');
+  step2.classList.remove('hidden');
+  document.getElementById('errorMsg').classList.add('hidden');
+
   btn.innerHTML = '<span class="loading"></span> Activating your WhatsApp bot...';
   btn.style.pointerEvents = 'none';
 
   const savedPackage = safeStorageGet('xtop_package_code') || selectedPackage;
   const savedToken = safeStorageGet('xtop_session_token') || SESSION_TOKEN;
-  const redirectUri = getExactRedirectUri();
+
+  if (!savedToken || !code) {
+    showError('The connection session is missing. Return to WhatsApp and request a fresh onboarding link.');
+    resetButton();
+    return;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
 
   try {
     const resp = await fetch(SUPABASE_API_URL, {
@@ -215,27 +228,64 @@ async function handleReturnedCode(code) {
         session_token: savedToken,
         auth_code: code,
         package_code: savedPackage,
-        redirect_uri: redirectUri
-      })
+        redirect_uri: getExactRedirectUri()
+      }),
+      signal: controller.signal
     });
+
+    const contentType = resp.headers.get('content-type') || '';
+
+    if (!contentType.includes('application/json')) {
+      throw new Error(
+        'The onboarding server returned an unexpected response. Please try again later.'
+      );
+    }
 
     const data = await resp.json();
 
-    if (data.success) {
-      document.getElementById('step2').classList.add('hidden');
-      document.getElementById('step3').classList.remove('hidden');
-      document.getElementById('successMsg').innerHTML =
-        'Your WhatsApp Business number <strong>' + (data.phone || 'Connected') + '</strong> is now active.<br><br>' +
-        '&#128230; Package: <strong>' + data.package + '</strong><br>' +
-        '&#128197; 14-Day Free Trial Ends: <strong>' + new Date(data.trial_ends).toLocaleDateString() + '</strong><br><br>' +
-        '&#128073; <strong>Send "hi" to your new WhatsApp number to test your bot!</strong>';
-    } else {
-      showError(data.error || 'Setup could not be completed. Please try again.');
-      resetButton();
+    if (!resp.ok || !data.success) {
+      throw new Error(
+        data.error || 'WhatsApp activation failed. Please try again.'
+      );
     }
+
+    step2.classList.add('hidden');
+    step3.classList.remove('hidden');
+
+    const successContainer = document.getElementById('successMsg');
+    successContainer.innerHTML = '';
+
+    const phoneNotice = document.createElement('p');
+    phoneNotice.innerHTML = 'Your WhatsApp Business number <strong>' + (data.phone || 'Connected') + '</strong> is now active.';
+
+    const details = document.createElement('div');
+    details.style.cssText = 'margin-top:12px;font-size:14px;line-height:1.6;color:#444';
+
+    const packageLine = document.createElement('div');
+    packageLine.innerHTML = '📦 Package: <strong>' + (data.package || savedPackage) + '</strong>';
+
+    const trialLine = document.createElement('div');
+    trialLine.innerHTML = '🗓️ 14-Day Free Trial Ends: <strong>' +
+      (data.trial_ends
+        ? new Date(data.trial_ends).toLocaleDateString()
+        : 'Check your onboarding dashboard') + '</strong>';
+
+    const testInstruction = document.createElement('div');
+    testInstruction.style.cssText = 'margin-top:12px;color:#1e40af;font-weight:600';
+    testInstruction.innerHTML = '👉 Send "hi" to your new WhatsApp number to test your bot!';
+
+    details.append(packageLine, trialLine, testInstruction);
+    successContainer.append(phoneNotice, details);
+
   } catch (err) {
-    showError('Network error during activation. Please tap Connect to try again.');
+    const message = err.name === 'AbortError'
+      ? 'The server took too long to respond. Your connection has not been confirmed. Please try again.'
+      : (err.message || 'Network error during activation. Please try again.');
+
+    showError(message);
     resetButton();
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -270,7 +320,7 @@ window.addEventListener('load', () => {
     }
   }
 
-  // 1. Check for Meta OAuth Errors
+  // 1. Check for Meta OAuth Errors returned in URL parameters
   const metaError = urlParams.get('error_description') || urlParams.get('error_message') || urlParams.get('error');
   if (metaError) {
     document.getElementById('step1').classList.add('hidden');
@@ -279,7 +329,7 @@ window.addEventListener('load', () => {
     return;
   }
 
-  // 2. Check for returned Code
+  // 2. Check for returned Authorization Code
   const code = urlParams.get('code');
   if (code) {
     handleReturnedCode(code);
