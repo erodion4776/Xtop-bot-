@@ -1,355 +1,347 @@
-// supabase/functions/whatsapp-webhook/modules/onboarding.ts
-// Multi-Tenant Meta Embedded Signup Onboarding Portal & Flow Handler
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Connect WhatsApp &mdash; Xtop Retail Technologies</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f0f2f5;color:#1c1e21;min-height:100vh}
+.container{max-width:480px;margin:0 auto;padding:16px}
+.header{text-align:center;padding:24px 0 16px}
+.header h1{font-size:22px;color:#25D366;font-weight:700}
+.header p{color:#65676b;margin-top:6px;font-size:14px}
+.step{background:#fff;border-radius:14px;padding:20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08)}
+.step h2{font-size:16px;margin-bottom:14px;color:#1c1e21}
+.pkg-grid{display:flex;flex-direction:column;gap:12px}
+.pkg-card{border:2px solid #e4e6eb;border-radius:12px;padding:16px;cursor:pointer;position:relative;transition:all 0.2s}
+.pkg-card.selected{border-color:#25D366;background:#f0faf4}
+.pkg-badge{position:absolute;top:-10px;right:12px;background:#25D366;color:#fff;font-size:10px;padding:3px 8px;border-radius:10px;font-weight:700}
+.pkg-card h3{font-size:17px;margin-bottom:4px}
+.pkg-price{font-size:26px;font-weight:700;color:#25D366}
+.pkg-price span{font-size:13px;color:#65676b;font-weight:400}
+.pkg-trial{font-size:12px;color:#008069;font-weight:600;margin:4px 0 8px}
+.pkg-card ul{list-style:none;font-size:13px;color:#444}
+.pkg-card li{padding:3px 0}
+.btn{display:block;width:100%;padding:15px;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;text-align:center;margin-top:14px;text-decoration:none}
+.btn-primary{background:#25D366;color:#fff}
+.btn-primary:active{background:#1ea952}
+.btn-secondary{background:#e4e6eb;color:#1c1e21;margin-top:8px}
+.status{text-align:center;padding:24px 12px}
+.success-icon{font-size:56px;margin-bottom:12px}
+.error{color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;text-align:center;margin-top:12px;font-size:14px;line-height:1.4}
+.tip-box{background:#e8f4fd;border-left:4px solid #1877f2;padding:12px;border-radius:6px;font-size:13px;color:#0c5460;margin-top:14px;line-height:1.4}
+.loading{display:inline-block;width:18px;height:18px;border:2.5px solid #fff;border-radius:50%;border-top-color:transparent;animation:spin 0.8s linear infinite;margin-right:8px;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>&#128994; Xtop WhatsApp Bot</h1>
+    <p>Connect your business to your WhatsApp Business number</p>
+  </div>
 
-import {
-  getSupabaseClient,
-  updateConversation,
-  safeErrorLog,
-} from "../database.ts";
+  <!-- STEP 1: PACKAGE SELECTION -->
+  <div class="step" id="step1">
+    <h2>Step 1: Select Your Package</h2>
+    <div class="pkg-grid">
+      <div class="pkg-card" data-code="BASIC" onclick="selectPackage('BASIC')">
+        <h3>Basic</h3>
+        <div class="pkg-price">&#8358;35,000<span>/mo</span></div>
+        <div class="pkg-trial">14-day free trial (&#8358;0 today)</div>
+        <ul>
+          <li>&#10003; Auto-replies & Menus</li>
+          <li>&#10003; Product Catalogue</li>
+          <li>&#10003; Lead Capture</li>
+          <li>&#10003; Agent Handover</li>
+        </ul>
+      </div>
+      
+      <div class="pkg-card selected" data-code="STANDARD" onclick="selectPackage('STANDARD')">
+        <div class="pkg-badge">&#11088; POPULAR</div>
+        <h3>Standard</h3>
+        <div class="pkg-price">&#8358;75,000<span>/mo</span></div>
+        <div class="pkg-trial">14-day free trial (&#8358;0 today)</div>
+        <ul>
+          <li>&#10003; Everything in Basic</li>
+          <li>&#10003; Sales Quotation Engine</li>
+          <li>&#10003; Interactive Business Demos</li>
+          <li>&#10003; Free Tools Suite</li>
+        </ul>
+      </div>
 
-import {
-  sendTextMessage,
-  sendButtonMessage,
-  makeButton,
-} from "../whatsapp.ts";
+      <div class="pkg-card" data-code="PREMIUM" onclick="selectPackage('PREMIUM')">
+        <h3>Premium</h3>
+        <div class="pkg-price">&#8358;150,000<span>/mo</span></div>
+        <div class="pkg-trial">14-day free trial (&#8358;0 today)</div>
+        <ul>
+          <li>&#10003; Everything in Standard</li>
+          <li>&#10003; Workflow Automation</li>
+          <li>&#10003; Magazine Studio</li>
+          <li>&#10003; Priority Support</li>
+        </ul>
+      </div>
+    </div>
+    <button class="btn btn-primary" id="btnNext" onclick="goToStep2()">Continue to Connect WhatsApp</button>
+  </div>
 
-import { encryptToken } from "../lib/encryption.ts";
+  <!-- STEP 2: META EMBEDDED SIGNUP -->
+  <div class="step hidden" id="step2">
+    <h2>Step 2: Connect Your WhatsApp Account</h2>
+    <p style="font-size:14px;color:#65676b;line-height:1.5;margin-bottom:12px">
+      Log in with Meta to select or create your WhatsApp Business Account and verify your phone number.
+    </p>
 
-const sb = getSupabaseClient();
+    <button id="btnConnect" class="btn btn-primary" onclick="triggerMetaAuth()">
+      &#128279; Connect WhatsApp with Meta
+    </button>
 
-const corsHeaders = {
-  "access-control-allow-origin": "*",
-  "access-control-allow-headers": "authorization, x-client-info, apikey, content-type",
-  "access-control-allow-methods": "GET, POST, OPTIONS",
+    <div id="webviewTip" class="tip-box hidden">
+      <strong>📱 Opening from WhatsApp?</strong><br>
+      If the Facebook popup does not appear, tap the <strong>three dots (&#8942;)</strong> in the top-right corner and select <strong>"Open in Chrome / Browser"</strong>.
+    </div>
+
+    <button class="btn btn-secondary" onclick="goToStep1()">&#8592; Back</button>
+    <div class="error hidden" id="errorMsg"></div>
+  </div>
+
+  <!-- STEP 3: SUCCESS CONFIRMATION -->
+  <div class="step hidden" id="step3">
+    <div class="status">
+      <div class="success-icon">&#127881;</div>
+      <h2 style="color:#25D366;font-size:20px">Your Bot is Live!</h2>
+      <p id="successMsg" style="margin-top:12px;font-size:14px;line-height:1.6;color:#444"></p>
+    </div>
+  </div>
+</div>
+
+<!-- Facebook JavaScript SDK -->
+<script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js"></script>
+
+<script>
+const SUPABASE_API_URL = "https://mldywarnnwjitfvqpgis.supabase.co/functions/v1/whatsapp-webhook?action=onboard";
+const META_APP_ID = "1947931015867084";
+
+let selectedPackage = 'STANDARD';
+let fbSdkLoaded = false;
+const urlParams = new URLSearchParams(window.location.search);
+const SESSION_TOKEN = urlParams.get('token') || urlParams.get('state') || safeStorageGet('xtop_session_token') || '';
+
+// Initialize Facebook SDK
+window.fbAsyncInit = function() {
+  try {
+    FB.init({
+      appId: META_APP_ID,
+      cookie: true,
+      xfbml: false,
+      version: 'v21.0'
+    });
+    fbSdkLoaded = true;
+  } catch (e) {
+    console.warn("FB SDK init warning:", e);
+  }
 };
 
-export function jsonResponse(body: any, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "content-type": "application/json",
-      ...corsHeaders,
-    },
-  });
-}
-
 // ══════════════════════════════════════════════════════
-// 1. LINK GENERATOR
+// META EMBEDDED SIGNUP MESSAGE LISTENER
+// Captures WABA ID and Phone Number ID from Meta popup
 // ══════════════════════════════════════════════════════
-
-export async function createOnboardingSession(
-  tenantId: string,
-  packageCode: string = "BASIC"
-): Promise<string | null> {
-  const sessionToken = crypto.randomUUID().replace(/-/g, "");
-  const expiresAt = new Date();
-  expiresAt.setHours(expiresAt.getHours() + 24);
-
-  const { error } = await sb.from("onboarding_sessions").insert({
-    tenant_id: tenantId,
-    session_token: sessionToken,
-    package_code: packageCode,
-    status: "PENDING",
-    expires_at: expiresAt.toISOString(),
-  });
-
-  if (error) {
-    safeErrorLog("createOnboardingSession", error);
-    return null;
+window.addEventListener('message', (event) => {
+  if (event.origin !== "https://www.facebook.com" && event.origin !== "https://web.facebook.com") {
+    return;
   }
 
-  const rawBaseUrl = Deno.env.get("ONBOARDING_BASE_URL") || "https://xtopbot.netlify.app";
-  const baseUrl = rawBaseUrl.replace(/\/+$/, "");
-
-  return `${baseUrl}?token=${sessionToken}`;
-}
-
-// ══════════════════════════════════════════════════════
-// 2. WHATSAPP CHAT TRIGGER
-// ══════════════════════════════════════════════════════
-
-export async function handleOnboardingRequest(
-  phone: string,
-  text: string,
-  contactId: string,
-  conversationId: string
-): Promise<boolean> {
-  const lower = text.toLowerCase().trim();
-
-  const isOnboardingIntent =
-    lower.includes("i want a bot") ||
-    lower.includes("i need a bot") ||
-    lower.includes("get my own bot") ||
-    lower.includes("set up my bot") ||
-    lower.includes("setup bot") ||
-    lower.includes("connect my whatsapp") ||
-    lower.includes("connect whatsapp") ||
-    lower.includes("build a bot") ||
-    lower.includes("create a bot") ||
-    lower.includes("start trial") ||
-    lower.includes("free trial") ||
-    lower.includes("onboard") ||
-    lower === "signup" ||
-    lower === "sign up";
-
-  if (!isOnboardingIntent) return false;
-
-  await updateConversation(conversationId, {
-    current_module: "MAIN_MENU",
-    current_state: "IDLE",
-    context_json: {},
-  });
-
-  await sendTextMessage(
-    phone,
-    "🟢 *Great choice!*\n\n" +
-    "I can set up a WhatsApp bot for your business in under 5 minutes.\n\n" +
-    "You will get:\n" +
-    "• Your own WhatsApp Business number\n" +
-    "• Automated replies and menus\n" +
-    "• Lead capture and customer management\n" +
-    "• 14-day free trial (no payment required)\n\n" +
-    "Generating your secure signup link..."
-  );
-
-  const slug = `biz_${Date.now()}`;
-  const { data: tenant, error: tenantErr } = await sb
-    .from("tenants")
-    .insert({
-      name: `Business ${slug}`,
-      slug,
-      contact_phone: phone,
-      is_active: false,
-    })
-    .select("id")
-    .single();
-
-  if (tenantErr || !tenant) {
-    safeErrorLog("handleOnboardingRequest.tenant", tenantErr);
-    await sendTextMessage(
-      phone,
-      "⚠️ I could not create your account right now. Please try again later or contact our team directly."
-    );
-    return true;
-  }
-
-  const signupLink = await createOnboardingSession(tenant.id, "BASIC");
-
-  if (!signupLink) {
-    await sendTextMessage(
-      phone,
-      "⚠️ I could not generate your signup link. Please try again later."
-    );
-    return true;
-  }
-
-  await sendTextMessage(
-    phone,
-    `✅ *Your signup link is ready!*\n\n` +
-    `🔗 ${signupLink}\n\n` +
-    `Tap the link above to:\n` +
-    `1. Choose your package\n` +
-    `2. Connect your WhatsApp Business number\n` +
-    `3. Start your 14-day free trial\n\n` +
-    `⏰ _This link expires in 24 hours._`
-  );
-
-  await sendButtonMessage(
-    phone,
-    "Need help with setup?",
-    [
-      makeButton("demo_agent", "👤 Talk to Agent"),
-      makeButton("menu_home", "🏠 Main Menu"),
-    ]
-  );
-
-  return true;
-}
-
-// ══════════════════════════════════════════════════════
-// 3. META AUTH CODE EXCHANGE (ROBUST WABA RESOLVER)
-// ══════════════════════════════════════════════════════
-
-async function exchangeMetaAuthCode(authCode: string, redirectUri: string) {
-  const appId = Deno.env.get("META_APP_ID") || "1947931015867084";
-  const appSecret = Deno.env.get("META_APP_SECRET") || "";
-  const systemToken = Deno.env.get("META_SYSTEM_USER_TOKEN") || "";
-  const graphApi = "https://graph.facebook.com/v21.0";
-
-  let userToken = "";
-
-  // If code is already a token (from direct FB.login)
-  if (authCode.startsWith("EAA") && authCode.length > 50) {
-    userToken = authCode;
-  } else {
-    // Exchange code for token (tries both clean URI and URI with trailing slash)
-    const cleanUri = redirectUri ? redirectUri.replace(/\/+$/, "") : "";
-    const tokenUrl =
-      `${graphApi}/oauth/access_token?client_id=${appId}` +
-      `&client_secret=${encodeURIComponent(appSecret)}` +
-      `&code=${encodeURIComponent(authCode)}` +
-      (cleanUri ? `&redirect_uri=${encodeURIComponent(cleanUri)}` : "");
-
-    let tokenResp = await fetch(tokenUrl);
-    if (!tokenResp.ok && cleanUri) {
-      // Retry with trailing slash if required by Meta app settings
-      const retryUrl =
-        `${graphApi}/oauth/access_token?client_id=${appId}` +
-        `&client_secret=${encodeURIComponent(appSecret)}` +
-        `&code=${encodeURIComponent(authCode)}` +
-        `&redirect_uri=${encodeURIComponent(cleanUri + "/")}`;
-      tokenResp = await fetch(retryUrl);
-    }
-
-    if (!tokenResp.ok) {
-      const errText = await tokenResp.text();
-      console.error("[Meta Exchange Error - Token Step]:", errText);
-      return { error: `Meta token exchange rejected: ${errText}` };
-    }
-
-    const tokenData = await tokenResp.json();
-    userToken = tokenData.access_token;
-  }
-
-  if (!userToken) return { error: "No access token received from Meta" };
-
-  // Step 2: Get WhatsApp Business Account ID
-  let wabaId = "";
-
-  const wabaResp = await fetch(`${graphApi}/me/whatsapp_business_accounts?access_token=${userToken}`);
-  if (wabaResp.ok) {
-    const wabaData = await wabaResp.json();
-    wabaId = wabaData.data?.[0]?.id || "";
-  }
-
-  if (!wabaId) {
-    const debugResp = await fetch(`${graphApi}/debug_token?input_token=${userToken}&access_token=${appId}|${appSecret}`);
-    if (debugResp.ok) {
-      const debugData = await debugResp.json();
-      const scopes = debugData.data?.granular_scopes || [];
-      const waScope = scopes.find((s: any) => s.scope === "whatsapp_business_management");
-      wabaId = waScope?.target_ids?.[0] || "";
-    }
-  }
-
-  if (!wabaId) {
-    return { error: "No WhatsApp Business Account found associated with this Facebook login." };
-  }
-
-  // Step 3: Get Phone Number ID
-  const activeToken = systemToken || userToken;
-  const phoneResp = await fetch(`${graphApi}/${wabaId}/phone_numbers?access_token=${activeToken}`);
-  if (!phoneResp.ok) {
-    const errText = await phoneResp.text();
-    console.error("[Meta Exchange Error - Phone Step]:", errText);
-    return { error: `Could not retrieve phone numbers: ${errText}` };
-  }
-
-  const phoneData = await phoneResp.json();
-  const phoneNumberId = phoneData.data?.[0]?.id;
-  const displayPhone = phoneData.data?.[0]?.display_phone_number || "";
-  const verifiedName = phoneData.data?.[0]?.verified_name || "";
-
-  if (!phoneNumberId) {
-    return { error: "No verified WhatsApp phone number found on this WhatsApp Business Account." };
-  }
-
-  // Step 4: Subscribe webhook
-  await fetch(`${graphApi}/${wabaId}/subscribed_apps?access_token=${activeToken}`, { method: "POST" });
-
-  return {
-    accessToken: activeToken,
-    wabaId,
-    phoneNumberId,
-    displayPhone,
-    verifiedName,
-  };
-}
-
-// ══════════════════════════════════════════════════════
-// 4. ONBOARDING CALLBACK POST HANDLER
-// ══════════════════════════════════════════════════════
-
-export async function handleOnboardingCallback(req: Request): Promise<Response> {
   try {
-    const body = await req.json();
-    const { session_token, auth_code, package_code, redirect_uri } = body;
-
-    if (!session_token || !auth_code) {
-      return jsonResponse({ error: "Missing session_token or auth_code" }, 400);
+    const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+    if (data && data.type === 'WA_EMBEDDED_SIGNUP') {
+      if (data.event === 'FINISH') {
+        const { phone_number_id, waba_id } = data.data || {};
+        console.log('WhatsApp Onboarding Finished:', { phone_number_id, waba_id });
+        if (waba_id) safeStorageSet('xtop_waba_id', waba_id);
+        if (phone_number_id) safeStorageSet('xtop_phone_id', phone_number_id);
+      } else if (data.event === 'CANCEL') {
+        showError("WhatsApp setup was cancelled.");
+        resetButton();
+      } else if (data.event === 'ERROR') {
+        showError("An error occurred during WhatsApp setup: " + (data.data?.error_message || "Unknown error"));
+        resetButton();
+      }
     }
+  } catch (e) {
+    // Non-JSON message, ignore
+  }
+});
 
-    const { data: session } = await sb
-      .from("onboarding_sessions")
-      .select("*")
-      .eq("session_token", session_token)
-      .maybeSingle();
+function safeStorageSet(key, val) {
+  try { sessionStorage.setItem(key, val); localStorage.setItem(key, val); } catch (e) {}
+}
 
-    if (!session) return jsonResponse({ error: "Invalid onboarding session" }, 404);
-    if (new Date(session.expires_at) < new Date()) return jsonResponse({ error: "This onboarding link has expired" }, 410);
-    if (session.status === "TRIAL_ACTIVATED") return jsonResponse({ error: "This account has already completed onboarding" }, 409);
+function safeStorageGet(key) {
+  try { return sessionStorage.getItem(key) || localStorage.getItem(key) || ''; } catch (e) { return ''; }
+}
 
-    const result = await exchangeMetaAuthCode(auth_code, redirect_uri || "https://xtopbot.netlify.app");
+function selectPackage(code) {
+  selectedPackage = code;
+  document.querySelectorAll('.pkg-card').forEach(c => c.classList.remove('selected'));
+  const card = document.querySelector('[data-code="' + code + '"]');
+  if (card) card.classList.add('selected');
+  safeStorageSet('xtop_package_code', selectedPackage);
+}
 
-    if ("error" in result || !result.accessToken) {
-      await sb.from("onboarding_sessions").update({
-        status: "FAILED",
-        error_message: (result as any).error || "Token exchange failed",
-      }).eq("id", session.id);
+function goToStep1() {
+  document.getElementById('step1').classList.remove('hidden');
+  document.getElementById('step2').classList.add('hidden');
+}
 
-      return jsonResponse({ error: (result as any).error || "Meta authorization failed" }, 400);
-    }
+function goToStep2() {
+  if (!SESSION_TOKEN) {
+    showError("Missing session token. Please type <strong>'I want a bot'</strong> on WhatsApp to generate a fresh link.");
+    return;
+  }
+  safeStorageSet('xtop_session_token', SESSION_TOKEN);
+  safeStorageSet('xtop_package_code', selectedPackage);
+  document.getElementById('step1').classList.add('hidden');
+  document.getElementById('step2').classList.remove('hidden');
 
-    const encryptedToken = await encryptToken(result.accessToken);
-
-    await sb.from("tenant_whatsapp_accounts").upsert({
-      tenant_id: session.tenant_id,
-      waba_id: result.wabaId,
-      phone_number_id: result.phoneNumberId,
-      display_phone_number: result.displayPhone,
-      verified_name: result.verifiedName,
-      encrypted_access_token: encryptedToken,
-      is_active: true,
-    }, { onConflict: "phone_number_id" });
-
-    const trialStart = new Date();
-    const trialEnd = new Date();
-    trialEnd.setDate(trialEnd.getDate() + 14);
-
-    const selectedPkg = package_code || session.package_code || "BASIC";
-    const monthlyFee = selectedPkg === "PREMIUM" ? 150000 : selectedPkg === "STANDARD" ? 75000 : 35000;
-    const msgLimit = selectedPkg === "PREMIUM" ? 10000 : selectedPkg === "STANDARD" ? 5000 : 1000;
-
-    await sb.from("tenant_subscriptions").insert({
-      tenant_id: session.tenant_id,
-      package_code: selectedPkg,
-      package_name: selectedPkg.charAt(0) + selectedPkg.slice(1).toLowerCase(),
-      status: "TRIAL",
-      trial_started_at: trialStart.toISOString(),
-      trial_expires_at: trialEnd.toISOString(),
-      monthly_fee_ngn: monthlyFee,
-      messages_included: msgLimit,
-      is_active: true,
-    });
-
-    await sb.from("onboarding_sessions").update({
-      status: "TRIAL_ACTIVATED",
-      waba_id: result.wabaId,
-      phone_number_id: result.phoneNumberId,
-    }).eq("id", session.id);
-
-    if (session.tenant_id) {
-      await sb.from("tenants").update({ is_active: true }).eq("id", session.tenant_id);
-    }
-
-    return jsonResponse({
-      success: true,
-      phone: result.displayPhone,
-      trial_ends: trialEnd.toISOString(),
-      package: selectedPkg,
-    });
-  } catch (err) {
-    console.error("[Onboard Callback Catch]:", err);
-    return jsonResponse({ error: "Internal setup error. Please try again." }, 500);
+  // Detect WhatsApp / in-app browser WebView
+  const ua = navigator.userAgent || navigator.vendor || window.opera || '';
+  if (/WhatsApp|FBAN|FBAV|Instagram/i.test(ua)) {
+    document.getElementById('webviewTip').classList.remove('hidden');
   }
 }
+
+function getExactRedirectUri() {
+  return window.location.origin + window.location.pathname;
+}
+
+function resetButton() {
+  const btn = document.getElementById('btnConnect');
+  if (btn) {
+    btn.innerHTML = '&#128279; Connect WhatsApp with Meta';
+    btn.disabled = false;
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// TRIGGER META EMBEDDED SIGNUP
+// ══════════════════════════════════════════════════════
+function triggerMetaAuth() {
+  const btn = document.getElementById('btnConnect');
+  btn.innerHTML = '<span class="loading"></span> Connecting with Meta...';
+  document.getElementById('errorMsg').classList.add('hidden');
+
+  safeStorageSet('xtop_package_code', selectedPackage);
+  safeStorageSet('xtop_session_token', SESSION_TOKEN);
+
+  if (typeof FB !== 'undefined' && fbSdkLoaded) {
+    try {
+      FB.login(function(response) {
+        if (response.authResponse && response.authResponse.code) {
+          handleReturnedCode(response.authResponse.code);
+        } else if (response.authResponse && response.authResponse.accessToken) {
+          handleReturnedCode(response.authResponse.accessToken);
+        } else {
+          resetButton();
+          if (response.status === 'not_authorized') {
+            showError("Meta login cancelled. Please tap Connect to try again.");
+          }
+        }
+      }, {
+        extras: {
+          feature: 'whatsapp_embedded_signup',
+          version: 2,
+          sessionInfoVersion: 2
+        },
+        response_type: 'code',
+        override_default_response_type: true
+      });
+      return;
+    } catch (e) {
+      console.warn("FB.login failed, falling back to direct redirect:", e);
+    }
+  }
+
+  // Fallback: Direct OAuth redirect
+  const redirectUri = getExactRedirectUri();
+  const metaUrl = 'https://www.facebook.com/v21.0/dialog/oauth' +
+    '?client_id=' + encodeURIComponent(META_APP_ID) +
+    '&redirect_uri=' + encodeURIComponent(redirectUri) +
+    '&scope=' + encodeURIComponent('whatsapp_business_management,whatsapp_business_messaging') +
+    '&response_type=code' +
+    '&state=' + encodeURIComponent(SESSION_TOKEN);
+
+  window.location.href = metaUrl;
+}
+
+async function handleReturnedCode(code) {
+  document.getElementById('step1').classList.add('hidden');
+  document.getElementById('step2').classList.remove('hidden');
+  const btn = document.getElementById('btnConnect');
+  btn.innerHTML = '<span class="loading"></span> Activating your WhatsApp bot...';
+  btn.disabled = true;
+
+  const savedPackage = safeStorageGet('xtop_package_code') || selectedPackage;
+  const savedToken = safeStorageGet('xtop_session_token') || SESSION_TOKEN;
+  const savedWabaId = safeStorageGet('xtop_waba_id') || '';
+  const savedPhoneId = safeStorageGet('xtop_phone_id') || '';
+  const redirectUri = getExactRedirectUri();
+
+  try {
+    const resp = await fetch(SUPABASE_API_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        session_token: savedToken,
+        auth_code: code,
+        package_code: savedPackage,
+        redirect_uri: redirectUri,
+        waba_id: savedWabaId,
+        phone_number_id: savedPhoneId
+      })
+    });
+
+    const data = await resp.json();
+
+    if (data.success) {
+      document.getElementById('step2').classList.add('hidden');
+      document.getElementById('step3').classList.remove('hidden');
+      document.getElementById('successMsg').innerHTML =
+        'Your WhatsApp Business number <strong>' + (data.phone || 'Connected') + '</strong> is now active.<br><br>' +
+        '&#128230; Package: <strong>' + data.package + '</strong><br>' +
+        '&#128197; 14-Day Free Trial Ends: <strong>' + new Date(data.trial_ends).toLocaleDateString() + '</strong><br><br>' +
+        '&#128073; <strong>Send "hi" to your new WhatsApp number to test your bot!</strong>';
+    } else {
+      showError(data.error || 'Setup could not be completed. Please try again.');
+      resetButton();
+    }
+  } catch (err) {
+    showError('Network error during activation. Please tap Connect to try again.');
+    resetButton();
+  }
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.innerHTML = msg;
+  el.classList.remove('hidden');
+}
+
+window.addEventListener('load', () => {
+  const metaError = urlParams.get('error_description') || urlParams.get('error_message') || urlParams.get('error');
+  if (metaError) {
+    document.getElementById('step1').classList.add('hidden');
+    document.getElementById('step2').classList.remove('hidden');
+    showError("Meta signup cancelled or denied: " + metaError);
+    return;
+  }
+
+  const code = urlParams.get('code');
+  if (code) {
+    handleReturnedCode(code);
+  }
+});
+</script>
+</body>
+</html>
