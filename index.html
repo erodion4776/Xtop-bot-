@@ -23,15 +23,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
 .pkg-trial{font-size:12px;color:#008069;font-weight:600;margin:4px 0 8px}
 .pkg-card ul{list-style:none;font-size:13px;color:#444}
 .pkg-card li{padding:3px 0}
-.btn{display:block;width:100%;padding:15px;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;text-align:center;margin-top:14px}
+.btn{display:block;width:100%;padding:15px;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;text-align:center;margin-top:14px;text-decoration:none}
 .btn-primary{background:#25D366;color:#fff}
 .btn-primary:active{background:#1ea952}
-.btn-primary:disabled{background:#a8dfc1;cursor:not-allowed}
 .btn-secondary{background:#e4e6eb;color:#1c1e21;margin-top:8px}
 .status{text-align:center;padding:24px 12px}
 .success-icon{font-size:56px;margin-bottom:12px}
 .error{color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;text-align:center;margin-top:12px;font-size:14px;line-height:1.4}
 .loading{display:inline-block;width:18px;height:18px;border:2.5px solid #fff;border-radius:50%;border-top-color:transparent;animation:spin 0.8s linear infinite;margin-right:8px;vertical-align:middle}
+.direct-link{display:block;text-align:center;margin-top:14px;color:#1877f2;font-size:13px;text-decoration:underline;cursor:pointer}
 @keyframes spin{to{transform:rotate(360deg)}}
 .hidden{display:none}
 </style>
@@ -43,6 +43,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
     <p>Connect your business to your WhatsApp Business number</p>
   </div>
 
+  <!-- STEP 1: PACKAGE SELECTION -->
   <div class="step" id="step1">
     <h2>Step 1: Select Your Package</h2>
     <div class="pkg-grid">
@@ -86,18 +87,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
     <button class="btn btn-primary" id="btnNext" onclick="goToStep2()">Continue to Connect WhatsApp</button>
   </div>
 
+  <!-- STEP 2: META LOGIN & DIRECT LINK -->
   <div class="step hidden" id="step2">
     <h2>Step 2: Connect Your WhatsApp Account</h2>
     <p style="font-size:14px;color:#65676b;line-height:1.5;margin-bottom:16px">
-      Log into Facebook with Meta, choose or create your WhatsApp Business Account, and verify your phone number.
+      Log into Facebook with Meta to select or create your WhatsApp Business Account and verify your phone number.
     </p>
-    <button class="btn btn-primary" id="btnConnect" onclick="startMetaSignup()">
+
+    <!-- Direct Native Anchor Link: Bypasses mobile webview blockers -->
+    <a href="#" id="btnConnect" class="btn btn-primary" onclick="handleConnectClick(event)">
       &#128279; Connect WhatsApp with Meta
-    </button>
+    </a>
+
     <button class="btn btn-secondary" onclick="goToStep1()">&#8592; Back</button>
     <div class="error hidden" id="errorMsg"></div>
   </div>
 
+  <!-- STEP 3: SUCCESS CONFIRMATION -->
   <div class="step hidden" id="step3">
     <div class="status">
       <div class="success-icon">&#127881;</div>
@@ -113,13 +119,47 @@ const META_APP_ID = "1947931015867084";
 
 let selectedPackage = 'STANDARD';
 const urlParams = new URLSearchParams(window.location.search);
-const SESSION_TOKEN = urlParams.get('token') || urlParams.get('state') || sessionStorage.getItem('xtop_session_token') || '';
+const SESSION_TOKEN = urlParams.get('token') || urlParams.get('state') || safeStorageGet('xtop_session_token') || '';
+
+function safeStorageSet(key, val) {
+  try { sessionStorage.setItem(key, val); localStorage.setItem(key, val); } catch (e) {}
+}
+
+function safeStorageGet(key) {
+  try { return sessionStorage.getItem(key) || localStorage.getItem(key) || ''; } catch (e) { return ''; }
+}
 
 function selectPackage(code) {
   selectedPackage = code;
   document.querySelectorAll('.pkg-card').forEach(c => c.classList.remove('selected'));
   const card = document.querySelector('[data-code="' + code + '"]');
   if (card) card.classList.add('selected');
+  updateMetaLink();
+}
+
+function getExactRedirectUri() {
+  return window.location.origin + window.location.pathname;
+}
+
+function buildMetaOAuthUrl() {
+  const redirectUri = getExactRedirectUri();
+  return 'https://www.facebook.com/v21.0/dialog/oauth' +
+    '?client_id=' + encodeURIComponent(META_APP_ID) +
+    '&redirect_uri=' + encodeURIComponent(redirectUri) +
+    '&scope=' + encodeURIComponent('whatsapp_business_management,whatsapp_business_messaging') +
+    '&response_type=code' +
+    '&state=' + encodeURIComponent(SESSION_TOKEN);
+}
+
+function updateMetaLink() {
+  safeStorageSet('xtop_package_code', selectedPackage);
+  if (SESSION_TOKEN) {
+    safeStorageSet('xtop_session_token', SESSION_TOKEN);
+  }
+  const btn = document.getElementById('btnConnect');
+  if (btn) {
+    btn.href = buildMetaOAuthUrl();
+  }
 }
 
 function goToStep1() {
@@ -129,51 +169,35 @@ function goToStep1() {
 
 function goToStep2() {
   if (!SESSION_TOKEN) {
-    showError("Missing session reference. Please generate a new signup link on WhatsApp by typing 'I want a bot'.");
+    showError("Missing session token. Please type <strong>'I want a bot'</strong> on WhatsApp to generate a fresh link.");
     return;
   }
+  updateMetaLink();
   document.getElementById('step1').classList.add('hidden');
   document.getElementById('step2').classList.remove('hidden');
 }
 
-function getExactRedirectUri() {
-  return window.location.origin + window.location.pathname;
-}
-
-function startMetaSignup() {
+function handleConnectClick(e) {
+  if (!SESSION_TOKEN) {
+    e.preventDefault();
+    showError("Missing session token. Please generate a new link on WhatsApp.");
+    return;
+  }
   const btn = document.getElementById('btnConnect');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="loading"></span> Redirecting to Meta...';
-  document.getElementById('errorMsg').classList.add('hidden');
-
-  sessionStorage.setItem('xtop_package_code', selectedPackage);
-  sessionStorage.setItem('xtop_session_token', SESSION_TOKEN);
-
-  const redirectUri = getExactRedirectUri();
-  const metaUrl = 'https://www.facebook.com/v21.0/dialog/oauth' +
-    '?client_id=' + encodeURIComponent(META_APP_ID) +
-    '&redirect_uri=' + encodeURIComponent(redirectUri) +
-    '&scope=' + encodeURIComponent('whatsapp_business_management,whatsapp_business_messaging') +
-    '&response_type=code' +
-    '&state=' + encodeURIComponent(SESSION_TOKEN);
-
-  window.location.href = metaUrl;
+  btn.innerHTML = '<span class="loading"></span> Opening Meta Login...';
+  // Allow the native link navigation to execute immediately
 }
 
 async function handleReturnedCode(code) {
   document.getElementById('step1').classList.add('hidden');
   document.getElementById('step2').classList.remove('hidden');
   const btn = document.getElementById('btnConnect');
-  btn.disabled = true;
   btn.innerHTML = '<span class="loading"></span> Activating your WhatsApp bot...';
+  btn.style.pointerEvents = 'none';
 
-  const savedPackage = sessionStorage.getItem('xtop_package_code') || selectedPackage;
-  const savedToken = sessionStorage.getItem('xtop_session_token') || SESSION_TOKEN;
+  const savedPackage = safeStorageGet('xtop_package_code') || selectedPackage;
+  const savedToken = safeStorageGet('xtop_session_token') || SESSION_TOKEN;
   const redirectUri = getExactRedirectUri();
-
-  // 15-second timeout controller
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 18000);
 
   try {
     const resp = await fetch(SUPABASE_API_URL, {
@@ -184,11 +208,9 @@ async function handleReturnedCode(code) {
         auth_code: code,
         package_code: savedPackage,
         redirect_uri: redirectUri
-      }),
-      signal: controller.signal
+      })
     });
 
-    clearTimeout(timeoutId);
     const data = await resp.json();
 
     if (data.success) {
@@ -201,18 +223,13 @@ async function handleReturnedCode(code) {
         '&#128073; <strong>Send "hi" to your new WhatsApp number to test your bot!</strong>';
     } else {
       showError(data.error || 'Setup could not be completed. Please try again.');
-      btn.disabled = false;
-      btn.textContent = '&#128279; Connect WhatsApp with Meta';
+      btn.innerHTML = '&#128279; Connect WhatsApp with Meta';
+      btn.style.pointerEvents = 'auto';
     }
   } catch (err) {
-    clearTimeout(timeoutId);
-    if (err.name === 'AbortError') {
-      showError('The request timed out. Please check your network and tap Connect again.');
-    } else {
-      showError('Connection error during setup. Please tap Connect to retry.');
-    }
-    btn.disabled = false;
-    btn.textContent = '&#128279; Connect WhatsApp with Meta';
+    showError('Network error during activation. Please tap Connect to try again.');
+    btn.innerHTML = '&#128279; Connect WhatsApp with Meta';
+    btn.style.pointerEvents = 'auto';
   }
 }
 
@@ -223,7 +240,9 @@ function showError(msg) {
 }
 
 window.addEventListener('load', () => {
-  // 1. Check for Meta OAuth Errors returned in URL
+  updateMetaLink();
+
+  // 1. Check for Meta OAuth Cancellation or Error in URL
   const metaError = urlParams.get('error_description') || urlParams.get('error_message') || urlParams.get('error');
   if (metaError) {
     document.getElementById('step1').classList.add('hidden');
