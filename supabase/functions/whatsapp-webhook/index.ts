@@ -1,6 +1,5 @@
 // supabase/functions/whatsapp-webhook/index.ts
 
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { routeMessage } from "./router.ts";
 import { IncomingMessage, sendTextMessage } from "./whatsapp.ts";
@@ -12,9 +11,9 @@ import {
 const VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "xtop_webhook_secret";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+  "access-control-allow-origin": "*",
+  "access-control-allow-headers": "authorization, x-client-info, apikey, content-type",
+  "access-control-allow-methods": "GET, POST, PUT, OPTIONS",
 };
 
 function normalizePhone(raw: string): string {
@@ -28,11 +27,11 @@ function normalizePhone(raw: string): string {
 function jsonResponse(body: any, status: number = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...corsHeaders, "content-type": "application/json" },
   });
 }
 
-serve(async (req: Request) => {
+Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -277,7 +276,7 @@ serve(async (req: Request) => {
     const challenge = url.searchParams.get("hub.challenge");
 
     if (mode === "subscribe" && token === VERIFY_TOKEN) {
-      return new Response(challenge, { status: 200 });
+      return new Response(challenge, { status: 200, headers: { "content-type": "text/plain" } });
     }
     return new Response("Forbidden", { status: 403 });
   }
@@ -296,7 +295,7 @@ serve(async (req: Request) => {
       if (value?.statuses && !value?.messages) {
         return new Response(JSON.stringify({ status: "ignored_status" }), {
           status: 200,
-          headers: { "Content-Type": "application/json" },
+          headers: { "content-type": "application/json" },
         });
       }
 
@@ -306,7 +305,7 @@ serve(async (req: Request) => {
       if (!messageObj) {
         return new Response(JSON.stringify({ status: "no_message" }), {
           status: 200,
-          headers: { "Content-Type": "application/json" },
+          headers: { "content-type": "application/json" },
         });
       }
 
@@ -348,13 +347,13 @@ serve(async (req: Request) => {
 
       return new Response(JSON.stringify({ status: "received" }), {
         status: 200,
-        headers: { "Content-Type": "application/json" },
+        headers: { "content-type": "application/json" },
       });
     } catch (err) {
       console.error("[Webhook Error]:", err);
       return new Response(JSON.stringify({ error: "error_handled" }), {
         status: 200,
-        headers: { "Content-Type": "application/json" },
+        headers: { "content-type": "application/json" },
       });
     }
   }
