@@ -27,7 +27,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
 .btn-primary{background:#25D366;color:#fff}
 .btn-primary:active{background:#1ea952}
 .btn-secondary{background:#e4e6eb;color:#1c1e21;margin-top:8px}
-.btn-outline{background:transparent;border:2px solid #1877f2;color:#1877f2;margin-top:10px}
 .status{text-align:center;padding:24px 12px}
 .success-icon{font-size:56px;margin-bottom:12px}
 .error{color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;text-align:center;margin-top:12px;font-size:14px;line-height:1.4}
@@ -88,11 +87,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
     <button class="btn btn-primary" id="btnNext" onclick="goToStep2()">Continue to Connect WhatsApp</button>
   </div>
 
-  <!-- STEP 2: CONNECT WHATSAPP WITH META -->
+  <!-- STEP 2: META EMBEDDED SIGNUP -->
   <div class="step hidden" id="step2">
     <h2>Step 2: Connect Your WhatsApp Account</h2>
     <p style="font-size:14px;color:#65676b;line-height:1.5;margin-bottom:12px">
-      You will connect with Meta to select or create your WhatsApp Business Account and verify your phone number.
+      Log in with Meta to select or create your WhatsApp Business Account and verify your phone number.
     </p>
 
     <button id="btnConnect" class="btn btn-primary" onclick="triggerMetaAuth()">
@@ -101,7 +100,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
 
     <div id="webviewTip" class="tip-box hidden">
       <strong>📱 Opening from WhatsApp?</strong><br>
-      If the Facebook screen does not open, tap the <strong>three dots (&#8942;)</strong> at the top right of your screen and select <strong>"Open in Chrome / Browser"</strong>.
+      If the Facebook popup does not appear, tap the <strong>three dots (&#8942;)</strong> in the top-right corner and select <strong>"Open in Chrome / Browser"</strong>.
     </div>
 
     <button class="btn btn-secondary" onclick="goToStep1()">&#8592; Back</button>
@@ -145,6 +144,36 @@ window.fbAsyncInit = function() {
   }
 };
 
+// ══════════════════════════════════════════════════════
+// META EMBEDDED SIGNUP MESSAGE LISTENER
+// Captures WABA ID and Phone Number ID from Meta popup
+// ══════════════════════════════════════════════════════
+window.addEventListener('message', (event) => {
+  if (event.origin !== "https://www.facebook.com" && event.origin !== "https://web.facebook.com") {
+    return;
+  }
+
+  try {
+    const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+    if (data && data.type === 'WA_EMBEDDED_SIGNUP') {
+      if (data.event === 'FINISH') {
+        const { phone_number_id, waba_id } = data.data || {};
+        console.log('WhatsApp Onboarding Finished:', { phone_number_id, waba_id });
+        if (waba_id) safeStorageSet('xtop_waba_id', waba_id);
+        if (phone_number_id) safeStorageSet('xtop_phone_id', phone_number_id);
+      } else if (data.event === 'CANCEL') {
+        showError("WhatsApp setup was cancelled.");
+        resetButton();
+      } else if (data.event === 'ERROR') {
+        showError("An error occurred during WhatsApp setup: " + (data.data?.error_message || "Unknown error"));
+        resetButton();
+      }
+    }
+  } catch (e) {
+    // Non-JSON message, ignore
+  }
+});
+
 function safeStorageSet(key, val) {
   try { sessionStorage.setItem(key, val); localStorage.setItem(key, val); } catch (e) {}
 }
@@ -176,7 +205,7 @@ function goToStep2() {
   document.getElementById('step1').classList.add('hidden');
   document.getElementById('step2').classList.remove('hidden');
 
-  // Detect if inside WhatsApp / in-app browser
+  // Detect WhatsApp / in-app browser WebView
   const ua = navigator.userAgent || navigator.vendor || window.opera || '';
   if (/WhatsApp|FBAN|FBAV|Instagram/i.test(ua)) {
     document.getElementById('webviewTip').classList.remove('hidden');
@@ -187,16 +216,17 @@ function getExactRedirectUri() {
   return window.location.origin + window.location.pathname;
 }
 
-function buildMetaOAuthUrl() {
-  const redirectUri = getExactRedirectUri();
-  return 'https://www.facebook.com/v21.0/dialog/oauth' +
-    '?client_id=' + encodeURIComponent(META_APP_ID) +
-    '&redirect_uri=' + encodeURIComponent(redirectUri) +
-    '&scope=' + encodeURIComponent('whatsapp_business_management,whatsapp_business_messaging') +
-    '&response_type=code' +
-    '&state=' + encodeURIComponent(SESSION_TOKEN);
+function resetButton() {
+  const btn = document.getElementById('btnConnect');
+  if (btn) {
+    btn.innerHTML = '&#128279; Connect WhatsApp with Meta';
+    btn.disabled = false;
+  }
 }
 
+// ══════════════════════════════════════════════════════
+// TRIGGER META EMBEDDED SIGNUP
+// ══════════════════════════════════════════════════════
 function triggerMetaAuth() {
   const btn = document.getElementById('btnConnect');
   btn.innerHTML = '<span class="loading"></span> Connecting with Meta...';
@@ -205,26 +235,27 @@ function triggerMetaAuth() {
   safeStorageSet('xtop_package_code', selectedPackage);
   safeStorageSet('xtop_session_token', SESSION_TOKEN);
 
-  // Method 1: Try Facebook JS SDK popup if available
-  if (fbSdkLoaded && typeof FB !== 'undefined') {
+  if (typeof FB !== 'undefined' && fbSdkLoaded) {
     try {
       FB.login(function(response) {
-        if (response && response.authResponse && response.authResponse.code) {
+        if (response.authResponse && response.authResponse.code) {
           handleReturnedCode(response.authResponse.code);
-        } else if (response && response.authResponse && response.authResponse.accessToken) {
-          // Token directly returned
+        } else if (response.authResponse && response.authResponse.accessToken) {
           handleReturnedCode(response.authResponse.accessToken);
         } else {
-          // User closed popup or cancelled
-          btn.innerHTML = '&#128279; Connect WhatsApp with Meta';
-          if (response && response.status === 'not_authorized') {
+          resetButton();
+          if (response.status === 'not_authorized') {
             showError("Meta login cancelled. Please tap Connect to try again.");
           }
         }
       }, {
-        scope: 'whatsapp_business_management,whatsapp_business_messaging',
+        extras: {
+          feature: 'whatsapp_embedded_signup',
+          version: 2,
+          sessionInfoVersion: 2
+        },
         response_type: 'code',
-        return_scopes: true
+        override_default_response_type: true
       });
       return;
     } catch (e) {
@@ -232,8 +263,15 @@ function triggerMetaAuth() {
     }
   }
 
-  // Method 2: Direct standard OAuth redirect
-  const metaUrl = buildMetaOAuthUrl();
+  // Fallback: Direct OAuth redirect
+  const redirectUri = getExactRedirectUri();
+  const metaUrl = 'https://www.facebook.com/v21.0/dialog/oauth' +
+    '?client_id=' + encodeURIComponent(META_APP_ID) +
+    '&redirect_uri=' + encodeURIComponent(redirectUri) +
+    '&scope=' + encodeURIComponent('whatsapp_business_management,whatsapp_business_messaging') +
+    '&response_type=code' +
+    '&state=' + encodeURIComponent(SESSION_TOKEN);
+
   window.location.href = metaUrl;
 }
 
@@ -242,9 +280,12 @@ async function handleReturnedCode(code) {
   document.getElementById('step2').classList.remove('hidden');
   const btn = document.getElementById('btnConnect');
   btn.innerHTML = '<span class="loading"></span> Activating your WhatsApp bot...';
+  btn.disabled = true;
 
   const savedPackage = safeStorageGet('xtop_package_code') || selectedPackage;
   const savedToken = safeStorageGet('xtop_session_token') || SESSION_TOKEN;
+  const savedWabaId = safeStorageGet('xtop_waba_id') || '';
+  const savedPhoneId = safeStorageGet('xtop_phone_id') || '';
   const redirectUri = getExactRedirectUri();
 
   try {
@@ -255,7 +296,9 @@ async function handleReturnedCode(code) {
         session_token: savedToken,
         auth_code: code,
         package_code: savedPackage,
-        redirect_uri: redirectUri
+        redirect_uri: redirectUri,
+        waba_id: savedWabaId,
+        phone_number_id: savedPhoneId
       })
     });
 
@@ -271,11 +314,11 @@ async function handleReturnedCode(code) {
         '&#128073; <strong>Send "hi" to your new WhatsApp number to test your bot!</strong>';
     } else {
       showError(data.error || 'Setup could not be completed. Please try again.');
-      btn.innerHTML = '&#128279; Connect WhatsApp with Meta';
+      resetButton();
     }
   } catch (err) {
     showError('Network error during activation. Please tap Connect to try again.');
-    btn.innerHTML = '&#128279; Connect WhatsApp with Meta';
+    resetButton();
   }
 }
 
@@ -286,16 +329,14 @@ function showError(msg) {
 }
 
 window.addEventListener('load', () => {
-  // Check for Meta OAuth Cancellation or Error in URL
   const metaError = urlParams.get('error_description') || urlParams.get('error_message') || urlParams.get('error');
   if (metaError) {
     document.getElementById('step1').classList.add('hidden');
     document.getElementById('step2').classList.remove('hidden');
-    showError("Meta login cancelled or denied: " + metaError);
+    showError("Meta signup cancelled or denied: " + metaError);
     return;
   }
 
-  // Check for returned Authorization Code
   const code = urlParams.get('code');
   if (code) {
     handleReturnedCode(code);
