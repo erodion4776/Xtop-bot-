@@ -27,7 +27,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
 .btn-primary{background:#25D366;color:#fff}
 .btn-primary:active{background:#1ea952}
 .btn-secondary{background:#e4e6eb;color:#1c1e21;margin-top:8px}
-.btn-chrome{background:#1877f2;color:#fff;margin-bottom:12px}
+.btn-chrome{background:#1877f2;color:#fff;margin-top:8px}
 .status{text-align:center;padding:24px 12px}
 .success-icon{font-size:56px;margin-bottom:12px}
 .error{color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;text-align:center;margin-top:12px;font-size:14px;line-height:1.4}
@@ -44,12 +44,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
     <p>Connect your business to your WhatsApp Business number</p>
   </div>
 
-  <!-- BROWSER DETECTION BANNER (WHEN OPENED IN WHATSAPP) -->
+  <!-- WHATSAPP WEBVIEW ALERT & 1-TAP CHROME LAUNCHER -->
   <div id="webviewBanner" class="alert-box hidden">
-    <strong>📱 For the best experience:</strong><br>
-    Meta requires this setup to run in your regular browser. Tap the button below to open in Chrome:
-    <a id="btnOpenChrome" class="btn btn-chrome" href="#">🌐 Open in Chrome / Browser</a>
-    <div style="font-size:11px;color:#6b7280;text-align:center">Or tap &#8942; (top right) &rarr; "Open in Chrome"</div>
+    <strong>📱 Notice for WhatsApp Users:</strong><br>
+    Meta requires browser setup to verify your business. Tap below to launch directly in Chrome:
+    <a id="btnOpenChrome" class="btn btn-chrome" href="#">🌐 Open in Chrome Browser</a>
   </div>
 
   <!-- STEP 1: PACKAGE SELECTION -->
@@ -103,7 +102,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
       Log into Facebook with Meta to select or create your WhatsApp Business Account and verify your phone number.
     </p>
 
-    <!-- DIRECT NATIVE ANCHOR: NEVER GETS BLOCKED BY JAVASCRIPT POPUP GUARDS -->
+    <!-- NATIVE ANCHOR WITH AUTH RE-REQUEST -->
     <a href="#" id="btnConnect" class="btn btn-primary" onclick="handleConnectTap(event)">
       &#128279; Connect WhatsApp with Meta
     </a>
@@ -148,6 +147,7 @@ function buildMetaOAuthUrl() {
     '?client_id=' + encodeURIComponent(META_APP_ID) +
     '&redirect_uri=' + encodeURIComponent(redirectUri) +
     '&scope=' + encodeURIComponent('whatsapp_business_management,whatsapp_business_messaging') +
+    '&auth_type=rerequest' +
     '&response_type=code' +
     '&state=' + encodeURIComponent(SESSION_TOKEN);
 }
@@ -194,7 +194,6 @@ function handleConnectTap(e) {
   }
   const btn = document.getElementById('btnConnect');
   btn.innerHTML = '<span class="loading"></span> Opening Meta...';
-  // Allow native link navigation to occur directly to Facebook
 }
 
 async function handleReturnedCode(code) {
@@ -257,7 +256,7 @@ function showError(msg) {
 window.addEventListener('load', () => {
   updateMetaLink();
 
-  // Detect WhatsApp / Instagram In-App Browser (WebView)
+  // Detect WhatsApp In-App Browser (WebView)
   const ua = navigator.userAgent || navigator.vendor || window.opera || '';
   const isWebView = /WhatsApp|FBAN|FBAV|Instagram/i.test(ua);
 
@@ -267,12 +266,11 @@ window.addEventListener('load', () => {
     if (banner && chromeBtn) {
       banner.classList.remove('hidden');
       const currentUrl = window.location.href;
-      // Android intent link forces Chrome to open directly
       chromeBtn.href = 'intent://' + currentUrl.replace(/^https?:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end';
     }
   }
 
-  // 1. Check for Meta OAuth Errors returned in URL
+  // 1. Check for Meta OAuth Errors
   const metaError = urlParams.get('error_description') || urlParams.get('error_message') || urlParams.get('error');
   if (metaError) {
     document.getElementById('step1').classList.add('hidden');
@@ -281,7 +279,7 @@ window.addEventListener('load', () => {
     return;
   }
 
-  // 2. Check for returned Authorization Code
+  // 2. Check for returned Code
   const code = urlParams.get('code');
   if (code) {
     handleReturnedCode(code);
