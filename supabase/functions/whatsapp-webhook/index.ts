@@ -4,6 +4,10 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { routeMessage } from "./router.ts";
 import { IncomingMessage, sendTextMessage } from "./whatsapp.ts";
+import {
+  serveOnboardingPortal,
+  handleOnboardingCallback,
+} from "./modules/onboarding.ts";
 
 const VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "xtop_webhook_secret";
 
@@ -36,6 +40,18 @@ serve(async (req: Request) => {
   const url = new URL(req.url);
   const action = url.searchParams.get("action");
 
+  // ══════════════════════════════════════════════════════
+  // 1. ONBOARDING PORTAL (GET to view page / POST to exchange Meta token)
+  // ══════════════════════════════════════════════════════
+  if (action === "onboard") {
+    if (req.method === "GET") {
+      return await serveOnboardingPortal(url);
+    }
+    if (req.method === "POST") {
+      return await handleOnboardingCallback(req);
+    }
+  }
+
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
   const supabaseKey =
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ||
@@ -44,7 +60,7 @@ serve(async (req: Request) => {
   const sb = createClient(supabaseUrl, supabaseKey);
 
   // ══════════════════════════════════════════════════════
-  // 1. ADMIN API ROUTES
+  // 2. ADMIN API ROUTES
   // ══════════════════════════════════════════════════════
 
   // ── A. GET / SET GLOBAL SABI HANDOFF ──
@@ -129,7 +145,6 @@ serve(async (req: Request) => {
         return jsonResponse({ error: `Invalid phone format: "${rawPhone}"` }, 400);
       }
 
-      // Ensure Contact Record exists
       if (!contactId) {
         const localPhone = cleanPhone.startsWith("234") ? "0" + cleanPhone.slice(3) : cleanPhone;
         const { data: existingContact } = await sb
@@ -163,7 +178,6 @@ serve(async (req: Request) => {
 
       const waMsgId = sendResult?.messages?.[0]?.id || null;
 
-      // Insert message record
       const msgRecord = {
         contact_id: contactId,
         phone_number: cleanPhone,
@@ -194,7 +208,7 @@ serve(async (req: Request) => {
     }
   }
 
-  // ── D. GET CHAT HISTORY (UNIVERSAL RESOLVER) ──
+  // ── D. GET CHAT HISTORY ──
   if (action === "chat" && req.method === "GET") {
     const rawParam = (url.searchParams.get("contact_id") || url.searchParams.get("phone") || "").trim();
     if (!rawParam) return jsonResponse({ data: [] }, 200);
@@ -255,7 +269,7 @@ serve(async (req: Request) => {
   }
 
   // ══════════════════════════════════════════════════════
-  // 2. WHATSAPP WEBHOOK VERIFICATION (GET from Meta)
+  // 3. WHATSAPP WEBHOOK VERIFICATION (GET from Meta)
   // ══════════════════════════════════════════════════════
   if (req.method === "GET") {
     const mode = url.searchParams.get("hub.mode");
@@ -269,7 +283,7 @@ serve(async (req: Request) => {
   }
 
   // ══════════════════════════════════════════════════════
-  // 3. INCOMING MESSAGES (POST from Meta)
+  // 4. INCOMING MESSAGES (POST from Meta)
   // ══════════════════════════════════════════════════════
   if (req.method === "POST") {
     try {
@@ -296,7 +310,6 @@ serve(async (req: Request) => {
         });
       }
 
-      // Multi-tenant metadata resolution: extracts Meta's receiving phone_number_id
       const metadata = value?.metadata;
       const phoneNumberId = metadata?.phone_number_id || "";
 
@@ -326,7 +339,7 @@ serve(async (req: Request) => {
         interactiveId,
         profileName: contactObj?.profile?.name || "Customer",
         timestamp: messageObj.timestamp,
-        phoneNumberId, // Passed for tenant resolution & isolated account dispatching
+        phoneNumberId,
       };
 
       routeMessage(incoming).catch((err) => {
