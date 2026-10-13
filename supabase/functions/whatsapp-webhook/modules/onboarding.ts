@@ -61,7 +61,7 @@ export async function createOnboardingSession(
   const rawBaseUrl = Deno.env.get("ONBOARDING_BASE_URL") || "https://xtopbot.netlify.app";
   const baseUrl = rawBaseUrl.replace(/\/+$/, "");
 
-  return `${baseUrl}?token=${sessionToken}`;
+  return `${baseUrl}/?token=${sessionToken}`;
 }
 
 // ══════════════════════════════════════════════════════
@@ -147,7 +147,7 @@ export async function handleOnboardingRequest(
     phone,
     `✅ *Your signup link is ready!*\n\n` +
     `🔗 ${signupLink}\n\n` +
-    `Tap the link above to:\n` +
+    `Tap the link to connect in Chrome / Safari:\n` +
     `1. Choose your package\n` +
     `2. Connect your WhatsApp Business number\n` +
     `3. Start your 14-day free trial\n\n` +
@@ -167,15 +167,10 @@ export async function handleOnboardingRequest(
 }
 
 // ══════════════════════════════════════════════════════
-// 3. META AUTH CODE EXCHANGE (EMBEDDED SIGNUP AWARE)
+// 3. META AUTH CODE EXCHANGE
 // ══════════════════════════════════════════════════════
 
-async function exchangeMetaAuthCode(
-  authCode: string,
-  redirectUri: string,
-  clientWabaId?: string,
-  clientPhoneId?: string
-) {
+async function exchangeMetaAuthCode(authCode: string, redirectUri: string) {
   const appId = Deno.env.get("META_APP_ID") || "1947931015867084";
   const appSecret = Deno.env.get("META_APP_SECRET") || "";
   const systemToken = Deno.env.get("META_SYSTEM_USER_TOKEN") || "";
@@ -183,25 +178,25 @@ async function exchangeMetaAuthCode(
 
   let userToken = "";
 
-  // If code is already a token
   if (authCode.startsWith("EAA") && authCode.length > 50) {
     userToken = authCode;
   } else {
-    // Exchange authorization code for access token
-    const cleanUri = redirectUri ? redirectUri.replace(/\/+$/, "") : "";
+    const cleanUri = redirectUri || "https://xtopbot.netlify.app/";
     const tokenUrl =
       `${graphApi}/oauth/access_token?client_id=${appId}` +
       `&client_secret=${encodeURIComponent(appSecret)}` +
       `&code=${encodeURIComponent(authCode)}` +
-      (cleanUri ? `&redirect_uri=${encodeURIComponent(cleanUri)}` : "");
+      `&redirect_uri=${encodeURIComponent(cleanUri)}`;
 
     let tokenResp = await fetch(tokenUrl);
-    if (!tokenResp.ok && cleanUri) {
+
+    if (!tokenResp.ok) {
+      const altUri = cleanUri.endsWith("/") ? cleanUri.slice(0, -1) : cleanUri + "/";
       const retryUrl =
         `${graphApi}/oauth/access_token?client_id=${appId}` +
         `&client_secret=${encodeURIComponent(appSecret)}` +
         `&code=${encodeURIComponent(authCode)}` +
-        `&redirect_uri=${encodeURIComponent(cleanUri + "/")}`;
+        `&redirect_uri=${encodeURIComponent(altUri)}`;
       tokenResp = await fetch(retryUrl);
     }
 
@@ -217,15 +212,11 @@ async function exchangeMetaAuthCode(
 
   if (!userToken) return { error: "No access token received from Meta" };
 
-  // Resolve WABA ID: use client-reported ID if available, otherwise query Meta Graph API
-  let wabaId = clientWabaId || "";
-
-  if (!wabaId) {
-    const wabaResp = await fetch(`${graphApi}/me/whatsapp_business_accounts?access_token=${userToken}`);
-    if (wabaResp.ok) {
-      const wabaData = await wabaResp.json();
-      wabaId = wabaData.data?.[0]?.id || "";
-    }
+  let wabaId = "";
+  const wabaResp = await fetch(`${graphApi}/me/whatsapp_business_accounts?access_token=${userToken}`);
+  if (wabaResp.ok) {
+    const wabaData = await wabaResp.json();
+    wabaId = wabaData.data?.[0]?.id || "";
   }
 
   if (!wabaId) {
@@ -239,12 +230,11 @@ async function exchangeMetaAuthCode(
   }
 
   if (!wabaId) {
-    return { error: "No WhatsApp Business Account found. Please ensure you completed the Embedded Signup steps." };
+    return { error: "No WhatsApp Business Account found. Please ensure you completed setup in Meta." };
   }
 
-  // Resolve Phone Number ID
   const activeToken = systemToken || userToken;
-  let phoneNumberId = clientPhoneId || "";
+  let phoneNumberId = "";
   let displayPhone = "";
   let verifiedName = "";
 
@@ -252,14 +242,7 @@ async function exchangeMetaAuthCode(
   if (phoneResp.ok) {
     const phoneData = await phoneResp.json();
     const phoneList = phoneData.data || [];
-    
-    if (phoneNumberId) {
-      const matched = phoneList.find((p: any) => p.id === phoneNumberId);
-      if (matched) {
-        displayPhone = matched.display_phone_number || "";
-        verifiedName = matched.verified_name || "";
-      }
-    } else if (phoneList.length > 0) {
+    if (phoneList.length > 0) {
       phoneNumberId = phoneList[0].id;
       displayPhone = phoneList[0].display_phone_number || "";
       verifiedName = phoneList[0].verified_name || "";
@@ -267,10 +250,9 @@ async function exchangeMetaAuthCode(
   }
 
   if (!phoneNumberId) {
-    return { error: "No verified WhatsApp phone number found on your account. Please complete phone verification in Meta." };
+    return { error: "No verified WhatsApp phone number found on your WhatsApp Business Account." };
   }
 
-  // Subscribe tenant WABA to your webhook
   await fetch(`${graphApi}/${wabaId}/subscribed_apps?access_token=${activeToken}`, { method: "POST" });
 
   return {
@@ -289,7 +271,7 @@ async function exchangeMetaAuthCode(
 export async function handleOnboardingCallback(req: Request): Promise<Response> {
   try {
     const body = await req.json();
-    const { session_token, auth_code, package_code, redirect_uri, waba_id, phone_number_id } = body;
+    const { session_token, auth_code, package_code, redirect_uri } = body;
 
     if (!session_token || !auth_code) {
       return jsonResponse({ error: "Missing session_token or auth_code" }, 400);
@@ -305,12 +287,7 @@ export async function handleOnboardingCallback(req: Request): Promise<Response> 
     if (new Date(session.expires_at) < new Date()) return jsonResponse({ error: "This onboarding link has expired" }, 410);
     if (session.status === "TRIAL_ACTIVATED") return jsonResponse({ error: "This account has already completed onboarding" }, 409);
 
-    const result = await exchangeMetaAuthCode(
-      auth_code,
-      redirect_uri || "https://xtopbot.netlify.app",
-      waba_id,
-      phone_number_id
-    );
+    const result = await exchangeMetaAuthCode(auth_code, redirect_uri || "https://xtopbot.netlify.app/");
 
     if ("error" in result || !result.accessToken) {
       await sb.from("onboarding_sessions").update({
