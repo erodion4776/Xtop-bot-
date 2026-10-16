@@ -341,7 +341,7 @@ export async function routeMessage(
     // break out of any stale sales or quotation states.
     // =====================================================
 
-        if (!isAcademicWorkflow) {
+    if (!isAcademicWorkflow) {
       // Handle both text AND interactive payloads for active onboarding
       if (currentModule === "ONBOARDING" || !isInteractivePayload(incoming)) {
         const onboardingHandled = await handleOnboardingRequest(
@@ -393,7 +393,7 @@ export async function routeMessage(
       return;
     }
 
-        // Onboarding workflow (handoff from sales or direct signup).
+    // Onboarding workflow (handoff from sales or direct signup).
     if (currentModule === "ONBOARDING") {
       const onboardingHandled = await handleOnboardingRequest(
         phone,
@@ -411,6 +411,17 @@ export async function routeMessage(
         context_json: {},
       });
       await showMainMenu(phone, conversation.id);
+      return;
+    }
+
+    // Sales (price estimate) workflow.
+    if (currentModule === "SALES") {
+      await handleSales(
+        phone,
+        text,
+        contact,
+        conversation,
+      );
       return;
     }
 
@@ -539,7 +550,7 @@ export async function routeMessage(
       return;
     }
 
-        // =====================================================
+    // =====================================================
     // 9. DIRECT INTENT OVERRIDES FROM IDLE / MAIN MENU
     // =====================================================
 
@@ -559,7 +570,6 @@ export async function routeMessage(
 
       if (onboardingHandled) return;
     }
-
 
     // About.
     if (
