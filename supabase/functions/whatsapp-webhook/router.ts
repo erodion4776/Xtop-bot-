@@ -529,9 +529,27 @@ export async function routeMessage(
       return;
     }
 
-    // =====================================================
+        // =====================================================
     // 9. DIRECT INTENT OVERRIDES FROM IDLE / MAIN MENU
     // =====================================================
+
+    // Onboarding interactive actions (plan selection, get bot, agent, tools)
+    if (
+      interactiveId.startsWith("plan_") ||
+      interactiveId.startsWith("getbot_") ||
+      interactiveId === "onboard_agent" ||
+      interactiveId === "onboard_tools"
+    ) {
+      const onboardingHandled = await handleOnboardingRequest(
+        phone,
+        interactiveId,
+        contact.id || "",
+        conversation.id,
+      );
+
+      if (onboardingHandled) return;
+    }
+
 
     // About.
     if (
