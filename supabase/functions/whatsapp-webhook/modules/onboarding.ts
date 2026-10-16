@@ -413,3 +413,32 @@ export async function handleOnboardingCallback(req: Request): Promise<Response> 
     return jsonResponse({ error: "Internal error" }, 500);
   }
 }
+// ─── Called from sales.ts after a price estimate ───
+export async function startOnboardingFromSales(
+  from: string,
+  session: any,
+  serviceType: string
+): Promise<void> {
+  const { sendTextMessage, sendListMessage, makeListRow } = await import("../whatsapp.ts");
+
+  const isCombo = serviceType.toUpperCase().includes("BOT") && serviceType.toUpperCase().includes("WEBSITE");
+  const serviceName = isCombo ? "WhatsApp Bot + Website" : "WhatsApp Bot";
+
+  await sendTextMessage(
+    from,
+    `Awesome! Let's get your ${serviceName} set up. 🎉\n\n` +
+    `First, pick a plan that works for you:`
+  );
+
+  await new Promise((r) => setTimeout(r, 600));
+
+  await sendListMessage(from,
+    "Pick a plan to continue:",
+    "See Plans",
+    [{ title: "Available Plans", rows: [
+      makeListRow("plan_BASIC", "Basic – N35,000/mo", "For small shops"),
+      makeListRow("plan_STANDARD", "Standard – N75,000/mo", "For growing businesses"),
+      makeListRow("plan_PREMIUM", "Premium – N150,000/mo", "Full package"),
+    ]}],
+  );
+}
