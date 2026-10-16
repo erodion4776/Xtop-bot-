@@ -573,16 +573,66 @@ export async function showServiceTypeSelector(phone: string, convId: string): Pr
 }
 
 async function processServiceTypeSelection(phone: string, text: string, conv: Conversation): Promise<void> {
-    const r = resolveStrict(text,
+  console.log("[SALES] processServiceTypeSelection text:", JSON.stringify(text));
+
+  // Direct ID match BEFORE sanitization could have stripped underscores
+  const directMap: Record<string, string> = {
+    sales_bot: "BOT", sales_web: "WEB", sales_combo: "COMBO", sales_auto: "AUTO",
+    salesbot: "BOT", salesweb: "WEB", salescombo: "COMBO", salesauto: "AUTO",
+  };
+  const raw = text.trim().toLowerCase();
+  if (directMap[raw]) {
+    const flow = directMap[raw] as SalesCtx["flow"];
+    console.log("[SALES] Direct match:", flow);
+    await startFlow(phone, flow, conv);
+    return;
+  }
+
+  const r = resolveStrict(text,
     { sales_bot: "BOT", sales_web: "WEB", sales_combo: "COMBO", sales_auto: "AUTO" },
     { 1: "BOT", 2: "WEB", 3: "COMBO", 4: "AUTO" },
     {
       "whatsapp bot": "BOT", "whatsapp": "BOT", "bot": "BOT",
       "website": "WEB", "web": "WEB",
       "bot + website": "COMBO", "bot website": "COMBO", "combo": "COMBO",
-      "automation": "AUTO", "automate": "AUTO",
+      "automation": "AUTO", "automate": "AUTO", "auto": "AUTO",
+      "sales bot": "BOT", "sales web": "WEB",
+      "sales combo": "COMBO", "sales auto": "AUTO",
     }
   );
+
+  console.log("[SALES] resolveStrict result:", r);
+
+  if (!r) {
+    console.log("[SALES] No match, re-showing selector");
+    await showServiceTypeSelector(phone, conv.id);
+    return;
+  }
+
+  const flow = r as SalesCtx["flow"];
+  await startFlow(phone, flow, conv);
+}
+
+async function startFlow(phone: string, flow: SalesCtx["flow"], conv: Conversation): Promise<void> {
+  const ctx = defaultCtx(flow);
+  ctx.step = "ASK_BIZ_NAME";
+  await updateConversation(conv.id, {
+    current_module: "SALES",
+    current_state: "QUALIFYING",
+    context_json: ctx as unknown as Record<string, unknown>,
+  });
+
+  const titles: Record<string, string> = {
+    BOT: "🤖 *WhatsApp Bot*",
+    WEB: "🌐 *Business Website*",
+    COMBO: "📦 *Bot + Website Combo*",
+    AUTO: "⚙️ *Business Automation*",
+  };
+  await sendTextMessage(phone,
+    `${titles[flow]}\n\nI'll ask a few quick questions to give you a price estimate.\n\n` +
+    `*1. What's your business name?*\n\n_(Just type it below)_`
+  );
+}
 
   if (!r) { await showServiceTypeSelector(phone, conv.id); return; }
 
