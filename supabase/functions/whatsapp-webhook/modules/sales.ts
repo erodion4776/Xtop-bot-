@@ -1503,9 +1503,7 @@ async function generateAndShowQuotation(
     `⚠️ _This is an estimate. We'll confirm the final price after reviewing everything._`;
 
   await sendButtonMessage(phone, msg,
-    [makeButton("q_select", "✅ Get Started"), makeButton("q_change", "🔄
-     Start Over"), makeButton("q_agent", "👤 Talk to Our Team")],
-    "Xtop", "Valid for 14 days");
+    [makeButton("q_select", "✅ Get Started"), makeButton("q_change", "🔄 Start Over"), makeButton("q_agent", "👤 Talk to Our Team")],
 }
 
 function buildLeadFields(
