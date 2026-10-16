@@ -1505,7 +1505,10 @@ async function generateAndShowQuotation(
   await sendButtonMessage(phone, msg,
     [makeButton("q_select", "✅ Get Started"), makeButton("q_change", "🔄 Start Over"), makeButton("q_agent", "👤 Talk to Our Team")],
 }
+    "Xtop", "Valid for 14 days");
+}
 
+function buildLeadFields(
 function buildLeadFields(
   ctx: SalesCtx,
   pkg?: { id: string; min_price: number; max_price: number }
