@@ -573,9 +573,9 @@ export async function showServiceTypeSelector(phone: string, convId: string): Pr
 }
 
 async function processServiceTypeSelection(phone: string, text: string, conv: Conversation): Promise<void> {
+async function processServiceTypeSelection(phone: string, text: string, conv: Conversation): Promise<void> {
   console.log("[SALES] processServiceTypeSelection text:", JSON.stringify(text));
 
-  // Direct ID match BEFORE sanitization could have stripped underscores
   const directMap: Record<string, string> = {
     sales_bot: "BOT", sales_web: "WEB", sales_combo: "COMBO", sales_auto: "AUTO",
     salesbot: "BOT", salesweb: "WEB", salescombo: "COMBO", salesauto: "AUTO",
@@ -634,33 +634,9 @@ async function startFlow(phone: string, flow: SalesCtx["flow"], conv: Conversati
   );
 }
 
-  if (!r) { await showServiceTypeSelector(phone, conv.id); return; }
-
-  const flow = r as SalesCtx["flow"];
-  const ctx = defaultCtx(flow);
-  ctx.step = "ASK_BIZ_NAME";
-  await updateConversation(conv.id, {
-    current_module: "SALES",
-    current_state: "QUALIFYING",
-    context_json: ctx as unknown as Record<string, unknown>,
-  });
-
-  const titles: Record<string, string> = {
-    BOT: "🤖 *WhatsApp Bot*",
-    WEB: "🌐 *Business Website*",
-    COMBO: "📦 *Bot + Website Combo*",
-    AUTO: "⚙️ *Business Automation*",
-  };
-  await sendTextMessage(phone,
-    `${titles[flow]}\n\nI'll ask a few quick questions to give you a price estimate.\n\n` +
-    `*1. What's your business name?*\n\n_(Just type it below)_`
-  );
-}
-
 // ═══════════════════════════════════════════════════════
 // WHATSAPP BOT FLOW
 // ═══════════════════════════════════════════════════════
-
 async function handleBotFlow(
   phone: string, text: string, contact: Contact, conv: Conversation, ctx: SalesCtx
 ): Promise<void> {
