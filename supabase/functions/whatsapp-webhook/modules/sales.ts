@@ -1,5 +1,6 @@
 // supabase/functions/whatsapp-webhook/modules/sales.ts
 // Phase 3 — Strict Structured Qualification with Full Validation & Client Details
+// Updated: Plain English + Onboarding routing
 
 import {
   Contact, Conversation, updateConversation,
@@ -32,7 +33,6 @@ export interface SalesCtx {
   quotationId?: string;
   quotationNumber?: string;
 
-  // CLIENT DETAILS
   clientName?: string;
   clientEmail?: string;
   clientPhone?: string;
@@ -99,6 +99,58 @@ async function saveCtx(id: string, ctx: SalesCtx): Promise<void> {
 }
 
 // ═══════════════════════════════════════════════════════
+// PLAIN ENGLISH DISPLAY HELPER
+// ═══════════════════════════════════════════════════════
+
+function plain(internal: string): string {
+  const map: Record<string, string> = {
+    "Answer Customer FAQs": "Answer FAQs",
+    "Receive Orders": "Take Orders",
+    "Collect Customer Leads": "Collect Enquiries",
+    "Product Recommendations": "Suggest Products",
+    "Booking/Appointments": "Book Appointments",
+    "Customer Support": "Customer Support",
+    "Payments": "Take Payments",
+    "Generate Quotations": "Send Price Quotes",
+    "Notifications": "Send Notifications",
+    "Customer Database/CRM": "Save Customer Info",
+    "Admin Dashboard/CMS": "Admin Dashboard",
+    "Online Payment": "Online Payment",
+    "WhatsApp Integration": "WhatsApp Chat",
+    "Customer Accounts/Login": "Customer Login",
+    "Online Forms": "Online Forms",
+    "Booking/Appointment System": "Booking System",
+    "Product Catalogue": "Product List",
+    "Database": "Database",
+    "Reports": "Reports",
+    "Customer Management": "Manage Customers",
+    "Sales/Order Processing": "Process Orders",
+    "Invoicing": "Send Invoices",
+    "CRM": "CRM",
+    "Google Sheets/Excel": "Sheets / Excel",
+    "Database Management": "Manage Database",
+    "PDF Generation": "Create PDFs",
+    "WhatsApp Automation": "WhatsApp Auto",
+    "Email Automation": "Email Auto",
+    "Retail & E-commerce": "Retail / Online Shop",
+    "Education & School": "School / Education",
+    "Health & Pharmacy": "Health / Pharmacy",
+    "Real Estate": "Real Estate",
+    "Professional Services": "Professional Services",
+    "Food & Hospitality": "Food / Hospitality",
+    "Church/NGO/Organisation": "Church / NGO",
+    "Manufacturing": "Manufacturing",
+    "Corporate/Business Website": "Business Website",
+    "Landing Page": "Landing Page",
+    "E-commerce Website": "Online Shop",
+    "Customer/Business Portal": "Customer Portal",
+    "Booking Website": "Booking Website",
+    "Custom Web Application": "Custom Web App",
+  };
+  return map[internal] || internal;
+}
+
+// ═══════════════════════════════════════════════════════
 // STRICT VALIDATION HELPER
 // ═══════════════════════════════════════════════════════
 
@@ -124,7 +176,6 @@ function resolveStrict(
     }
   }
 
-  // Fallback: match by descriptive value
   for (const [, val] of Object.entries(idMap)) {
     if (n === normalise(val) || n.includes(normalise(val))) return val;
   }
@@ -133,7 +184,7 @@ function resolveStrict(
 }
 
 // ═══════════════════════════════════════════════════════
-// OPTION MAPS
+// OPTION MAPS  (internal values — do NOT change)
 // ═══════════════════════════════════════════════════════
 
 const INDUSTRY_IDS: Record<string, string> = {
@@ -258,83 +309,83 @@ const AUTO_INT_NUMS: Record<number, string> = {
 };
 
 // ═══════════════════════════════════════════════════════
-// REUSABLE QUESTION SENDERS
+// REUSABLE QUESTION SENDERS  (plain English)
 // ═══════════════════════════════════════════════════════
 
 async function sendIndustryQuestion(phone: string): Promise<void> {
   await sendListMessage(phone,
-    "*What type of business do you operate?*\n\nPlease select one:",
-    "Select Industry",
+    "*What kind of business do you run?*\n\nPick one:",
+    "Choose",
     [{ title: "Business Type", rows: [
-      makeListRow("ind_retail", "1️⃣ Retail & E-commerce", ""),
-      makeListRow("ind_edu", "2️⃣ Education & School", ""),
-      makeListRow("ind_health", "3️⃣ Health & Pharmacy", ""),
-      makeListRow("ind_realestate", "4️⃣ Real Estate", ""),
-      makeListRow("ind_services", "5️⃣ Professional Services", ""),
-      makeListRow("ind_food", "6️⃣ Food & Hospitality", ""),
-      makeListRow("ind_ngo", "7️⃣ Church/NGO/Organisation", ""),
-      makeListRow("ind_mfg", "8️⃣ Manufacturing", ""),
-      makeListRow("ind_other", "9️⃣ Other", ""),
+      makeListRow("ind_retail", "Retail / Online Shop", ""),
+      makeListRow("ind_edu", "School / Education", ""),
+      makeListRow("ind_health", "Health / Pharmacy", ""),
+      makeListRow("ind_realestate", "Real Estate", ""),
+      makeListRow("ind_services", "Professional Services", ""),
+      makeListRow("ind_food", "Food / Hospitality", ""),
+      makeListRow("ind_ngo", "Church / NGO", ""),
+      makeListRow("ind_mfg", "Manufacturing", ""),
+      makeListRow("ind_other", "Other", ""),
     ]}],
   );
 }
 
 async function sendBotFeaturesQuestion(phone: string, selected: string[]): Promise<void> {
   const summary = selected.length > 0
-    ? `\n\n✅ *Selected so far:*\n${selected.map((f) => `  • ${f}`).join("\n")}\n`
+    ? `\n\n✅ *Picked so far:*\n${selected.map((f) => `  • ${plain(f)}`).join("\n")}\n`
     : "";
   await sendListMessage(phone,
-    `*What should your WhatsApp bot do?*${summary}\nSelect one feature. You can add more after.`,
-    "Select Feature",
+    `*What do you want your bot to do?*${summary}\nPick one. You can add more after.`,
+    "Choose",
     [{ title: "Bot Features", rows: [
-      makeListRow("bf_faq", "1️⃣ Answer FAQs", ""),
-      makeListRow("bf_orders", "2️⃣ Receive Orders", ""),
-      makeListRow("bf_leads", "3️⃣ Collect Leads", ""),
-      makeListRow("bf_recs", "4️⃣ Product Recs", ""),
-      makeListRow("bf_booking", "5️⃣ Bookings", ""),
-      makeListRow("bf_support", "6️⃣ Customer Support", ""),
-      makeListRow("bf_pay", "7️⃣ Payments", ""),
-      makeListRow("bf_quotes", "8️⃣ Quotations", ""),
-      makeListRow("bf_notif", "9️⃣ Notifications", ""),
-      makeListRow("bf_crm", "🔟 CRM/Database", ""),
+      makeListRow("bf_faq", "Answer FAQs", ""),
+      makeListRow("bf_orders", "Take Orders", ""),
+      makeListRow("bf_leads", "Collect Enquiries", ""),
+      makeListRow("bf_recs", "Suggest Products", ""),
+      makeListRow("bf_booking", "Book Appointments", ""),
+      makeListRow("bf_support", "Customer Support", ""),
+      makeListRow("bf_pay", "Take Payments", ""),
+      makeListRow("bf_quotes", "Send Price Quotes", ""),
+      makeListRow("bf_notif", "Send Notifications", ""),
+      makeListRow("bf_crm", "Save Customer Info", ""),
     ]}],
   );
 }
 
 async function sendWebTypeQuestion(phone: string): Promise<void> {
   await sendListMessage(phone,
-    "*What type of website do you need?*",
-    "Select Type",
+    "*What kind of website do you need?*",
+    "Choose",
     [{ title: "Website Type", rows: [
-      makeListRow("wt_corp", "1️⃣ Corporate/Business", ""),
-      makeListRow("wt_landing", "2️⃣ Landing Page", ""),
-      makeListRow("wt_ecom", "3️⃣ E-commerce", ""),
-      makeListRow("wt_portal", "4️⃣ Customer Portal", ""),
-      makeListRow("wt_booking", "5️⃣ Booking Website", ""),
-      makeListRow("wt_custom", "6️⃣ Custom Web App", ""),
-      makeListRow("wt_other", "7️⃣ Other", ""),
+      makeListRow("wt_corp", "Business Website", ""),
+      makeListRow("wt_landing", "Landing Page", ""),
+      makeListRow("wt_ecom", "Online Shop", ""),
+      makeListRow("wt_portal", "Customer Portal", ""),
+      makeListRow("wt_booking", "Booking Website", ""),
+      makeListRow("wt_custom", "Custom Web App", ""),
+      makeListRow("wt_other", "Other", ""),
     ]}],
   );
 }
 
 async function sendWebFeaturesQuestion(phone: string, selected: string[]): Promise<void> {
   const summary = selected.length > 0
-    ? `\n\n✅ *Selected so far:*\n${selected.map((f) => `  • ${f}`).join("\n")}\n`
+    ? `\n\n✅ *Picked so far:*\n${selected.map((f) => `  • ${plain(f)}`).join("\n")}\n`
     : "";
   await sendListMessage(phone,
-    `*What features do you need on the website?*${summary}\nSelect one. You can add more after.`,
-    "Select Feature",
+    `*What features do you need on the website?*${summary}\nPick one. You can add more after.`,
+    "Choose",
     [{ title: "Web Features", rows: [
-      makeListRow("wf_cms", "1️⃣ Admin/CMS Dashboard", ""),
-      makeListRow("wf_pay", "2️⃣ Online Payment", ""),
-      makeListRow("wf_wa", "3️⃣ WhatsApp Integration", ""),
-      makeListRow("wf_acct", "4️⃣ Customer Accounts", ""),
-      makeListRow("wf_forms", "5️⃣ Online Forms", ""),
-      makeListRow("wf_book", "6️⃣ Booking System", ""),
-      makeListRow("wf_cat", "7️⃣ Product Catalogue", ""),
-      makeListRow("wf_db", "8️⃣ Database", ""),
-      makeListRow("wf_report", "9️⃣ Reports", ""),
-      makeListRow("wf_other", "🔟 Other", ""),
+      makeListRow("wf_cms", "Admin Dashboard", ""),
+      makeListRow("wf_pay", "Online Payment", ""),
+      makeListRow("wf_wa", "WhatsApp Chat", ""),
+      makeListRow("wf_acct", "Customer Login", ""),
+      makeListRow("wf_forms", "Online Forms", ""),
+      makeListRow("wf_book", "Booking System", ""),
+      makeListRow("wf_cat", "Product List", ""),
+      makeListRow("wf_db", "Database", ""),
+      makeListRow("wf_report", "Reports", ""),
+      makeListRow("wf_other", "Other", ""),
     ]}],
   );
 }
@@ -342,96 +393,96 @@ async function sendWebFeaturesQuestion(phone: string, selected: string[]): Promi
 async function sendYesNoQuestion(
   phone: string, question: string, yesId: string, noId: string, unsureId: string
 ): Promise<void> {
-  await sendListMessage(phone, question, "Select",
+  await sendListMessage(phone, question, "Choose",
     [{ title: "Choose", rows: [
-      makeListRow(yesId, "1️⃣ Yes", ""),
-      makeListRow(noId, "2️⃣ No", ""),
-      makeListRow(unsureId, "3️⃣ Not sure", ""),
+      makeListRow(yesId, "Yes", ""),
+      makeListRow(noId, "No", ""),
+      makeListRow(unsureId, "Not sure", ""),
     ]}]);
 }
 
 async function sendBudgetQuestion(phone: string): Promise<void> {
   await sendListMessage(phone,
-    "*What budget range have you planned for this project?*\n\nPlease select one:",
-    "Select Budget",
-    [{ title: "Budget Range", rows: [
-      makeListRow("bud_1", "1️⃣ ₦100k – ₦200k", "Starter"),
-      makeListRow("bud_2", "2️⃣ ₦200k – ₦500k", "Standard"),
-      makeListRow("bud_3", "3️⃣ ₦500k – ₦900k", "Advanced"),
-      makeListRow("bud_4", "4️⃣ Above ₦900k", "Enterprise"),
-      makeListRow("bud_5", "5️⃣ Not sure", "Need guidance"),
+    "*How much are you looking to spend?*\n\nPick a range:",
+    "Choose",
+    [{ title: "Budget", rows: [
+      makeListRow("bud_1", "₦100k – ₦200k", "Starter"),
+      makeListRow("bud_2", "₦200k – ₦500k", "Standard"),
+      makeListRow("bud_3", "₦500k – ₦900k", "Advanced"),
+      makeListRow("bud_4", "Above ₦900k", "Enterprise"),
+      makeListRow("bud_5", "Not sure yet", "Need help deciding"),
     ]}],
   );
 }
 
 async function sendAutoActivitiesQuestion(phone: string, selected: string[]): Promise<void> {
   const summary = selected.length > 0
-    ? `\n\n✅ *Selected so far:*\n${selected.map((f) => `  • ${f}`).join("\n")}\n`
+    ? `\n\n✅ *Picked so far:*\n${selected.map((f) => `  • ${plain(f)}`).join("\n")}\n`
     : "";
   await sendListMessage(phone,
-    `*Which business activity would you like to automate?*${summary}\nSelect one. You can add more after.`,
-    "Select Activity",
-    [{ title: "Activities", rows: [
-      makeListRow("aa_cs", "1️⃣ Customer Mgmt", ""),
-      makeListRow("aa_sales", "2️⃣ Sales/Orders", ""),
-      makeListRow("aa_inv", "3️⃣ Invoicing", ""),
-      makeListRow("aa_crm", "4️⃣ CRM", ""),
-      makeListRow("aa_sheets", "5️⃣ Sheets/Excel", ""),
-      makeListRow("aa_db", "6️⃣ Database Mgmt", ""),
-      makeListRow("aa_pdf", "7️⃣ PDF Generation", ""),
-      makeListRow("aa_report", "8️⃣ Reports", ""),
-      makeListRow("aa_wa", "9️⃣ WhatsApp Auto", ""),
-      makeListRow("aa_email", "🔟 Email Auto", ""),
+    `*What tasks do you want to automate?*${summary}\nPick one. You can add more after.`,
+    "Choose",
+    [{ title: "Tasks", rows: [
+      makeListRow("aa_cs", "Manage Customers", ""),
+      makeListRow("aa_sales", "Process Orders", ""),
+      makeListRow("aa_inv", "Send Invoices", ""),
+      makeListRow("aa_crm", "CRM", ""),
+      makeListRow("aa_sheets", "Sheets / Excel", ""),
+      makeListRow("aa_db", "Manage Database", ""),
+      makeListRow("aa_pdf", "Create PDFs", ""),
+      makeListRow("aa_report", "Reports", ""),
+      makeListRow("aa_wa", "WhatsApp Auto", ""),
+      makeListRow("aa_email", "Email Auto", ""),
     ]}],
   );
 }
 
 async function sendAutoProcessQuestion(phone: string): Promise<void> {
   await sendListMessage(phone,
-    "*Where does this process currently happen?*",
-    "Select",
-    [{ title: "Current Process", rows: [
-      makeListRow("ap_wa", "1️⃣ WhatsApp", ""),
-      makeListRow("ap_excel", "2️⃣ Excel", ""),
-      makeListRow("ap_sheets", "3️⃣ Google Sheets", ""),
-      makeListRow("ap_web", "4️⃣ Website", ""),
-      makeListRow("ap_paper", "5️⃣ Paper/Manual", ""),
-      makeListRow("ap_sw", "6️⃣ Existing Software", ""),
-      makeListRow("ap_multi", "7️⃣ Multiple places", ""),
-      makeListRow("ap_other", "8️⃣ Other", ""),
+    "*Where do you do this work right now?*",
+    "Choose",
+    [{ title: "Current Setup", rows: [
+      makeListRow("ap_wa", "WhatsApp", ""),
+      makeListRow("ap_excel", "Excel", ""),
+      makeListRow("ap_sheets", "Google Sheets", ""),
+      makeListRow("ap_web", "Website", ""),
+      makeListRow("ap_paper", "Paper / Manual", ""),
+      makeListRow("ap_sw", "Existing Software", ""),
+      makeListRow("ap_multi", "Multiple places", ""),
+      makeListRow("ap_other", "Other", ""),
     ]}]);
 }
 
 async function sendAutoUsersQuestion(phone: string): Promise<void> {
   await sendListMessage(phone,
-    "*How many people will use the system?*",
-    "Select",
-    [{ title: "Users", rows: [
-      makeListRow("au_1", "1️⃣ 1 person", ""),
-      makeListRow("au_2", "2️⃣ 2–5 people", ""),
-      makeListRow("au_3", "3️⃣ 6–20 people", ""),
-      makeListRow("au_4", "4️⃣ More than 20", ""),
-      makeListRow("au_5", "5️⃣ Not sure", ""),
+    "*How many people will use this?*",
+    "Choose",
+    [{ title: "Team Size", rows: [
+      makeListRow("au_1", "Just me", ""),
+      makeListRow("au_2", "2–5 people", ""),
+      makeListRow("au_3", "6–20 people", ""),
+      makeListRow("au_4", "More than 20", ""),
+      makeListRow("au_5", "Not sure", ""),
     ]}]);
 }
 
 async function sendAutoIntegrationsQuestion(phone: string, selected: string[]): Promise<void> {
   const summary = selected.length > 0
-    ? `\n\n✅ *Selected so far:*\n${selected.map((f) => `  • ${f}`).join("\n")}\n`
+    ? `\n\n✅ *Picked so far:*\n${selected.map((f) => `  • ${plain(f)}`).join("\n")}\n`
     : "";
   await sendListMessage(phone,
-    `*Which systems should the automation connect to?*${summary}\nSelect one. You can add more after.`,
-    "Select Integration",
-    [{ title: "Integrations", rows: [
-      makeListRow("ai_wa", "1️⃣ WhatsApp", ""),
-      makeListRow("ai_web", "2️⃣ Website", ""),
-      makeListRow("ai_sheets", "3️⃣ Google Sheets", ""),
-      makeListRow("ai_email", "4️⃣ Email", ""),
-      makeListRow("ai_pay", "5️⃣ Payment Gateway", ""),
-      makeListRow("ai_db", "6️⃣ Database", ""),
-      makeListRow("ai_crm", "7️⃣ CRM", ""),
-      makeListRow("ai_none", "8️⃣ None", ""),
-      makeListRow("ai_other", "9️⃣ Other", ""),
+    `*What tools should this connect to?*${summary}\nPick one. You can add more after.`,
+    "Choose",
+    [{ title: "Tools", rows: [
+      makeListRow("ai_wa", "WhatsApp", ""),
+      makeListRow("ai_web", "Website", ""),
+      makeListRow("ai_sheets", "Google Sheets", ""),
+      makeListRow("ai_email", "Email", ""),
+      makeListRow("ai_pay", "Payment Gateway", ""),
+      makeListRow("ai_db", "Database", ""),
+      makeListRow("ai_crm", "CRM", ""),
+      makeListRow("ai_none", "None", ""),
+      makeListRow("ai_other", "Other", ""),
     ]}]);
 }
 
@@ -447,45 +498,35 @@ export async function handleSales(
 ): Promise<void> {
   const n = normalise(text);
 
-  // Allow the customer to cancel the quotation process
   if (isExit(text) || n === "cancel" || n === "exit") {
     await updateConversation(conv.id, {
       current_module: "MAIN_MENU",
       current_state: "IDLE",
       context_json: {},
     });
-
     await sendTextMessage(
       phone,
-      "Your quotation process has been paused.\n\nType *menu* whenever you want to continue."
+      "No problem! We've saved your progress.\n\nType *menu* whenever you want to continue. 😊"
     );
     return;
   }
 
-  // Back navigation handled by Sales
   if (isBack(text)) {
     const ctx = (conv.context_json as SalesCtx) || null;
-
     if (!ctx?.step || ctx.step === "ENTRY" || ctx.step === "ASK_SERVICE_TYPE") {
       await showMainMenu(phone, conv.id);
       return;
     }
-
     await showServiceTypeSelector(phone, conv.id);
     return;
   }
 
   const ctx = conv.context_json as SalesCtx | null;
 
-  // Protect against corrupted or missing Sales state
   if (!ctx?.flow || !ctx?.step) {
     console.error(
       "[SALES STATE ERROR]",
-      JSON.stringify({
-        conversationId: conv.id,
-        phone,
-        context: conv.context_json,
-      })
+      JSON.stringify({ conversationId: conv.id, phone, context: conv.context_json })
     );
     await showServiceTypeSelector(phone, conv.id);
     return;
@@ -497,30 +538,12 @@ export async function handleSales(
   }
 
   switch (ctx.flow) {
-    case "BOT":
-      await handleBotFlow(phone, text, contact, conv, ctx);
-      break;
-
-    case "WEB":
-      await handleWebFlow(phone, text, contact, conv, ctx);
-      break;
-
-    case "COMBO":
-      await handleComboFlow(phone, text, contact, conv, ctx);
-      break;
-
-    case "AUTO":
-      await handleAutoFlow(phone, text, contact, conv, ctx);
-      break;
-
+    case "BOT":    await handleBotFlow(phone, text, contact, conv, ctx); break;
+    case "WEB":    await handleWebFlow(phone, text, contact, conv, ctx); break;
+    case "COMBO":  await handleComboFlow(phone, text, contact, conv, ctx); break;
+    case "AUTO":   await handleAutoFlow(phone, text, contact, conv, ctx); break;
     default:
-      console.error(
-        "[SALES INVALID FLOW]",
-        JSON.stringify({
-          conversationId: conv.id,
-          context: conv.context_json,
-        })
-      );
+      console.error("[SALES INVALID FLOW]", JSON.stringify({ conversationId: conv.id, context: conv.context_json }));
       await showServiceTypeSelector(phone, conv.id);
       break;
   }
@@ -537,15 +560,15 @@ export async function showServiceTypeSelector(phone: string, convId: string): Pr
     context_json: defaultCtx("BOT") as unknown as Record<string, unknown>,
   });
   await sendListMessage(phone,
-    "💼 *What would you like us to build?*\n\nSelect a project type:",
-    "Select Project",
-    [{ title: "Project Types", rows: [
-      makeListRow("sales_bot", "1️⃣ WhatsApp Bot", "Automated chatbot"),
-      makeListRow("sales_web", "2️⃣ Website", "Business or e-commerce"),
-      makeListRow("sales_combo", "3️⃣ Bot + Website", "Complete package"),
-      makeListRow("sales_auto", "4️⃣ Automation", "Workflow automation"),
+    "What do you need help with? 🤔\n\nPick one:",
+    "Choose",
+    [{ title: "Options", rows: [
+      makeListRow("sales_bot", "WhatsApp Bot", "Auto-reply to customers"),
+      makeListRow("sales_web", "Website", "Business or online shop"),
+      makeListRow("sales_combo", "Bot + Website", "The full package"),
+      makeListRow("sales_auto", "Automation", "Automate your tasks"),
     ]}],
-    "Xtop Sales", "Instant Quotation"
+    "Xtop", "Get a Price"
   );
 }
 
@@ -566,14 +589,14 @@ async function processServiceTypeSelection(phone: string, text: string, conv: Co
   });
 
   const titles: Record<string, string> = {
-    BOT: "🤖 *Build a Custom WhatsApp Bot*",
-    WEB: "🌐 *Build a Business Website*",
-    COMBO: "📦 *WhatsApp Bot + Website Combo*",
-    AUTO: "⚙️ *Business Automation Project*",
+    BOT: "🤖 *WhatsApp Bot*",
+    WEB: "🌐 *Business Website*",
+    COMBO: "📦 *Bot + Website Combo*",
+    AUTO: "⚙️ *Business Automation*",
   };
   await sendTextMessage(phone,
-    `${titles[flow]}\n\nI will ask you a few quick questions to generate your instant quotation.\n\n` +
-    `*1. What is the name of your business or brand?*\n\n_(Type your business name)_`
+    `${titles[flow]}\n\nI'll ask a few quick questions to give you a price estimate.\n\n` +
+    `*1. What's your business name?*\n\n_(Just type it below)_`
   );
 }
 
@@ -588,7 +611,7 @@ async function handleBotFlow(
 
     case "ASK_BIZ_NAME": {
       if (text.trim().length < 2) {
-        await sendTextMessage(phone, "Please enter your business name (at least 2 characters):");
+        await sendTextMessage(phone, "Please type your business name (at least 2 characters):");
         return;
       }
       ctx.businessName = text.trim();
@@ -601,14 +624,14 @@ async function handleBotFlow(
     case "ASK_INDUSTRY": {
       const r = resolveStrict(text, INDUSTRY_IDS, INDUSTRY_NUMS);
       if (!r) {
-        await sendTextMessage(phone, "⚠️ Please select one of the industries from the list.");
+        await sendTextMessage(phone, "⚠️ Please pick one from the list.");
         await sendIndustryQuestion(phone);
         return;
       }
       if (r === "__OTHER__") {
         ctx.step = "ASK_INDUSTRY_OTHER";
         await saveCtx(conv.id, ctx);
-        await sendTextMessage(phone, "Please enter your business type:");
+        await sendTextMessage(phone, "What kind of business is it?");
         return;
       }
       ctx.industry = r;
@@ -620,7 +643,7 @@ async function handleBotFlow(
 
     case "ASK_INDUSTRY_OTHER": {
       if (text.trim().length < 2) {
-        await sendTextMessage(phone, "Please enter a valid business type:");
+        await sendTextMessage(phone, "Please type your business type:");
         return;
       }
       ctx.industry = text.trim();
@@ -633,14 +656,14 @@ async function handleBotFlow(
     case "ASK_BOT_FEATURES": {
       const r = resolveStrict(text, BOT_FEAT_IDS, BOT_FEAT_NUMS);
       if (!r) {
-        await sendTextMessage(phone, "⚠️ Please select a feature from the list.");
+        await sendTextMessage(phone, "⚠️ Please pick a feature from the list.");
         await sendBotFeaturesQuestion(phone, ctx.features);
         return;
       }
       if (r === "__OTHER__") {
         ctx.step = "ASK_BOT_FEATURE_OTHER";
         await saveCtx(conv.id, ctx);
-        await sendTextMessage(phone, "What custom feature do you need?");
+        await sendTextMessage(phone, "What else do you need the bot to do?");
         return;
       }
       if (!ctx.features.includes(r)) ctx.features.push(r);
@@ -648,8 +671,8 @@ async function handleBotFlow(
       ctx.step = "ASK_BOT_FEATURES_MORE";
       await saveCtx(conv.id, ctx);
       await sendButtonMessage(phone,
-        `✅ Added: *${r}*\n\n*Selected so far:*\n${ctx.features.map((f) => `  • ${f}`).join("\n")}\n\nAdd another feature?`,
-        [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ Done")],
+        `✅ Added: *${plain(r)}*\n\n*Picked so far:*\n${ctx.features.map((f) => `  • ${plain(f)}`).join("\n")}\n\nWant to add another?`,
+        [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ That's All")],
         "Features"
       );
       break;
@@ -658,7 +681,7 @@ async function handleBotFlow(
     case "ASK_BOT_FEATURE_OTHER": {
       const custom = text.trim();
       if (custom.length < 2) {
-        await sendTextMessage(phone, "Please enter a valid feature:");
+        await sendTextMessage(phone, "Please describe the feature:");
         return;
       }
       if (!ctx.features.includes(custom)) ctx.features.push(custom);
@@ -666,8 +689,8 @@ async function handleBotFlow(
       ctx.step = "ASK_BOT_FEATURES_MORE";
       await saveCtx(conv.id, ctx);
       await sendButtonMessage(phone,
-        `✅ Added: *${custom}*\n\n*Selected so far:*\n${ctx.features.map((f) => `  • ${f}`).join("\n")}\n\nAdd another feature?`,
-        [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ Done")],
+        `✅ Added: *${custom}*\n\n*Picked so far:*\n${ctx.features.map((f) => `  • ${plain(f)}`).join("\n")}\n\nWant to add another?`,
+        [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ That's All")],
         "Features"
       );
       break;
@@ -679,9 +702,9 @@ async function handleBotFlow(
         ctx.step = "ASK_BOT_FEATURES";
         await saveCtx(conv.id, ctx);
         await sendBotFeaturesQuestion(phone, ctx.features);
-      } else if (text === "feat_done" || n === "done" || n === "no" || n === "2") {
+      } else if (text === "feat_done" || n === "done" || n === "thats all" || n === "no" || n === "2") {
         if (ctx.features.length === 0) {
-          await sendTextMessage(phone, "⚠️ Please select at least one feature.");
+          await sendTextMessage(phone, "⚠️ Please pick at least one feature.");
           ctx.step = "ASK_BOT_FEATURES";
           await saveCtx(conv.id, ctx);
           await sendBotFeaturesQuestion(phone, ctx.features);
@@ -693,10 +716,10 @@ async function handleBotFlow(
           "*Do you already have a WhatsApp Business number?*",
           "wa_yes", "wa_no", "wa_unsure");
       } else {
-        await sendTextMessage(phone, "⚠️ Please tap one of the buttons below.");
+        await sendTextMessage(phone, "⚠️ Please tap one of the buttons.");
         await sendButtonMessage(phone,
-          `*Selected so far:*\n${ctx.features.map((f) => `  • ${f}`).join("\n")}\n\nAdd another feature?`,
-          [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ Done")],
+          `*Picked so far:*\n${ctx.features.map((f) => `  • ${plain(f)}`).join("\n")}\n\nWant to add another?`,
+          [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ That's All")],
           "Features"
         );
       }
@@ -706,7 +729,7 @@ async function handleBotFlow(
     case "ASK_WA_BIZ": {
       const r = resolveStrict(text, YES_NO_IDS, YES_NO_NUMS, YES_NO_TEXT);
       if (!r) {
-        await sendTextMessage(phone, "⚠️ Please select one of the options.");
+        await sendTextMessage(phone, "⚠️ Please pick one.");
         await sendYesNoQuestion(phone, "*Do you already have a WhatsApp Business number?*",
           "wa_yes", "wa_no", "wa_unsure");
         return;
@@ -722,7 +745,7 @@ async function handleBotFlow(
     case "ASK_NEED_WEBSITE": {
       const r = resolveStrict(text, YES_NO_IDS, YES_NO_NUMS, YES_NO_TEXT);
       if (!r) {
-        await sendTextMessage(phone, "⚠️ Please select one of the options.");
+        await sendTextMessage(phone, "⚠️ Please pick one.");
         await sendYesNoQuestion(phone, "*Do you also need a website?*",
           "web_yes", "web_no", "web_unsure");
         return;
@@ -738,16 +761,15 @@ async function handleBotFlow(
     case "ASK_BUDGET": {
       const r = resolveStrict(text, BUDGET_IDS, BUDGET_NUMS);
       if (!r) {
-        await sendTextMessage(phone, "⚠️ Please select a budget range from the list.");
+        await sendTextMessage(phone, "⚠️ Please pick a budget range.");
         await sendBudgetQuestion(phone);
         return;
       }
       ctx.budget = r;
       ctx.step = "ASK_CLIENT_NAME";
       await saveCtx(conv.id, ctx);
-      await sendTextMessage(
-        phone,
-        `👤 *Client Details*\n\nAlmost done! Please enter your full name:`
+      await sendTextMessage(phone,
+        `👤 *Your Details*\n\nAlmost done! What's your full name?`
       );
       break;
     }
@@ -755,27 +777,24 @@ async function handleBotFlow(
     case "ASK_CLIENT_NAME": {
       const name = text.trim();
       if (name.length < 2) {
-        await sendTextMessage(phone, "⚠️ Please enter your full name (at least 2 characters):");
+        await sendTextMessage(phone, "⚠️ Please type your full name:");
         return;
       }
       ctx.clientName = name;
       ctx.clientPhone = contact.phone;
       ctx.step = "ASK_CLIENT_EMAIL";
       await saveCtx(conv.id, ctx);
-      await sendTextMessage(
-        phone,
-        `📧 *Email Address*\n\nPlease enter your email address to receive your quotation copy:`
+      await sendTextMessage(phone,
+        `📧 *Email*\n\nWhat's your email? We'll send your price estimate there:`
       );
       break;
     }
 
     case "ASK_CLIENT_EMAIL": {
       const email = text.trim().toLowerCase();
-      const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-      if (!emailValid) {
-        await sendTextMessage(
-          phone,
-          "⚠️ That doesn't look like a valid email address.\n\nPlease enter a valid email (e.g. name@domain.com):"
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        await sendTextMessage(phone,
+          "⚠️ That doesn't look right.\n\nPlease type a valid email (e.g. name@gmail.com):"
         );
         return;
       }
@@ -806,7 +825,7 @@ async function handleWebFlow(
 
     case "ASK_BIZ_NAME": {
       if (text.trim().length < 2) {
-        await sendTextMessage(phone, "Please enter your business name (at least 2 characters):");
+        await sendTextMessage(phone, "Please type your business name (at least 2 characters):");
         return;
       }
       ctx.businessName = text.trim();
@@ -819,13 +838,13 @@ async function handleWebFlow(
     case "ASK_INDUSTRY": {
       const r = resolveStrict(text, INDUSTRY_IDS, INDUSTRY_NUMS);
       if (!r) {
-        await sendTextMessage(phone, "⚠️ Please select one of the industries from the list.");
+        await sendTextMessage(phone, "⚠️ Please pick one from the list.");
         await sendIndustryQuestion(phone); return;
       }
       if (r === "__OTHER__") {
         ctx.step = "ASK_INDUSTRY_OTHER";
         await saveCtx(conv.id, ctx);
-        await sendTextMessage(phone, "Please enter your business type:"); return;
+        await sendTextMessage(phone, "What kind of business is it?"); return;
       }
       ctx.industry = r;
       ctx.step = "ASK_WEB_TYPE";
@@ -836,7 +855,7 @@ async function handleWebFlow(
 
     case "ASK_INDUSTRY_OTHER": {
       if (text.trim().length < 2) {
-        await sendTextMessage(phone, "Please enter a valid business type:");
+        await sendTextMessage(phone, "Please type your business type:");
         return;
       }
       ctx.industry = text.trim();
@@ -849,14 +868,14 @@ async function handleWebFlow(
     case "ASK_WEB_TYPE": {
       const r = resolveStrict(text, WEB_TYPE_IDS, WEB_TYPE_NUMS);
       if (!r) {
-        await sendTextMessage(phone, "⚠️ Please select a website type from the list.");
+        await sendTextMessage(phone, "⚠️ Please pick a website type.");
         await sendWebTypeQuestion(phone);
         return;
       }
       if (r === "__OTHER__") {
         ctx.step = "ASK_WEB_TYPE_OTHER";
         await saveCtx(conv.id, ctx);
-        await sendTextMessage(phone, "Please describe the type of website you need:"); return;
+        await sendTextMessage(phone, "What kind of website do you have in mind?"); return;
       }
       ctx.webType = r;
       ctx.step = "ASK_WEB_FEATURES";
@@ -867,7 +886,7 @@ async function handleWebFlow(
 
     case "ASK_WEB_TYPE_OTHER": {
       if (text.trim().length < 2) {
-        await sendTextMessage(phone, "Please describe a valid website type:");
+        await sendTextMessage(phone, "Please describe the website you need:");
         return;
       }
       ctx.webType = text.trim();
@@ -880,21 +899,21 @@ async function handleWebFlow(
     case "ASK_WEB_FEATURES": {
       const r = resolveStrict(text, WEB_FEAT_IDS, WEB_FEAT_NUMS);
       if (!r) {
-        await sendTextMessage(phone, "⚠️ Please select a feature from the list.");
+        await sendTextMessage(phone, "⚠️ Please pick a feature from the list.");
         await sendWebFeaturesQuestion(phone, ctx.webFeatures); return;
       }
       if (r === "__OTHER__") {
         ctx.step = "ASK_WEB_FEATURE_OTHER";
         await saveCtx(conv.id, ctx);
-        await sendTextMessage(phone, "What custom feature do you need?"); return;
+        await sendTextMessage(phone, "What else do you need on the website?"); return;
       }
       if (!ctx.webFeatures.includes(r)) ctx.webFeatures.push(r);
       ctx.featureCodes = mapFeaturesToCodes(ctx.webFeatures, WEB_FEATURE_MAP);
       ctx.step = "ASK_WEB_FEATURES_MORE";
       await saveCtx(conv.id, ctx);
       await sendButtonMessage(phone,
-        `✅ Added: *${r}*\n\n*Selected so far:*\n${ctx.webFeatures.map((f) => `  • ${f}`).join("\n")}\n\nAdd another?`,
-        [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ Done")],
+        `✅ Added: *${plain(r)}*\n\n*Picked so far:*\n${ctx.webFeatures.map((f) => `  • ${plain(f)}`).join("\n")}\n\nWant to add another?`,
+        [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ That's All")],
         "Features"
       );
       break;
@@ -903,7 +922,7 @@ async function handleWebFlow(
     case "ASK_WEB_FEATURE_OTHER": {
       const custom = text.trim();
       if (custom.length < 2) {
-        await sendTextMessage(phone, "Please enter a valid feature:");
+        await sendTextMessage(phone, "Please describe the feature:");
         return;
       }
       if (!ctx.webFeatures.includes(custom)) ctx.webFeatures.push(custom);
@@ -911,8 +930,8 @@ async function handleWebFlow(
       ctx.step = "ASK_WEB_FEATURES_MORE";
       await saveCtx(conv.id, ctx);
       await sendButtonMessage(phone,
-        `✅ Added: *${custom}*\n\n*Selected so far:*\n${ctx.webFeatures.map((f) => `  • ${f}`).join("\n")}\n\nAdd another?`,
-        [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ Done")],
+        `✅ Added: *${custom}*\n\n*Picked so far:*\n${ctx.webFeatures.map((f) => `  • ${plain(f)}`).join("\n")}\n\nWant to add another?`,
+        [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ That's All")],
         "Features"
       );
       break;
@@ -924,9 +943,9 @@ async function handleWebFlow(
         ctx.step = "ASK_WEB_FEATURES";
         await saveCtx(conv.id, ctx);
         await sendWebFeaturesQuestion(phone, ctx.webFeatures);
-      } else if (text === "feat_done" || n === "done" || n === "no" || n === "2") {
+      } else if (text === "feat_done" || n === "done" || n === "thats all" || n === "no" || n === "2") {
         if (ctx.webFeatures.length === 0) {
-          await sendTextMessage(phone, "⚠️ Please select at least one feature.");
+          await sendTextMessage(phone, "⚠️ Please pick at least one feature.");
           ctx.step = "ASK_WEB_FEATURES";
           await saveCtx(conv.id, ctx);
           await sendWebFeaturesQuestion(phone, ctx.webFeatures); return;
@@ -934,13 +953,13 @@ async function handleWebFlow(
         ctx.step = "ASK_DOMAIN";
         await saveCtx(conv.id, ctx);
         await sendYesNoQuestion(phone,
-          "*Do you already have a domain name (e.g. .com, .ng)?*",
+          "*Do you already have a website address (like .com or .ng)?*",
           "dom_yes", "dom_no", "dom_unsure");
       } else {
-        await sendTextMessage(phone, "⚠️ Please tap one of the buttons below.");
+        await sendTextMessage(phone, "⚠️ Please tap one of the buttons.");
         await sendButtonMessage(phone,
-          `*Selected so far:*\n${ctx.webFeatures.map((f) => `  • ${f}`).join("\n")}\n\nAdd another?`,
-          [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ Done")], "Features");
+          `*Picked so far:*\n${ctx.webFeatures.map((f) => `  • ${plain(f)}`).join("\n")}\n\nWant to add another?`,
+          [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ That's All")], "Features");
       }
       break;
     }
@@ -948,8 +967,8 @@ async function handleWebFlow(
     case "ASK_DOMAIN": {
       const r = resolveStrict(text, YES_NO_IDS, YES_NO_NUMS, YES_NO_TEXT);
       if (!r) {
-        await sendTextMessage(phone, "⚠️ Please select one of the options.");
-        await sendYesNoQuestion(phone, "*Do you already have a domain name?*",
+        await sendTextMessage(phone, "⚠️ Please pick one.");
+        await sendYesNoQuestion(phone, "*Do you already have a website address?*",
           "dom_yes", "dom_no", "dom_unsure");
         return;
       }
@@ -964,7 +983,7 @@ async function handleWebFlow(
     case "ASK_HOSTING": {
       const r = resolveStrict(text, YES_NO_IDS, YES_NO_NUMS, YES_NO_TEXT);
       if (!r) {
-        await sendTextMessage(phone, "⚠️ Please select one of the options.");
+        await sendTextMessage(phone, "⚠️ Please pick one.");
         await sendYesNoQuestion(phone, "*Do you already have web hosting?*",
           "host_yes", "host_no", "host_unsure");
         return;
@@ -972,7 +991,7 @@ async function handleWebFlow(
       ctx.hosting = r;
       ctx.step = "ASK_WA_INT";
       await saveCtx(conv.id, ctx);
-      await sendYesNoQuestion(phone, "*Do you need WhatsApp integration on the website?*",
+      await sendYesNoQuestion(phone, "*Do you want WhatsApp chat on your website?*",
         "wai_yes", "wai_no", "wai_unsure");
       break;
     }
@@ -980,8 +999,8 @@ async function handleWebFlow(
     case "ASK_WA_INT": {
       const r = resolveStrict(text, YES_NO_IDS, YES_NO_NUMS, YES_NO_TEXT);
       if (!r) {
-        await sendTextMessage(phone, "⚠️ Please select one of the options.");
-        await sendYesNoQuestion(phone, "*Do you need WhatsApp integration on the website?*",
+        await sendTextMessage(phone, "⚠️ Please pick one.");
+        await sendYesNoQuestion(phone, "*Do you want WhatsApp chat on your website?*",
           "wai_yes", "wai_no", "wai_unsure");
         return;
       }
@@ -998,15 +1017,14 @@ async function handleWebFlow(
     case "ASK_BUDGET": {
       const r = resolveStrict(text, BUDGET_IDS, BUDGET_NUMS);
       if (!r) {
-        await sendTextMessage(phone, "⚠️ Please select a budget range from the list.");
+        await sendTextMessage(phone, "⚠️ Please pick a budget range.");
         await sendBudgetQuestion(phone); return;
       }
       ctx.budget = r;
       ctx.step = "ASK_CLIENT_NAME";
       await saveCtx(conv.id, ctx);
-      await sendTextMessage(
-        phone,
-        `👤 *Client Details*\n\nAlmost done! Please enter your full name:`
+      await sendTextMessage(phone,
+        `👤 *Your Details*\n\nAlmost done! What's your full name?`
       );
       break;
     }
@@ -1014,27 +1032,24 @@ async function handleWebFlow(
     case "ASK_CLIENT_NAME": {
       const name = text.trim();
       if (name.length < 2) {
-        await sendTextMessage(phone, "⚠️ Please enter your full name (at least 2 characters):");
+        await sendTextMessage(phone, "⚠️ Please type your full name:");
         return;
       }
       ctx.clientName = name;
       ctx.clientPhone = contact.phone;
       ctx.step = "ASK_CLIENT_EMAIL";
       await saveCtx(conv.id, ctx);
-      await sendTextMessage(
-        phone,
-        `📧 *Email Address*\n\nPlease enter your email address to receive your quotation copy:`
+      await sendTextMessage(phone,
+        `📧 *Email*\n\nWhat's your email? We'll send your price estimate there:`
       );
       break;
     }
 
     case "ASK_CLIENT_EMAIL": {
       const email = text.trim().toLowerCase();
-      const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-      if (!emailValid) {
-        await sendTextMessage(
-          phone,
-          "⚠️ That doesn't look like a valid email address.\n\nPlease enter a valid email (e.g. name@domain.com):"
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        await sendTextMessage(phone,
+          "⚠️ That doesn't look right.\n\nPlease type a valid email (e.g. name@gmail.com):"
         );
         return;
       }
@@ -1084,41 +1099,37 @@ async function handleComboFlow(
   if (ctx.step === "ASK_BUDGET") {
     const r = resolveStrict(text, BUDGET_IDS, BUDGET_NUMS);
     if (!r) {
-      await sendTextMessage(phone, "⚠️ Please select a budget range from the list.");
+      await sendTextMessage(phone, "⚠️ Please pick a budget range.");
       await sendBudgetQuestion(phone); return;
     }
     ctx.budget = r;
     ctx.step = "ASK_CLIENT_NAME";
     await saveCtx(conv.id, ctx);
-    await sendTextMessage(
-      phone,
-      `👤 *Client Details*\n\nAlmost done! Please enter your full name:`
+    await sendTextMessage(phone,
+      `👤 *Your Details*\n\nAlmost done! What's your full name?`
     );
     return;
   }
   if (ctx.step === "ASK_CLIENT_NAME") {
     const name = text.trim();
     if (name.length < 2) {
-      await sendTextMessage(phone, "⚠️ Please enter your full name (at least 2 characters):");
+      await sendTextMessage(phone, "⚠️ Please type your full name:");
       return;
     }
     ctx.clientName = name;
     ctx.clientPhone = contact.phone;
     ctx.step = "ASK_CLIENT_EMAIL";
     await saveCtx(conv.id, ctx);
-    await sendTextMessage(
-      phone,
-      `📧 *Email Address*\n\nPlease enter your email address to receive your quotation copy:`
+    await sendTextMessage(phone,
+      `📧 *Email*\n\nWhat's your email? We'll send your price estimate there:`
     );
     return;
   }
   if (ctx.step === "ASK_CLIENT_EMAIL") {
     const email = text.trim().toLowerCase();
-    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    if (!emailValid) {
-      await sendTextMessage(
-        phone,
-        "⚠️ That doesn't look like a valid email address.\n\nPlease enter a valid email (e.g. name@domain.com):"
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      await sendTextMessage(phone,
+        "⚠️ That doesn't look right.\n\nPlease type a valid email (e.g. name@gmail.com):"
       );
       return;
     }
@@ -1145,7 +1156,7 @@ async function handleAutoFlow(
 
     case "ASK_BIZ_NAME": {
       if (text.trim().length < 2) {
-        await sendTextMessage(phone, "Please enter your business name (at least 2 characters):"); return;
+        await sendTextMessage(phone, "Please type your business name (at least 2 characters):"); return;
       }
       ctx.businessName = text.trim();
       ctx.step = "ASK_INDUSTRY";
@@ -1157,13 +1168,13 @@ async function handleAutoFlow(
     case "ASK_INDUSTRY": {
       const r = resolveStrict(text, INDUSTRY_IDS, INDUSTRY_NUMS);
       if (!r) {
-        await sendTextMessage(phone, "⚠️ Please select one of the industries from the list.");
+        await sendTextMessage(phone, "⚠️ Please pick one from the list.");
         await sendIndustryQuestion(phone); return;
       }
       if (r === "__OTHER__") {
         ctx.step = "ASK_INDUSTRY_OTHER";
         await saveCtx(conv.id, ctx);
-        await sendTextMessage(phone, "Please enter your business type:"); return;
+        await sendTextMessage(phone, "What kind of business is it?"); return;
       }
       ctx.industry = r;
       ctx.step = "ASK_AUTO_ACTIVITIES";
@@ -1174,7 +1185,7 @@ async function handleAutoFlow(
 
     case "ASK_INDUSTRY_OTHER": {
       if (text.trim().length < 2) {
-        await sendTextMessage(phone, "Please enter a valid business type:");
+        await sendTextMessage(phone, "Please type your business type:");
         return;
       }
       ctx.industry = text.trim();
@@ -1187,14 +1198,14 @@ async function handleAutoFlow(
     case "ASK_AUTO_ACTIVITIES": {
       const r = resolveStrict(text, AUTO_ACT_IDS, AUTO_ACT_NUMS);
       if (!r) {
-        await sendTextMessage(phone, "⚠️ Please select an activity from the list.");
+        await sendTextMessage(phone, "⚠️ Please pick a task from the list.");
         await sendAutoActivitiesQuestion(phone, ctx.autoActivities);
         return;
       }
       if (r === "__OTHER__") {
         ctx.step = "ASK_AUTO_ACTIVITY_OTHER";
         await saveCtx(conv.id, ctx);
-        await sendTextMessage(phone, "What custom workflow do you need automated?"); return;
+        await sendTextMessage(phone, "What task do you want to automate?"); return;
       }
       if (!ctx.autoActivities.includes(r)) ctx.autoActivities.push(r);
       ctx.features = [...ctx.autoActivities];
@@ -1202,15 +1213,15 @@ async function handleAutoFlow(
       ctx.step = "ASK_AUTO_ACTIVITIES_MORE";
       await saveCtx(conv.id, ctx);
       await sendButtonMessage(phone,
-        `✅ Added: *${r}*\n\n*Selected so far:*\n${ctx.autoActivities.map((a) => `  • ${a}`).join("\n")}\n\nAdd another?`,
-        [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ Done")], "Activities");
+        `✅ Added: *${plain(r)}*\n\n*Picked so far:*\n${ctx.autoActivities.map((a) => `  • ${plain(a)}`).join("\n")}\n\nWant to add another?`,
+        [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ That's All")], "Tasks");
       break;
     }
 
     case "ASK_AUTO_ACTIVITY_OTHER": {
       const custom = text.trim();
       if (custom.length < 2) {
-        await sendTextMessage(phone, "Please enter a valid workflow:");
+        await sendTextMessage(phone, "Please describe the task:");
         return;
       }
       if (!ctx.autoActivities.includes(custom)) ctx.autoActivities.push(custom);
@@ -1219,8 +1230,8 @@ async function handleAutoFlow(
       ctx.step = "ASK_AUTO_ACTIVITIES_MORE";
       await saveCtx(conv.id, ctx);
       await sendButtonMessage(phone,
-        `✅ Added: *${custom}*\n\n*Selected so far:*\n${ctx.autoActivities.map((a) => `  • ${a}`).join("\n")}\n\nAdd another?`,
-        [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ Done")], "Activities");
+        `✅ Added: *${custom}*\n\n*Picked so far:*\n${ctx.autoActivities.map((a) => `  • ${plain(a)}`).join("\n")}\n\nWant to add another?`,
+        [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ That's All")], "Tasks");
       break;
     }
 
@@ -1230,9 +1241,9 @@ async function handleAutoFlow(
         ctx.step = "ASK_AUTO_ACTIVITIES";
         await saveCtx(conv.id, ctx);
         await sendAutoActivitiesQuestion(phone, ctx.autoActivities);
-      } else if (text === "feat_done" || n === "done" || n === "no" || n === "2") {
+      } else if (text === "feat_done" || n === "done" || n === "thats all" || n === "no" || n === "2") {
         if (ctx.autoActivities.length === 0) {
-          await sendTextMessage(phone, "⚠️ Please select at least one activity.");
+          await sendTextMessage(phone, "⚠️ Please pick at least one task.");
           ctx.step = "ASK_AUTO_ACTIVITIES";
           await saveCtx(conv.id, ctx);
           await sendAutoActivitiesQuestion(phone, ctx.autoActivities); return;
@@ -1241,10 +1252,10 @@ async function handleAutoFlow(
         await saveCtx(conv.id, ctx);
         await sendAutoProcessQuestion(phone);
       } else {
-        await sendTextMessage(phone, "⚠️ Please tap one of the buttons below.");
+        await sendTextMessage(phone, "⚠️ Please tap one of the buttons.");
         await sendButtonMessage(phone,
-          `*Selected so far:*\n${ctx.autoActivities.map((a) => `  • ${a}`).join("\n")}\n\nAdd another?`,
-          [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ Done")], "Activities");
+          `*Picked so far:*\n${ctx.autoActivities.map((a) => `  • ${plain(a)}`).join("\n")}\n\nWant to add another?`,
+          [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ That's All")], "Tasks");
       }
       break;
     }
@@ -1252,7 +1263,7 @@ async function handleAutoFlow(
     case "ASK_AUTO_PROCESS": {
       const r = resolveStrict(text, AUTO_PROC_IDS, AUTO_PROC_NUMS);
       if (!r) {
-        await sendTextMessage(phone, "⚠️ Please select one of the options.");
+        await sendTextMessage(phone, "⚠️ Please pick one.");
         await sendAutoProcessQuestion(phone);
         return;
       }
@@ -1266,7 +1277,7 @@ async function handleAutoFlow(
     case "ASK_AUTO_USERS": {
       const r = resolveStrict(text, AUTO_USERS_IDS, AUTO_USERS_NUMS);
       if (!r) {
-        await sendTextMessage(phone, "⚠️ Please select one of the options.");
+        await sendTextMessage(phone, "⚠️ Please pick one.");
         await sendAutoUsersQuestion(phone);
         return;
       }
@@ -1280,36 +1291,36 @@ async function handleAutoFlow(
     case "ASK_AUTO_INTEGRATIONS": {
       const r = resolveStrict(text, AUTO_INT_IDS, AUTO_INT_NUMS);
       if (!r) {
-        await sendTextMessage(phone, "⚠️ Please select an option from the list.");
+        await sendTextMessage(phone, "⚠️ Please pick one from the list.");
         await sendAutoIntegrationsQuestion(phone, ctx.autoIntegrations);
         return;
       }
       if (r === "__OTHER__") {
         ctx.step = "ASK_AUTO_INT_OTHER";
         await saveCtx(conv.id, ctx);
-        await sendTextMessage(phone, "What other system should it connect to?"); return;
+        await sendTextMessage(phone, "What other tool should it connect to?"); return;
       }
       if (!ctx.autoIntegrations.includes(r)) ctx.autoIntegrations.push(r);
       ctx.step = "ASK_AUTO_INT_MORE";
       await saveCtx(conv.id, ctx);
       await sendButtonMessage(phone,
-        `✅ Added: *${r}*\n\n*Integrations so far:*\n${ctx.autoIntegrations.map((i) => `  • ${i}`).join("\n")}\n\nAdd another?`,
-        [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ Done")], "Integrations");
+        `✅ Added: *${plain(r)}*\n\n*Picked so far:*\n${ctx.autoIntegrations.map((i) => `  • ${plain(i)}`).join("\n")}\n\nWant to add another?`,
+        [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ That's All")], "Tools");
       break;
     }
 
     case "ASK_AUTO_INT_OTHER": {
       const custom = text.trim();
       if (custom.length < 2) {
-        await sendTextMessage(phone, "Please enter a valid integration name:");
+        await sendTextMessage(phone, "Please type the tool name:");
         return;
       }
       if (!ctx.autoIntegrations.includes(custom)) ctx.autoIntegrations.push(custom);
       ctx.step = "ASK_AUTO_INT_MORE";
       await saveCtx(conv.id, ctx);
       await sendButtonMessage(phone,
-        `✅ Added: *${custom}*\n\n*Integrations so far:*\n${ctx.autoIntegrations.map((i) => `  • ${i}`).join("\n")}\n\nAdd another?`,
-        [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ Done")], "Integrations");
+        `✅ Added: *${custom}*\n\n*Picked so far:*\n${ctx.autoIntegrations.map((i) => `  • ${plain(i)}`).join("\n")}\n\nWant to add another?`,
+        [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ That's All")], "Tools");
       break;
     }
 
@@ -1319,15 +1330,15 @@ async function handleAutoFlow(
         ctx.step = "ASK_AUTO_INTEGRATIONS";
         await saveCtx(conv.id, ctx);
         await sendAutoIntegrationsQuestion(phone, ctx.autoIntegrations);
-      } else if (text === "feat_done" || n === "done" || n === "no" || n === "2") {
+      } else if (text === "feat_done" || n === "done" || n === "thats all" || n === "no" || n === "2") {
         ctx.step = "ASK_BUDGET";
         await saveCtx(conv.id, ctx);
         await sendBudgetQuestion(phone);
       } else {
-        await sendTextMessage(phone, "⚠️ Please tap one of the buttons below.");
+        await sendTextMessage(phone, "⚠️ Please tap one of the buttons.");
         await sendButtonMessage(phone,
-          `*Integrations so far:*\n${ctx.autoIntegrations.map((i) => `  • ${i}`).join("\n")}\n\nAdd another?`,
-          [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ Done")], "Integrations");
+          `*Picked so far:*\n${ctx.autoIntegrations.map((i) => `  • ${plain(i)}`).join("\n")}\n\nWant to add another?`,
+          [makeButton("feat_more", "➕ Add Another"), makeButton("feat_done", "✅ That's All")], "Tools");
       }
       break;
     }
@@ -1335,15 +1346,14 @@ async function handleAutoFlow(
     case "ASK_BUDGET": {
       const r = resolveStrict(text, BUDGET_IDS, BUDGET_NUMS);
       if (!r) {
-        await sendTextMessage(phone, "⚠️ Please select a budget range from the list.");
+        await sendTextMessage(phone, "⚠️ Please pick a budget range.");
         await sendBudgetQuestion(phone); return;
       }
       ctx.budget = r;
       ctx.step = "ASK_CLIENT_NAME";
       await saveCtx(conv.id, ctx);
-      await sendTextMessage(
-        phone,
-        `👤 *Client Details*\n\nAlmost done! Please enter your full name:`
+      await sendTextMessage(phone,
+        `👤 *Your Details*\n\nAlmost done! What's your full name?`
       );
       break;
     }
@@ -1351,27 +1361,24 @@ async function handleAutoFlow(
     case "ASK_CLIENT_NAME": {
       const name = text.trim();
       if (name.length < 2) {
-        await sendTextMessage(phone, "⚠️ Please enter your full name (at least 2 characters):");
+        await sendTextMessage(phone, "⚠️ Please type your full name:");
         return;
       }
       ctx.clientName = name;
       ctx.clientPhone = contact.phone;
       ctx.step = "ASK_CLIENT_EMAIL";
       await saveCtx(conv.id, ctx);
-      await sendTextMessage(
-        phone,
-        `📧 *Email Address*\n\nPlease enter your email address to receive your quotation copy:`
+      await sendTextMessage(phone,
+        `📧 *Email*\n\nWhat's your email? We'll send your price estimate there:`
       );
       break;
     }
 
     case "ASK_CLIENT_EMAIL": {
       const email = text.trim().toLowerCase();
-      const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-      if (!emailValid) {
-        await sendTextMessage(
-          phone,
-          "⚠️ That doesn't look like a valid email address.\n\nPlease enter a valid email (e.g. name@domain.com):"
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        await sendTextMessage(phone,
+          "⚠️ That doesn't look right.\n\nPlease type a valid email (e.g. name@gmail.com):"
         );
         return;
       }
@@ -1392,7 +1399,7 @@ async function handleAutoFlow(
 }
 
 // ═══════════════════════════════════════════════════════
-// QUOTATION GENERATOR
+// QUOTATION GENERATOR  (plain English)
 // ═══════════════════════════════════════════════════════
 
 async function generateAndShowQuotation(
@@ -1420,8 +1427,8 @@ async function generateAndShowQuotation(
     ctx.step = "SHOWING_QUOTE";
     await saveCtx(conv.id, ctx);
     await sendButtonMessage(phone,
-      "Thank you! An Xtop agent will prepare a custom quotation.\n\nWhat next?",
-      [makeButton("q_agent", "👤 Talk to Agent"), makeButton("menu_home", "🏠 Main Menu")], "Next Steps");
+      "Thanks! One of our team members will prepare a custom price for you.\n\nWhat would you like to do?",
+      [makeButton("q_agent", "👤 Talk to Our Team"), makeButton("menu_home", "🏠 Main Menu")], "Next Steps");
     return;
   }
 
@@ -1437,7 +1444,7 @@ async function generateAndShowQuotation(
   else { lead = await createLead(contact.id, serviceType, fields); }
   if (lead) ctx.leadId = lead.id;
 
-  const serviceLabel = serviceType.replace(/_/g, " ");
+  const serviceLabel = plain(serviceType.replace(/_/g, " "));
   const deliverables = (pkg.features || []) as string[];
   const quotation = await createQuotation(
     lead?.id || "", pkg.id,
@@ -1449,23 +1456,23 @@ async function generateAndShowQuotation(
   ctx.step = "SHOWING_QUOTE";
   await saveCtx(conv.id, ctx);
 
-  const delivBullets = deliverables.slice(0, 8).map((d) => `  • ${d.replace(/_/g, " ")}`).join("\n");
+  const delivBullets = deliverables.slice(0, 8).map((d) => `  • ${plain(d.replace(/_/g, " "))}`).join("\n");
   const msg =
-    `━━━━━━━━━━━━━━━━\n📋 *PRELIMINARY QUOTATION*\n━━━━━━━━━━━━━━━━\n\n` +
-    `*Client:* ${ctx.clientName || contact.name || "Customer"}\n` +
+    `━━━━━━━━━━━━━━━━\n📋 *YOUR PRICE ESTIMATE*\n━━━━━━━━━━━━━━━━\n\n` +
+    `*Name:* ${ctx.clientName || contact.name || "Customer"}\n` +
     `*Email:* ${ctx.clientEmail || "Provided"}\n` +
     `*Business:* ${ctx.businessName || "N/A"}\n` +
-    `*Industry:* ${ctx.industry || "N/A"}\n` +
+    `*Type:* ${plain(ctx.industry || "N/A")}\n` +
     `*Project:* ${serviceLabel}\n` +
-    `*Package:* ${pkg.package_code} — ${pkg.package_name}\n` +
+    `*Package:* ${pkg.package_name}\n` +
     `*Ref:* ${ctx.quotationNumber || "PENDING"}\n\n` +
-    `*Estimated Investment:*\n${formatNaira(pkg.min_price)} – ${formatNaira(pkg.max_price)}\n\n` +
-    `*Includes:*\n${delivBullets}\n\n` +
-    `⚠️ _This is a preliminary estimate. Final pricing will be confirmed after reviewing your complete requirements._`;
+    `*Estimated Price:*\n${formatNaira(pkg.min_price)} – ${formatNaira(pkg.max_price)}\n\n` +
+    `*What's included:*\n${delivBullets}\n\n` +
+    `⚠️ _This is an estimate. We'll confirm the final price after reviewing everything._`;
 
   await sendButtonMessage(phone, msg,
-    [makeButton("q_select", "✅ Select Package"), makeButton("q_change", "🔄 Change Reqs"), makeButton("q_agent", "👤 Talk to Agent")],
-    "Xtop Quotation Engine", "Valid for 14 days");
+    [makeButton("q_select", "✅ Get Started"), makeButton("q_change", "🔄 Start Over"), makeButton("q_agent", "👤 Talk to Our Team")],
+    "Xtop", "Valid for 14 days");
 }
 
 function buildLeadFields(
@@ -1490,38 +1497,30 @@ function buildLeadFields(
       client_name: ctx.clientName || null,
       client_email: ctx.clientEmail || null,
       client_phone: ctx.clientPhone || null,
-
       flow: ctx.flow,
       service_type: ctx.serviceType,
-
       business_name: ctx.businessName,
       industry: ctx.industry,
-
       bot_features: ctx.features,
       bot_feature_codes: ctx.featureCodes,
-
       web_features: ctx.webFeatures,
       web_type: ctx.webType,
-
       whatsapp_business: ctx.waBiz,
-      need_website: ctx.needWebsite,
-
+            need_website: ctx.needWebsite,
       domain: ctx.domain,
       hosting: ctx.hosting,
       whatsapp_integration: ctx.waIntegration,
-
       automation_activities: ctx.autoActivities,
       automation_process: ctx.autoProcess,
       automation_users: ctx.autoUsers,
       automation_integrations: ctx.autoIntegrations,
-
       budget: ctx.budget,
     },
   };
 }
 
 // ═══════════════════════════════════════════════════════
-// POST-QUOTATION ACTIONS
+// POST-QUOTATION ACTIONS  (plain English + onboarding routing)
 // ═══════════════════════════════════════════════════════
 
 async function handlePostQuoteAction(
@@ -1533,62 +1532,88 @@ async function handlePostQuoteAction(
 ): Promise<void> {
   const n = normalise(text);
 
+  // ── Back to main menu ──
   if (n === "menu_home" || n === "main menu" || n === "menu") {
+    await updateConversation(conv.id, {
+      current_module: "MAIN_MENU",
+      current_state: "IDLE",
+      context_json: {},
+    });
+    await sendTextMessage(phone,
+      "No problem! You can always come back when you're ready. 😊"
+    );
     await showMainMenu(phone, conv.id);
     return;
   }
 
-  if (n === "q_select" || n.includes("select")) {
+  // ── Start Over / Change Requirements ──
+  if (n === "q_change" || n.includes("change") || n.includes("start over")) {
+    await showServiceTypeSelector(phone, conv.id);
+    return;
+  }
+
+  // ── Get Started / Select Package ──
+  if (n === "q_select" || n.includes("get started") || n.includes("select")) {
     if (ctx.leadId) {
       await updateLead(ctx.leadId, {
         status: "PACKAGE_SELECTED",
         selected_package_id: ctx.selectedPackageId,
       });
     }
-
     if (ctx.quotationId) {
-      await updateQuotation(ctx.quotationId, {
-        status: "PACKAGE_SELECTED",
-      });
+      await updateQuotation(ctx.quotationId, { status: "PACKAGE_SELECTED" });
     }
 
-    ctx.step = "SHOWING_QUOTE";
+    const svc = (ctx.serviceType || flowToServiceType(ctx.flow)).toUpperCase();
+
+    // ── WEBSITE or AUTOMATION → old onboarding (Netlify link) ──
+    if (svc === "WEBSITE" || svc === "AUTOMATION") {
+      const label = svc === "WEBSITE" ? "website" : "automation";
+
+      await updateConversation(conv.id, {
+        current_module: "MAIN_MENU",
+        current_state: "IDLE",
+        context_json: { lastService: svc },
+      });
+
+      await sendTextMessage(phone,
+        `Great choice! To set up your ${label}, you'll need to connect your WhatsApp number.\n\n` +
+        `*Here's how (takes about 2 minutes):*\n\n` +
+        `1️⃣ Open *Chrome* on your phone\n` +
+        `2️⃣ Type or paste this link:\n` +
+        `👉 https://xtopbot.netlify.app/\n` +
+        `3️⃣ Tap *"Connect to WhatsApp"*\n` +
+        `4️⃣ Follow the steps on screen\n\n` +
+        `Once you're done, we'll finish setting everything up for you! 🚀\n\n` +
+        `If the link doesn't open, copy it and paste it in Chrome.`
+      );
+      return;
+    }
+
+    // ── BOT or COMBO → WhatsApp-native onboarding (plan picker) ──
+    // Import dynamically to avoid circular dependency
+    const { startOnboardingFromSales } = await import("./onboarding.ts");
 
     await updateConversation(conv.id, {
-      current_module: "SALES",
-      current_state: "SHOWING_QUOTE",
-      context_json: ctx as unknown as Record<string, unknown>,
+      current_module: "ONBOARDING",
+      current_state: "ONBOARDING_PLAN",
+      context_json: {
+        ...ctx,
+        onboarding_source: "sales",
+        onboarding_service: svc,
+      } as unknown as Record<string, unknown>,
     });
 
-    await sendButtonMessage(
-      phone,
-      `✅ *Package selection recorded.*\n\n` +
-        `*Ref:* ${ctx.quotationNumber || "PENDING"}\n` +
-        `*Package:* ${ctx.selectedPackageCode || "N/A"}\n` +
-        `*Estimate:* ${formatNaira(ctx.estimatedMin || 0)} – ${formatNaira(ctx.estimatedMax || 0)}\n\n` +
-        "An Xtop agent will confirm the final scope. You can request an agent now or return to the main menu.",
-      [
-        makeButton("q_agent_now", "👤 Talk to Agent"),
-        makeButton("menu_home", "🏠 Main Menu"),
-      ],
-      "Package Selected",
-      "Xtop Retail Technologies"
-    );
-
+    await startOnboardingFromSales(phone, {
+      state: "ONBOARDING_PLAN",
+      onboarding_source: "sales",
+      onboarding_service: svc,
+    }, svc);
     return;
   }
 
-  if (n === "q_change" || n.includes("change")) {
-    await showServiceTypeSelector(phone, conv.id);
-    return;
-  }
-
-  if (
-    n === "q_agent" ||
-    n === "q_agent_now" ||
-    n.includes("agent") ||
-    n.includes("talk")
-  ) {
+  // ── Talk to Our Team ──
+  if (n === "q_agent" || n === "q_agent_now" || n.includes("agent") || n.includes("talk") || n.includes("team")) {
     const summary =
       `Client: ${ctx.clientName || contact.name || "N/A"}\n` +
       `Email: ${ctx.clientEmail || "N/A"}\n` +
@@ -1596,13 +1621,7 @@ async function handlePostQuoteAction(
       `Business: ${ctx.businessName || "N/A"}\n` +
       `Industry: ${ctx.industry || "N/A"}\n` +
       `Service: ${ctx.serviceType || "N/A"}\n` +
-      `Features: ${
-        [
-          ...ctx.features,
-          ...ctx.webFeatures,
-          ...ctx.autoActivities,
-        ].join(", ") || "N/A"
-      }\n` +
+      `Features: ${[...ctx.features, ...ctx.webFeatures, ...ctx.autoActivities].join(", ") || "N/A"}\n` +
       `Budget: ${ctx.budget || "N/A"}\n` +
       `Package: ${ctx.selectedPackageCode || "N/A"}\n` +
       `Estimate: ${formatNaira(ctx.estimatedMin || 0)} – ${formatNaira(ctx.estimatedMax || 0)}\n` +
@@ -1611,9 +1630,7 @@ async function handlePostQuoteAction(
     const record = await createAgentRequest(
       contact.id,
       "QUOTATION",
-      `Quotation review request from ${
-        ctx.clientName || contact.name || contact.phone
-      }`,
+      `Price review request from ${ctx.clientName || contact.name || contact.phone}`,
       "HIGH",
       ctx.leadId,
       ctx.quotationId,
@@ -1621,85 +1638,45 @@ async function handlePostQuoteAction(
     );
 
     if (!record || !record.id) {
-      console.error(
-        "[SALES AGENT REQUEST ERROR]",
-        JSON.stringify({
-          conversationId: conv.id,
-          contactId: contact.id,
-          leadId: ctx.leadId || null,
-          quotationId: ctx.quotationId || null,
-        })
+      await sendButtonMessage(phone,
+        "⚠️ *Sorry, we couldn't save your request right now.*\n\n" +
+        "Your price estimate is still here. Please try again in a few minutes.",
+        [makeButton("q_agent", "🔄 Try Again"), makeButton("menu_home", "🏠 Main Menu")],
+        "Try Again"
       );
-
-      await updateConversation(conv.id, {
-        current_module: "SALES",
-        current_state: "SHOWING_QUOTE",
-        context_json: ctx as unknown as Record<string, unknown>,
-      });
-
-      await sendButtonMessage(
-        phone,
-        "⚠️ *We could not record your request right now.*\n\n" +
-          "Your quotation details are still available. Please try requesting an agent again shortly.",
-        [
-          makeButton("q_agent", "🔄 Try Again"),
-          makeButton("menu_home", "🏠 Main Menu"),
-        ],
-        "Request Not Saved",
-        "Xtop Retail Technologies"
-      );
-
       return;
     }
 
-    if (ctx.leadId) {
-      await updateLead(ctx.leadId, {
-        status: "AGENT_REQUESTED",
-      });
-    }
-
-    if (ctx.quotationId) {
-      await updateQuotation(ctx.quotationId, {
-        status: "AGENT_REVIEW",
-      });
-    }
+    if (ctx.leadId) await updateLead(ctx.leadId, { status: "AGENT_REQUESTED" });
+    if (ctx.quotationId) await updateQuotation(ctx.quotationId, { status: "AGENT_REVIEW" });
 
     const ticketRef = `#REQ-${record.id.substring(0, 8).toUpperCase()}`;
 
     await updateConversation(conv.id, {
       current_module: "MAIN_MENU",
       current_state: "IDLE",
-      context_json: {
-        lastRequestId: record.id,
-        lastRequestRef: ticketRef,
-      },
+      context_json: { lastRequestId: record.id, lastRequestRef: ticketRef },
     });
 
-    await sendButtonMessage(
-      phone,
-      `✅ *Your agent request has been recorded successfully.*\n\n` +
-        `*Ticket:* ${ticketRef}\n` +
-        `*Quotation Ref:* ${ctx.quotationNumber || "N/A"}\n\n` +
-        "Your request is queued for review by the Xtop team. An agent will follow up on WhatsApp when available.",
-      [
-        makeButton("menu_home", "🏠 Main Menu"),
-      ],
-      "Request Recorded",
-      "Xtop Retail Technologies"
+    await sendButtonMessage(phone,
+      `✅ *Got it! We've saved your request.*\n\n` +
+      `*Ticket:* ${ticketRef}\n` +
+      `*Ref:* ${ctx.quotationNumber || "N/A"}\n\n` +
+      `One of our team members will message you on WhatsApp soon. 👍`,
+      [makeButton("menu_home", "🏠 Main Menu")],
+      "Request Saved"
     );
-
     return;
   }
 
-  await sendButtonMessage(
-    phone,
-    "What would you like to do with your quotation?",
+  // ── Fallback ──
+  await sendButtonMessage(phone,
+    "What would you like to do next?",
     [
-      makeButton("q_select", "✅ Select Package"),
-      makeButton("q_change", "🔄 Change Reqs"),
-      makeButton("q_agent", "👤 Talk to Agent"),
+      makeButton("q_select", "✅ Get Started"),
+      makeButton("q_change", "🔄 Start Over"),
+      makeButton("q_agent", "👤 Talk to Our Team"),
     ],
-    "Quotation Options",
-    "Xtop Retail Technologies"
+    "Your Options"
   );
 }
