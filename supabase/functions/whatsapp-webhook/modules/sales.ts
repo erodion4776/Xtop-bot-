@@ -573,7 +573,6 @@ export async function showServiceTypeSelector(phone: string, convId: string): Pr
 }
 
 async function processServiceTypeSelection(phone: string, text: string, conv: Conversation): Promise<void> {
-async function processServiceTypeSelection(phone: string, text: string, conv: Conversation): Promise<void> {
   console.log("[SALES] processServiceTypeSelection text:", JSON.stringify(text));
 
   const directMap: Record<string, string> = {
@@ -1504,7 +1503,8 @@ async function generateAndShowQuotation(
     `⚠️ _This is an estimate. We'll confirm the final price after reviewing everything._`;
 
   await sendButtonMessage(phone, msg,
-    [makeButton("q_select", "✅ Get Started"), makeButton("q_change", "🔄 Start Over"), makeButton("q_agent", "👤 Talk to Our Team")],
+    [makeButton("q_select", "✅ Get Started"), makeButton("q_change", "🔄
+     Start Over"), makeButton("q_agent", "👤 Talk to Our Team")],
     "Xtop", "Valid for 14 days");
 }
 
@@ -1539,7 +1539,7 @@ function buildLeadFields(
       web_features: ctx.webFeatures,
       web_type: ctx.webType,
       whatsapp_business: ctx.waBiz,
-            need_website: ctx.needWebsite,
+      need_website: ctx.needWebsite,
       domain: ctx.domain,
       hosting: ctx.hosting,
       whatsapp_integration: ctx.waIntegration,
@@ -1624,7 +1624,6 @@ async function handlePostQuoteAction(
     }
 
     // ── BOT or COMBO → WhatsApp-native onboarding (plan picker) ──
-    // Import dynamically to avoid circular dependency
     const { startOnboardingFromSales } = await import("./onboarding.ts");
 
     await updateConversation(conv.id, {
@@ -1712,4 +1711,4 @@ async function handlePostQuoteAction(
     ],
     "Your Options"
   );
-}
+}                                                     
