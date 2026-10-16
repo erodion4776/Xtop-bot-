@@ -341,18 +341,18 @@ export async function routeMessage(
     // break out of any stale sales or quotation states.
     // =====================================================
 
-    if (
-      !isAcademicWorkflow &&
-      !isInteractivePayload(incoming)
-    ) {
-      const onboardingHandled = await handleOnboardingRequest(
-        phone,
-        text,
-        contact.id || "",
-        conversation.id,
-      );
+        if (!isAcademicWorkflow) {
+      // Handle both text AND interactive payloads for active onboarding
+      if (currentModule === "ONBOARDING" || !isInteractivePayload(incoming)) {
+        const onboardingHandled = await handleOnboardingRequest(
+          phone,
+          text || interactiveId,
+          contact.id || "",
+          conversation.id,
+        );
 
-      if (onboardingHandled) return;
+        if (onboardingHandled) return;
+      }
     }
 
     // =====================================================
@@ -393,14 +393,24 @@ export async function routeMessage(
       return;
     }
 
-    // Sales workflow.
-    if (currentModule === "SALES") {
-      await handleSales(
+        // Onboarding workflow (handoff from sales or direct signup).
+    if (currentModule === "ONBOARDING") {
+      const onboardingHandled = await handleOnboardingRequest(
         phone,
-        text,
-        contact,
-        conversation,
+        text || interactiveId,
+        contact.id || "",
+        conversation.id,
       );
+
+      if (onboardingHandled) return;
+
+      // If onboarding handler didn't consume it, fall through to main menu
+      await updateConversation(conversation.id, {
+        current_module: "MAIN_MENU",
+        current_state: "IDLE",
+        context_json: {},
+      });
+      await showMainMenu(phone, conversation.id);
       return;
     }
 
