@@ -573,10 +573,17 @@ export async function showServiceTypeSelector(phone: string, convId: string): Pr
 }
 
 async function processServiceTypeSelection(phone: string, text: string, conv: Conversation): Promise<void> {
-  const r = resolveStrict(text,
+    const r = resolveStrict(text,
     { sales_bot: "BOT", sales_web: "WEB", sales_combo: "COMBO", sales_auto: "AUTO" },
-    { 1: "BOT", 2: "WEB", 3: "COMBO", 4: "AUTO" }
+    { 1: "BOT", 2: "WEB", 3: "COMBO", 4: "AUTO" },
+    {
+      "whatsapp bot": "BOT", "whatsapp": "BOT", "bot": "BOT",
+      "website": "WEB", "web": "WEB",
+      "bot + website": "COMBO", "bot website": "COMBO", "combo": "COMBO",
+      "automation": "AUTO", "automate": "AUTO",
+    }
   );
+
   if (!r) { await showServiceTypeSelector(phone, conv.id); return; }
 
   const flow = r as SalesCtx["flow"];
