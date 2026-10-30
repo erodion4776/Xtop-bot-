@@ -28,6 +28,44 @@ const corsHeaders = {
   "access-control-allow-methods": "GET, POST, OPTIONS",
 };
 
+const PLANS: Record<string, {
+  name: string;
+  monthlyFee: number;
+  messages: number;
+  features: string;
+}> = {
+  BASIC: {
+    name: "Starter",
+    monthlyFee: 5000,
+    messages: 1000,
+    features:
+      "• Automatic customer replies\n" +
+      "• WhatsApp product catalogue\n" +
+      "• Customer enquiries and leads\n" +
+      "• Human-agent handover",
+  },
+  STANDARD: {
+    name: "Growth",
+    monthlyFee: 10000,
+    messages: 5000,
+    features:
+      "• Everything in Starter\n" +
+      "• Automated product enquiries\n" +
+      "• Customer order collection\n" +
+      "• Business FAQs and support",
+  },
+  PREMIUM: {
+    name: "Business",
+    monthlyFee: 20000,
+    messages: 10000,
+    features:
+      "• Everything in Growth\n" +
+      "• Advanced business automation\n" +
+      "• Extended business tools\n" +
+      "• Priority support",
+  },
+};
+
 export function jsonResponse(body: any, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -46,12 +84,12 @@ export async function createOnboardingSession(
   tenantId: string,
   packageCode: string = "BASIC"
 ): Promise<string | null> {
-  const allowedPlans = ["BASIC", "STANDARD", "PREMIUM"];
-  const plan = allowedPlans.includes(packageCode.toUpperCase())
+  const plan = PLANS[packageCode.toUpperCase()]
     ? packageCode.toUpperCase()
     : "BASIC";
 
   const sessionToken = crypto.randomUUID().replace(/-/g, "");
+
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + 24);
 
@@ -77,7 +115,155 @@ export async function createOnboardingSession(
 }
 
 // =====================================================
-// 2. WHATSAPP ONBOARDING HANDLER
+// 2. SHOW THE SINGLE PUBLIC E-COMMERCE DEMO
+// =====================================================
+
+async function showStoreDemo(phone: string): Promise<void> {
+  await sendTextMessage(
+    phone,
+    "🛍️ *WELCOME TO THE SABI DEMO STORE!*\n\n" +
+      "This is a demonstration of how your own WhatsApp shop can work.\n\n" +
+      "Imagine your customers being able to:\n\n" +
+      "✅ Browse products\n" +
+      "✅ Check prices\n" +
+      "✅ Ask questions\n" +
+      "✅ Place orders\n" +
+      "✅ Speak with a human agent\n\n" +
+      "Let's try it!"
+  );
+
+  await sendButtonMessage(
+    phone,
+    "What would you like to try?",
+    [
+      makeButton("demo_products", "🛍️ View Products"),
+      makeButton("demo_order", "📦 Try an Order"),
+      makeButton("demo_faq", "❓ Ask a Question"),
+    ],
+    "Sabi Demo Store"
+  );
+}
+
+async function showDemoProducts(phone: string): Promise<void> {
+  await sendTextMessage(
+    phone,
+    "🛍️ *DEMO STORE PRODUCTS*\n\n" +
+      "1. Wireless Headphones — ₦18,000\n" +
+      "2. Smart Watch — ₦25,000\n" +
+      "3. Bluetooth Speaker — ₦15,000\n" +
+      "4. Power Bank — ₦12,000\n\n" +
+      "_These are sample products for demonstration only._"
+  );
+
+  await sendButtonMessage(
+    phone,
+    "Would you like to test the ordering process?",
+    [
+      makeButton("demo_order", "📦 Try an Order"),
+      makeButton("demo_faq", "❓ Ask a Question"),
+      makeButton("demo_signup", "🚀 Get My Bot"),
+    ],
+    "Demo Store"
+  );
+}
+
+async function showDemoOrder(phone: string): Promise<void> {
+  await sendTextMessage(
+    phone,
+    "📦 *DEMO ORDER*\n\n" +
+      "Product: Wireless Headphones\n" +
+      "Quantity: 1\n" +
+      "Price: ₦18,000\n" +
+      "Delivery: ₦2,000\n" +
+      "----------------------\n" +
+      "*Demo Total: ₦20,000*\n\n" +
+      "Your real business bot can collect customer details, " +
+      "confirm orders and send payment instructions.\n\n" +
+      "⚠️ This is a sample order. No real order or payment has been created."
+  );
+
+  await sendButtonMessage(
+    phone,
+    "That is how a customer order can look. What next?",
+    [
+      makeButton("demo_products", "🛍️ Products"),
+      makeButton("demo_faq", "❓ FAQs"),
+      makeButton("demo_signup", "🚀 Get My Bot"),
+    ],
+    "Order Demonstration"
+  );
+}
+
+async function showDemoFAQ(phone: string): Promise<void> {
+  await sendTextMessage(
+    phone,
+    "❓ *DEMO STORE – FREQUENTLY ASKED QUESTIONS*\n\n" +
+      "*Q: How long does delivery take?*\n" +
+      "A: Usually 1–3 working days.\n\n" +
+      "*Q: Can I pay on delivery?*\n" +
+      "A: Payment options depend on the store's settings.\n\n" +
+      "*Q: Can I speak with a person?*\n" +
+      "A: Yes. The bot can hand your conversation to a human agent.\n\n" +
+      "_Your own FAQs can be edited from your business dashboard._"
+  );
+
+  await sendButtonMessage(
+    phone,
+    "Would you like your own WhatsApp shop?",
+    [
+      makeButton("demo_signup", "🚀 Get My Bot"),
+      makeButton("demo_products", "🛍️ Products"),
+      makeButton("onboard_agent", "💬 Talk to Agent"),
+    ],
+    "Sabi by XTOP"
+  );
+}
+
+// =====================================================
+// 3. SHOW SUBSCRIPTION PLANS
+// =====================================================
+
+async function showPlans(phone: string): Promise<void> {
+  await sendTextMessage(
+    phone,
+    "🚀 *GET YOUR OWN SABI WHATSAPP BOT*\n\n" +
+      "Choose a plan for your business.\n\n" +
+      "All plans include a 14-day free trial.\n" +
+      "No subscription payment is required to start the trial.\n\n" +
+      "Note: Meta WhatsApp messaging charges may apply separately."
+  );
+
+  await sendListMessage(
+    phone,
+    "*Choose Your Plan*",
+    "View Plans",
+    [{
+      title: "Sabi Subscription Plans",
+      rows: [
+        makeListRow(
+          "plan_BASIC",
+          "Starter – ₦5,000/month",
+          "For small businesses"
+        ),
+        makeListRow(
+          "plan_STANDARD",
+          "Growth – ₦10,000/month",
+          "For growing businesses"
+        ),
+        makeListRow(
+          "plan_PREMIUM",
+          "Business – ₦20,000/month",
+          "For established businesses"
+        ),
+      ],
+    }],
+    "Sabi by XTOP",
+    "14-day free trial"
+  );
+}
+
+// =====================================================
+// 4. WHATSAPP ONBOARDING HANDLER
 // =====================================================
 
 export async function handleOnboardingRequest(
@@ -101,7 +287,10 @@ export async function handleOnboardingRequest(
     lower.includes("free trial") ||
     lower === "signup" ||
     lower === "sign up" ||
-    lower === "onboard";
+    lower === "onboard" ||
+    lower === "demo" ||
+    lower === "try demo" ||
+    lower === "demo_store";
 
   if (isEntry) {
     await updateConversation(conversationId, {
@@ -110,96 +299,94 @@ export async function handleOnboardingRequest(
       context_json: {},
     });
 
-    await sendTextMessage(
-      phone,
-      "🟢 *Great choice!*\n\n" +
-        "You can have your own WhatsApp bot running in under 5 minutes.\n\n" +
-        "Pick a plan from the list below to get started."
-    );
-
-    await sendListMessage(
-      phone,
-      "*Choose Your Plan*\n\nAll plans include a 14-day free trial. No payment needed today.",
-      "View Plans",
-      [{
-        title: "Available Plans",
-        rows: [
-          makeListRow("plan_BASIC", "Basic - N35,000/mo", "Auto-replies, catalogue, leads"),
-          makeListRow("plan_STANDARD", "Standard - N75,000/mo", "Quotes, demos, tools"),
-          makeListRow("plan_PREMIUM", "Premium - N150,000/mo", "Automation, magazine, priority"),
-        ],
-      }],
-      "Xtop Bot Plans",
-      "14-day free trial"
-    );
-
+    await showStoreDemo(phone);
     return true;
   }
 
+  // Demo navigation
+
+  if (lower === "demo_products") {
+    await showDemoProducts(phone);
+    return true;
+  }
+
+  if (lower === "demo_order") {
+    await showDemoOrder(phone);
+    return true;
+  }
+
+  if (lower === "demo_faq") {
+    await showDemoFAQ(phone);
+    return true;
+  }
+
+  if (lower === "demo_signup" || lower === "view_plans") {
+    await showPlans(phone);
+    return true;
+  }
+
+  if (
+    lower === "view plans" ||
+    lower === "plans" ||
+    lower === "subscription"
+  ) {
+    await showPlans(phone);
+    return true;
+  }
+
+  // Plan selection
+
   if (lower.startsWith("plan_")) {
     const plan = lower.replace("plan_", "").toUpperCase();
+    const selected = PLANS[plan];
 
-    const planNames: Record<string, string> = {
-      BASIC: "Basic (N35,000/mo)",
-      STANDARD: "Standard (N75,000/mo)",
-      PREMIUM: "Premium (N150,000/mo)",
-    };
-
-    const planFeatures: Record<string, string> = {
-      BASIC:
-        "• Auto-replies to customer messages\n" +
-        "• Product catalogue on WhatsApp\n" +
-        "• Collect customer enquiries\n" +
-        "• Hand over to a human agent",
-      STANDARD:
-        "• Everything in Basic\n" +
-        "• Send price quotes automatically\n" +
-        "• Interactive business demos\n" +
-        "• Free business tools included",
-      PREMIUM:
-        "• Everything in Standard\n" +
-        "• Automate your daily workflows\n" +
-        "• Digital magazine builder\n" +
-        "• Priority support from our team",
-    };
-
-    if (!planNames[plan]) {
-      await sendTextMessage(phone, "Please select a valid subscription plan.");
+    if (!selected) {
+      await sendTextMessage(
+        phone,
+        "Please select a valid Sabi subscription plan."
+      );
       return true;
     }
 
     await sendTextMessage(
       phone,
-      `✅ *You selected: ${planNames[plan]}*\n\n` +
-        `${planFeatures[plan]}\n\n` +
-        "Your 14-day free trial starts when you connect your number."
+      `✅ *You selected ${selected.name}*\n\n` +
+        `Subscription: ₦${selected.monthlyFee.toLocaleString("en-NG")}/month\n\n` +
+        `${selected.features}\n\n` +
+        "Your 14-day free trial starts after you connect your WhatsApp Business number."
     );
 
     await sendButtonMessage(
       phone,
-      "What would you like to do next?",
+      "Ready to set up your business bot?",
       [
         makeButton(`getbot_${plan}`, "🚀 Get My Bot"),
         makeButton("onboard_agent", "💬 Talk to Agent"),
-        makeButton("onboard_tools", "🔧 Our Tools"),
+        makeButton("menu_home", "🏠 Main Menu"),
       ],
-      planNames[plan]
+      selected.name
     );
 
     return true;
   }
 
+  // Create tenant and generate signup link
+
   if (lower.startsWith("getbot_")) {
     const plan = lower.replace("getbot_", "").toUpperCase();
+    const selected = PLANS[plan];
 
-    if (!["BASIC", "STANDARD", "PREMIUM"].includes(plan)) {
+    if (!selected) {
       await sendTextMessage(phone, "Please select a valid plan first.");
       return true;
     }
 
-    await sendTextMessage(phone, "🔧 Setting up your account...");
+    await sendTextMessage(
+      phone,
+      "🔧 Preparing your Sabi business account..."
+    );
 
-    const slug = `biz_${Date.now()}`;
+    const slug = `biz_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
 
     const { data: tenant, error: tenantErr } = await sb
       .from("tenants")
@@ -217,33 +404,41 @@ export async function handleOnboardingRequest(
 
       await sendTextMessage(
         phone,
-        "⚠️ Could not create your account right now. Please try again later or talk to our team."
+        "⚠️ We could not create your account right now. Please try again or talk to our team."
       );
 
       return true;
     }
 
-    const signupLink = await createOnboardingSession(tenant.id, plan);
+    const signupLink = await createOnboardingSession(
+      tenant.id,
+      plan
+    );
 
     if (!signupLink) {
+      // Remove the unused tenant if session creation failed.
+      await sb.from("tenants").delete().eq("id", tenant.id);
+
       await sendTextMessage(
         phone,
-        "⚠️ Could not generate your signup link. Please contact our team."
+        "⚠️ We could not generate your signup link. Please contact our team."
       );
+
       return true;
     }
 
     await sendTextMessage(
       phone,
-      `✅ *Your signup link is ready!*\n\n` +
-        `🔗 ${signupLink}\n\n` +
-        "Open this link in your phone browser to connect your WhatsApp Business number.\n\n" +
-        "⏰ _Link expires in 24 hours._"
+      "✅ *Your Sabi signup link is ready!*\n\n" +
+        `${signupLink}\n\n` +
+        "Open the link in your phone browser and connect your WhatsApp Business account.\n\n" +
+        "⏰ This link expires in 24 hours.\n\n" +
+        "Your 14-day trial begins after successful connection."
     );
 
     await sendButtonMessage(
       phone,
-      "Need help?",
+      "Need assistance?",
       [
         makeButton("onboard_agent", "💬 Talk to Agent"),
         makeButton("menu_home", "🏠 Main Menu"),
@@ -253,20 +448,25 @@ export async function handleOnboardingRequest(
     return true;
   }
 
-  if (lower === "onboard_agent" || lower === "talk to agent") {
+  // Human agent
+
+  if (
+    lower === "onboard_agent" ||
+    lower === "talk to agent"
+  ) {
     await sendTextMessage(
       phone,
-      "💬 *Talk to Our Team*\n\n" +
-        "Send us a message on WhatsApp and we will help you set up your bot:\n\n" +
-        "📞 +234 802 498 8555\n\n" +
-        "Or simply reply here with your question."
+      "💬 *TALK TO THE XTOP TEAM*\n\n" +
+        "Our team can help you set up Sabi for your business.\n\n" +
+        "WhatsApp: +234 802 498 8555\n\n" +
+        "You can also reply here with your question."
     );
 
     await sendButtonMessage(
       phone,
-      "What else can I help with?",
+      "What would you like to do next?",
       [
-        makeButton("plan_STANDARD", "📋 View Plans"),
+        makeButton("view_plans", "📋 View Plans"),
         makeButton("menu_home", "🏠 Main Menu"),
       ]
     );
@@ -274,15 +474,20 @@ export async function handleOnboardingRequest(
     return true;
   }
 
-  if (lower === "onboard_tools" || lower === "our tools") {
+  // XTOP tools
+
+  if (
+    lower === "onboard_tools" ||
+    lower === "our tools"
+  ) {
     await sendTextMessage(
       phone,
-      "🔧 *Free Xtop Tools*\n\n" +
-        "• 🌐 Website checker\n" +
-        "• 🔍 Domain name search\n" +
-        "• ✈️ Flight status checker\n" +
-        "• 🧮 Business calculator\n\n" +
-        "Type *tools* to open the full tools menu."
+      "🔧 *XTOP BUSINESS TOOLS*\n\n" +
+        "• Website checker\n" +
+        "• Domain name search\n" +
+        "• Business calculator\n" +
+        "• Engineering tools\n\n" +
+        "Explore our other XTOP products and services."
     );
 
     await sendButtonMessage(
@@ -290,7 +495,7 @@ export async function handleOnboardingRequest(
       "What would you like to do?",
       [
         makeButton("menu_tools", "🔧 Open Tools"),
-        makeButton("plan_STANDARD", "📋 View Plans"),
+        makeButton("view_plans", "📋 View Plans"),
         makeButton("menu_home", "🏠 Main Menu"),
       ]
     );
@@ -302,7 +507,7 @@ export async function handleOnboardingRequest(
 }
 
 // =====================================================
-// 3. META EMBEDDED SIGNUP CALLBACK
+// 5. META EMBEDDED SIGNUP CALLBACK
 // =====================================================
 
 export async function handleOnboardingCallback(
@@ -332,7 +537,6 @@ export async function handleOnboardingCallback(
       }, 400);
     }
 
-    // Find the onboarding session.
     const { data: session, error: sessionError } = await sb
       .from("onboarding_sessions")
       .select("*")
@@ -341,11 +545,15 @@ export async function handleOnboardingCallback(
 
     if (sessionError) {
       safeErrorLog("onboarding.session.lookup", sessionError);
-      return jsonResponse({ error: "Could not verify signup session." }, 500);
+      return jsonResponse({
+        error: "Could not verify signup session.",
+      }, 500);
     }
 
     if (!session) {
-      return jsonResponse({ error: "Invalid signup session." }, 404);
+      return jsonResponse({
+        error: "Invalid signup session.",
+      }, 404);
     }
 
     sessionId = session.id;
@@ -357,23 +565,33 @@ export async function handleOnboardingCallback(
       });
     }
 
+    if (session.status !== "PENDING") {
+      return jsonResponse({
+        error: "This signup session is no longer valid.",
+      }, 409);
+    }
+
     if (new Date(session.expires_at).getTime() < Date.now()) {
-      return jsonResponse({ error: "Signup link has expired." }, 410);
+      return jsonResponse({
+        error: "Signup link has expired.",
+      }, 410);
     }
 
     if (!session.tenant_id) {
-      return jsonResponse({ error: "Signup session has no tenant." }, 400);
+      return jsonResponse({
+        error: "Signup session has no tenant.",
+      }, 400);
     }
 
-    // The package is controlled by the saved session, not the browser.
-    const allowedPlans = ["BASIC", "STANDARD", "PREMIUM"];
     const pkg = String(session.package_code || "BASIC").toUpperCase();
+    const selected = PLANS[pkg];
 
-    if (!allowedPlans.includes(pkg)) {
-      return jsonResponse({ error: "Invalid subscription plan." }, 400);
+    if (!selected) {
+      return jsonResponse({
+        error: "Invalid subscription plan.",
+      }, 400);
     }
 
-    // Prevent another tenant from claiming this phone number.
     const { data: existingAccount, error: existingError } = await sb
       .from("tenant_whatsapp_accounts")
       .select("tenant_id")
@@ -382,7 +600,9 @@ export async function handleOnboardingCallback(
 
     if (existingError) {
       safeErrorLog("onboarding.phone.lookup", existingError);
-      return jsonResponse({ error: "Could not verify phone number ownership." }, 500);
+      return jsonResponse({
+        error: "Could not verify phone number ownership.",
+      }, 500);
     }
 
     if (
@@ -394,14 +614,12 @@ export async function handleOnboardingCallback(
       }, 409);
     }
 
-    // Exchange the code and verify the exact selected WABA and phone.
     const metaAccount = await exchangeAuthCode(
       authCode,
       wabaId,
       phoneNumberId
     );
 
-    // Subscribe the customer's WABA to this Meta app.
     const subscribed = await subscribeWebhook(
       metaAccount.wabaId,
       metaAccount.accessToken
@@ -413,8 +631,9 @@ export async function handleOnboardingCallback(
       );
     }
 
-    // Encrypt the customer's own token before storing it.
-    const encryptedToken = await encryptToken(metaAccount.accessToken);
+    const encryptedToken = await encryptToken(
+      metaAccount.accessToken
+    );
 
     const { error: accountError } = await sb
       .from("tenant_whatsapp_accounts")
@@ -435,20 +654,10 @@ export async function handleOnboardingCallback(
       throw new Error("Could not save the WhatsApp account.");
     }
 
-    // Start the 14-day trial.
     const trialStart = new Date();
     const trialEnd = new Date(trialStart);
     trialEnd.setDate(trialEnd.getDate() + 14);
 
-    const fee =
-      pkg === "PREMIUM" ? 150000 :
-      pkg === "STANDARD" ? 75000 : 35000;
-
-    const messages =
-      pkg === "PREMIUM" ? 10000 :
-      pkg === "STANDARD" ? 5000 : 1000;
-
-    // Avoid creating a second active trial for the same tenant.
     const { data: existingTrial, error: trialLookupError } = await sb
       .from("tenant_subscriptions")
       .select("id")
@@ -469,12 +678,12 @@ export async function handleOnboardingCallback(
         .insert({
           tenant_id: session.tenant_id,
           package_code: pkg,
-          package_name: pkg.charAt(0) + pkg.slice(1).toLowerCase(),
+          package_name: selected.name,
           status: "TRIAL",
           trial_started_at: trialStart.toISOString(),
           trial_expires_at: trialEnd.toISOString(),
-          monthly_fee_ngn: fee,
-          messages_included: messages,
+          monthly_fee_ngn: selected.monthlyFee,
+          messages_included: selected.messages,
           is_active: true,
         });
 
@@ -484,7 +693,6 @@ export async function handleOnboardingCallback(
       }
     }
 
-    // Activate the tenant.
     const { error: tenantError } = await sb
       .from("tenants")
       .update({ is_active: true })
@@ -495,7 +703,6 @@ export async function handleOnboardingCallback(
       throw new Error("Could not activate the business account.");
     }
 
-    // Mark this signup session as completed.
     const { error: updateSessionError } = await sb
       .from("onboarding_sessions")
       .update({
@@ -516,6 +723,7 @@ export async function handleOnboardingCallback(
       phone: metaAccount.displayPhone,
       verified_name: metaAccount.verifiedName,
       package: pkg,
+      package_name: selected.name,
       trial_days: 14,
       trial_ends: trialEnd.toISOString(),
     });
@@ -539,7 +747,7 @@ export async function handleOnboardingCallback(
 }
 
 // =====================================================
-// 4. SALES ONBOARDING
+// 6. SALES ONBOARDING
 // =====================================================
 
 export async function startOnboardingFromSales(
@@ -547,9 +755,6 @@ export async function startOnboardingFromSales(
   session: any,
   serviceType: string
 ): Promise<void> {
-  const { sendTextMessage, sendListMessage, makeListRow } =
-    await import("../whatsapp.ts");
-
   const isCombo =
     serviceType.toUpperCase().includes("BOT") &&
     serviceType.toUpperCase().includes("WEBSITE");
@@ -561,22 +766,8 @@ export async function startOnboardingFromSales(
   await sendTextMessage(
     from,
     `Awesome! Let's get your ${serviceName} set up. 🎉\n\n` +
-      "First, pick a plan that works for you:"
+      "First, choose a Sabi subscription plan:"
   );
 
-  await new Promise((resolve) => setTimeout(resolve, 600));
-
-  await sendListMessage(
-    from,
-    "Pick a plan to continue:",
-    "See Plans",
-    [{
-      title: "Available Plans",
-      rows: [
-        makeListRow("plan_BASIC", "Basic – N35,000/mo", "For small shops"),
-        makeListRow("plan_STANDARD", "Standard – N75,000/mo", "For growing businesses"),
-        makeListRow("plan_PREMIUM", "Premium – N150,000/mo", "Full package"),
-      ],
-    }]
-  );
+  await showPlans(from);
 }
