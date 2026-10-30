@@ -1,3 +1,4 @@
+
 :root {
   font-family: Inter, Arial, sans-serif;
   color: #17211d;
@@ -44,15 +45,14 @@ button {
   padding: 0 8px 35px;
 }
 
-.brand-icon,
-.welcome-icon {
-  display: grid;
-  place-items: center;
-  background: #d7f5a5;
-  color: #183c2d;
-  border-radius: 12px;
-  width: 42px;
-  height: 42px;
+.brand-logo {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  border-radius: 10px;
+  background: white;
+  padding: 3px;
+  flex-shrink: 0;
 }
 
 .brand strong {
@@ -242,10 +242,13 @@ button {
   margin-top: 8px;
 }
 
-.welcome-icon {
+.welcome-logo {
   width: 55px;
   height: 55px;
   border-radius: 15px;
+  object-fit: contain;
+  background: white;
+  padding: 4px;
 }
 
 .stats-grid {
@@ -477,7 +480,7 @@ button {
     font-size: 24px;
   }
 
-  .welcome-icon {
+  .welcome-logo {
     width: 43px;
     height: 43px;
   }
