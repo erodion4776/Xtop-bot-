@@ -1,4 +1,4 @@
-8
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -69,7 +69,8 @@ async function createOrder(body: Record<string, unknown>) {
     throw new Error("INVALID_PAYMENT_METHOD");
   }
 
-  // Supabase calculates all prices and reserves stock.
+  // Supabase calculates all prices, reserves stock,
+  // and generates the customer's delivery confirmation token.
   const { data: order, error: orderError } = await db.rpc(
     "sabi_create_public_order",
     {
@@ -117,7 +118,7 @@ async function createOrder(body: Record<string, unknown>) {
           Math.round(Number(intent.expected_amount) * 100),
         ),
         currency: intent.currency,
-                reference: intent.reference,
+        reference: intent.reference,
         callback_url: `https://xtopbot.netlify.app/?product=${encodeURIComponent(productId)}&payment=return`,
         metadata: {
           purpose: "SABI_PUBLIC_ORDER",
@@ -151,6 +152,8 @@ async function createOrder(body: Record<string, unknown>) {
     }, 502);
   }
 
+  // Return the raw confirmation token only to the customer checkout.
+  // Never include it in Paystack metadata or payment verification responses.
   return respond({
     success: true,
     order_id: order.order_id,
@@ -165,6 +168,7 @@ async function createOrder(body: Record<string, unknown>) {
     currency: intent.currency,
     authorization_url: paystackData.data.authorization_url,
     access_code: paystackData.data.access_code,
+    customer_confirmation_token: order.customer_confirmation_token,
   });
 }
 
@@ -264,6 +268,7 @@ async function verifyOrderPayment(body: Record<string, unknown>) {
     throw new Error("ORDER_PAYMENT_CONFIRMATION_FAILED");
   }
 
+  // Do not return the customer's delivery confirmation token here.
   return respond(confirmation);
 }
 
