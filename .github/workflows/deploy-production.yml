@@ -38,13 +38,12 @@ jobs:
             --project-ref "$SUPABASE_PROJECT_ID" \
             --no-verify-jwt
 
-      - name: Deploy wallet API
+      
+     - name: Deploy order API
         run: |
-          if [ -d "supabase/functions/wallet-api" ]; then
-            supabase functions deploy wallet-api \
-              --project-ref "$SUPABASE_PROJECT_ID" \
-              --no-verify-jwt
-          fi
+          supabase functions deploy order-api \
+            --project-ref "$SUPABASE_PROJECT_ID" \
+            --no-verify-jwt
 
       - name: Deploy merchant registration
         run: |
