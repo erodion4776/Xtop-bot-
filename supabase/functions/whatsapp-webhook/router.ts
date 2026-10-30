@@ -1,4 +1,3 @@
-
 // supabase/functions/whatsapp-webhook/router.ts
 
 import {
@@ -9,13 +8,18 @@ import {
   updateConversation,
   storeMessage,
   logBotActivity,
+  getActiveProducts,
+  SYSTEM_TENANT_ID,
   getSupabaseClient,
 } from "./database.ts";
 
 import {
   IncomingMessage,
   sendTextMessage,
+  WhatsAppCredentials,
 } from "./whatsapp.ts";
+
+import { decryptToken } from "./lib/encryption.ts";
 
 import {
   sanitizeInput,
@@ -85,10 +89,6 @@ import { extractTokenFromText } from "./modules/demos/tokens.ts";
 
 import { handleOnboardingRequest } from "./modules/onboarding.ts";
 
-// =====================================================
-// PRIVATE ADMIN AGENT
-// =====================================================
-
 import {
   isAdminPhone,
   isAdminAgentTrigger,
@@ -98,12 +98,344 @@ import {
 
 const supabase = getSupabaseClient();
 
-/**
- * Sabi by XTOP onboarding actions.
- *
- * These must be handled before the legacy Demo Centre
- * because some Sabi demo buttons also start with "demo_".
- */
+// =====================================================
+// TENANT RESOLUTION
+// =====================================================
+
+interface ResolvedBotAccount {
+  tenantId: string;
+  credentials?: WhatsAppCredentials;
+  isSystem: boolean;
+  businessName: string;
+  welcomeGreeting: string | null;
+}
+
+async function resolveBotAccount(
+  incoming: IncomingMessage,
+): Promise<ResolvedBotAccount | null> {
+  const phoneNumberId = String(
+    incoming.phoneNumberId || "",
+  ).trim();
+
+  if (!phoneNumberId) {
+    safeErrorLog(
+      "resolveBotAccount",
+      new Error("Missing metadata.phone_number_id."),
+    );
+    return null;
+  }
+
+  // Only the exact XTOP system phone number can use system credentials.
+  const systemPhoneNumberId = String(
+    Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "",
+  ).trim();
+
+  if (
+    systemPhoneNumberId &&
+    phoneNumberId === systemPhoneNumberId
+  ) {
+    return {
+      tenantId: SYSTEM_TENANT_ID,
+      isSystem: true,
+      businessName: "XTOP Retail Technologies",
+      welcomeGreeting: null,
+    };
+  }
+
+  // Resolve the customer's WhatsApp number to its tenant.
+  const { data: account, error: accountError } = await supabase
+    .from("tenant_whatsapp_accounts")
+    .select(
+      "tenant_id, phone_number_id, encrypted_access_token",
+    )
+    .eq("phone_number_id", phoneNumberId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (accountError || !account) {
+    if (accountError) {
+      safeErrorLog(
+        "resolveBotAccount.account",
+        accountError,
+      );
+    }
+    return null;
+  }
+
+  // Confirm tenant is active.
+  const { data: tenant, error: tenantError } = await supabase
+    .from("tenants")
+    .select(
+      "id, name, business_name, welcome_greeting, is_active",
+    )
+    .eq("id", account.tenant_id)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (tenantError || !tenant) {
+    if (tenantError) {
+      safeErrorLog(
+        "resolveBotAccount.tenant",
+        tenantError,
+      );
+    }
+    return null;
+  }
+
+  // Check the latest active subscription.
+  const { data: subscription, error: subscriptionError } =
+    await supabase
+      .from("tenant_subscriptions")
+      .select(
+        "status, is_active, trial_expires_at, paid_expires_at",
+      )
+      .eq("tenant_id", account.tenant_id)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+  if (subscriptionError) {
+    safeErrorLog(
+      "resolveBotAccount.subscription",
+      subscriptionError,
+    );
+    return null;
+  }
+
+  if (!subscription || subscription.is_active !== true) {
+    return null;
+  }
+
+  const now = Date.now();
+
+  const status = String(
+    subscription.status || "",
+  ).toUpperCase();
+
+  const trialValid =
+    status === "TRIAL" &&
+    !!subscription.trial_expires_at &&
+    new Date(subscription.trial_expires_at).getTime() > now;
+
+  const paidValid =
+    ["ACTIVE", "PAID"].includes(status) &&
+    (
+      !subscription.paid_expires_at ||
+      new Date(subscription.paid_expires_at).getTime() > now
+    );
+
+  if (!trialValid && !paidValid) {
+    return null;
+  }
+
+  // Decrypt this tenant's own WhatsApp access token.
+  let accessToken: string;
+
+  try {
+    accessToken = await decryptToken(
+      account.encrypted_access_token,
+    );
+  } catch (error) {
+    safeErrorLog(
+      "resolveBotAccount.decryptToken",
+      error,
+    );
+    return null;
+  }
+
+  if (!accessToken) return null;
+
+  return {
+    tenantId: account.tenant_id,
+
+    credentials: {
+      phoneNumberId: account.phone_number_id,
+      accessToken,
+    },
+
+    isSystem: false,
+
+    businessName:
+      tenant.business_name ||
+      tenant.name ||
+      "Our Store",
+
+    welcomeGreeting:
+      tenant.welcome_greeting || null,
+  };
+}
+
+// =====================================================
+// CUSTOMER TENANT STORE HANDLER
+// =====================================================
+
+async function handleTenantStoreMessage(
+  incoming: IncomingMessage,
+  account: ResolvedBotAccount,
+  contact: Contact,
+): Promise<void> {
+  const credentials = account.credentials;
+
+  if (!credentials) return;
+
+  const phone = incoming.from;
+
+  const message = String(
+    incoming.interactiveId ||
+    incoming.text ||
+    "",
+  ).trim().toLowerCase();
+
+  const products = await getActiveProducts(
+    account.tenantId,
+  );
+
+  const greeting =
+    account.welcomeGreeting ||
+    `Welcome to *${account.businessName}*.`;
+
+  let reply: string;
+
+  if (
+    [
+      "",
+      "hi",
+      "hello",
+      "hey",
+      "menu",
+      "start",
+      "shop",
+      "catalogue",
+      "catalog",
+      "products",
+      "1",
+    ].includes(message)
+  ) {
+    if (!products.length) {
+      reply =
+        `${greeting}\n\n` +
+        "Our product catalogue is being updated. " +
+        "Please contact the business for assistance.";
+    } else {
+      const lines = products
+        .slice(0, 20)
+        .map((product, index) =>
+          `${index + 1}. *${product.name}*` +
+          `${
+            product.price_text
+              ? ` — ${product.price_text}`
+              : ""
+          }` +
+          `${
+            product.description
+              ? `\n${product.description}`
+              : ""
+          }`
+        );
+
+      reply =
+        `${greeting}\n\n` +
+        `*Available products*\n\n` +
+        `${lines.join("\n\n")}\n\n` +
+        "Reply with a product name for details. " +
+        "Type *menu* to see this list again.";
+    }
+  } else {
+    const match = products.find((product) => {
+      const name = String(
+        product.name || "",
+      ).toLowerCase();
+
+      const slug = String(
+        product.slug || "",
+      ).toLowerCase();
+
+      return (
+        message === name ||
+        message === slug ||
+        (
+          name.length > 2 &&
+          message.includes(name)
+        )
+      );
+    });
+
+    reply = match
+      ? (
+        `*${match.name}*\n\n` +
+        `${
+          match.description ||
+          "Please contact us for more information."
+        }` +
+        `${
+          match.price_text
+            ? `\n\nPrice: *${match.price_text}*`
+            : ""
+        }` +
+        `${
+          match.website_url
+            ? `\n\nMore details: ${match.website_url}`
+            : ""
+        }` +
+        "\n\nType *menu* to view all products."
+      )
+      : (
+        `I couldn't find that product in *${account.businessName}*.\n\n` +
+        "Type *menu* to view the catalogue or contact the business for help."
+      );
+  }
+
+  // Explicit tenant credentials: no XTOP fallback.
+  const result = await sendTextMessage(
+    phone,
+    reply,
+    credentials,
+  );
+
+  if (
+    !result ||
+    result.error ||
+    result.status >= 400
+  ) {
+    safeErrorLog(
+      "handleTenantStoreMessage.send",
+      result?.error ||
+      result ||
+      new Error("WhatsApp send failed."),
+    );
+    return;
+  }
+
+  const waMessageId =
+    result.messages?.[0]?.id || null;
+
+  await storeMessage(
+    contact.id,
+    "OUTBOUND",
+    "text",
+    reply,
+    waMessageId,
+    account.tenantId,
+  );
+
+  await logBotActivity(
+    phone,
+    "OUTBOUND",
+    "text",
+    "TENANT_STORE",
+    reply,
+    contact.name || incoming.profileName,
+    "",
+    waMessageId || undefined,
+    account.tenantId,
+  );
+}
+
+// =====================================================
+// SABI ONBOARDING ACTIONS
+// =====================================================
+
 function isSabiOnboardingAction(id: string): boolean {
   return (
     [
@@ -121,9 +453,10 @@ function isSabiOnboardingAction(id: string): boolean {
   );
 }
 
-/**
- * Demo Centre actions that must be routed to the Demo Centre handler.
- */
+// =====================================================
+// DEMO CENTRE ACTIONS
+// =====================================================
+
 function isDemoInteractiveAction(id: string): boolean {
   return (
     id === "menu_demos" ||
@@ -140,44 +473,89 @@ function isDemoInteractiveAction(id: string): boolean {
   );
 }
 
-function isInteractivePayload(incoming: IncomingMessage): boolean {
+function isInteractivePayload(
+  incoming: IncomingMessage,
+): boolean {
   return Boolean(incoming.interactiveId);
 }
+
+// =====================================================
+// MAIN ROUTER
+// =====================================================
 
 export async function routeMessage(
   incoming: IncomingMessage,
 ): Promise<void> {
   const phone = incoming.from;
-  const rawInput = incoming.interactiveId || incoming.text || "";
+
+  // Resolve the WhatsApp number before processing the message.
+  const account = await resolveBotAccount(incoming);
+
+  if (!account) {
+    console.error(
+      "[routeMessage] Rejected unknown, inactive, or expired WhatsApp number.",
+    );
+    return;
+  }
+
+  const tenantId = account.tenantId;
+
+  const rawInput =
+    incoming.interactiveId ||
+    incoming.text ||
+    "";
+
   const text = sanitizeInput(rawInput);
-  const interactiveId = incoming.interactiveId || "";
+
+  const interactiveId =
+    incoming.interactiveId || "";
+
   const lowerText = text.toLowerCase();
 
-  // 1. Ignore completely empty payloads.
   if (!text && !interactiveId) return;
 
-  // 2. Message deduplication.
+  // =====================================================
+  // MESSAGE DEDUPLICATION — TENANT SCOPED
+  // =====================================================
+
   if (incoming.messageId) {
-    const { data: existingMsg, error } = await supabase
-      .from("messages")
-      .select("id")
-      .eq("whatsapp_message_id", incoming.messageId)
-      .maybeSingle();
+    const { data: existingMsg, error } =
+      await supabase
+        .from("messages")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq(
+          "whatsapp_message_id",
+          incoming.messageId,
+        )
+        .maybeSingle();
 
     if (error) {
-      safeErrorLog("routeMessage.deduplication", error);
+      safeErrorLog(
+        "routeMessage.deduplication",
+        error,
+      );
     }
 
     if (existingMsg) return;
   }
 
   try {
+    // ===================================================
+    // CONTACT AND CONVERSATION — TENANT SCOPED
+    // ===================================================
+
     const contact = await getOrCreateContact(
       phone,
       incoming.profileName,
+      tenantId,
     );
 
-    const conversation = await getOrCreateConversation(contact.id);
+    const conversation =
+      await getOrCreateConversation(
+        contact.id,
+        tenantId,
+      );
 
     await storeMessage(
       contact.id,
@@ -185,6 +563,7 @@ export async function routeMessage(
       incoming.type,
       text || interactiveId || null,
       incoming.messageId,
+      tenantId,
     );
 
     logBotActivity(
@@ -196,13 +575,28 @@ export async function routeMessage(
       contact.name || incoming.profileName,
       interactiveId,
       incoming.messageId,
+      tenantId,
     ).catch(() => {});
 
-    // =====================================================
-    // 3. PRIVATE ADMIN AGENT
-    // =====================================================
+    // ===================================================
+    // CUSTOMER TENANTS
+    // ===================================================
 
-    const authorisedAdmin = isAdminPhone(phone);
+    if (!account.isSystem) {
+      await handleTenantStoreMessage(
+        incoming,
+        account,
+        contact,
+      );
+      return;
+    }
+
+    // ===================================================
+    // PRIVATE XTOP ADMIN AGENT
+    // ===================================================
+
+    const authorisedAdmin =
+      account.isSystem && isAdminPhone(phone);
 
     const existingContext = (
       conversation.context_json || {}
@@ -212,21 +606,22 @@ export async function routeMessage(
       conversation.current_module === "ADMIN_AGENT" ||
       existingContext.admin_agent_active === true;
 
-    // Open the private agent using "Lizzy".
     if (
       authorisedAdmin &&
       isAdminAgentTrigger(text, interactiveId)
     ) {
-      const updatedConversation = await updateConversation(
-        conversation.id,
-        {
-          current_module: "ADMIN_AGENT",
-          current_state: "ACTIVE",
-          context_json: {
-            admin_agent_active: true,
+      const updatedConversation =
+        await updateConversation(
+          conversation.id,
+          {
+            current_module: "ADMIN_AGENT",
+            current_state: "ACTIVE",
+            context_json: {
+              admin_agent_active: true,
+            },
           },
-        },
-      );
+          tenantId,
+        );
 
       if (!updatedConversation) {
         await sendTextMessage(
@@ -250,18 +645,22 @@ export async function routeMessage(
       return;
     }
 
-    // =====================================================
-    // 4. GLOBAL SABI PAUSE CHECK
-    // =====================================================
+    // ===================================================
+    // GLOBAL SABI PAUSE CHECK — XTOP SYSTEM ONLY
+    // ===================================================
 
-    const { data: setting, error: settingError } = await supabase
-      .from("system_settings")
-      .select("value")
-      .eq("key", "sabi_global_handoff")
-      .maybeSingle();
+    const { data: setting, error: settingError } =
+      await supabase
+        .from("system_settings")
+        .select("value")
+        .eq("key", "sabi_global_handoff")
+        .maybeSingle();
 
     if (settingError) {
-      safeErrorLog("routeMessage.globalPauseCheck", settingError);
+      safeErrorLog(
+        "routeMessage.globalPauseCheck",
+        settingError,
+      );
     }
 
     if (setting?.value?.enabled === true) {
@@ -271,9 +670,9 @@ export async function routeMessage(
       return;
     }
 
-    // =====================================================
-    // 5. INDIVIDUAL AGENT TAKEOVER CHECK
-    // =====================================================
+    // ===================================================
+    // INDIVIDUAL AGENT TAKEOVER
+    // ===================================================
 
     const ctx = (
       conversation.context_json || {}
@@ -287,34 +686,43 @@ export async function routeMessage(
       ctx.agent_mode === true;
 
     if (isContactAgentMode || isConvTakeover) {
-      console.log(`[Agent Takeover] Bot paused for: ${phone}.`);
+      console.log(
+        `[Agent Takeover] Bot paused for: ${phone}.`,
+      );
       return;
     }
 
     const currentModule =
       conversation.current_module || "MAIN_MENU";
 
-    // =====================================================
-    // 6. EXPLICIT HOME ACTION
-    // =====================================================
+    // ===================================================
+    // EXPLICIT HOME ACTION
+    // ===================================================
 
     if (
       interactiveId === "menu_home" ||
       lowerText === "menu_home"
     ) {
-      await updateConversation(conversation.id, {
-        current_module: "MAIN_MENU",
-        current_state: "IDLE",
-        context_json: {},
-      });
+      await updateConversation(
+        conversation.id,
+        {
+          current_module: "MAIN_MENU",
+          current_state: "IDLE",
+          context_json: {},
+        },
+        tenantId,
+      );
 
-      await showMainMenu(phone, conversation.id);
+      await showMainMenu(
+        phone,
+        conversation.id,
+      );
       return;
     }
 
-    // =====================================================
-    // 7. PERSONALIZED DEMO INTERCEPTION
-    // =====================================================
+    // ===================================================
+    // PERSONALIZED DEMO INTERCEPTION
+    // ===================================================
 
     const isAcademicWorkflow =
       currentModule === "LEARNING" ||
@@ -324,9 +732,9 @@ export async function routeMessage(
       !isAcademicWorkflow &&
       !isInteractivePayload(incoming)
     ) {
-      const originalText = incoming.text || text;
+      const originalText =
+        incoming.text || text;
 
-      // Handle structured demo request.
       const structuredDemoHandled =
         await handleStructuredPersonalizedDemoRequest(
           phone,
@@ -337,33 +745,26 @@ export async function routeMessage(
 
       if (structuredDemoHandled) return;
 
-      // Handle demo tokens.
-      const detectedToken = extractTokenFromText(originalText);
+      const detectedToken =
+        extractTokenFromText(originalText);
 
       if (detectedToken) {
-        console.log(
-          `[Demo Intercept] Detected a demo token for ${phone}.`,
-        );
-
-        const handled = await handlePersonalizedDemoToken(
-          phone,
-          originalText,
-          detectedToken,
-          contact,
-          conversation,
-        );
+        const handled =
+          await handlePersonalizedDemoToken(
+            phone,
+            originalText,
+            detectedToken,
+            contact,
+            conversation,
+          );
 
         if (handled) return;
       }
     }
 
-    // =====================================================
-    // 7.5 SABI BY XTOP ONBOARDING INTERCEPTION
-    //
-    // This runs before legacy workflow routing.
-    // It gives Sabi onboarding and demo buttons priority
-    // over the old Demo Centre actions.
-    // =====================================================
+    // ===================================================
+    // SABI BY XTOP ONBOARDING
+    // ===================================================
 
     if (!isAcademicWorkflow) {
       const isSabiAction =
@@ -380,22 +781,22 @@ export async function routeMessage(
         isOnboardingConversation ||
         isOnboardingText
       ) {
-        const onboardingHandled = await handleOnboardingRequest(
-          phone,
-          text || interactiveId,
-          contact.id || "",
-          conversation.id,
-        );
+        const onboardingHandled =
+          await handleOnboardingRequest(
+            phone,
+            text || interactiveId,
+            contact.id || "",
+            conversation.id,
+          );
 
         if (onboardingHandled) return;
       }
     }
 
-    // =====================================================
-    // 8. ACTIVE WORKFLOW ROUTING
-    // =====================================================
+    // ===================================================
+    // ACTIVE LEARNING WORKFLOW
+    // ===================================================
 
-    // Learning workflow.
     if (currentModule === "LEARNING") {
       await handleLearning(
         phone,
@@ -406,19 +807,23 @@ export async function routeMessage(
       return;
     }
 
-    // Learning keyword entry.
     if (isLearningKeyword(text)) {
-      const existingCtx = conversation.context_json || {};
+      const existingCtx =
+        conversation.context_json || {};
 
-      await updateConversation(conversation.id, {
-        current_module: "LEARNING",
-        current_state: "ENTRY",
-        context_json: {
-          ...existingCtx,
-          learningUnlocked: true,
-          step: "ENTRY",
+      await updateConversation(
+        conversation.id,
+        {
+          current_module: "LEARNING",
+          current_state: "ENTRY",
+          context_json: {
+            ...existingCtx,
+            learningUnlocked: true,
+            step: "ENTRY",
+          },
         },
-      });
+        tenantId,
+      );
 
       await handleLearning(
         phone,
@@ -429,29 +834,42 @@ export async function routeMessage(
       return;
     }
 
-    // Onboarding workflow.
+    // ===================================================
+    // ONBOARDING WORKFLOW
+    // ===================================================
+
     if (currentModule === "ONBOARDING") {
-      const onboardingHandled = await handleOnboardingRequest(
-        phone,
-        text || interactiveId,
-        contact.id || "",
-        conversation.id,
-      );
+      const onboardingHandled =
+        await handleOnboardingRequest(
+          phone,
+          text || interactiveId,
+          contact.id || "",
+          conversation.id,
+        );
 
       if (onboardingHandled) return;
 
-      // If onboarding handler didn't consume it, return to main menu.
-      await updateConversation(conversation.id, {
-        current_module: "MAIN_MENU",
-        current_state: "IDLE",
-        context_json: {},
-      });
+      await updateConversation(
+        conversation.id,
+        {
+          current_module: "MAIN_MENU",
+          current_state: "IDLE",
+          context_json: {},
+        },
+        tenantId,
+      );
 
-      await showMainMenu(phone, conversation.id);
+      await showMainMenu(
+        phone,
+        conversation.id,
+      );
       return;
     }
 
-    // Sales (price estimate) workflow.
+    // ===================================================
+    // SALES WORKFLOW
+    // ===================================================
+
     if (currentModule === "SALES") {
       await handleSales(
         phone,
@@ -462,7 +880,10 @@ export async function routeMessage(
       return;
     }
 
-    // Agent workflow.
+    // ===================================================
+    // AGENT WORKFLOW
+    // ===================================================
+
     if (currentModule === "AGENT") {
       await handleAgent(
         phone,
@@ -473,7 +894,10 @@ export async function routeMessage(
       return;
     }
 
-    // Exams workflow.
+    // ===================================================
+    // EXAMS WORKFLOW
+    // ===================================================
+
     if (currentModule === "EXAMS") {
       await handleExams(
         phone,
@@ -484,7 +908,10 @@ export async function routeMessage(
       return;
     }
 
-    // Tools workflow.
+    // ===================================================
+    // TOOLS WORKFLOW
+    // ===================================================
+
     if (currentModule === "TOOLS") {
       await handleTools(
         phone,
@@ -496,7 +923,10 @@ export async function routeMessage(
       return;
     }
 
-    // Games workflow.
+    // ===================================================
+    // GAMES WORKFLOW
+    // ===================================================
+
     if (currentModule === "GAMES") {
       await handleGames(
         phone,
@@ -508,14 +938,18 @@ export async function routeMessage(
       return;
     }
 
-    // Demo workflow.
+    // ===================================================
+    // DEMO WORKFLOW
+    // ===================================================
+
     if (currentModule === "DEMOS") {
-      const personalizedHandled = await handlePersonalizedDemoAction(
-        phone,
-        text,
-        interactiveId,
-        conversation,
-      );
+      const personalizedHandled =
+        await handlePersonalizedDemoAction(
+          phone,
+          text,
+          interactiveId,
+          conversation,
+        );
 
       if (personalizedHandled) return;
 
@@ -529,7 +963,10 @@ export async function routeMessage(
       return;
     }
 
-    // Magazine Studio workflow.
+    // ===================================================
+    // MAGAZINE STUDIO WORKFLOW
+    // ===================================================
+
     if (currentModule === "MAGAZINE") {
       await handleMagazineStudio(
         phone,
@@ -541,7 +978,10 @@ export async function routeMessage(
       return;
     }
 
-    // About workflow.
+    // ===================================================
+    // ABOUT WORKFLOW
+    // ===================================================
+
     if (currentModule === "ABOUT") {
       await handleAbout(
         phone,
@@ -553,7 +993,10 @@ export async function routeMessage(
       return;
     }
 
-    // Products workflow.
+    // ===================================================
+    // PRODUCTS WORKFLOW
+    // ===================================================
+
     if (currentModule === "PRODUCTS") {
       await handleProducts(
         phone,
@@ -564,7 +1007,10 @@ export async function routeMessage(
       return;
     }
 
-    // Services workflow.
+    // ===================================================
+    // SERVICES WORKFLOW
+    // ===================================================
+
     if (currentModule === "SERVICES") {
       await handleServices(
         phone,
@@ -575,7 +1021,10 @@ export async function routeMessage(
       return;
     }
 
-    // Magazine catalogue workflow.
+    // ===================================================
+    // MAGAZINE CATALOGUE
+    // ===================================================
+
     if (currentModule === "MAGAZINE_CATALOG") {
       await handleMagazine(
         phone,
@@ -587,28 +1036,28 @@ export async function routeMessage(
       return;
     }
 
-    // =====================================================
-    // 9. DIRECT INTENT OVERRIDES FROM IDLE / MAIN MENU
-    // =====================================================
+    // ===================================================
+    // DIRECT INTENT OVERRIDES
+    // ===================================================
 
-    // Legacy onboarding interactive actions.
     if (
       interactiveId.startsWith("plan_") ||
       interactiveId.startsWith("getbot_") ||
       interactiveId === "onboard_agent" ||
       interactiveId === "onboard_tools"
     ) {
-      const onboardingHandled = await handleOnboardingRequest(
-        phone,
-        interactiveId,
-        contact.id || "",
-        conversation.id,
-      );
+      const onboardingHandled =
+        await handleOnboardingRequest(
+          phone,
+          interactiveId,
+          contact.id || "",
+          conversation.id,
+        );
 
       if (onboardingHandled) return;
     }
 
-    // About.
+    // ABOUT
     if (
       interactiveId === "menu_about" ||
       interactiveId.startsWith("about_") ||
@@ -626,7 +1075,7 @@ export async function routeMessage(
       return;
     }
 
-    // Games.
+    // GAMES
     if (
       interactiveId.startsWith("game_") ||
       interactiveId.startsWith("trivia_") ||
@@ -650,14 +1099,15 @@ export async function routeMessage(
       return;
     }
 
-    // Demo Centre.
+    // DEMO CENTRE
     if (isDemoInteractiveAction(interactiveId)) {
-      const personalizedHandled = await handlePersonalizedDemoAction(
-        phone,
-        text,
-        interactiveId,
-        conversation,
-      );
+      const personalizedHandled =
+        await handlePersonalizedDemoAction(
+          phone,
+          text,
+          interactiveId,
+          conversation,
+        );
 
       if (personalizedHandled) return;
 
@@ -671,7 +1121,7 @@ export async function routeMessage(
       return;
     }
 
-    // Tools.
+    // TOOLS
     if (
       interactiveId.startsWith("tool_") ||
       interactiveId.startsWith("tools_")
@@ -686,7 +1136,7 @@ export async function routeMessage(
       return;
     }
 
-    // Website/domain checker.
+    // WEBSITE / DOMAIN CHECKER
     if (
       interactiveId.startsWith("wd_") ||
       interactiveId.startsWith("dns_")
@@ -701,7 +1151,7 @@ export async function routeMessage(
       return;
     }
 
-    // Flight checker.
+    // FLIGHT CHECKER
     if (interactiveId.startsWith("flight_")) {
       await handleFlightChecker(
         phone,
@@ -713,7 +1163,7 @@ export async function routeMessage(
       return;
     }
 
-    // Magazine Studio.
+    // MAGAZINE STUDIO
     if (
       interactiveId === "menu_magazine_studio" ||
       interactiveId.startsWith("mag_") ||
@@ -732,7 +1182,10 @@ export async function routeMessage(
       interactiveId.startsWith("magregen_")
     ) {
       if (interactiveId === "menu_magazine_studio") {
-        await showStudioMenu(phone, conversation.id);
+        await showStudioMenu(
+          phone,
+          conversation.id,
+        );
       } else {
         await handleMagazineStudio(
           phone,
@@ -745,21 +1198,28 @@ export async function routeMessage(
       return;
     }
 
-    // =====================================================
-    // 10. GLOBAL COMMANDS
-    // =====================================================
+    // ===================================================
+    // GLOBAL COMMANDS
+    // ===================================================
 
     if (isGreeting(text) || isHelp(text)) {
-      await showMainMenu(phone, conversation.id);
+      await showMainMenu(
+        phone,
+        conversation.id,
+      );
       return;
     }
 
     if (isExit(text)) {
-      await updateConversation(conversation.id, {
-        current_module: "MAIN_MENU",
-        current_state: "IDLE",
-        context_json: {},
-      });
+      await updateConversation(
+        conversation.id,
+        {
+          current_module: "MAIN_MENU",
+          current_state: "IDLE",
+          context_json: {},
+        },
+        tenantId,
+      );
 
       await sendTextMessage(
         phone,
@@ -771,26 +1231,38 @@ export async function routeMessage(
     }
 
     if (isAgentRequest(text)) {
-      await showAgentCategories(phone, conversation.id);
+      await showAgentCategories(
+        phone,
+        conversation.id,
+      );
       return;
     }
 
-    // =====================================================
-    // 11. MAIN MENU DISPATCH
-    // =====================================================
+    // ===================================================
+    // MAIN MENU DISPATCH
+    // ===================================================
 
-    const intent = detectIntent(text, interactiveId);
+    const intent = detectIntent(
+      text,
+      interactiveId,
+    );
 
     if (
       intent === "PRODUCTS" ||
       interactiveId === "menu_products"
     ) {
-      await showProductsList(phone, conversation.id);
+      await showProductsList(
+        phone,
+        conversation.id,
+      );
     } else if (
       intent === "SERVICES" ||
       interactiveId === "menu_services"
     ) {
-      await showServicesList(phone, conversation.id);
+      await showServicesList(
+        phone,
+        conversation.id,
+      );
     } else if (
       interactiveId === "menu_demos" ||
       lowerText.includes("demo")
@@ -803,18 +1275,27 @@ export async function routeMessage(
       interactiveId === "menu_games" ||
       lowerText.includes("games")
     ) {
-      await showGamesMenu(phone, conversation.id);
+      await showGamesMenu(
+        phone,
+        conversation.id,
+      );
     } else if (
       interactiveId === "menu_tools" ||
       lowerText.includes("tools")
     ) {
-      await showToolsMenu(phone, conversation.id);
+      await showToolsMenu(
+        phone,
+        conversation.id,
+      );
     } else if (
       interactiveId === "menu_magazine_studio" ||
       lowerText.includes("magazine studio") ||
       lowerText.includes("create magazine")
     ) {
-      await showStudioMenu(phone, conversation.id);
+      await showStudioMenu(
+        phone,
+        conversation.id,
+      );
     } else if (
       intent === "MAGAZINE" ||
       interactiveId === "menu_magazine"
@@ -848,13 +1329,20 @@ export async function routeMessage(
         conversation.id,
       );
     } else if (isBack(text)) {
-      await showMainMenu(phone, conversation.id);
+      await showMainMenu(
+        phone,
+        conversation.id,
+      );
     } else {
       await sendTextMessage(
         phone,
         "Please select an option from the menu below:",
       );
-      await showMainMenu(phone, conversation.id);
+
+      await showMainMenu(
+        phone,
+        conversation.id,
+      );
     }
   } catch (err) {
     safeErrorLog("routeMessage", err);
@@ -863,6 +1351,7 @@ export async function routeMessage(
       await sendTextMessage(
         phone,
         "Sorry, an error occurred. Type *menu* to return to the home screen.",
+        account.credentials,
       );
     } catch (sendError) {
       safeErrorLog(
