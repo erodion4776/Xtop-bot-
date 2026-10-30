@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import Auth from "./Auth";
+import Products from "./Products";
 import { supabase } from "./lib/supabase";
 
 const navigation = [
@@ -166,6 +167,7 @@ export default function App() {
       <div className="auth-page">
         <div className="auth-card">
           <h2>Workspace setup issue</h2>
+
           <div className="auth-message" role="alert">
             {registrationError}
           </div>
@@ -177,6 +179,7 @@ export default function App() {
               setRegistrationError("");
               setTenantId("");
               setRegistering(true);
+              setRegistrationRetry((value) => value + 1);
             }}
           >
             Try again
@@ -334,7 +337,9 @@ function Dashboard({
             />
           </div>
 
-          {activePage === "Overview" ? (
+          {activePage === "Products" ? (
+            <Products tenantId={tenantId} />
+          ) : activePage === "Overview" ? (
             <>
               <div className="stats-grid">
                 <div className="stat-card">
@@ -427,7 +432,6 @@ function Dashboard({
           ) : (
             <div className="panel placeholder-panel">
               <div className="placeholder-icon">
-                {activePage === "Products" && <Package size={28} />}
                 {activePage === "Orders" && <ShoppingCart size={28} />}
                 {activePage === "Inbox" && <MessageSquare size={28} />}
                 {activePage === "Wallet" && <Wallet size={28} />}
