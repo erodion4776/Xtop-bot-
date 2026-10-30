@@ -160,9 +160,20 @@ export default function Products({ tenantId }: { tenantId: string }) {
   }
 
   async function uploadImage(): Promise<string | null> {
-    if (!selectedImage) {
-      return editingProduct?.image_url || null;
-    }
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+
+  console.log("SABI UPLOAD SESSION:", {
+    hasSession: !!session,
+    userId: session?.user?.id,
+    sessionError: sessionError?.message
+  });
+
+  if (!selectedImage) {
+    return editingProduct?.image_url || null;
+  }
 
     const extension =
       selectedImage.type === "image/png"
