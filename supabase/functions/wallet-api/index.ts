@@ -2,10 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-const SUPABASE_SERVICE_ROLE_KEY =
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const PAYSTACK_SECRET_KEY = Deno.env.get("PAYSTACK_SECRET_KEY")!;
 
 const MIN_TOPUP_NGN = 500;
@@ -18,21 +15,14 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const db = createClient(
-  SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY,
-  {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
+const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
   },
-);
+});
 
-function response(
-  data: unknown,
-  status = 200,
-): Response {
+function respond(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
@@ -42,11 +32,8 @@ function response(
   });
 }
 
-function errorResponse(
-  message: string,
-  status = 400,
-): Response {
-  return response({ success: false, error: message }, status);
+function fail(message: string, status = 400): Response {
+  return respond({ success: false, error: message }, status);
 }
 
 function makeReference(): string {
@@ -57,21 +44,18 @@ async function getAuthenticatedUser(req: Request) {
   const authorization = req.headers.get("Authorization");
 
   if (!authorization?.startsWith("Bearer ")) {
-    throw new Error("Authentication required.");
+    throw new Error("AUTH_REQUIRED");
   }
 
   const token = authorization.slice(7);
 
-  const {
-    data: { user },
-    error,
-  } = await db.auth.getUser(token);
+  const { data, error } = await db.auth.getUser(token);
 
-  if (error || !user) {
-    throw new Error("Invalid or expired login session.");
+  if (error || !data.user) {
+    throw new Error("INVALID_SESSION");
   }
 
-  return user;
+  return data.user;
 }
 
 async function verifyTenantMembership(
@@ -80,42 +64,67 @@ async function verifyTenantMembership(
 ) {
   const { data: membership, error } = await db
     .from("tenant_members")
-    .select("tenant_id, user_id, role, is_active")
+    .select("tenant_id,user_id,role,is_active")
     .eq("tenant_id", tenantId)
     .eq("user_id", userId)
     .eq("is_active", true)
     .maybeSingle();
 
   if (error || !membership) {
-    throw new Error("You do not have access to this merchant account.");
+    throw new Error("TENANT_ACCESS_DENIED");
   }
 
   const { data: tenant, error: tenantError } = await db
     .from("tenants")
-    .select("id, is_active, contact_email, contact_name, business_name")
+    .select(
+      "id,is_active,is_system,contact_email,contact_name,business_name",
+    )
     .eq("id", tenantId)
     .eq("is_system", false)
     .maybeSingle();
 
-  if (tenantError || !tenant || !tenant.is_active) {
-    throw new Error("Merchant account is unavailable.");
+  if (
+    tenantError ||
+    !tenant ||
+    tenant.is_active !== true
+  ) {
+    throw new Error("TENANT_UNAVAILABLE");
   }
 
   return { membership, tenant };
 }
 
-async function initializeTopup(
-  req: Request,
-): Promise<Response> {
-  const user = await getAuthenticatedUser(req);
+async function getMerchantWallet(tenantId: string) {
+  const { data: wallet, error } = await db
+    .from("tenant_wallets")
+    .select("id,tenant_id,balance,status,low_balance_threshold")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
 
+  if (error || !wallet) {
+    throw new Error("WALLET_NOT_FOUND");
+  }
+
+  if (wallet.status === "PAUSED") {
+    throw new Error("WALLET_PAUSED");
+  }
+
+  return wallet;
+}
+
+// ==========================================
+// 1. INITIALIZE MERCHANT WALLET TOP-UP
+// ==========================================
+
+async function initializeTopup(req: Request): Promise<Response> {
+  const user = await getAuthenticatedUser(req);
   const body = await req.json();
 
   const tenantId = String(body.tenant_id || "");
   const amount = Number(body.amount);
 
   if (!tenantId) {
-    return errorResponse("Merchant account is required.");
+    return fail("Merchant account is required.");
   }
 
   if (
@@ -123,7 +132,7 @@ async function initializeTopup(
     amount < MIN_TOPUP_NGN ||
     amount > MAX_TOPUP_NGN
   ) {
-    return errorResponse(
+    return fail(
       `Top-up must be between ₦${MIN_TOPUP_NGN.toLocaleString("en-NG")} and ₦${MAX_TOPUP_NGN.toLocaleString("en-NG")}.`,
     );
   }
@@ -133,33 +142,18 @@ async function initializeTopup(
     tenantId,
   );
 
-  const email =
-    String(user.email || tenant.contact_email || "")
-      .trim()
-      .toLowerCase();
+  const wallet = await getMerchantWallet(tenantId);
 
-  if (!email || !email.includes("@")) {
-    return errorResponse(
-      "A valid email address is required for Paystack payment.",
-    );
-  }
+  const email = String(
+    user.email || tenant.contact_email || "",
+  ).trim().toLowerCase();
 
-  const { data: wallet, error: walletError } = await db
-    .from("tenant_wallets")
-    .select("id, balance, status")
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
-
-  if (walletError || !wallet) {
-    return errorResponse(
-      "Merchant wallet was not found. Please contact support.",
-      404,
-    );
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return fail("A valid email address is required.");
   }
 
   const reference = makeReference();
 
-  // Create the pending intent before requesting payment.
   const { error: insertError } = await db
     .from("wallet_topup_intents")
     .insert({
@@ -171,70 +165,88 @@ async function initializeTopup(
       customer_email: email,
       metadata: {
         purpose: "SABI_MERCHANT_WALLET_TOPUP",
-        merchant_name: tenant.business_name || tenant.contact_name || "",
+        merchant_name:
+          tenant.business_name || tenant.contact_name || "",
         initiated_by: user.id,
       },
     });
 
   if (insertError) {
     console.error("Top-up intent insert failed:", insertError);
-    return errorResponse("Could not create payment request.", 500);
+    return fail("Could not create payment request.", 500);
   }
 
-  const paystackResponse = await fetch(
-    "https://api.paystack.co/transaction/initialize",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        email,
-        amount: String(amount * 100),
-        currency: "NGN",
-        reference,
-        metadata: {
-          purpose: "SABI_MERCHANT_WALLET_TOPUP",
-          tenant_id: tenantId,
-          wallet_topup_reference: reference,
+  try {
+    const paystackResponse = await fetch(
+      "https://api.paystack.co/transaction/initialize",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+          "Content-Type": "application/json",
         },
-      }),
-    },
-  );
+        body: JSON.stringify({
+          email,
+          amount: String(amount * 100),
+          currency: "NGN",
+          reference,
+          metadata: {
+            purpose: "SABI_MERCHANT_WALLET_TOPUP",
+            tenant_id: tenantId,
+            wallet_topup_reference: reference,
+          },
+        }),
+      },
+    );
 
-  const paystackData = await paystackResponse.json();
+    const paystackData = await paystackResponse.json();
 
-  if (!paystackResponse.ok || !paystackData.status) {
+    if (!paystackResponse.ok || !paystackData.status) {
+      await db
+        .from("wallet_topup_intents")
+        .update({
+          status: "FAILED",
+          paystack_status: "initialization_failed",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("reference", reference);
+
+      console.error("Paystack initialization failed:", paystackData);
+
+      return fail(
+        "Paystack could not initialize this payment. Please try again.",
+        502,
+      );
+    }
+
+    return respond({
+      success: true,
+      authorization_url:
+        paystackData.data.authorization_url,
+      access_code: paystackData.data.access_code,
+      reference,
+      amount,
+      currency: "NGN",
+      wallet_balance: wallet.balance,
+    });
+  } catch (error) {
+    console.error("Paystack initialization error:", error);
+
     await db
       .from("wallet_topup_intents")
       .update({
-        status: "FAILED",
-        metadata: {
-          purpose: "SABI_MERCHANT_WALLET_TOPUP",
-          initialization_error: paystackData.message || "Paystack error",
-        },
+        paystack_status: "initialization_error",
         updated_at: new Date().toISOString(),
       })
       .eq("reference", reference);
 
-    console.error("Paystack initialization failed:", paystackData);
-
-    return errorResponse(
-      "Paystack could not initialize this payment. Please try again.",
-      502,
-    );
+    return fail("Payment service is temporarily unavailable.", 502);
   }
-
-  return response({
-    success: true,
-    authorization_url: paystackData.data.authorization_url,
-    access_code: paystackData.data.access_code,
-    reference,
-    amount,
-    currency: "NGN",
-  });
 }
+
+// ==========================================
+// 2. VERIFY PAYMENT DIRECTLY WITH PAYSTACK
+// ==========================================
 
 async function verifyPaystackTransaction(reference: string) {
   const result = await fetch(
@@ -250,15 +262,17 @@ async function verifyPaystackTransaction(reference: string) {
   const data = await result.json();
 
   if (!result.ok || !data.status || !data.data) {
-    throw new Error("Could not verify Paystack transaction.");
+    throw new Error("PAYSTACK_VERIFICATION_FAILED");
   }
 
   return data.data;
 }
 
-async function creditVerifiedTopup(
-  reference: string,
-): Promise<{ success: boolean; message: string }> {
+// ==========================================
+// 3. CREDIT VERIFIED MERCHANT WALLET
+// ==========================================
+
+async function creditVerifiedTopup(reference: string) {
   const { data: intent, error } = await db
     .from("wallet_topup_intents")
     .select("*")
@@ -266,14 +280,19 @@ async function creditVerifiedTopup(
     .maybeSingle();
 
   if (error || !intent) {
-    throw new Error("Wallet payment reference was not found.");
+    throw new Error("PAYMENT_REFERENCE_NOT_FOUND");
   }
 
   if (intent.status === "COMPLETED") {
     return {
       success: true,
       message: "Wallet top-up was already credited.",
+      already_processed: true,
     };
+  }
+
+  if (intent.status === "FAILED") {
+    throw new Error("PAYMENT_INTENT_FAILED");
   }
 
   const transaction = await verifyPaystackTransaction(reference);
@@ -302,9 +321,7 @@ async function creditVerifiedTopup(
     String(transaction.customer?.email || "").toLowerCase() !==
       String(intent.customer_email).toLowerCase()
   ) {
-    throw new Error(
-      "Paystack transaction details do not match the wallet payment.",
-    );
+    throw new Error("PAYMENT_DETAILS_MISMATCH");
   }
 
   const metadata = transaction.metadata || {};
@@ -314,10 +331,10 @@ async function creditVerifiedTopup(
     metadata.tenant_id !== intent.tenant_id ||
     metadata.wallet_topup_reference !== reference
   ) {
-    throw new Error("Wallet payment metadata validation failed.");
+    throw new Error("PAYMENT_METADATA_MISMATCH");
   }
 
-  // The database function handles wallet locking and idempotency.
+  // Database handles wallet locking and idempotency.
   const { data: creditResult, error: creditError } = await db.rpc(
     "sabi_credit_wallet",
     {
@@ -330,18 +347,14 @@ async function creditVerifiedTopup(
 
   if (creditError) {
     console.error("Wallet credit failed:", creditError);
-    throw new Error("Payment verified but wallet credit needs retry.");
+    throw new Error("WALLET_CREDIT_RETRY_REQUIRED");
   }
 
-  if (
-    creditResult &&
-    creditResult.success === false
-  ) {
-    throw new Error(
-      creditResult.message || "Wallet credit was not completed.",
-    );
+  if (creditResult?.success !== true) {
+    throw new Error("WALLET_CREDIT_NOT_CONFIRMED");
   }
 
+  // A retry remains safe because the SQL function is idempotent.
   const { error: updateError } = await db
     .from("wallet_topup_intents")
     .update({
@@ -354,15 +367,19 @@ async function creditVerifiedTopup(
     .eq("reference", reference);
 
   if (updateError) {
-    // A retry is safe because the wallet credit uses an idempotency key.
-    console.error("Top-up intent update failed:", updateError);
+    console.error("Intent completion update failed:", updateError);
   }
 
   return {
     success: true,
     message: "Wallet successfully credited.",
+    already_processed: creditResult.reason === "ALREADY_PROCESSED",
   };
 }
+
+// ==========================================
+// 4. MERCHANT PAYMENT VERIFICATION
+// ==========================================
 
 async function verifyTopupForMerchant(
   req: Request,
@@ -374,36 +391,42 @@ async function verifyTopupForMerchant(
   const reference = String(body.reference || "");
 
   if (!tenantId || !reference) {
-    return errorResponse("Merchant account and payment reference are required.");
+    return fail("Merchant account and payment reference are required.");
   }
 
   await verifyTenantMembership(user.id, tenantId);
 
   const { data: intent, error } = await db
     .from("wallet_topup_intents")
-    .select("tenant_id, reference")
+    .select("tenant_id,reference")
     .eq("tenant_id", tenantId)
     .eq("reference", reference)
     .maybeSingle();
 
   if (error || !intent) {
-    return errorResponse("Payment reference not found.", 404);
+    return fail("Payment reference not found.", 404);
   }
 
   const result = await creditVerifiedTopup(reference);
 
-  return response(result, result.success ? 200 : 202);
+  return respond(result, result.success ? 200 : 202);
 }
+
+// ==========================================
+// 5. VERIFY PAYSTACK WEBHOOK SIGNATURE
+// ==========================================
 
 async function verifyWebhookSignature(
   rawBody: Uint8Array,
   signature: string,
 ): Promise<boolean> {
-  const encoder = new TextEncoder();
+  if (!/^[a-fA-F0-9]{128}$/.test(signature)) {
+    return false;
+  }
 
   const key = await crypto.subtle.importKey(
     "raw",
-    encoder.encode(PAYSTACK_SECRET_KEY),
+    new TextEncoder().encode(PAYSTACK_SECRET_KEY),
     { name: "HMAC", hash: "SHA-512" },
     false,
     ["sign"],
@@ -419,35 +442,36 @@ async function verifyWebhookSignature(
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
 
-  if (expected.length !== signature.length) return false;
+  const supplied = signature.toLowerCase();
 
   let difference = 0;
 
   for (let i = 0; i < expected.length; i++) {
-    difference |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
+    difference |= expected.charCodeAt(i) ^ supplied.charCodeAt(i);
   }
 
   return difference === 0;
 }
 
+// ==========================================
+// 6. PAYSTACK WEBHOOK
+// ==========================================
+
 async function handlePaystackWebhook(
   req: Request,
 ): Promise<Response> {
-  const signature = req.headers.get("x-paystack-signature") || "";
-
-  if (!signature) {
-    return errorResponse("Missing Paystack signature.", 401);
-  }
+  const signature =
+    req.headers.get("x-paystack-signature") || "";
 
   const rawBody = new Uint8Array(await req.arrayBuffer());
 
-  const validSignature = await verifyWebhookSignature(
+  const valid = await verifyWebhookSignature(
     rawBody,
     signature,
   );
 
-  if (!validSignature) {
-    return errorResponse("Invalid Paystack signature.", 401);
+  if (!valid) {
+    return fail("Invalid Paystack signature.", 401);
   }
 
   let event: any;
@@ -455,64 +479,68 @@ async function handlePaystackWebhook(
   try {
     event = JSON.parse(new TextDecoder().decode(rawBody));
   } catch {
-    return errorResponse("Invalid webhook payload.");
+    return fail("Invalid webhook payload.");
   }
 
-  // We only credit successful Paystack transactions.
   if (event.event !== "charge.success") {
-    return response({ received: true, ignored: true });
+    return respond({
+      received: true,
+      ignored: true,
+    });
   }
 
   const reference = String(event.data?.reference || "");
 
   if (!reference) {
-    return errorResponse("Missing payment reference.");
+    return fail("Missing payment reference.");
   }
 
   try {
     const result = await creditVerifiedTopup(reference);
 
     if (!result.success) {
-      // Do not acknowledge an unconfirmed payment as processed.
-      return response(
-        { received: true, credited: false, message: result.message },
-        202,
-      );
+      return respond({
+        received: true,
+        credited: false,
+        message: result.message,
+      }, 202);
     }
 
-    return response({
+    return respond({
       received: true,
       credited: true,
       message: result.message,
     });
   } catch (error) {
-    console.error("Paystack webhook processing error:", error);
+    console.error("Webhook processing failed:", error);
 
-    // Non-2xx allows Paystack to retry the event.
-    return response(
-      { received: false, error: "Wallet credit processing failed." },
-      500,
-    );
+    // Paystack can retry failed webhook delivery.
+    return fail("Payment processing requires retry.", 500);
   }
 }
 
+// ==========================================
+// 7. MAIN REQUEST ROUTER
+// ==========================================
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", {
+      headers: corsHeaders,
+    });
   }
 
   if (req.method !== "POST") {
-    return errorResponse("Method not allowed.", 405);
+    return fail("Method not allowed.", 405);
   }
 
   if (
     !SUPABASE_URL ||
-    !SUPABASE_ANON_KEY ||
-    !SUPABASE_SERVICE_ROLE_KEY ||
+    !SERVICE_ROLE_KEY ||
     !PAYSTACK_SECRET_KEY
   ) {
     console.error("Wallet API environment configuration is incomplete.");
-    return errorResponse("Wallet service is not configured.", 500);
+    return fail("Wallet service is not configured.", 500);
   }
 
   const url = new URL(req.url);
@@ -531,21 +559,49 @@ Deno.serve(async (req: Request) => {
       return await handlePaystackWebhook(req);
     }
 
-    return errorResponse("Unknown wallet action.", 404);
+    return fail("Unknown wallet action.", 404);
   } catch (error) {
     console.error("Wallet API error:", error);
 
-    const message =
-      error instanceof Error ? error.message : "Unexpected server error.";
+    if (error instanceof Error) {
+      switch (error.message) {
+        case "AUTH_REQUIRED":
+        case "INVALID_SESSION":
+          return fail("Please log in again.", 401);
 
-    const status =
-      message.includes("Authentication") ||
-      message.includes("login session")
-        ? 401
-        : message.includes("access to this merchant")
-          ? 403
-          : 400;
+        case "TENANT_ACCESS_DENIED":
+          return fail("You do not have access to this merchant account.", 403);
 
-    return errorResponse(message, status);
+        case "TENANT_UNAVAILABLE":
+          return fail("Merchant account is unavailable.", 403);
+
+        case "WALLET_NOT_FOUND":
+          return fail("Merchant wallet was not found.", 404);
+
+        case "WALLET_PAUSED":
+          return fail("Your merchant wallet is paused. Contact support.", 403);
+
+        case "PAYMENT_REFERENCE_NOT_FOUND":
+          return fail("Payment reference not found.", 404);
+
+        case "PAYMENT_INTENT_FAILED":
+          return fail("This payment request has failed.", 400);
+
+        case "PAYSTACK_VERIFICATION_FAILED":
+          return fail("Could not verify payment with Paystack. Please retry.", 502);
+
+        case "PAYMENT_DETAILS_MISMATCH":
+        case "PAYMENT_METADATA_MISMATCH":
+          return fail("Payment validation failed. Contact support.", 400);
+
+        case "WALLET_CREDIT_RETRY_REQUIRED":
+          return fail("Payment verified but wallet credit needs retry.", 503);
+
+        default:
+          break;
+      }
+    }
+
+    return fail("An unexpected wallet service error occurred.", 500);
   }
 });
