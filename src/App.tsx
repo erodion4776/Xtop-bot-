@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import {
   LayoutDashboard,
@@ -8,8 +9,7 @@ import {
   BarChart3,
   Settings,
   Menu,
-  X,
-  Store
+  X
 } from "lucide-react";
 
 const navigation = [
@@ -22,6 +22,9 @@ const navigation = [
   { label: "Settings", icon: Settings }
 ];
 
+const LOGO_URL =
+  "https://i.ibb.co/N2b6rJnY/Untitled-design-20261030-044935-0000.png";
+
 export default function App() {
   const [activePage, setActivePage] = useState("Overview");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -30,11 +33,17 @@ export default function App() {
     <div className="app-shell">
       <aside className={`sidebar ${mobileMenuOpen ? "sidebar-open" : ""}`}>
         <div className="brand">
-          <div className="brand-icon"><Store size={22} /></div>
+          <img
+            className="brand-logo"
+            src={LOGO_URL}
+            alt="Sabi by XTOP"
+          />
+
           <div>
             <strong>Sabi</strong>
             <span>by XTOP</span>
           </div>
+
           <button
             className="mobile-close"
             onClick={() => setMobileMenuOpen(false)}
@@ -50,7 +59,9 @@ export default function App() {
           {navigation.map(({ label, icon: Icon }) => (
             <button
               key={label}
-              className={`nav-item ${activePage === label ? "active" : ""}`}
+              className={`nav-item ${
+                activePage === label ? "active" : ""
+              }`}
               onClick={() => {
                 setActivePage(label);
                 setMobileMenuOpen(false);
@@ -68,7 +79,10 @@ export default function App() {
             <strong>Merchant workspace</strong>
             <small>Manage your WhatsApp store</small>
           </div>
-          <div className="sidebar-footer">XTOP Retail Technologies</div>
+
+          <div className="sidebar-footer">
+            XTOP Retail Technologies
+          </div>
         </div>
       </aside>
 
@@ -89,16 +103,19 @@ export default function App() {
           >
             <Menu size={22} />
           </button>
+
           <div className="breadcrumb">
             <span>Workspace</span>
             <span>/</span>
             <strong>{activePage}</strong>
           </div>
+
           <div className="topbar-right">
             <span className="connection-status">
               <span className="status-dot" />
               Dashboard preview
             </span>
+
             <div className="avatar">S</div>
           </div>
         </header>
@@ -108,11 +125,17 @@ export default function App() {
             <div>
               <p className="eyebrow">SABI MERCHANT CENTRE</p>
               <h1>{activePage}</h1>
+
               <p className="welcome-description">
                 Manage your business and WhatsApp commerce from one place.
               </p>
             </div>
-            <div className="welcome-icon"><Store size={28} /></div>
+
+            <img
+              className="welcome-logo"
+              src={LOGO_URL}
+              alt="Sabi by XTOP"
+            />
           </div>
 
           {activePage === "Overview" ? (
@@ -123,19 +146,24 @@ export default function App() {
                   <strong>0</strong>
                   <small>Orders received</small>
                 </div>
+
                 <div className="stat-card">
                   <span>Products</span>
                   <strong>0</strong>
                   <small>Products listed</small>
                 </div>
+
                 <div className="stat-card">
                   <span>Wallet balance</span>
                   <strong>₦0.00</strong>
                   <small>Available balance</small>
                 </div>
+
                 <div className="stat-card">
                   <span>WhatsApp status</span>
-                  <strong className="status-text">Not connected</strong>
+                  <strong className="status-text">
+                    Not connected
+                  </strong>
                   <small>Connect your business number</small>
                 </div>
               </div>
@@ -148,6 +176,7 @@ export default function App() {
                       <p>Set up your merchant workspace.</p>
                     </div>
                   </div>
+
                   <div className="setup-list">
                     <div className="setup-item">
                       <span className="setup-number">1</span>
@@ -157,6 +186,7 @@ export default function App() {
                       </div>
                       <span className="setup-state">Pending</span>
                     </div>
+
                     <div className="setup-item">
                       <span className="setup-number">2</span>
                       <div>
@@ -165,6 +195,7 @@ export default function App() {
                       </div>
                       <span className="setup-state">Pending</span>
                     </div>
+
                     <div className="setup-item">
                       <span className="setup-number">3</span>
                       <div>
@@ -179,14 +210,20 @@ export default function App() {
                 <div className="panel quick-panel">
                   <h2>Quick actions</h2>
                   <p>Common merchant tasks.</p>
+
                   <button onClick={() => setActivePage("Products")}>
-                    <Package size={18} /> Add a product
+                    <Package size={18} />
+                    Add a product
                   </button>
+
                   <button onClick={() => setActivePage("Orders")}>
-                    <ShoppingCart size={18} /> View orders
+                    <ShoppingCart size={18} />
+                    View orders
                   </button>
+
                   <button onClick={() => setActivePage("Wallet")}>
-                    <Wallet size={18} /> Fund wallet
+                    <Wallet size={18} />
+                    Fund wallet
                   </button>
                 </div>
               </div>
@@ -201,12 +238,17 @@ export default function App() {
                 {activePage === "Analytics" && <BarChart3 size={28} />}
                 {activePage === "Settings" && <Settings size={28} />}
               </div>
+
               <h2>{activePage}</h2>
+
               <p>
                 This section is part of the Sabi merchant dashboard build.
                 We will connect it to your existing Supabase backend.
               </p>
-              <span className="coming-soon">Under development</span>
+
+              <span className="coming-soon">
+                Under development
+              </span>
             </div>
           )}
         </section>
