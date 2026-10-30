@@ -3,9 +3,13 @@
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ==========================================
-// 1. Supabase Client & Helper Functions
+// 1. SUPABASE CLIENT & HELPERS
 // ==========================================
+
 let supabaseInstance: SupabaseClient | null = null;
+
+export const SYSTEM_TENANT_ID =
+  "00000000-0000-0000-0000-000000000001";
 
 export function getSupabaseClient(): SupabaseClient {
   if (!supabaseInstance) {
@@ -14,8 +18,14 @@ export function getSupabaseClient(): SupabaseClient {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
       Deno.env.get("SUPABASE_ANON_KEY") ??
       "";
+
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error("Missing Supabase configuration");
+    }
+
     supabaseInstance = createClient(supabaseUrl, supabaseKey);
   }
+
   return supabaseInstance;
 }
 
@@ -23,21 +33,40 @@ export function safeErrorLog(context: string, error: unknown): void {
   console.error(`[DB Error - ${context}]:`, error);
 }
 
-/**
- * Helper to validate if a string is a genuine UUID format to prevent 
- * PostgreSQL cast type crashes.
- */
 function toValidUUID(val?: string | null): string | null {
   if (!val || typeof val !== "string") return null;
+
   const clean = val.trim();
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean) ? clean : null;
+
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean)
+    ? clean
+    : null;
+}
+
+/**
+ * Compatibility default for existing XTOP system modules.
+ *
+ * Customer-facing requests MUST pass their resolved tenant ID explicitly.
+ */
+export function resolveTenantId(tenantId?: string | null): string {
+  if (!tenantId) return SYSTEM_TENANT_ID;
+
+  const valid = toValidUUID(tenantId);
+
+  if (!valid) {
+    throw new Error("Invalid tenant ID supplied");
+  }
+
+  return valid;
 }
 
 // ==========================================
-// 2. Types & Interfaces
+// 2. TYPES & INTERFACES
 // ==========================================
+
 export interface Contact {
   id?: string;
+  tenant_id?: string;
   phone: string;
   name?: string | null;
   [key: string]: unknown;
@@ -45,6 +74,7 @@ export interface Contact {
 
 export interface Conversation {
   id: string;
+  tenant_id?: string;
   contact_id?: string | null;
   phone?: string;
   current_module?: string;
@@ -64,6 +94,7 @@ export interface ConversationUpdate {
 
 export interface Product {
   id?: string;
+  tenant_id?: string;
   name: string;
   slug: string;
   category: string;
@@ -81,6 +112,7 @@ export interface Product {
 
 export interface Service {
   id?: string;
+  tenant_id?: string;
   name: string;
   slug: string;
   description?: string;
@@ -120,6 +152,7 @@ export interface MagazineConfig {
 
 export interface AgentRequest {
   id: string;
+  tenant_id?: string;
   contact_id?: string | null;
   request_type: string;
   message: string;
@@ -155,6 +188,7 @@ export interface PricingPackage {
 
 export interface Lead {
   id: string;
+  tenant_id?: string;
   contact_id?: string | null;
   service_type?: string | null;
   business_name?: string | null;
@@ -178,6 +212,7 @@ export interface Lead {
 
 export interface Quotation {
   id: string;
+  tenant_id?: string;
   quotation_number: string;
   lead_id?: string | null;
   package_id?: string | null;
@@ -206,13 +241,20 @@ export interface Student {
 }
 
 // ==========================================
-// 3. Contact & Conversation Functions
+// 3. CONTACT & CONVERSATION FUNCTIONS
 // ==========================================
-export async function getContactByPhone(phone: string): Promise<Contact | null> {
+
+export async function getContactByPhone(
+  phone: string,
+  tenantId?: string
+): Promise<Contact | null> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
   const { data, error } = await sb
     .from("contacts")
     .select("*")
+    .eq("tenant_id", tenant)
     .eq("phone", phone)
     .maybeSingle();
 
@@ -220,47 +262,73 @@ export async function getContactByPhone(phone: string): Promise<Contact | null> 
     safeErrorLog("getContactByPhone", error);
     return null;
   }
-  return data as Contact;
+
+  return data as Contact | null;
 }
 
-export async function getOrCreateContact(phone: string, name?: string | null): Promise<Contact> {
+export async function getOrCreateContact(
+  phone: string,
+  name?: string | null,
+  tenantId?: string
+): Promise<Contact> {
   const sb = getSupabaseClient();
-  const existing = await getContactByPhone(phone);
+  const tenant = resolveTenantId(tenantId);
+
+  const existing = await getContactByPhone(phone, tenant);
+
   if (existing) return existing;
 
   const { data, error } = await sb
     .from("contacts")
-    .insert({ phone, name: name || null })
+    .insert({
+      tenant_id: tenant,
+      phone,
+      name: name || null,
+    })
     .select("*")
     .single();
 
   if (error) {
     safeErrorLog("getOrCreateContact", error);
-    return {
-      id: crypto.randomUUID ? crypto.randomUUID() : `CNT-${Date.now()}`,
-      phone,
-      name: name || null,
-    };
+
+    // Check again in case another request created the same contact.
+    const retry = await getContactByPhone(phone, tenant);
+
+    if (retry) return retry;
+
+    throw error;
   }
+
   return data as Contact;
 }
 
-export async function getOrCreateConversation(contactId?: string): Promise<Conversation> {
+export async function getOrCreateConversation(
+  contactId?: string,
+  tenantId?: string
+): Promise<Conversation> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
   if (contactId) {
-    const { data: existing } = await sb
+    const { data: existing, error: fetchError } = await sb
       .from("conversations")
       .select("*")
+      .eq("tenant_id", tenant)
       .eq("contact_id", contactId)
       .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+
+    if (fetchError) {
+      safeErrorLog("getOrCreateConversation.fetch", fetchError);
+    }
 
     if (existing) return existing as Conversation;
 
     const { data: created, error } = await sb
       .from("conversations")
       .insert({
+        tenant_id: tenant,
         contact_id: contactId,
         current_module: "MAIN_MENU",
         current_state: "IDLE",
@@ -270,77 +338,107 @@ export async function getOrCreateConversation(contactId?: string): Promise<Conve
       .single();
 
     if (error) {
-      safeErrorLog("getOrCreateConversation (insert)", error);
-    } else if (created) {
-      return created as Conversation;
+      safeErrorLog("getOrCreateConversation.insert", error);
+      throw error;
     }
+
+    return created as Conversation;
   }
 
-  return {
-    id: crypto.randomUUID ? crypto.randomUUID() : `CONV-${Date.now()}`,
-    current_module: "MAIN_MENU",
-    current_state: "IDLE",
-    context_json: {},
-  } as Conversation;
+  throw new Error("A valid contact ID is required to create a conversation");
 }
 
 export async function updateConversation(
   conversationId: string,
-  fields: ConversationUpdate
+  fields: ConversationUpdate,
+  tenantId?: string
 ): Promise<Conversation | null> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
   const updatePayload: Record<string, unknown> = {
     ...fields,
     updated_at: new Date().toISOString(),
   };
 
+  delete updatePayload.tenant_id;
+  delete updatePayload.id;
+  delete updatePayload.contact_id;
+
   const { data, error } = await sb
     .from("conversations")
     .update(updatePayload)
+    .eq("tenant_id", tenant)
     .eq("id", conversationId)
     .select("*")
-    .single();
+    .maybeSingle();
 
   if (error) {
     safeErrorLog("updateConversation", error);
     return null;
   }
-  return data as Conversation;
+
+  return data as Conversation | null;
 }
 
 // ==========================================
-// 4. Message Storage
+// 4. MESSAGE STORAGE
 // ==========================================
+
 export async function storeMessage(
   contactId?: string,
   direction: "INBOUND" | "OUTBOUND" = "INBOUND",
   messageType: string = "text",
   body?: string | null,
-  whatsappMessageId?: string | null
+  whatsappMessageId?: string | null,
+  tenantId?: string
 ): Promise<any> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
   try {
     let phone: string | null = null;
     let resolvedContactId: string | null = null;
 
     if (contactId) {
-      if (contactId.includes("-") && contactId.length > 20) {
-        resolvedContactId = contactId;
-        const { data: c } = await sb.from("contacts").select("phone").eq("id", contactId).maybeSingle();
-        phone = c?.phone ? c.phone.replace(/[^0-9]/g, "") : null;
+      const validContactId = toValidUUID(contactId);
+
+      if (validContactId) {
+        const { data: contact } = await sb
+          .from("contacts")
+          .select("id, phone")
+          .eq("tenant_id", tenant)
+          .eq("id", validContactId)
+          .maybeSingle();
+
+        if (contact) {
+          resolvedContactId = contact.id;
+          phone = contact.phone
+            ? String(contact.phone).replace(/[^0-9]/g, "")
+            : null;
+        }
       } else {
         phone = contactId.replace(/[^0-9]/g, "");
-        const localPhone = phone.startsWith("234") ? "0" + phone.slice(3) : phone;
-        const { data: c } = await sb
+
+        const localPhone = phone.startsWith("234")
+          ? "0" + phone.slice(3)
+          : phone;
+
+        const { data: contact } = await sb
           .from("contacts")
           .select("id")
-          .or(`phone.eq.${phone},phone.eq.+${phone},phone.eq.${localPhone}`)
+          .eq("tenant_id", tenant)
+          .or(
+            `phone.eq.${phone},phone.eq.+${phone},phone.eq.${localPhone}`
+          )
           .maybeSingle();
-        resolvedContactId = c?.id || null;
+
+        resolvedContactId = contact?.id || null;
       }
     }
 
     const payload: Record<string, unknown> = {
+      tenant_id: tenant,
       contact_id: resolvedContactId,
       phone_number: phone,
       direction,
@@ -361,7 +459,9 @@ export async function storeMessage(
 
     if (error) {
       safeErrorLog("storeMessage", error);
+      return null;
     }
+
     return data;
   } catch (err) {
     safeErrorLog("storeMessage catch", err);
@@ -370,13 +470,19 @@ export async function storeMessage(
 }
 
 // ==========================================
-// 5. Products Functions
+// 5. PRODUCTS
 // ==========================================
-export async function getActiveProducts(): Promise<Product[]> {
+
+export async function getActiveProducts(
+  tenantId?: string
+): Promise<Product[]> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
   const { data, error } = await sb
     .from("products")
     .select("*")
+    .eq("tenant_id", tenant)
     .eq("is_active", true)
     .order("created_at", { ascending: true });
 
@@ -384,47 +490,68 @@ export async function getActiveProducts(): Promise<Product[]> {
     safeErrorLog("getActiveProducts", error);
     return [];
   }
-  return (data as Product[]) || [];
+
+  return (data || []) as Product[];
 }
 
-export async function getProductBySlug(slug: string): Promise<Product | null> {
+export async function getProductBySlug(
+  slug: string,
+  tenantId?: string
+): Promise<Product | null> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
   const { data, error } = await sb
     .from("products")
     .select("*")
+    .eq("tenant_id", tenant)
     .eq("slug", slug)
-    .single();
+    .maybeSingle();
 
   if (error) {
     safeErrorLog(`getProductBySlug(${slug})`, error);
     return null;
   }
-  return data as Product;
+
+  return data as Product | null;
 }
 
-export async function getProductById(productId: string): Promise<Product | null> {
+export async function getProductById(
+  productId: string,
+  tenantId?: string
+): Promise<Product | null> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
   const { data, error } = await sb
     .from("products")
     .select("*")
+    .eq("tenant_id", tenant)
     .eq("id", productId)
-    .single();
+    .maybeSingle();
 
   if (error) {
     safeErrorLog("getProductById", error);
     return null;
   }
-  return data as Product;
+
+  return data as Product | null;
 }
 
 // ==========================================
-// 6. Services Functions
+// 6. SERVICES
 // ==========================================
-export async function getActiveServices(): Promise<Service[]> {
+
+export async function getActiveServices(
+  tenantId?: string
+): Promise<Service[]> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
   const { data, error } = await sb
     .from("services")
     .select("*")
+    .eq("tenant_id", tenant)
     .eq("status", "ACTIVE")
     .order("created_at", { ascending: true });
 
@@ -432,44 +559,61 @@ export async function getActiveServices(): Promise<Service[]> {
     safeErrorLog("getActiveServices", error);
     return [];
   }
-  return (data as Service[]) || [];
+
+  return (data || []) as Service[];
 }
 
-export async function getServiceBySlug(slug: string): Promise<Service | null> {
+export async function getServiceBySlug(
+  slug: string,
+  tenantId?: string
+): Promise<Service | null> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
   const { data, error } = await sb
     .from("services")
     .select("*")
+    .eq("tenant_id", tenant)
     .eq("slug", slug)
-    .single();
+    .maybeSingle();
 
   if (error) {
     safeErrorLog(`getServiceBySlug(${slug})`, error);
     return null;
   }
-  return data as Service;
+
+  return data as Service | null;
 }
 
-export async function getServiceById(serviceId: string): Promise<Service | null> {
+export async function getServiceById(
+  serviceId: string,
+  tenantId?: string
+): Promise<Service | null> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
   const { data, error } = await sb
     .from("services")
     .select("*")
+    .eq("tenant_id", tenant)
     .eq("id", serviceId)
-    .single();
+    .maybeSingle();
 
   if (error) {
     safeErrorLog("getServiceById", error);
     return null;
   }
-  return data as Service;
+
+  return data as Service | null;
 }
 
 // ==========================================
-// 7. Demos Functions
+// 7. SHARED DEMO CATALOGUE
 // ==========================================
+
 export async function getActiveDemos(): Promise<Demo[]> {
   const sb = getSupabaseClient();
+
   const { data, error } = await sb
     .from("demos")
     .select("*")
@@ -480,11 +624,13 @@ export async function getActiveDemos(): Promise<Demo[]> {
     safeErrorLog("getActiveDemos", error);
     return [];
   }
-  return (data as Demo[]) || [];
+
+  return (data || []) as Demo[];
 }
 
 export async function getDemoBySlug(slug: string): Promise<Demo | null> {
   const sb = getSupabaseClient();
+
   const { data, error } = await sb
     .from("demos")
     .select("*")
@@ -495,21 +641,31 @@ export async function getDemoBySlug(slug: string): Promise<Demo | null> {
     safeErrorLog(`getDemoBySlug(${slug})`, error);
     return null;
   }
-  return data as Demo;
+
+  return data as Demo | null;
 }
 
 // ==========================================
-// 8. Pricing Packages & Sales Leads
+// 8. PRICING, LEADS & QUOTATIONS
 // ==========================================
-export async function getPricingPackages(serviceType?: string): Promise<PricingPackage[]> {
+
+export async function getPricingPackages(
+  serviceType?: string
+): Promise<PricingPackage[]> {
   const sb = getSupabaseClient();
-  let query = sb.from("pricing_packages").select("*").eq("is_active", true);
+
+  let query = sb
+    .from("pricing_packages")
+    .select("*")
+    .eq("is_active", true);
 
   if (serviceType) {
     query = query.ilike("service_type", `%${serviceType}%`);
   }
 
-  const { data, error } = await query.order("min_price", { ascending: true });
+  const { data, error } = await query.order("min_price", {
+    ascending: true,
+  });
 
   if (error) {
     safeErrorLog("getPricingPackages", error);
@@ -519,23 +675,30 @@ export async function getPricingPackages(serviceType?: string): Promise<PricingP
   return ((data || []).map((pkg: any) => ({
     ...pkg,
     package_name: pkg.package_name || pkg.name || "Standard Package",
-    package_code: pkg.package_code || pkg.slug?.toUpperCase() || "PKG-STD",
+    package_code:
+      pkg.package_code || pkg.slug?.toUpperCase() || "PKG-STD",
   })) as PricingPackage[]);
 }
 
 export async function createLead(
   contactId?: string,
   serviceType?: string,
-  fields: Partial<Lead> = {}
+  fields: Partial<Lead> = {},
+  tenantId?: string
 ): Promise<Lead | null> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
   const payload: Record<string, unknown> = {
-    contact_id: contactId,
-    service_type: serviceType,
+    contact_id: contactId || null,
+    service_type: serviceType || null,
     status: "QUALIFYING",
     ...fields,
+    tenant_id: tenant,
     created_at: new Date().toISOString(),
   };
+
+  delete payload.id;
 
   const { data, error } = await sb
     .from("leads")
@@ -545,49 +708,59 @@ export async function createLead(
 
   if (error) {
     safeErrorLog("createLead", error);
-    return {
-      id: crypto.randomUUID ? crypto.randomUUID() : `LEAD-${Date.now()}`,
-      contact_id: contactId || null,
-      service_type: serviceType || null,
-      ...fields,
-    } as Lead;
+    return null;
   }
+
   return data as Lead;
 }
 
 export async function updateLead(
   leadId: string,
-  fields: Partial<Lead>
+  fields: Partial<Lead>,
+  tenantId?: string
 ): Promise<Lead | null> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
   const payload: Record<string, unknown> = {
     ...fields,
     updated_at: new Date().toISOString(),
   };
 
+  delete payload.id;
+  delete payload.tenant_id;
+  delete payload.contact_id;
+
   const { data, error } = await sb
     .from("leads")
     .update(payload)
+    .eq("tenant_id", tenant)
     .eq("id", leadId)
     .select("*")
-    .single();
+    .maybeSingle();
 
   if (error) {
     safeErrorLog("updateLead", error);
     return null;
   }
-  return data as Lead;
+
+  return data as Lead | null;
 }
 
 export async function getActiveLeadForContact(
   contactId?: string,
-  serviceType?: string
+  serviceType?: string,
+  tenantId?: string
 ): Promise<Lead | null> {
   if (!contactId) return null;
+
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
   let query = sb
     .from("leads")
     .select("*")
+    .eq("tenant_id", tenant)
     .eq("contact_id", contactId)
     .in("status", ["QUALIFYING", "QUOTED", "PACKAGE_SELECTED"]);
 
@@ -604,7 +777,8 @@ export async function getActiveLeadForContact(
     safeErrorLog("getActiveLeadForContact", error);
     return null;
   }
-  return data as Lead;
+
+  return data as Lead | null;
 }
 
 export async function createQuotation(
@@ -614,19 +788,37 @@ export async function createQuotation(
   description?: string,
   deliverables?: string[],
   minPrice?: number,
-  maxPrice?: number
+  maxPrice?: number,
+  tenantId?: string
 ): Promise<Quotation | null> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
+  // Confirm the lead belongs to this tenant before creating its quotation.
+  const { data: lead, error: leadError } = await sb
+    .from("leads")
+    .select("id")
+    .eq("tenant_id", tenant)
+    .eq("id", leadId)
+    .maybeSingle();
+
+  if (leadError || !lead) {
+    if (leadError) safeErrorLog("createQuotation.leadCheck", leadError);
+    return null;
+  }
+
   const quoteNumber = `XTR-${Date.now().toString().slice(-6)}`;
-  const payload: Record<string, unknown> = {
+
+  const payload = {
+    tenant_id: tenant,
     quotation_number: quoteNumber,
-    lead_id: leadId || null,
+    lead_id: leadId,
     package_id: packageId || null,
-    title,
-    description,
+    title: title || null,
+    description: description || null,
     deliverables: deliverables || [],
-    min_price: minPrice,
-    max_price: maxPrice,
+    min_price: minPrice ?? null,
+    max_price: maxPrice ?? null,
     status: "DRAFT",
     created_at: new Date().toISOString(),
   };
@@ -639,51 +831,52 @@ export async function createQuotation(
 
   if (error) {
     safeErrorLog("createQuotation", error);
-    return {
-      id: crypto.randomUUID ? crypto.randomUUID() : `QUO-${Date.now()}`,
-      quotation_number: quoteNumber,
-      lead_id: leadId,
-      package_id: packageId,
-      title,
-      description,
-      deliverables,
-      min_price: minPrice,
-      max_price: maxPrice,
-      status: "DRAFT",
-    } as Quotation;
+    return null;
   }
+
   return data as Quotation;
 }
 
 export async function updateQuotation(
   quotationId: string,
-  fields: Partial<Quotation>
+  fields: Partial<Quotation>,
+  tenantId?: string
 ): Promise<Quotation | null> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
   const payload: Record<string, unknown> = {
     ...fields,
     updated_at: new Date().toISOString(),
   };
 
+  delete payload.id;
+  delete payload.tenant_id;
+  delete payload.lead_id;
+
   const { data, error } = await sb
     .from("quotations")
     .update(payload)
+    .eq("tenant_id", tenant)
     .eq("id", quotationId)
     .select("*")
-    .single();
+    .maybeSingle();
 
   if (error) {
     safeErrorLog("updateQuotation", error);
     return null;
   }
-  return data as Quotation;
+
+  return data as Quotation | null;
 }
 
 // ==========================================
-// 9. Magazine Functions
+// 9. SHARED MAGAZINE CONFIGURATION
 // ==========================================
+
 export async function getActiveMagazineConfig(): Promise<MagazineConfig | null> {
   const sb = getSupabaseClient();
+
   const { data, error } = await sb
     .from("magazine_config")
     .select("*")
@@ -696,11 +889,12 @@ export async function getActiveMagazineConfig(): Promise<MagazineConfig | null> 
     safeErrorLog("getActiveMagazineConfig", error);
     return null;
   }
-  return data as MagazineConfig;
+
+  return data as MagazineConfig | null;
 }
 
 // ==========================================
-// 10. Agent & Support Requests (Resilient UUID & Fail-Safe Fallbacks)
+// 10. AGENT & SUPPORT REQUESTS
 // ==========================================
 
 export async function createAgentRequest(
@@ -710,13 +904,15 @@ export async function createAgentRequest(
   priority: string = "HIGH",
   leadId?: string,
   quotationId?: string,
-  summary?: string
+  summary?: string,
+  tenantId?: string
 ): Promise<AgentRequest | null> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
   const msgText = message || summary || "Customer Agent Request";
 
-  // Build primary payload with strict UUID formats
   const payload: Record<string, unknown> = {
+    tenant_id: tenant,
     request_type: requestType || "QUOTATION",
     message: msgText,
     description: msgText,
@@ -725,54 +921,57 @@ export async function createAgentRequest(
   };
 
   const validContactId = toValidUUID(contactId);
-  if (validContactId) payload.contact_id = validContactId;
-
   const validLeadId = toValidUUID(leadId);
-  if (validLeadId) payload.lead_id = validLeadId;
-
   const validQuotationId = toValidUUID(quotationId);
-  if (validQuotationId) payload.quotation_id = validQuotationId;
+
+  if (validContactId) {
+    const { data } = await sb
+      .from("contacts")
+      .select("id")
+      .eq("tenant_id", tenant)
+      .eq("id", validContactId)
+      .maybeSingle();
+
+    if (data) payload.contact_id = validContactId;
+  }
+
+  if (validLeadId) {
+    const { data } = await sb
+      .from("leads")
+      .select("id")
+      .eq("tenant_id", tenant)
+      .eq("id", validLeadId)
+      .maybeSingle();
+
+    if (data) payload.lead_id = validLeadId;
+  }
+
+  if (validQuotationId) {
+    const { data } = await sb
+      .from("quotations")
+      .select("id")
+      .eq("tenant_id", tenant)
+      .eq("id", validQuotationId)
+      .maybeSingle();
+
+    if (data) payload.quotation_id = validQuotationId;
+  }
 
   if (summary) payload.summary = summary;
 
   try {
-    // Attempt 1: Safe fully-linked insertion
     const { data, error } = await sb
       .from("agent_requests")
       .insert(payload)
       .select("*")
       .single();
 
-    if (!error && data?.id) {
-      return data as AgentRequest;
-    }
-
     if (error) {
-      safeErrorLog("createAgentRequest.attempt1", error);
-    }
-
-    // Attempt 2: Unlinked fallback retry
-    const fallbackPayload = {
-      request_type: requestType || "QUOTATION",
-      message: msgText,
-      description: msgText,
-      summary: summary || null,
-      priority: "NORMAL",
-      status: "PENDING",
-    };
-
-    const { data: retryData, error: retryErr } = await sb
-      .from("agent_requests")
-      .insert(fallbackPayload)
-      .select("*")
-      .single();
-
-    if (retryErr) {
-      safeErrorLog("createAgentRequest.attempt2", retryErr);
+      safeErrorLog("createAgentRequest", error);
       return null;
     }
 
-    return retryData as AgentRequest;
+    return data as AgentRequest;
   } catch (err) {
     safeErrorLog("createAgentRequest.catch", err);
     return null;
@@ -780,8 +979,10 @@ export async function createAgentRequest(
 }
 
 // ==========================================
-// 11. Student & Attendance Functions
+// 11. STUDENT & ATTENDANCE FUNCTIONS
+// These tables currently have no tenant_id.
 // ==========================================
+
 export function isStudentProfileComplete(student: Student): boolean {
   return !!(
     student.name &&
@@ -794,6 +995,7 @@ export function isStudentProfileComplete(student: Student): boolean {
 
 export async function getStudentByPhone(phone: string): Promise<Student | null> {
   const sb = getSupabaseClient();
+
   const { data, error } = await sb
     .from("students")
     .select("*")
@@ -804,26 +1006,29 @@ export async function getStudentByPhone(phone: string): Promise<Student | null> 
     safeErrorLog("getStudentByPhone", error);
     return null;
   }
-  return data as Student;
+
+  return data as Student | null;
 }
 
-export async function getOrCreateStudent(phone: string, fallbackName?: string | null): Promise<Student> {
+export async function getOrCreateStudent(
+  phone: string,
+  fallbackName?: string | null
+): Promise<Student> {
   const sb = getSupabaseClient();
+
   const existing = await getStudentByPhone(phone);
   if (existing) return existing;
 
   const defaultName = fallbackName?.trim() || "Student";
   const names = defaultName.split(" ");
-  const firstName = names[0] || "";
-  const lastName = names.slice(1).join(" ") || "";
 
   const { data, error } = await sb
     .from("students")
     .insert({
       phone,
       name: defaultName,
-      first_name: firstName,
-      last_name: lastName,
+      first_name: names[0] || "",
+      last_name: names.slice(1).join(" ") || "",
       status: "ACTIVE",
     })
     .select("*")
@@ -833,6 +1038,7 @@ export async function getOrCreateStudent(phone: string, fallbackName?: string | 
     safeErrorLog("getOrCreateStudent", error);
     throw error;
   }
+
   return data as Student;
 }
 
@@ -846,16 +1052,14 @@ export async function createStudentProfile(
 ): Promise<Student | null> {
   const sb = getSupabaseClient();
   const names = name.trim().split(" ");
-  const firstName = names[0] || "";
-  const lastName = names.slice(1).join(" ") || "";
 
   const { data, error } = await sb
     .from("students")
     .insert({
       phone,
       name: name.trim(),
-      first_name: firstName,
-      last_name: lastName,
+      first_name: names[0] || "",
+      last_name: names.slice(1).join(" ") || "",
       matric_number: matricNumber.trim().toUpperCase(),
       department: department.trim(),
       level: level.trim(),
@@ -869,6 +1073,7 @@ export async function createStudentProfile(
     safeErrorLog("createStudentProfile", error);
     return null;
   }
+
   return data as Student;
 }
 
@@ -883,6 +1088,7 @@ export async function updateStudentProfile(
   }
 ): Promise<Student | null> {
   const sb = getSupabaseClient();
+
   const updatePayload: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   };
@@ -891,9 +1097,13 @@ export async function updateStudentProfile(
     updatePayload.name = fields.name.trim();
     const names = fields.name.trim().split(" ");
     updatePayload.first_name = names[0] || "";
-    updatePayload.last_name = names.slice(1).join(" ") || "";
+    updatePayload.last_name = names.slice(1).join(" ");
   }
-  if (fields.matric_number) updatePayload.matric_number = fields.matric_number.trim().toUpperCase();
+
+  if (fields.matric_number) {
+    updatePayload.matric_number = fields.matric_number.trim().toUpperCase();
+  }
+
   if (fields.department) updatePayload.department = fields.department.trim();
   if (fields.level) updatePayload.level = fields.level.trim();
   if (fields.serial_number) updatePayload.serial_number = fields.serial_number.trim();
@@ -903,13 +1113,14 @@ export async function updateStudentProfile(
     .update(updatePayload)
     .eq("id", studentId)
     .select("*")
-    .single();
+    .maybeSingle();
 
   if (error) {
     safeErrorLog("updateStudentProfile", error);
     return null;
   }
-  return data as Student;
+
+  return data as Student | null;
 }
 
 export async function getTodayAttendance(studentId: string): Promise<any> {
@@ -928,16 +1139,16 @@ export async function getTodayAttendance(studentId: string): Promise<any> {
     safeErrorLog("getTodayAttendance", error);
     return null;
   }
+
   return data;
 }
 
 export async function recordAttendance(studentId: string): Promise<any> {
   const sb = getSupabaseClient();
+
   const { data, error } = await sb
     .from("attendance")
-    .insert({
-      student_id: studentId,
-    })
+    .insert({ student_id: studentId })
     .select("*")
     .single();
 
@@ -945,14 +1156,18 @@ export async function recordAttendance(studentId: string): Promise<any> {
     safeErrorLog("recordAttendance", error);
     return null;
   }
+
   return data;
 }
 
 // ==========================================
-// 12. Course & Exam Functions
+// 12. COURSE & EXAM FUNCTIONS
+// These tables currently have no tenant_id.
 // ==========================================
+
 export async function getCourseByCode(courseCode: string): Promise<any> {
   const sb = getSupabaseClient();
+
   const { data, error } = await sb
     .from("courses")
     .select("*")
@@ -963,6 +1178,7 @@ export async function getCourseByCode(courseCode: string): Promise<any> {
     safeErrorLog("getCourseByCode", error);
     return null;
   }
+
   return data;
 }
 
@@ -981,7 +1197,7 @@ export async function getStudentCourseAccess(
     .maybeSingle();
 
   if (error) {
-    safeErrorLog("getStudentCourseAccess (fetch)", error);
+    safeErrorLog("getStudentCourseAccess.fetch", error);
     return null;
   }
 
@@ -991,7 +1207,7 @@ export async function getStudentCourseAccess(
       .insert({
         student_id: studentId,
         course_id: courseId,
-        access_status: "ACTIVE",
+        access_status: courseStatus || "ACTIVE",
         progress: {
           completed_lessons: [],
           last_lesson_order: 0,
@@ -1001,9 +1217,10 @@ export async function getStudentCourseAccess(
       .single();
 
     if (insertError) {
-      safeErrorLog("getStudentCourseAccess (insert)", insertError);
+      safeErrorLog("getStudentCourseAccess.insert", insertError);
       return null;
     }
+
     data = inserted;
   }
 
@@ -1021,23 +1238,30 @@ export async function markLessonComplete(
     .from("student_courses")
     .select("progress")
     .eq("id", studentCourseId)
-    .single();
+    .maybeSingle();
 
   if (fetchErr || !record) {
-    safeErrorLog("markLessonComplete (fetch)", fetchErr);
+    safeErrorLog("markLessonComplete.fetch", fetchErr);
     return null;
   }
 
-  const progress = record.progress || { completed_lessons: [], last_lesson_order: 0 };
-  const completed = Array.isArray(progress.completed_lessons) ? progress.completed_lessons : [];
+  const progress = record.progress || {
+    completed_lessons: [],
+    last_lesson_order: 0,
+  };
 
-  if (!completed.includes(lessonId)) {
-    completed.push(lessonId);
-  }
+  const completed = Array.isArray(progress.completed_lessons)
+    ? [...progress.completed_lessons]
+    : [];
+
+  if (!completed.includes(lessonId)) completed.push(lessonId);
 
   const updatedProgress = {
     completed_lessons: completed,
-    last_lesson_order: Math.max(progress.last_lesson_order || 0, lastLessonOrder),
+    last_lesson_order: Math.max(
+      progress.last_lesson_order || 0,
+      lastLessonOrder
+    ),
   };
 
   const { data, error } = await sb
@@ -1048,17 +1272,22 @@ export async function markLessonComplete(
     })
     .eq("id", studentCourseId)
     .select("*")
-    .single();
+    .maybeSingle();
 
   if (error) {
-    safeErrorLog("markLessonComplete (update)", error);
+    safeErrorLog("markLessonComplete.update", error);
     return null;
   }
+
   return data;
 }
 
-export async function getStudentExamAttempts(studentId: string, courseId: string): Promise<any[]> {
+export async function getStudentExamAttempts(
+  studentId: string,
+  courseId: string
+): Promise<any[]> {
   const sb = getSupabaseClient();
+
   const { data, error } = await sb
     .from("exam_attempts")
     .select("*")
@@ -1070,11 +1299,13 @@ export async function getStudentExamAttempts(studentId: string, courseId: string
     safeErrorLog("getStudentExamAttempts", error);
     return [];
   }
+
   return data || [];
 }
 
 // ==========================================
-// 13. Games Engine Functions
+// 13. GAMES ENGINE
+// Current game tables do not have tenant_id.
 // ==========================================
 
 export interface GameSession {
@@ -1115,6 +1346,7 @@ export interface GameQuestion {
 
 export async function getActiveGameSession(phone: string): Promise<GameSession | null> {
   const sb = getSupabaseClient();
+
   const { data, error } = await sb
     .from("game_sessions")
     .select("*")
@@ -1129,7 +1361,8 @@ export async function getActiveGameSession(phone: string): Promise<GameSession |
     safeErrorLog("getActiveGameSession", error);
     return null;
   }
-  return data as GameSession;
+
+  return data as GameSession | null;
 }
 
 export async function createGameSession(
@@ -1140,6 +1373,7 @@ export async function createGameSession(
   lives: number = 3
 ): Promise<GameSession | null> {
   const sb = getSupabaseClient();
+
   await abandonActiveSessions(phone);
 
   const { data, error } = await sb
@@ -1161,6 +1395,7 @@ export async function createGameSession(
     safeErrorLog("createGameSession", error);
     return null;
   }
+
   return data as GameSession;
 }
 
@@ -1169,30 +1404,38 @@ export async function updateGameSession(
   fields: Partial<GameSession>
 ): Promise<GameSession | null> {
   const sb = getSupabaseClient();
+
   const { data, error } = await sb
     .from("game_sessions")
     .update(fields)
     .eq("id", sessionId)
     .select("*")
-    .single();
+    .maybeSingle();
 
   if (error) {
     safeErrorLog("updateGameSession", error);
     return null;
   }
-  return data as GameSession;
+
+  return data as GameSession | null;
 }
 
 export async function abandonActiveSessions(phone: string): Promise<void> {
   const sb = getSupabaseClient();
+
   await sb
     .from("game_sessions")
-    .update({ status: "ABANDONED", completed_at: new Date().toISOString() })
+    .update({
+      status: "ABANDONED",
+      completed_at: new Date().toISOString(),
+    })
     .eq("phone_number", phone)
     .eq("status", "ACTIVE");
 }
 
-export async function completeGameSession(sessionId: string): Promise<GameSession | null> {
+export async function completeGameSession(
+  sessionId: string
+): Promise<GameSession | null> {
   return await updateGameSession(sessionId, {
     status: "COMPLETED",
     completed_at: new Date().toISOString(),
@@ -1205,6 +1448,7 @@ export async function getRandomQuestions(
   count: number
 ): Promise<GameQuestion[]> {
   const sb = getSupabaseClient();
+
   const { data, error } = await sb
     .from("game_questions")
     .select("*")
@@ -1216,6 +1460,7 @@ export async function getRandomQuestions(
     safeErrorLog("getRandomQuestions", error);
     return [];
   }
+
   const shuffled = (data || []).sort(() => Math.random() - 0.5);
   return shuffled.slice(0, count) as GameQuestion[];
 }
@@ -1230,7 +1475,8 @@ export async function logGameAnswer(
   points: number
 ): Promise<void> {
   const sb = getSupabaseClient();
-  await sb.from("game_answers").insert({
+
+  const { error } = await sb.from("game_answers").insert({
     session_id: sessionId,
     question_id: questionId,
     question_index: questionIndex,
@@ -1239,6 +1485,8 @@ export async function logGameAnswer(
     is_correct: isCorrect,
     points_awarded: points,
   });
+
+  if (error) safeErrorLog("logGameAnswer", error);
 }
 
 export async function recordGameScore(
@@ -1246,7 +1494,8 @@ export async function recordGameScore(
   xp: number
 ): Promise<void> {
   const sb = getSupabaseClient();
-  await sb.from("game_scores").insert({
+
+  const { error } = await sb.from("game_scores").insert({
     session_id: session.id,
     phone_number: session.phone_number,
     user_id: session.user_id,
@@ -1258,6 +1507,8 @@ export async function recordGameScore(
     max_streak: session.max_streak,
     xp_earned: xp,
   });
+
+  if (error) safeErrorLog("recordGameScore", error);
 }
 
 export async function updateUserGameStats(
@@ -1270,16 +1521,22 @@ export async function updateUserGameStats(
 ): Promise<void> {
   const sb = getSupabaseClient();
 
-  const { data: existing } = await sb
+  const { data: existing, error: fetchError } = await sb
     .from("user_game_stats")
     .select("*")
     .eq("phone_number", phone)
     .maybeSingle();
 
+  if (fetchError) {
+    safeErrorLog("updateUserGameStats.fetch", fetchError);
+    return;
+  }
+
   if (existing) {
     const newXp = (existing.total_xp || 0) + xpDelta;
     const newLevel = Math.max(1, Math.floor(newXp / 500) + 1);
-    await sb
+
+    const { error } = await sb
       .from("user_game_stats")
       .update({
         total_games: (existing.total_games || 0) + 1,
@@ -1292,8 +1549,10 @@ export async function updateUserGameStats(
         updated_at: new Date().toISOString(),
       })
       .eq("phone_number", phone);
+
+    if (error) safeErrorLog("updateUserGameStats.update", error);
   } else {
-    await sb.from("user_game_stats").insert({
+    const { error } = await sb.from("user_game_stats").insert({
       phone_number: phone,
       display_name: displayName || null,
       total_games: 1,
@@ -1304,16 +1563,22 @@ export async function updateUserGameStats(
       best_streak: maxStreak,
       last_played_at: new Date().toISOString(),
     });
+
+    if (error) safeErrorLog("updateUserGameStats.insert", error);
   }
 }
 
 export async function getUserGameStats(phone: string): Promise<any> {
   const sb = getSupabaseClient();
-  const { data } = await sb
+
+  const { data, error } = await sb
     .from("user_game_stats")
     .select("*")
     .eq("phone_number", phone)
     .maybeSingle();
+
+  if (error) safeErrorLog("getUserGameStats", error);
+
   return data;
 }
 
@@ -1324,18 +1589,28 @@ export async function awardAchievement(
   icon: string = "🏆"
 ): Promise<boolean> {
   const sb = getSupabaseClient();
+
   const { error } = await sb
     .from("game_achievements")
-    .insert({ phone_number: phone, achievement_code: code, name, icon });
+    .insert({
+      phone_number: phone,
+      achievement_code: code,
+      name,
+      icon,
+    });
+
+  if (error) safeErrorLog("awardAchievement", error);
+
   return !error;
 }
 
 // ==========================================
-// 14. Demo Centre Functions
+// 14. DEMO CENTRE
 // ==========================================
 
 export interface DemoSession {
   id: string;
+  tenant_id?: string;
   phone_number: string;
   contact_id?: string | null;
   demo_id: string;
@@ -1348,63 +1623,127 @@ export interface DemoSession {
   completed_at?: string | null;
 }
 
-export async function getActiveDemoSession(phone: string): Promise<DemoSession | null> {
+export async function getActiveDemoSession(
+  phone: string,
+  tenantId?: string
+): Promise<DemoSession | null> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
   const { data, error } = await sb
     .from("demo_sessions")
     .select("*")
+    .eq("tenant_id", tenant)
     .eq("phone_number", phone)
     .eq("status", "ACTIVE")
     .gt("expires_at", new Date().toISOString())
     .order("started_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error) { safeErrorLog("getActiveDemoSession", error); return null; }
-  return data as DemoSession;
+
+  if (error) {
+    safeErrorLog("getActiveDemoSession", error);
+    return null;
+  }
+
+  return data as DemoSession | null;
 }
 
 export async function createDemoSession(
   phone: string,
   demoId: string,
   category?: string,
-  initialData: Record<string, any> = {}
+  initialData: Record<string, any> = {},
+  tenantId?: string
 ): Promise<DemoSession | null> {
   const sb = getSupabaseClient();
-  await sb.from("demo_sessions")
-    .update({ status: "ABANDONED", completed_at: new Date().toISOString() })
-    .eq("phone_number", phone).eq("status", "ACTIVE");
+  const tenant = resolveTenantId(tenantId);
 
-  const { data, error } = await sb.from("demo_sessions").insert({
-    phone_number: phone,
-    demo_id: demoId,
-    demo_category: category,
-    current_step: "ENTRY",
-    session_data: initialData,
-    status: "ACTIVE",
-    started_at: new Date().toISOString(),
-    expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-  }).select("*").single();
-  if (error) { safeErrorLog("createDemoSession", error); return null; }
+  const { error: abandonError } = await sb
+    .from("demo_sessions")
+    .update({
+      status: "ABANDONED",
+      completed_at: new Date().toISOString(),
+    })
+    .eq("tenant_id", tenant)
+    .eq("phone_number", phone)
+    .eq("status", "ACTIVE");
+
+  if (abandonError) {
+    safeErrorLog("createDemoSession.abandon", abandonError);
+  }
+
+  const { data, error } = await sb
+    .from("demo_sessions")
+    .insert({
+      tenant_id: tenant,
+      phone_number: phone,
+      demo_id: demoId,
+      demo_category: category || null,
+      current_step: "ENTRY",
+      session_data: initialData,
+      status: "ACTIVE",
+      started_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("createDemoSession", error);
+    return null;
+  }
+
   return data as DemoSession;
 }
 
 export async function updateDemoSession(
   sessionId: string,
-  fields: Partial<DemoSession>
+  fields: Partial<DemoSession>,
+  tenantId?: string
 ): Promise<DemoSession | null> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
+  const payload: Record<string, unknown> = { ...fields };
+
+  delete payload.id;
+  delete payload.tenant_id;
+  delete payload.phone_number;
+
   const { data, error } = await sb
     .from("demo_sessions")
-    .update(fields).eq("id", sessionId).select("*").single();
-  if (error) { safeErrorLog("updateDemoSession", error); return null; }
-  return data as DemoSession;
+    .update(payload)
+    .eq("tenant_id", tenant)
+    .eq("id", sessionId)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    safeErrorLog("updateDemoSession", error);
+    return null;
+  }
+
+  return data as DemoSession | null;
 }
 
-export async function completeDemoSession(sessionId: string): Promise<void> {
+export async function completeDemoSession(
+  sessionId: string,
+  tenantId?: string
+): Promise<void> {
   const sb = getSupabaseClient();
-  await sb.from("demo_sessions")
-    .update({ status: "COMPLETED", completed_at: new Date().toISOString() })
+  const tenant = resolveTenantId(tenantId);
+
+  const { error } = await sb
+    .from("demo_sessions")
+    .update({
+      status: "COMPLETED",
+      completed_at: new Date().toISOString(),
+    })
+    .eq("tenant_id", tenant)
     .eq("id", sessionId);
+
+  if (error) safeErrorLog("completeDemoSession", error);
 }
 
 export async function createDemoLead(
@@ -1414,23 +1753,36 @@ export async function createDemoLead(
   industry: string,
   demoId: string,
   demoName: string,
-  requirements: string
+  requirements: string,
+  tenantId?: string
 ): Promise<any> {
   const sb = getSupabaseClient();
-  const { data, error } = await sb.from("demo_leads").insert({
-    phone_number: phone,
-    contact_name: contactName,
-    business_name: businessName,
-    industry,
-    demo_id: demoId,
-    demo_name: demoName,
-    requirements,
-    status: "NEW",
-    source: "DEMO_CENTRE",
-  }).select("*").single();
-  if (error) { safeErrorLog("createDemoLead", error); return null; }
+  const tenant = resolveTenantId(tenantId);
 
-  await sb.from("leads").insert({
+  const { data, error } = await sb
+    .from("demo_leads")
+    .insert({
+      tenant_id: tenant,
+      phone_number: phone,
+      contact_name: contactName,
+      business_name: businessName,
+      industry,
+      demo_id: demoId,
+      demo_name: demoName,
+      requirements,
+      status: "NEW",
+      source: "DEMO_CENTRE",
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("createDemoLead", error);
+    return null;
+  }
+
+  const { error: leadError } = await sb.from("leads").insert({
+    tenant_id: tenant,
     contact_id: null,
     service_type: "DEMO_CONVERSION",
     business_name: businessName,
@@ -1442,14 +1794,19 @@ export async function createDemoLead(
       demo_name: demoName,
       requirements,
       contact_name: contactName,
+      phone,
     },
   });
+
+  if (leadError) {
+    safeErrorLog("createDemoLead.createLead", leadError);
+  }
 
   return data;
 }
 
 // ==========================================
-// 15. Dashboard Activity & Phone Logging
+// 15. DASHBOARD ACTIVITY & PHONE LOGGING
 // ==========================================
 
 export async function logBotActivity(
@@ -1460,45 +1817,71 @@ export async function logBotActivity(
   body: string,
   contactName?: string,
   interactiveId?: string,
-  whatsappMessageId?: string
+  whatsappMessageId?: string,
+  tenantId?: string
 ): Promise<void> {
   const sb = getSupabaseClient();
-  try {
-    await sb.from("bot_activity_log").insert({
-      phone_number: phone,
-      contact_name: contactName || null,
-      direction,
-      message_type: messageType,
-      module,
-      message_body: body ? body.substring(0, 500) : null,
-      interactive_id: interactiveId || null,
-      whatsapp_message_id: whatsappMessageId || null,
-    });
+  const tenant = resolveTenantId(tenantId);
 
-    const { data: existing } = await sb
+  try {
+    const { error: activityError } = await sb
+      .from("bot_activity_log")
+      .insert({
+        tenant_id: tenant,
+        phone_number: phone,
+        contact_name: contactName || null,
+        direction,
+        message_type: messageType,
+        module,
+        message_body: body ? body.substring(0, 500) : null,
+        interactive_id: interactiveId || null,
+        whatsapp_message_id: whatsappMessageId || null,
+      });
+
+    if (activityError) {
+      safeErrorLog("logBotActivity.activity", activityError);
+    }
+
+    const { data: existing, error: fetchError } = await sb
       .from("phone_log")
       .select("id, total_messages, modules_used")
+      .eq("tenant_id", tenant)
       .eq("phone_number", phone)
       .maybeSingle();
 
+    if (fetchError) {
+      safeErrorLog("logBotActivity.phoneLog.fetch", fetchError);
+      return;
+    }
+
     if (existing) {
-      const modules = existing.modules_used || [];
+      const modules = Array.isArray(existing.modules_used)
+        ? [...existing.modules_used]
+        : [];
+
       if (module && !modules.includes(module)) modules.push(module);
-      await sb
+
+      const { error } = await sb
         .from("phone_log")
         .update({
           last_seen: new Date().toISOString(),
           total_messages: (existing.total_messages || 0) + 1,
           modules_used: modules,
         })
-        .eq("phone_number", phone);
+        .eq("tenant_id", tenant)
+        .eq("id", existing.id);
+
+      if (error) safeErrorLog("logBotActivity.phoneLog.update", error);
     } else {
-      await sb.from("phone_log").insert({
+      const { error } = await sb.from("phone_log").insert({
+        tenant_id: tenant,
         phone_number: phone,
         contact_name: contactName || null,
         total_messages: 1,
         modules_used: module ? [module] : [],
       });
+
+      if (error) safeErrorLog("logBotActivity.phoneLog.insert", error);
     }
   } catch (err) {
     safeErrorLog("logBotActivity", err);
@@ -1506,59 +1889,97 @@ export async function logBotActivity(
 }
 
 // ==========================================
-// 16. Website & Domain Tool Logging
+// 16. WEBSITE & DOMAIN TOOL LOGGING
+// These tables currently have no tenant_id.
 // ==========================================
 
 export async function logDomainSearch(
-  phone: string, domain: string, tld: string,
-  status: string, available: boolean | null,
-  price?: number | null, currency?: string | null
+  phone: string,
+  domain: string,
+  tld: string,
+  status: string,
+  available: boolean | null,
+  price?: number | null,
+  currency?: string | null
 ): Promise<void> {
   const sb = getSupabaseClient();
+
   try {
-    await sb.from("domain_searches").insert({
-      phone, domain, tld, status, available,
+    const { error } = await sb.from("domain_searches").insert({
+      phone,
+      domain,
+      tld,
+      status,
+      available,
       registrar_price: price || null,
       currency: currency || null,
     });
-  } catch (e) { safeErrorLog("logDomainSearch", e); }
+
+    if (error) safeErrorLog("logDomainSearch", error);
+  } catch (e) {
+    safeErrorLog("logDomainSearch", e);
+  }
 }
 
 export async function logWebsiteCheck(
-  phone: string, url: string, reachable: boolean,
-  statusCode: number | null, https: boolean,
-  responseTimeMs: number | null, finalUrl: string,
-  sslValid?: boolean | null, sslExpiry?: string | null
+  phone: string,
+  url: string,
+  reachable: boolean,
+  statusCode: number | null,
+  https: boolean,
+  responseTimeMs: number | null,
+  finalUrl: string,
+  sslValid?: boolean | null,
+  sslExpiry?: string | null
 ): Promise<void> {
   const sb = getSupabaseClient();
+
   try {
-    await sb.from("website_checks").insert({
-      phone, url, reachable, status_code: statusCode,
-      https, response_time_ms: responseTimeMs,
+    const { error } = await sb.from("website_checks").insert({
+      phone,
+      url,
+      reachable,
+      status_code: statusCode,
+      https,
+      response_time_ms: responseTimeMs,
       final_url: finalUrl,
       ssl_valid: sslValid ?? null,
       ssl_expiry: sslExpiry ?? null,
     });
-  } catch (e) { safeErrorLog("logWebsiteCheck", e); }
+
+    if (error) safeErrorLog("logWebsiteCheck", error);
+  } catch (e) {
+    safeErrorLog("logWebsiteCheck", e);
+  }
 }
 
 export async function logDnsCheck(
-  phone: string, domain: string,
-  recordType: string, records: any[]
+  phone: string,
+  domain: string,
+  recordType: string,
+  records: any[]
 ): Promise<void> {
   const sb = getSupabaseClient();
+
   try {
-    await sb.from("dns_checks").insert({
-      phone, domain, record_type: recordType, records,
+    const { error } = await sb.from("dns_checks").insert({
+      phone,
+      domain,
+      record_type: recordType,
+      records,
     });
-  } catch (e) { safeErrorLog("logDnsCheck", e); }
+
+    if (error) safeErrorLog("logDnsCheck", error);
+  } catch (e) {
+    safeErrorLog("logDnsCheck", e);
+  }
 }
 
-// Alias for compatibility
 export const logWebsiteDomainCheck = logDnsCheck;
 
 // ==========================================
-// 17. Flight Checker Logging
+// 17. FLIGHT CHECKER LOGGING
+// This table currently has no tenant_id.
 // ==========================================
 
 export async function logFlightSearch(
@@ -1569,99 +1990,241 @@ export async function logFlightSearch(
   resultStatus?: string
 ): Promise<void> {
   const sb = getSupabaseClient();
+
   try {
-    await sb.from("flight_searches").insert({
+    const { error } = await sb.from("flight_searches").insert({
       phone,
       search_type: searchType,
       flight_number: flightNumber || null,
       airport_code: airportCode || null,
       result_status: resultStatus || "unknown",
     });
-  } catch (e) {
-    safeErrorLog("logFlightSearch", e);
+
+    if (error) safeErrorLog("logFlightSearch", error);
+  } catch (err) {
+    safeErrorLog("logFlightSearch", err);
   }
 }
 
 // ==========================================
-// 18. Magazine Studio Functions
+// 18. MAGAZINE STUDIO
+// These tables currently have no tenant_id.
 // ==========================================
 
-export async function createMagazineDraft(phone: string, data: Record<string, any>): Promise<any> {
+export async function createMagazineDraft(
+  phone: string,
+  data: Record<string, any>
+): Promise<any> {
   const sb = getSupabaseClient();
-  const { data: row, error } = await sb.from("magazines").insert({ phone, ...data, status: data.status || "draft" }).select("*").single();
-  if (error) { safeErrorLog("createMagazineDraft", error); return null; }
+
+  const { data: row, error } = await sb
+    .from("magazines")
+    .insert({
+      phone,
+      ...data,
+      status: data.status || "draft",
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("createMagazineDraft", error);
+    return null;
+  }
+
   return row;
 }
 
-export async function updateMagazine(magId: string, phone: string, data: Record<string, any>): Promise<any> {
+export async function updateMagazine(
+  magId: string,
+  phone: string,
+  data: Record<string, any>
+): Promise<any> {
   const sb = getSupabaseClient();
-  const { data: row, error } = await sb.from("magazines").update({ ...data, updated_at: new Date().toISOString() }).eq("id", magId).eq("phone", phone).select("*").single();
-  if (error) { safeErrorLog("updateMagazine", error); return null; }
+
+  const { data: row, error } = await sb
+    .from("magazines")
+    .update({
+      ...data,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", magId)
+    .eq("phone", phone)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    safeErrorLog("updateMagazine", error);
+    return null;
+  }
+
   return row;
 }
 
-export async function getMagazine(magId: string, phone: string): Promise<any> {
+export async function getMagazine(
+  magId: string,
+  phone: string
+): Promise<any> {
   const sb = getSupabaseClient();
-  const { data } = await sb.from("magazines").select("*").eq("id", magId).eq("phone", phone).maybeSingle();
+
+  const { data, error } = await sb
+    .from("magazines")
+    .select("*")
+    .eq("id", magId)
+    .eq("phone", phone)
+    .maybeSingle();
+
+  if (error) safeErrorLog("getMagazine", error);
+
   return data;
 }
 
-export async function getUserMagazines(phone: string, limit = 20): Promise<any[]> {
+export async function getUserMagazines(
+  phone: string,
+  limit = 20
+): Promise<any[]> {
   const sb = getSupabaseClient();
-  const { data } = await sb.from("magazines").select("*").eq("phone", phone).order("created_at", { ascending: false }).limit(limit);
+
+  const { data, error } = await sb
+    .from("magazines")
+    .select("*")
+    .eq("phone", phone)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) safeErrorLog("getUserMagazines", error);
+
   return data || [];
 }
 
-export async function saveMagazinePage(magId: string, page: Record<string, any>): Promise<any> {
+export async function saveMagazinePage(
+  magId: string,
+  page: Record<string, any>
+): Promise<any> {
   const sb = getSupabaseClient();
-  const { data, error } = await sb.from("magazine_pages").insert({ magazine_id: magId, ...page }).select("*").single();
-  if (error) { safeErrorLog("saveMagazinePage", error); return null; }
+
+  const { data, error } = await sb
+    .from("magazine_pages")
+    .insert({
+      magazine_id: magId,
+      ...page,
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    safeErrorLog("saveMagazinePage", error);
+    return null;
+  }
+
   return data;
 }
 
 export async function getMagazinePages(magId: string): Promise<any[]> {
   const sb = getSupabaseClient();
-  const { data } = await sb.from("magazine_pages").select("*").eq("magazine_id", magId).order("page_number", { ascending: true });
+
+  const { data, error } = await sb
+    .from("magazine_pages")
+    .select("*")
+    .eq("magazine_id", magId)
+    .order("page_number", { ascending: true });
+
+  if (error) safeErrorLog("getMagazinePages", error);
+
   return data || [];
 }
 
-export async function updateMagazinePage(pageId: string, data: Record<string, any>): Promise<any> {
+export async function updateMagazinePage(
+  pageId: string,
+  data: Record<string, any>
+): Promise<any> {
   const sb = getSupabaseClient();
-  const { data: row } = await sb.from("magazine_pages").update({ ...data, updated_at: new Date().toISOString() }).eq("id", pageId).select("*").single();
+
+  const { data: row, error } = await sb
+    .from("magazine_pages")
+    .update({
+      ...data,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", pageId)
+    .select("*")
+    .maybeSingle();
+
+  if (error) safeErrorLog("updateMagazinePage", error);
+
   return row;
 }
 
-export async function saveMagazineAsset(magId: string, pageId: string | null, asset: Record<string, any>): Promise<any> {
+export async function saveMagazineAsset(
+  magId: string,
+  pageId: string | null,
+  asset: Record<string, any>
+): Promise<any> {
   const sb = getSupabaseClient();
-  const { data } = await sb.from("magazine_assets").insert({ magazine_id: magId, page_id: pageId, ...asset }).select("*").single();
+
+  const { data, error } = await sb
+    .from("magazine_assets")
+    .insert({
+      magazine_id: magId,
+      page_id: pageId,
+      ...asset,
+    })
+    .select("*")
+    .single();
+
+  if (error) safeErrorLog("saveMagazineAsset", error);
+
   return data;
 }
 
-export async function deleteMagazine(magId: string, phone: string): Promise<boolean> {
+export async function deleteMagazine(
+  magId: string,
+  phone: string
+): Promise<boolean> {
   const sb = getSupabaseClient();
-  const { error } = await sb.from("magazines").delete().eq("id", magId).eq("phone", phone);
+
+  const { error } = await sb
+    .from("magazines")
+    .delete()
+    .eq("id", magId)
+    .eq("phone", phone);
+
+  if (error) safeErrorLog("deleteMagazine", error);
+
   return !error;
 }
 
-export async function uploadMagazinePdf(magId: string, pdfBytes: Uint8Array): Promise<string | null> {
+export async function uploadMagazinePdf(
+  magId: string,
+  pdfBytes: Uint8Array
+): Promise<string | null> {
   const sb = getSupabaseClient();
   const path = `${magId}/magazine_${Date.now()}.pdf`;
+
   try {
-    const { error } = await sb.storage.from("magazines").upload(path, pdfBytes, {
-      contentType: "application/pdf",
-      upsert: true,
-    });
-    if (error) { safeErrorLog("uploadMagazinePdf", error); return null; }
+    const { error } = await sb.storage
+      .from("magazines")
+      .upload(path, pdfBytes, {
+        contentType: "application/pdf",
+        upsert: true,
+      });
+
+    if (error) {
+      safeErrorLog("uploadMagazinePdf", error);
+      return null;
+    }
+
     const { data } = sb.storage.from("magazines").getPublicUrl(path);
+
     return data.publicUrl;
   } catch (e) {
-    safeErrorLog("uploadMagazinePdf catch", e);
+    safeErrorLog("uploadMagazinePdf.catch", e);
     return null;
   }
 }
 
 // ==========================================
-// 19. Generic Business Demo Engine Helpers
+// 19. BUSINESS DEMO ENGINE
 // ==========================================
 
 export interface BusinessDemoConfig {
@@ -1682,30 +2245,59 @@ export async function getBusinessDemoConfig(
   configId: string
 ): Promise<BusinessDemoConfig | null> {
   const sb = getSupabaseClient();
+
   const { data, error } = await sb
     .from("business_demo_configs")
     .select("*")
     .eq("id", configId)
     .eq("is_active", true)
     .maybeSingle();
-  if (error) { safeErrorLog("getBusinessDemoConfig", error); return null; }
-  return data as BusinessDemoConfig;
+
+  if (error) {
+    safeErrorLog("getBusinessDemoConfig", error);
+    return null;
+  }
+
+  return data as BusinessDemoConfig | null;
 }
 
 export async function logSalesEvent(
   phone: string,
   eventType: string,
   leadId?: string | null,
-  eventData?: Record<string, any>
+  eventData?: Record<string, any>,
+  tenantId?: string
 ): Promise<void> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
   try {
-    await sb.from("sales_events").insert({
+    let validLeadId: string | null = null;
+
+    if (leadId) {
+      const candidate = toValidUUID(leadId);
+
+      if (candidate) {
+        const { data } = await sb
+          .from("leads")
+          .select("id")
+          .eq("tenant_id", tenant)
+          .eq("id", candidate)
+          .maybeSingle();
+
+        validLeadId = data?.id || null;
+      }
+    }
+
+    const { error } = await sb.from("sales_events").insert({
+      tenant_id: tenant,
       phone_number: phone,
-      lead_id: leadId || null,
+      lead_id: validLeadId,
       event_type: eventType,
       event_data: eventData || {},
     });
+
+    if (error) safeErrorLog("logSalesEvent", error);
   } catch (err) {
     safeErrorLog("logSalesEvent", err);
   }
@@ -1713,29 +2305,53 @@ export async function logSalesEvent(
 
 export async function getDemoLeadsForAdmin(
   limit: number = 50,
-  status?: string
+  status?: string,
+  tenantId?: string
 ): Promise<any[]> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
   let query = sb
     .from("demo_leads")
     .select("*")
+    .eq("tenant_id", tenant)
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .limit(Math.min(Math.max(limit, 1), 200));
+
   if (status) query = query.eq("status", status);
+
   const { data, error } = await query;
-  if (error) { safeErrorLog("getDemoLeadsForAdmin", error); return []; }
+
+  if (error) {
+    safeErrorLog("getDemoLeadsForAdmin", error);
+    return [];
+  }
+
   return data || [];
 }
 
 export async function updateDemoLeadStatus(
   leadId: string,
-  status: string
+  status: string,
+  tenantId?: string
 ): Promise<boolean> {
   const sb = getSupabaseClient();
+  const tenant = resolveTenantId(tenantId);
+
   const { error } = await sb
     .from("demo_leads")
-    .update({ status, lead_status: status, updated_at: new Date().toISOString() })
+    .update({
+      status,
+      lead_status: status,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("tenant_id", tenant)
     .eq("id", leadId);
-  if (error) { safeErrorLog("updateDemoLeadStatus", error); return false; }
+
+  if (error) {
+    safeErrorLog("updateDemoLeadStatus", error);
+    return false;
+  }
+
   return true;
 }
