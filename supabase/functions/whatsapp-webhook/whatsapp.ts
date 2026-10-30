@@ -1,6 +1,18 @@
+
 // supabase/functions/whatsapp-webhook/whatsapp.ts
 
 import { safeErrorLog } from "./utils.ts";
+
+const WA_API_BASE = "https://graph.facebook.com/v21.0";
+
+// =====================================================
+// TYPES
+// =====================================================
+
+export interface WhatsAppCredentials {
+  phoneNumberId: string;
+  accessToken: string;
+}
 
 export interface IncomingMessage {
   from: string;
@@ -9,6 +21,9 @@ export interface IncomingMessage {
   type: string;
   text: string;
   profileName: string;
+  phoneNumberId?: string;
+  displayPhoneNumber?: string;
+  wabaId?: string;
   interactiveType?: string;
   interactiveId?: string;
   interactiveTitle?: string;
@@ -18,76 +33,153 @@ export interface WhatsAppButton {
   type: "reply";
   reply: {
     id: string;
-    title: string; // Max 20 chars
+    title: string;
   };
 }
 
 export interface WhatsAppListRow {
   id: string;
-  title: string;        // Max 24 chars
-  description?: string; // Max 72 chars
+  title: string;
+  description?: string;
 }
 
 export interface WhatsAppListSection {
-  title: string;        // Max 24 chars
+  title: string;
   rows: WhatsAppListRow[];
 }
 
-export function parseWebhookPayload(body: Record<string, unknown>): IncomingMessage | null {
+// =====================================================
+// CREDENTIAL RESOLUTION
+// =====================================================
+
+function getSystemCredentials(): WhatsAppCredentials {
+  const accessToken = Deno.env.get("WHATSAPP_ACCESS_TOKEN");
+  const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
+
+  if (!accessToken || !phoneNumberId) {
+    throw new Error("Missing system WhatsApp credentials.");
+  }
+
+  return {
+    accessToken,
+    phoneNumberId,
+  };
+}
+
+function resolveCredentials(
+  credentials?: WhatsAppCredentials,
+): WhatsAppCredentials {
+  // Explicit tenant credentials must never fall back to XTOP credentials.
+  if (credentials !== undefined) {
+    if (
+      !credentials.phoneNumberId?.trim() ||
+      !credentials.accessToken?.trim()
+    ) {
+      throw new Error("Incomplete tenant WhatsApp credentials.");
+    }
+
+    return {
+      phoneNumberId: credentials.phoneNumberId.trim(),
+      accessToken: credentials.accessToken.trim(),
+    };
+  }
+
+  // System credentials are used only by existing system-level calls.
+  return getSystemCredentials();
+}
+
+// =====================================================
+// WEBHOOK PARSER
+// =====================================================
+
+export function parseWebhookPayload(
+  body: Record<string, unknown>,
+): IncomingMessage | null {
   try {
     const entry = (body.entry as Array<Record<string, unknown>>)?.[0];
     if (!entry) return null;
 
-    const changes = (entry.changes as Array<Record<string, unknown>>)?.[0];
-    if (!changes) return null;
+    const changes = entry.changes as Array<Record<string, unknown>>;
+    const change = changes?.[0];
+    if (!change) return null;
 
-    const value = changes.value as Record<string, unknown>;
+    const value = change.value as Record<string, unknown>;
     if (!value) return null;
 
     const messages = value.messages as Array<Record<string, unknown>>;
-    if (!messages || messages.length === 0) return null;
+    if (!messages?.length) return null;
 
     const msg = messages[0];
-    const contacts = value.contacts as Array<Record<string, unknown>>;
-    const profileName = contacts?.[0]?.profile
-      ? ((contacts[0].profile as Record<string, unknown>).name as string) || ""
-      : "";
 
-    const type = msg.type as string;
+    const contacts = value.contacts as Array<Record<string, unknown>>;
+    const contact = contacts?.[0];
+
+    const profile = contact?.profile as Record<string, unknown> | undefined;
+
+    const metadata = value.metadata as Record<string, unknown> | undefined;
+
+    const type = String(msg.type || "");
     let text = "";
     let interactiveType: string | undefined;
     let interactiveId: string | undefined;
     let interactiveTitle: string | undefined;
 
     if (type === "text") {
-      text = ((msg.text as Record<string, unknown>)?.body as string) || "";
+      const textObject = msg.text as Record<string, unknown>;
+      text = String(textObject?.body || "");
     } else if (type === "interactive") {
       const interactive = msg.interactive as Record<string, unknown>;
-      interactiveType = interactive?.type as string;
+
+      interactiveType = String(interactive?.type || "");
 
       if (interactiveType === "button_reply") {
-        const reply = interactive.button_reply as Record<string, unknown>;
-        interactiveId = reply?.id as string;
-        interactiveTitle = reply?.title as string;
-        text = interactiveId || interactiveTitle || "";
+        const reply = interactive?.button_reply as Record<string, unknown>;
+
+        interactiveId = String(reply?.id || "");
+        interactiveTitle = String(reply?.title || "");
+        text = interactiveId || interactiveTitle;
       } else if (interactiveType === "list_reply") {
-        const reply = interactive.list_reply as Record<string, unknown>;
-        interactiveId = reply?.id as string;
-        interactiveTitle = reply?.title as string;
-        text = interactiveId || interactiveTitle || "";
+        const reply = interactive?.list_reply as Record<string, unknown>;
+
+        interactiveId = String(reply?.id || "");
+        interactiveTitle = String(reply?.title || "");
+        text = interactiveId || interactiveTitle;
       }
     } else if (type === "button") {
       const button = msg.button as Record<string, unknown>;
-      text = (button?.text as string) || (button?.payload as string) || "";
+
+      text = String(button?.text || button?.payload || "");
+    } else if (type === "image") {
+      text = "[Image received]";
+    } else if (type === "document") {
+      text = "[Document received]";
+    } else if (type === "audio") {
+      text = "[Audio received]";
+    } else if (type === "video") {
+      text = "[Video received]";
+    } else if (type === "location") {
+      text = "[Location received]";
+    } else if (type === "sticker") {
+      text = "[Sticker received]";
     }
 
+    const from = String(msg.from || "");
+    const messageId = String(msg.id || "");
+
+    if (!from || !messageId) return null;
+
     return {
-      from: msg.from as string,
-      messageId: msg.id as string,
-      timestamp: msg.timestamp as string,
+      from,
+      messageId,
+      timestamp: String(msg.timestamp || ""),
       type,
       text,
-      profileName,
+      profileName: String(profile?.name || ""),
+      phoneNumberId: String(metadata?.phone_number_id || ""),
+      displayPhoneNumber: String(metadata?.display_phone_number || ""),
+      wabaId: String(value.metadata
+        ? (metadata as Record<string, unknown>).waba_id || ""
+        : ""),
       interactiveType,
       interactiveId,
       interactiveTitle,
@@ -98,41 +190,49 @@ export function parseWebhookPayload(body: Record<string, unknown>): IncomingMess
   }
 }
 
-const WA_API_BASE = "https://graph.facebook.com/v21.0";
+// =====================================================
+// CORE WHATSAPP SENDER
+// =====================================================
 
-function getHeaders(): Record<string, string> {
-  const token = Deno.env.get("WHATSAPP_ACCESS_TOKEN");
-  if (!token) throw new Error("Missing WHATSAPP_ACCESS_TOKEN");
-  return {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-  };
-}
-
-function getPhoneNumberId(): string {
-  const id = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
-  if (!id) throw new Error("Missing WHATSAPP_PHONE_NUMBER_ID");
-  return id;
-}
-
-async function sendToWhatsApp(payload: Record<string, unknown>): Promise<string | null> {
-  const phoneNumberId = getPhoneNumberId();
-  const url = `${WA_API_BASE}/${phoneNumberId}/messages`;
+async function sendToWhatsApp(
+  payload: Record<string, unknown>,
+  credentials?: WhatsAppCredentials,
+): Promise<string | null> {
+  let resolved: WhatsAppCredentials;
 
   try {
-    const resp = await fetch(url, {
+    resolved = resolveCredentials(credentials);
+  } catch (err) {
+    safeErrorLog("sendToWhatsApp.credentials", err);
+    return null;
+  }
+
+  const url =
+    `${WA_API_BASE}/${encodeURIComponent(resolved.phoneNumberId)}/messages`;
+
+  try {
+    const response = await fetch(url, {
       method: "POST",
-      headers: getHeaders(),
+      headers: {
+        Authorization: `Bearer ${resolved.accessToken}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify(payload),
     });
 
-    if (!resp.ok) {
-      const errBody = await resp.text();
-      safeErrorLog("sendToWhatsApp:response", new Error(`${resp.status}: ${errBody}`));
+    if (!response.ok) {
+      const errorBody = await response.text();
+
+      safeErrorLog(
+        "sendToWhatsApp.response",
+        new Error(`${response.status}: ${errorBody}`),
+      );
+
       return null;
     }
 
-    const data = await resp.json();
+    const data = await response.json();
+
     return data?.messages?.[0]?.id || null;
   } catch (err) {
     safeErrorLog("sendToWhatsApp", err);
@@ -140,67 +240,119 @@ async function sendToWhatsApp(payload: Record<string, unknown>): Promise<string 
   }
 }
 
-export async function sendTextMessage(to: string, body: string): Promise<string | null> {
-  return sendToWhatsApp({
-    messaging_product: "whatsapp",
-    recipient_type: "individual",
-    to,
-    type: "text",
-    text: { preview_url: false, body },
-  });
+// =====================================================
+// TEXT MESSAGE
+// =====================================================
+
+export async function sendTextMessage(
+  to: string,
+  body: string,
+  credentials?: WhatsAppCredentials,
+): Promise<string | null> {
+  return sendToWhatsApp(
+    {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "text",
+      text: {
+        preview_url: false,
+        body,
+      },
+    },
+    credentials,
+  );
 }
+
+// =====================================================
+// IMAGE MESSAGE
+// =====================================================
 
 export async function sendImageMessage(
   to: string,
   imageUrl: string,
-  caption?: string
+  caption?: string,
+  credentials?: WhatsAppCredentials,
 ): Promise<string | null> {
-  return sendToWhatsApp({
-    messaging_product: "whatsapp",
-    recipient_type: "individual",
-    to,
-    type: "image",
-    image: {
-      link: imageUrl,
-      caption: caption || undefined,
+  return sendToWhatsApp(
+    {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "image",
+      image: {
+        link: imageUrl,
+        ...(caption ? { caption } : {}),
+      },
     },
-  });
+    credentials,
+  );
 }
+
+// =====================================================
+// BUTTON MESSAGE
+// =====================================================
 
 export async function sendButtonMessage(
   to: string,
   body: string,
   buttons: WhatsAppButton[],
   header?: string,
-  footer?: string
+  footer?: string,
+  credentials?: WhatsAppCredentials,
 ): Promise<string | null> {
-  // WhatsApp allows max 3 buttons, each title max 20 chars
-  const safeButtons = buttons.slice(0, 3).map((b) => ({
+  const safeButtons = buttons.slice(0, 3).map((button) => ({
     type: "reply",
     reply: {
-      id: b.reply.id.substring(0, 256),
-      title: b.reply.title.substring(0, 20),
+      id: button.reply.id.substring(0, 256),
+      title: button.reply.title.substring(0, 20),
     },
   }));
 
-  const payload: Record<string, unknown> = {
-    messaging_product: "whatsapp",
-    recipient_type: "individual",
-    to,
-    type: "interactive",
-    interactive: {
-      type: "button",
-      body: { text: body },
-      action: { buttons: safeButtons },
+  if (!safeButtons.length) {
+    safeErrorLog(
+      "sendButtonMessage",
+      new Error("At least one button is required."),
+    );
+    return null;
+  }
+
+  const interactive: Record<string, unknown> = {
+    type: "button",
+    body: { text: body },
+    action: {
+      buttons: safeButtons,
     },
   };
 
-  const interactive = payload.interactive as Record<string, unknown>;
-  if (header) interactive.header = { type: "text", text: header.substring(0, 60) };
-  if (footer) interactive.footer = { text: footer.substring(0, 60) };
+  if (header) {
+    interactive.header = {
+      type: "text",
+      text: header.substring(0, 60),
+    };
+  }
 
-  return sendToWhatsApp(payload);
+  if (footer) {
+    interactive.footer = {
+      text: footer.substring(0, 60),
+    };
+  }
+
+  return sendToWhatsApp(
+    {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "interactive",
+      interactive,
+    },
+    credentials,
+  );
 }
+
+// =====================================================
+// LIST MESSAGE
+// =====================================================
 
 export async function sendListMessage(
   to: string,
@@ -208,84 +360,135 @@ export async function sendListMessage(
   buttonText: string,
   sections: WhatsAppListSection[],
   header?: string,
-  footer?: string
+  footer?: string,
+  credentials?: WhatsAppCredentials,
 ): Promise<string | null> {
-  // WhatsApp rule: Max 10 rows total across all sections
   let totalRows = 0;
-  const safeSections: WhatsAppListSection[] = [];
 
-  for (const sec of sections) {
+  const safeSections = [];
+
+  for (const section of sections) {
     if (totalRows >= 10) break;
+
     const remaining = 10 - totalRows;
-    const safeRows = sec.rows.slice(0, remaining).map((r) => ({
-      id: r.id.substring(0, 200),
-      title: r.title.substring(0, 24), // Max 24 chars
-      description: r.description ? r.description.substring(0, 72) : undefined, // Max 72 chars
+
+    const rows = section.rows.slice(0, remaining).map((row) => ({
+      id: row.id.substring(0, 200),
+      title: row.title.substring(0, 24),
+      ...(row.description
+        ? { description: row.description.substring(0, 72) }
+        : {}),
     }));
 
-    if (safeRows.length > 0) {
+    if (rows.length > 0) {
       safeSections.push({
-        title: sec.title.substring(0, 24),
-        rows: safeRows,
+        title: section.title.substring(0, 24),
+        rows,
       });
-      totalRows += safeRows.length;
+
+      totalRows += rows.length;
     }
   }
 
-  const payload: Record<string, unknown> = {
-    messaging_product: "whatsapp",
-    recipient_type: "individual",
-    to,
-    type: "interactive",
-    interactive: {
-      type: "list",
-      body: { text: body },
-      action: {
-        button: buttonText.substring(0, 20),
-        sections: safeSections,
-      },
+  if (!totalRows) {
+    safeErrorLog(
+      "sendListMessage",
+      new Error("At least one list row is required."),
+    );
+    return null;
+  }
+
+  const interactive: Record<string, unknown> = {
+    type: "list",
+    body: { text: body },
+    action: {
+      button: buttonText.substring(0, 20),
+      sections: safeSections,
     },
   };
 
-  const interactive = payload.interactive as Record<string, unknown>;
-  if (header) interactive.header = { type: "text", text: header.substring(0, 60) };
-  if (footer) interactive.footer = { text: footer.substring(0, 60) };
+  if (header) {
+    interactive.header = {
+      type: "text",
+      text: header.substring(0, 60),
+    };
+  }
 
-  return sendToWhatsApp(payload);
+  if (footer) {
+    interactive.footer = {
+      text: footer.substring(0, 60),
+    };
+  }
+
+  return sendToWhatsApp(
+    {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "interactive",
+      interactive,
+    },
+    credentials,
+  );
 }
+
+// =====================================================
+// DOCUMENT MESSAGE
+// =====================================================
 
 export async function sendDocumentMessage(
   to: string,
   documentUrl: string,
   filename: string,
-  caption?: string
+  caption?: string,
+  credentials?: WhatsAppCredentials,
 ): Promise<string | null> {
-  return sendToWhatsApp({
-    messaging_product: "whatsapp",
-    recipient_type: "individual",
-    to,
-    type: "document",
-    document: {
-      link: documentUrl,
-      filename,
-      caption: caption || undefined,
+  return sendToWhatsApp(
+    {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "document",
+      document: {
+        link: documentUrl,
+        filename: filename.substring(0, 240),
+        ...(caption ? { caption } : {}),
+      },
     },
-  });
+    credentials,
+  );
 }
 
-export async function markAsRead(messageId: string): Promise<void> {
+// =====================================================
+// MARK MESSAGE AS READ
+// =====================================================
+
+export async function markAsRead(
+  messageId: string,
+  credentials?: WhatsAppCredentials,
+): Promise<void> {
   try {
-    await sendToWhatsApp({
-      messaging_product: "whatsapp",
-      status: "read",
-      message_id: messageId,
-    });
+    await sendToWhatsApp(
+      {
+        messaging_product: "whatsapp",
+        status: "read",
+        message_id: messageId,
+      },
+      credentials,
+    );
   } catch (err) {
     safeErrorLog("markAsRead", err);
   }
 }
 
-export function makeButton(id: string, title: string): WhatsAppButton {
+// =====================================================
+// BUTTON / LIST HELPERS
+// =====================================================
+
+export function makeButton(
+  id: string,
+  title: string,
+): WhatsAppButton {
   return {
     type: "reply",
     reply: {
@@ -295,59 +498,39 @@ export function makeButton(id: string, title: string): WhatsAppButton {
   };
 }
 
-export function makeListRow(id: string, title: string, description?: string): WhatsAppListRow {
+export function makeListRow(
+  id: string,
+  title: string,
+  description?: string,
+): WhatsAppListRow {
   return {
     id: id.substring(0, 200),
     title: title.substring(0, 24),
     description: description?.substring(0, 72),
   };
 }
-/**
- * Send a text message using a specific tenant's credentials.
- * Falls back to system credentials if tenant context is not provided.
- */
+
+// =====================================================
+// TENANT TEXT MESSAGE
+// =====================================================
+
 export async function sendTenantTextMessage(
   to: string,
   body: string,
-  tenantPhoneNumberId?: string,
-  tenantAccessToken?: string
+  tenantPhoneNumberId: string,
+  tenantAccessToken: string,
 ): Promise<string | null> {
-  const phoneId = tenantPhoneNumberId || getPhoneNumberId();
-  const token = tenantAccessToken || Deno.env.get("WHATSAPP_ACCESS_TOKEN");
+  if (!tenantPhoneNumberId || !tenantAccessToken) {
+    safeErrorLog(
+      "sendTenantTextMessage",
+      new Error("Tenant phone number ID and access token are required."),
+    );
 
-  if (!token) {
-    safeErrorLog("sendTenantTextMessage", new Error("No access token available"));
     return null;
   }
 
-  const url = `${WA_API_BASE}/${phoneId}/messages`;
-
-  try {
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        recipient_type: "individual",
-        to,
-        type: "text",
-        text: { preview_url: false, body },
-      }),
-    });
-
-    if (!resp.ok) {
-      const errBody = await resp.text();
-      safeErrorLog("sendTenantTextMessage:response", new Error(`${resp.status}: ${errBody}`));
-      return null;
-    }
-
-    const data = await resp.json();
-    return data?.messages?.[0]?.id || null;
-  } catch (err) {
-    safeErrorLog("sendTenantTextMessage", err);
-    return null;
-  }
+  return sendTextMessage(to, body, {
+    phoneNumberId: tenantPhoneNumberId,
+    accessToken: tenantAccessToken,
+  });
 }
