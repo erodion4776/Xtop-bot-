@@ -9,7 +9,9 @@ import {
   Upload,
   X,
   RefreshCw,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Copy,
+  Share2
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 
@@ -68,6 +70,53 @@ export default function Products({ tenantId }: { tenantId: string }) {
   const [deletingId, setDeletingId] = useState("");
 
   const fileInput = useRef<HTMLInputElement>(null);
+
+  // Generate the public product URL.
+  function getProductLink(product: Product) {
+    return `${window.location.origin}/?product=${encodeURIComponent(product.id)}`;
+  }
+
+  // Copy the public product URL.
+  async function copyProductLink(product: Product) {
+    const link = getProductLink(product);
+
+    try {
+      await navigator.clipboard.writeText(link);
+      setSuccess(`Product link for "${product.name}" copied.`);
+      setError("");
+    } catch {
+      window.prompt("Copy this product link:", link);
+    }
+  }
+
+  // Open WhatsApp with a prepared product advert.
+  function shareProductOnWhatsApp(product: Product) {
+    if (product.status !== "ACTIVE") {
+      setError("Activate this product before sharing its public link.");
+      return;
+    }
+
+    const link = getProductLink(product);
+
+    const price =
+      product.price === null
+        ? "Contact us for price"
+        : `₦${Number(product.price).toLocaleString("en-NG")}`;
+
+    const message = [
+      `Check out ${product.name}!`,
+      `Price: ${price}`,
+      product.description || "",
+      `View product: ${link}`
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    const whatsappUrl =
+      `https://wa.me/?text=${encodeURIComponent(message)}`;
+
+    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+  }
 
   async function loadProducts() {
     setLoading(true);
@@ -160,20 +209,20 @@ export default function Products({ tenantId }: { tenantId: string }) {
   }
 
   async function uploadImage(): Promise<string | null> {
-  const {
-    data: { session },
-    error: sessionError
-  } = await supabase.auth.getSession();
+    const {
+      data: { session },
+      error: sessionError
+    } = await supabase.auth.getSession();
 
-  console.log("SABI UPLOAD SESSION:", {
-    hasSession: !!session,
-    userId: session?.user?.id,
-    sessionError: sessionError?.message
-  });
+    console.log("SABI UPLOAD SESSION:", {
+      hasSession: !!session,
+      userId: session?.user?.id,
+      sessionError: sessionError?.message
+    });
 
-  if (!selectedImage) {
-    return editingProduct?.image_url || null;
-  }
+    if (!selectedImage) {
+      return editingProduct?.image_url || null;
+    }
 
     const extension =
       selectedImage.type === "image/png"
@@ -486,6 +535,23 @@ export default function Products({ tenantId }: { tenantId: string }) {
 
                     <td>
                       <div className="product-actions">
+                        <button
+                          onClick={() => copyProductLink(product)}
+                          title="Copy public product link"
+                          aria-label={`Copy link for ${product.name}`}
+                        >
+                          <Copy size={17} />
+                        </button>
+
+                        <button
+                          onClick={() => shareProductOnWhatsApp(product)}
+                          title="Share on WhatsApp"
+                          aria-label={`Share ${product.name} on WhatsApp`}
+                          disabled={product.status !== "ACTIVE"}
+                        >
+                          <Share2 size={17} />
+                        </button>
+
                         <button
                           onClick={() => openEditProduct(product)}
                           title="Edit product"
