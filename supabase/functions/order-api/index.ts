@@ -1,4 +1,4 @@
-
+8
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -117,7 +117,8 @@ async function createOrder(body: Record<string, unknown>) {
           Math.round(Number(intent.expected_amount) * 100),
         ),
         currency: intent.currency,
-        reference: intent.reference,
+                reference: intent.reference,
+        callback_url: `https://xtopbot.netlify.app/?product=${encodeURIComponent(productId)}&payment=return`,
         metadata: {
           purpose: "SABI_PUBLIC_ORDER",
           tenant_id: intent.tenant_id,
