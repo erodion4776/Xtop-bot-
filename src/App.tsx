@@ -37,6 +37,7 @@ export default function App() {
   const [registering, setRegistering] = useState(false);
   const [tenantId, setTenantId] = useState("");
   const [registrationError, setRegistrationError] = useState("");
+  const [registrationRetry, setRegistrationRetry] = useState(0);
 
   const registeredUser = useRef("");
 
@@ -62,6 +63,7 @@ export default function App() {
       setSession(newSession);
       setTenantId("");
       setRegistrationError("");
+      setRegistering(false);
       registeredUser.current = "";
     });
 
@@ -85,7 +87,6 @@ export default function App() {
     let cancelled = false;
 
     async function registerMerchant() {
-      registeredUser.current = userId;
       setRegistering(true);
       setRegistrationError("");
 
@@ -108,6 +109,7 @@ export default function App() {
         return;
       }
 
+      registeredUser.current = userId;
       setTenantId(data.tenant_id);
       setRegistering(false);
     }
@@ -117,7 +119,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [session?.user?.id]);
+  }, [session?.user?.id, registrationRetry]);
 
   async function refreshSession() {
     const { data } = await supabase.auth.getSession();
@@ -128,6 +130,7 @@ export default function App() {
     await supabase.auth.signOut();
     setSession(null);
     setTenantId("");
+    setRegistrationError("");
     registeredUser.current = "";
   }
 
@@ -156,7 +159,7 @@ export default function App() {
             style={{ width: 90, height: 90, objectFit: "contain" }}
           />
           <h2>Preparing your workspace</h2>
-          <p>Securely setting up your merchant account and wallet.</p>
+          <p>Setting up your merchant account and wallet.</p>
         </div>
       </div>
     );
@@ -324,7 +327,6 @@ function Dashboard({
             <div>
               <p className="eyebrow">SABI MERCHANT CENTRE</p>
               <h1>{activePage}</h1>
-
               <p className="welcome-description">
                 Manage your business and WhatsApp commerce from one place.
               </p>
@@ -362,9 +364,7 @@ function Dashboard({
 
                 <div className="stat-card">
                   <span>WhatsApp status</span>
-                  <strong className="status-text">
-                    Not connected
-                  </strong>
+                  <strong className="status-text">Not connected</strong>
                   <small>Connect your business number</small>
                 </div>
               </div>
@@ -446,13 +446,9 @@ function Dashboard({
                 We will connect it to your Supabase backend.
               </p>
 
-              <span className="coming-soon">
-                Under development
-              </span>
+              <span className="coming-soon">Under development</span>
             </div>
           )}
-
-          <div style={{ display: "none" }} data-tenant-id={tenantId} />
         </section>
       </main>
     </div>
