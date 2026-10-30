@@ -46,7 +46,6 @@ serve(async (req: Request) => {
       },
     });
 
-    // Verify the actual logged-in Supabase user
     const {
       data: { user },
       error: authError,
@@ -67,7 +66,7 @@ serve(async (req: Request) => {
       metadata.personal_whatsapp || ""
     ).trim();
 
-    if (!user.email || !ownerName || !businessName || !businessWhatsApp) {
+    if (!user.email || !ownerName || !businessName) {
       return jsonResponse({
         error: "Your registration details are incomplete. Please update your registration information.",
       }, 400);
@@ -76,13 +75,14 @@ serve(async (req: Request) => {
     const cleanBusinessPhone = businessWhatsApp.replace(/[^0-9]/g, "");
     const cleanPersonalPhone = personalWhatsApp.replace(/[^0-9]/g, "");
 
-    if (cleanBusinessPhone.length < 10) {
+    if (cleanBusinessPhone && cleanBusinessPhone.length < 10) {
       return jsonResponse({
-        error: "Please provide a valid business WhatsApp number.",
+        error: "Please provide a valid business WhatsApp number, or leave it blank to add later.",
       }, 400);
     }
 
     if (
+      cleanBusinessPhone &&
       cleanPersonalPhone &&
       cleanPersonalPhone === cleanBusinessPhone
     ) {
@@ -91,7 +91,6 @@ serve(async (req: Request) => {
       }, 400);
     }
 
-    // Create the workspace through the protected database function
     const { data: tenantId, error: registrationError } = await admin.rpc(
       "sabi_create_merchant_workspace",
       {
@@ -99,13 +98,17 @@ serve(async (req: Request) => {
         p_owner_name: ownerName,
         p_business_name: businessName,
         p_email: user.email,
-        p_business_whatsapp: cleanBusinessPhone,
+        p_business_whatsapp: cleanBusinessPhone || null,
         p_personal_whatsapp: cleanPersonalPhone || null,
       }
     );
 
     if (registrationError || !tenantId) {
-      console.error("Merchant workspace registration failed:", registrationError);
+      console.error(
+        "Merchant workspace registration failed:",
+        registrationError
+      );
+
       return jsonResponse({
         error: "Unable to create your merchant workspace. Please try again.",
       }, 500);
@@ -116,8 +119,10 @@ serve(async (req: Request) => {
       tenant_id: tenantId,
       message: "Merchant workspace is ready.",
     }, 200);
+
   } catch (error) {
     console.error("Merchant registration error:", error);
+
     return jsonResponse({
       error: "An unexpected registration error occurred.",
     }, 500);
