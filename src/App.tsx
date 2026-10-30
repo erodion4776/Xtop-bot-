@@ -16,6 +16,7 @@ import {
 
 import Auth from "./Auth";
 import Products from "./Products";
+import SettingsPage from "./Settings";
 import PublicProduct from "./PublicProduct";
 import { supabase } from "./lib/supabase";
 
@@ -353,6 +354,8 @@ function Dashboard({
 
           {activePage === "Products" ? (
             <Products tenantId={tenantId} />
+          ) : activePage === "Settings" ? (
+            <SettingsPage tenantId={tenantId} />
           ) : activePage === "Overview" ? (
             <>
               <div className="stats-grid">
@@ -448,7 +451,6 @@ function Dashboard({
                 {activePage === "Inbox" && <MessageSquare size={28} />}
                 {activePage === "Wallet" && <Wallet size={28} />}
                 {activePage === "Analytics" && <BarChart3 size={28} />}
-                {activePage === "Settings" && <Settings size={28} />}
               </div>
 
               <h2>{activePage}</h2>
