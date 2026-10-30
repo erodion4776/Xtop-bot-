@@ -24,17 +24,24 @@ export default function Auth({ onAuthenticated }: AuthProps) {
 
     try {
       if (mode === "signup") {
-        if (!ownerName.trim() || !businessName.trim() || !businessWhatsApp.trim()) {
-          throw new Error("Please complete all required business details.");
+        if (!ownerName.trim() || !businessName.trim()) {
+          throw new Error("Please enter your name and business name.");
+        }
+
+        const cleanBusinessPhone = businessWhatsApp.replace(/\D/g, "");
+        const cleanPersonalPhone = personalWhatsApp.replace(/\D/g, "");
+
+        if (cleanBusinessPhone && cleanBusinessPhone.length < 10) {
+          throw new Error("Please enter a valid business WhatsApp number or leave it blank.");
         }
 
         if (
-          personalWhatsApp.trim() &&
-          personalWhatsApp.replace(/\D/g, "") ===
-            businessWhatsApp.replace(/\D/g, "")
+          cleanBusinessPhone &&
+          cleanPersonalPhone &&
+          cleanBusinessPhone === cleanPersonalPhone
         ) {
           throw new Error(
-            "Use a separate business WhatsApp number. Do not connect your personal number."
+            "Your personal and business WhatsApp numbers must be different."
           );
         }
 
@@ -45,7 +52,7 @@ export default function Auth({ onAuthenticated }: AuthProps) {
             data: {
               owner_name: ownerName.trim(),
               business_name: businessName.trim(),
-              business_whatsapp: businessWhatsApp.trim(),
+              business_whatsapp: businessWhatsApp.trim() || null,
               personal_whatsapp: personalWhatsApp.trim() || null
             }
           }
@@ -68,6 +75,7 @@ export default function Auth({ onAuthenticated }: AuthProps) {
         });
 
         if (error) throw error;
+
         onAuthenticated();
       }
     } catch (error) {
@@ -93,6 +101,7 @@ export default function Auth({ onAuthenticated }: AuthProps) {
     );
 
     setLoading(false);
+
     setMessage(
       error
         ? error.message
@@ -108,7 +117,11 @@ export default function Auth({ onAuthenticated }: AuthProps) {
             src="https://i.ibb.co/N2b6rJnY/Untitled-design-20261030-044935-0000.png"
             alt="Sabi by XTOP"
           />
-          <h1>Sabi <span>by XTOP</span></h1>
+
+          <h1>
+            Sabi <span>by XTOP</span>
+          </h1>
+
           <p>Your business. Your WhatsApp. One dashboard.</p>
         </div>
 
@@ -123,6 +136,7 @@ export default function Auth({ onAuthenticated }: AuthProps) {
           >
             Login
           </button>
+
           <button
             type="button"
             className={mode === "signup" ? "selected" : ""}
@@ -157,7 +171,7 @@ export default function Auth({ onAuthenticated }: AuthProps) {
             </>
           )}
 
-          <label>Email address</label>
+          <label>Email address *</label>
           <input
             type="email"
             value={email}
@@ -167,29 +181,34 @@ export default function Auth({ onAuthenticated }: AuthProps) {
             required
           />
 
-          <label>Password</label>
+          <label>Password *</label>
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Enter your password"
-            autoComplete={mode === "login" ? "current-password" : "new-password"}
+            autoComplete={
+              mode === "login" ? "current-password" : "new-password"
+            }
             minLength={6}
             required
           />
 
           {mode === "signup" && (
             <>
-              <label>Business WhatsApp number *</label>
+              <label>
+                Business WhatsApp number (optional — add later)
+              </label>
+
               <input
                 type="tel"
                 value={businessWhatsApp}
                 onChange={(e) => setBusinessWhatsApp(e.target.value)}
-                placeholder="+234..."
-                required
+                placeholder="Add your dedicated number later"
               />
 
               <label>Personal WhatsApp number (optional)</label>
+
               <input
                 type="tel"
                 value={personalWhatsApp}
@@ -198,11 +217,12 @@ export default function Auth({ onAuthenticated }: AuthProps) {
               />
 
               <div className="auth-notice">
-                <strong>Important: Keep your numbers separate.</strong>
+                <strong>WhatsApp connection can wait.</strong>
                 <p>
-                  Connect a dedicated business WhatsApp number to Sabi.
-                  Do not connect your personal WhatsApp number. Your personal
-                  number will not be connected to Sabi automation.
+                  You can create your Sabi account now and add a
+                  dedicated business WhatsApp number later in Settings.
+                  Do not connect your personal WhatsApp number to
+                  Sabi automation.
                 </p>
               </div>
             </>
@@ -214,7 +234,11 @@ export default function Auth({ onAuthenticated }: AuthProps) {
             </div>
           )}
 
-          <button className="auth-submit" type="submit" disabled={loading}>
+          <button
+            className="auth-submit"
+            type="submit"
+            disabled={loading}
+          >
             {loading
               ? "Please wait..."
               : mode === "login"
