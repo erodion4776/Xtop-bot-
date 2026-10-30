@@ -1,5 +1,6 @@
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
 import {
   LayoutDashboard,
   Package,
@@ -9,8 +10,12 @@ import {
   BarChart3,
   Settings,
   Menu,
-  X
+  X,
+  LogOut
 } from "lucide-react";
+
+import Auth from "./Auth";
+import { supabase } from "./lib/supabase";
 
 const navigation = [
   { label: "Overview", icon: LayoutDashboard },
@@ -26,6 +31,186 @@ const LOGO_URL =
   "https://i.ibb.co/N2b6rJnY/Untitled-design-20261030-044935-0000.png";
 
 export default function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [registering, setRegistering] = useState(false);
+  const [tenantId, setTenantId] = useState("");
+  const [registrationError, setRegistrationError] = useState("");
+
+  const registeredUser = useRef("");
+
+  useEffect(() => {
+    let mounted = true;
+
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!mounted) return;
+
+      if (error) {
+        setRegistrationError(error.message);
+      }
+
+      setSession(data.session);
+      setCheckingSession(false);
+    });
+
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      if (!mounted) return;
+
+      setSession(newSession);
+      setTenantId("");
+      setRegistrationError("");
+      registeredUser.current = "";
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!session?.user?.id) {
+      setTenantId("");
+      setRegistering(false);
+      return;
+    }
+
+    const userId = session.user.id;
+
+    if (registeredUser.current === userId) return;
+
+    let cancelled = false;
+
+    async function registerMerchant() {
+      registeredUser.current = userId;
+      setRegistering(true);
+      setRegistrationError("");
+
+      const { data, error } = await supabase.functions.invoke(
+        "merchant-register"
+      );
+
+      if (cancelled) return;
+
+      if (error || !data?.success || !data?.tenant_id) {
+        registeredUser.current = "";
+
+        setRegistrationError(
+          data?.error ||
+          error?.message ||
+          "Unable to load your merchant workspace."
+        );
+
+        setRegistering(false);
+        return;
+      }
+
+      setTenantId(data.tenant_id);
+      setRegistering(false);
+    }
+
+    registerMerchant();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id]);
+
+  async function refreshSession() {
+    const { data } = await supabase.auth.getSession();
+    setSession(data.session);
+  }
+
+  async function logout() {
+    await supabase.auth.signOut();
+    setSession(null);
+    setTenantId("");
+    registeredUser.current = "";
+  }
+
+  if (checkingSession) {
+    return (
+      <div className="auth-page">
+        <div className="auth-card">
+          <h2>Loading Sabi...</h2>
+          <p>Checking your account.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <Auth onAuthenticated={refreshSession} />;
+  }
+
+  if (registering || (!tenantId && !registrationError)) {
+    return (
+      <div className="auth-page">
+        <div className="auth-card">
+          <img
+            src={LOGO_URL}
+            alt="Sabi by XTOP"
+            style={{ width: 90, height: 90, objectFit: "contain" }}
+          />
+          <h2>Preparing your workspace</h2>
+          <p>Securely setting up your merchant account and wallet.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (registrationError) {
+    return (
+      <div className="auth-page">
+        <div className="auth-card">
+          <h2>Workspace setup issue</h2>
+          <div className="auth-message" role="alert">
+            {registrationError}
+          </div>
+
+          <button
+            className="auth-submit"
+            onClick={() => {
+              registeredUser.current = "";
+              setRegistrationError("");
+              setTenantId("");
+              setRegistering(true);
+            }}
+          >
+            Try again
+          </button>
+
+          <button
+            className="forgot-password"
+            onClick={logout}
+          >
+            Log out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Dashboard
+      tenantId={tenantId}
+      email={session.user.email || ""}
+      onLogout={logout}
+    />
+  );
+}
+
+function Dashboard({
+  tenantId,
+  email,
+  onLogout
+}: {
+  tenantId: string;
+  email: string;
+  onLogout: () => void;
+}) {
   const [activePage, setActivePage] = useState("Overview");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -113,10 +298,21 @@ export default function App() {
           <div className="topbar-right">
             <span className="connection-status">
               <span className="status-dot" />
-              Dashboard preview
+              Account connected
             </span>
 
-            <div className="avatar">S</div>
+            <div className="avatar">
+              {email.charAt(0).toUpperCase() || "S"}
+            </div>
+
+            <button
+              className="logout-button"
+              onClick={onLogout}
+              title="Log out"
+              aria-label="Log out"
+            >
+              <LogOut size={18} />
+            </button>
           </div>
         </header>
 
@@ -243,7 +439,7 @@ export default function App() {
 
               <p>
                 This section is part of the Sabi merchant dashboard build.
-                We will connect it to your existing Supabase backend.
+                We will connect it to your Supabase backend.
               </p>
 
               <span className="coming-soon">
@@ -251,6 +447,8 @@ export default function App() {
               </span>
             </div>
           )}
+
+          <div style={{ display: "none" }} data-tenant-id={tenantId} />
         </section>
       </main>
     </div>
