@@ -16,6 +16,7 @@ import {
 
 import Auth from "./Auth";
 import Products from "./Products";
+import PublicProduct from "./PublicProduct";
 import { supabase } from "./lib/supabase";
 
 const navigation = [
@@ -41,7 +42,12 @@ export default function App() {
 
   const registeredUser = useRef("");
 
+  const isPublicProductPage =
+    new URLSearchParams(window.location.search).has("product");
+
   useEffect(() => {
+    if (isPublicProductPage) return;
+
     let mounted = true;
 
     supabase.auth.getSession().then(({ data, error }) => {
@@ -71,9 +77,11 @@ export default function App() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [isPublicProductPage]);
 
   useEffect(() => {
+    if (isPublicProductPage) return;
+
     if (!session?.user?.id) {
       setTenantId("");
       setRegistering(false);
@@ -119,7 +127,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [session?.user?.id, registrationRetry]);
+  }, [session?.user?.id, registrationRetry, isPublicProductPage]);
 
   async function refreshSession() {
     const { data } = await supabase.auth.getSession();
@@ -132,6 +140,10 @@ export default function App() {
     setTenantId("");
     setRegistrationError("");
     registeredUser.current = "";
+  }
+
+  if (isPublicProductPage) {
+    return <PublicProduct />;
   }
 
   if (checkingSession) {
