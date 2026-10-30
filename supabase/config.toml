@@ -16,3 +16,6 @@ major_version = 15
 
 [functions.whatsapp-webhook]
 verify_jwt = false
+
+[functions.wallet-api]
+verify_jwt = false
