@@ -1,149 +1,234 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Connect Your WhatsApp Number</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Connect Your WhatsApp Number | XTOP</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f0f2f5;color:#1c1e21;min-height:100vh;display:flex;align-items:center;justify-content:center}
-.box{max-width:400px;width:100%;margin:16px;background:#fff;border-radius:16px;padding:28px 24px;box-shadow:0 2px 8px rgba(0,0,0,0.08);text-align:center}
-h1{font-size:22px;color:#25D366;margin-bottom:8px}
-p{font-size:15px;color:#65676b;line-height:1.5;margin-bottom:20px}
-.btn{display:block;width:100%;padding:16px;border:none;border-radius:12px;font-size:17px;font-weight:700;cursor:pointer;background:#25D366;color:#fff;text-decoration:none}
-.btn:active{background:#1ea952}
-.btn:disabled{background:#a8dfc1;cursor:not-allowed}
-.success{color:#25D366;font-size:18px;font-weight:700;margin-top:16px;line-height:1.5}
-.error{color:#b91c1c;background:#fef2f2;border-radius:8px;padding:12px;margin-top:14px;font-size:14px}
-.loading{display:inline-block;width:18px;height:18px;border:2.5px solid #fff;border-radius:50%;border-top-color:transparent;animation:spin 0.8s linear infinite;margin-right:8px;vertical-align:middle}
-@keyframes spin{to{transform:rotate(360deg)}}
+body{font-family:Arial,sans-serif;background:#f0f2f5;color:#1c1e21;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.box{max-width:420px;width:calc(100% - 32px);background:#fff;border-radius:16px;padding:28px 24px;box-shadow:0 2px 12px #0001;text-align:center}
+h1{font-size:23px;color:#16a34a;margin-bottom:12px}
+p{font-size:15px;color:#65676b;line-height:1.6;margin-bottom:20px}
+.btn{width:100%;padding:16px;border:0;border-radius:10px;font-size:16px;font-weight:bold;background:#25D366;color:white;cursor:pointer}
+.btn:disabled{opacity:.6}
 .hidden{display:none}
+.error{background:#fef2f2;color:#b91c1c;padding:12px;border-radius:8px;margin-top:15px;font-size:14px}
+.success{color:#15803d;margin-top:18px;line-height:1.7;font-size:15px}
 </style>
 </head>
 <body>
 <div class="box">
-  <h1>&#128994; Connect Your Number</h1>
-  <p id="planInfo">Tap below to verify your WhatsApp Business number with Meta. This takes about 2 minutes.</p>
-
-  <button class="btn" id="btnConnect" onclick="connectNow()">
-    &#128279; Connect My WhatsApp Number
-  </button>
-
-  <div class="error hidden" id="errorMsg"></div>
-  <div class="success hidden" id="successMsg"></div>
+<h1>🟢 Connect Your WhatsApp</h1>
+<p id="planInfo">Connect your WhatsApp Business account securely through Meta.</p>
+<button class="btn" id="btnConnect" onclick="connectNow()">🔗 Connect My WhatsApp Number</button>
+<div id="errorMsg" class="error hidden"></div>
+<div id="successMsg" class="success hidden"></div>
 </div>
 
-<script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js"></script>
+<script async defer crossorigin="anonymous"
+src="https://connect.facebook.net/en_US/sdk.js"></script>
 
 <script>
-var API = "https://mldywarnnwjitfvqpgis.supabase.co/functions/v1/whatsapp-webhook?action=onboard";
-var APP_ID = "1947931015867084";
-var CONFIG_ID = "1470585484884368";
-var REDIRECT_URI = "https://xtopbot.netlify.app/";
-var params = new URLSearchParams(window.location.search);
-var TOKEN = params.get('token') || params.get('state') || '';
-var PLAN = params.get('plan') || 'STANDARD';
-var fbReady = false;
+const API="https://mldywarnnwjitfvqpgis.supabase.co/functions/v1/whatsapp-webhook?action=onboard";
+const APP_ID="1947931015867084";
+const CONFIG_ID="1470585484884368";
 
-window.fbAsyncInit = function() {
-  try { FB.init({ appId: APP_ID, cookie: true, xfbml: false, version: 'v21.0' }); fbReady = true; } catch(e) {}
+const params=new URLSearchParams(location.search);
+const SESSION_TOKEN=params.get("token")||"";
+const PLAN=(params.get("plan")||"STANDARD").toUpperCase();
+
+let fbReady=false;
+let authCode=null;
+let signupInfo=null;
+let submitting=false;
+let cancelled=false;
+
+const btn=document.getElementById("btnConnect");
+
+window.fbAsyncInit=function(){
+ try{
+  FB.init({
+   appId:APP_ID,
+   cookie:true,
+   xfbml:false,
+   version:"v21.0"
+  });
+  fbReady=true;
+ }catch(e){
+  showError("Meta could not be initialized. Refresh and try again.");
+ }
 };
 
-window.addEventListener('message', function(e) {
-  if (e.origin !== "https://www.facebook.com" && e.origin !== "https://web.facebook.com") return;
-  try {
-    var d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-    if (d && d.type === 'WA_EMBEDDED_SIGNUP' && d.event === 'FINISH') {
-      if (d.data) {
-        sessionStorage.setItem('waba', d.data.waba_id || '');
-        sessionStorage.setItem('phone', d.data.phone_number_id || '');
-      }
-    }
-  } catch(err) {}
+function showError(message){
+ const el=document.getElementById("errorMsg");
+ el.textContent=message;
+ el.classList.remove("hidden");
+}
+
+function resetButton(){
+ btn.disabled=false;
+ btn.textContent="🔗 Connect My WhatsApp Number";
+}
+
+function validFacebookOrigin(origin){
+ try{
+  const u=new URL(origin);
+  return u.protocol==="https:" &&
+   (u.hostname==="facebook.com" ||
+    u.hostname.endsWith(".facebook.com"));
+ }catch(e){return false;}
+}
+
+window.addEventListener("message",function(event){
+ if(!validFacebookOrigin(event.origin))return;
+
+ let data=event.data;
+ try{
+  if(typeof data==="string")data=JSON.parse(data);
+ }catch(e){return;}
+
+ if(!data || data.type!=="WA_EMBEDDED_SIGNUP")return;
+
+ if(data.event==="FINISH"){
+  const d=data.data||{};
+  signupInfo={
+   waba_id:d.waba_id||"",
+   phone_number_id:d.phone_number_id||""
+  };
+  tryFinish();
+ }
+ else if(data.event==="CANCEL"){
+  cancelled=true;
+  showError("You cancelled the WhatsApp connection. You can try again.");
+  resetButton();
+ }
+ else if(data.event==="ERROR"){
+  cancelled=true;
+  showError("Meta reported an error during signup. Please try again.");
+  resetButton();
+ }
 });
 
-function connectNow() {
-  if (!TOKEN) { showError("Your link has expired. Go back to WhatsApp and request a new one."); return; }
-  var btn = document.getElementById('btnConnect');
-  btn.innerHTML = '<span class="loading"></span> Opening Meta...';
-  btn.disabled = true;
+function connectNow(){
+ document.getElementById("errorMsg").classList.add("hidden");
 
-  if (typeof FB !== 'undefined' && fbReady) {
-    try {
-      FB.login(function(r) {
-        if (r.authResponse && (r.authResponse.code || r.authResponse.accessToken)) {
-          finishSetup(r.authResponse.code || r.authResponse.accessToken);
-        } else {
-          btn.innerHTML = '&#128279; Connect My WhatsApp Number';
-          btn.disabled = false;
-        }
-      }, {
-        config_id: CONFIG_ID,
-        response_type: 'code',
-        override_default_response_type: true,
-        extras: { feature: 'whatsapp_embedded_signup', version: 2, sessionInfoVersion: 2 }
-      });
-      return;
-    } catch(e) {}
-  }
+ if(!SESSION_TOKEN){
+  showError("Your signup link is invalid. Request a new link through WhatsApp.");
+  return;
+ }
 
-  window.location.assign(
-    'https://www.facebook.com/v21.0/dialog/oauth?client_id=' + APP_ID +
-    '&redirect_uri=' + encodeURIComponent(REDIRECT_URI) +
-    '&config_id=' + CONFIG_ID +
-    '&response_type=code&state=' + encodeURIComponent(TOKEN)
-  );
+ if(!fbReady || typeof FB==="undefined"){
+  showError("Meta is still loading. Wait a few seconds and try again.");
+  return;
+ }
+
+ authCode=null;
+ signupInfo=null;
+ cancelled=false;
+
+ btn.disabled=true;
+ btn.textContent="Opening Meta...";
+
+ try{
+  FB.login(function(response){
+   if(cancelled)return;
+
+   if(response && response.authResponse && response.authResponse.code){
+    authCode=response.authResponse.code;
+    btn.textContent="Verifying your WhatsApp account...";
+    tryFinish();
+   }else{
+    resetButton();
+    showError("Authorization was not completed. Please try again.");
+   }
+  },{
+   config_id:CONFIG_ID,
+   auth_type:"rerequest",
+   response_type:"code",
+   override_default_response_type:true,
+   extras:{}
+  });
+ }catch(error){
+  resetButton();
+  showError("Could not open Meta signup. Please refresh and try again.");
+ }
 }
 
-async function finishSetup(code) {
-  var btn = document.getElementById('btnConnect');
-  btn.innerHTML = '<span class="loading"></span> Activating your bot...';
-  var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, 25000);
+async function tryFinish(){
+ if(submitting || cancelled || !authCode || !signupInfo)return;
 
-  try {
-    var resp = await fetch(API, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        session_token: TOKEN,
-        auth_code: code,
-        package_code: PLAN,
-        redirect_uri: REDIRECT_URI,
-        waba_id: sessionStorage.getItem('waba') || '',
-        phone_number_id: sessionStorage.getItem('phone') || ''
-      }),
-      signal: ctrl.signal
-    });
-    clearTimeout(timer);
-    var data = await resp.json();
-    if (!data.success) throw new Error(data.error || 'Setup failed');
+ if(!signupInfo.waba_id || !signupInfo.phone_number_id){
+  showError("Meta did not return the WhatsApp account details. Please restart signup.");
+  resetButton();
+  return;
+ }
 
-    document.getElementById('btnConnect').classList.add('hidden');
-    document.getElementById('planInfo').classList.add('hidden');
-    var msg = document.getElementById('successMsg');
-    msg.classList.remove('hidden');
-    msg.innerHTML = '&#127881; Your bot is live!<br><br>' +
-      'Number: <strong>' + (data.phone || 'Connected') + '</strong><br>' +
-      'Plan: <strong>' + data.package + '</strong><br>' +
-      'Free trial ends: <strong>' + new Date(data.trial_ends).toLocaleDateString() + '</strong><br><br>' +
-      'Go back to WhatsApp and send "hi" to your new number!';
-  } catch(err) {
-    clearTimeout(timer);
-    showError(err.name === 'AbortError' ? 'Timed out. Please try again.' : (err.message || 'Something went wrong.'));
-    btn.innerHTML = '&#128279; Connect My WhatsApp Number';
-    btn.disabled = false;
+ submitting=true;
+ btn.disabled=true;
+ btn.textContent="Activating your account...";
+
+ try{
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),30000);
+
+  const response=await fetch(API,{
+   method:"POST",
+   headers:{"Content-Type":"application/json"},
+   body:JSON.stringify({
+    session_token:SESSION_TOKEN,
+    auth_code:authCode,
+    package_code:PLAN,
+    waba_id:signupInfo.waba_id,
+    phone_number_id:signupInfo.phone_number_id
+   }),
+   signal:controller.signal
+  });
+
+  clearTimeout(timeout);
+
+  const result=await response.json();
+
+  if(!response.ok || !result.success){
+   throw new Error(result.error||"Account activation failed.");
   }
+
+  btn.classList.add("hidden");
+  document.getElementById("planInfo").classList.add("hidden");
+
+  const success=document.getElementById("successMsg");
+  success.classList.remove("hidden");
+
+  const heading=document.createElement("strong");
+  heading.textContent="🎉 Your WhatsApp connection is complete!";
+
+  const details=document.createElement("p");
+  details.style.marginTop="12px";
+  details.textContent=
+   "Number: "+(result.phone||"Connected")+
+   "\nPlan: "+(result.package||PLAN)+
+   "\nTrial ends: "+(result.trial_ends?
+    new Date(result.trial_ends).toLocaleDateString():"Activated");
+
+  success.append(heading,details);
+
+ }catch(error){
+  showError(error.name==="AbortError"?
+   "The request timed out. Please try again.":
+   error.message||"Something went wrong.");
+  resetButton();
+ }finally{
+  submitting=false;
+ }
 }
 
-function showError(m) { var e = document.getElementById('errorMsg'); e.textContent = m; e.classList.remove('hidden'); }
-
-window.addEventListener('load', function() {
-  var err = params.get('error_description') || params.get('error');
-  if (err) { showError("Login cancelled. Please try again."); return; }
-  var code = params.get('code');
-  if (code) finishSetup(code);
-  if (PLAN) document.getElementById('planInfo').textContent = 'You selected the ' + PLAN + ' plan. Tap below to verify your WhatsApp number.';
+window.addEventListener("load",function(){
+ if(!SESSION_TOKEN){
+  showError("Your signup link is missing. Request a new link.");
+ }
+ document.getElementById("planInfo").textContent=
+  "You selected the "+PLAN+" plan. Connect your WhatsApp Business account securely through Meta.";
 });
 </script>
 </body>
