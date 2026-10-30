@@ -385,7 +385,25 @@ export async function handleOnboardingRequest(
 ): Promise<boolean> {
   const lower = text.toLowerCase().trim();
 
+  // New customers enter through the Sabi Demo Store.
   const isEntry =
+    [
+      "hi",
+      "hello",
+      "hey",
+      "start",
+      "menu",
+      "welcome",
+      "good morning",
+      "good afternoon",
+      "good evening",
+      "demo",
+      "try demo",
+      "demo_store",
+      "signup",
+      "sign up",
+      "onboard",
+    ].includes(lower) ||
     lower.includes("i want a bot") ||
     lower.includes("i need a bot") ||
     lower.includes("get my own bot") ||
@@ -395,13 +413,7 @@ export async function handleOnboardingRequest(
     lower.includes("build a bot") ||
     lower.includes("create a bot") ||
     lower.includes("start trial") ||
-    lower.includes("free trial") ||
-    lower === "signup" ||
-    lower === "sign up" ||
-    lower === "onboard" ||
-    lower === "demo" ||
-    lower === "try demo" ||
-    lower === "demo_store";
+    lower.includes("free trial");
 
   if (isEntry) {
     await updateConversation(conversationId, {
