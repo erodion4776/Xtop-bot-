@@ -38,8 +38,15 @@ jobs:
             --project-ref "$SUPABASE_PROJECT_ID" \
             --no-verify-jwt
 
-      
-     - name: Deploy order API
+      - name: Deploy wallet API
+        run: |
+          if [ -d "supabase/functions/wallet-api" ]; then
+            supabase functions deploy wallet-api \
+              --project-ref "$SUPABASE_PROJECT_ID" \
+              --no-verify-jwt
+          fi
+
+      - name: Deploy order API
         run: |
           supabase functions deploy order-api \
             --project-ref "$SUPABASE_PROJECT_ID" \
@@ -54,6 +61,7 @@ jobs:
         run: |
           echo "WhatsApp webhook preserved."
           echo "Wallet API deployment checked."
+          echo "Order API deployment checked."
           echo "Merchant registration deployment checked."
 
   verify:
@@ -69,4 +77,5 @@ jobs:
           echo "Webhook response status: $HTTP_STATUS"
           echo "## Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "WhatsApp Webhook: $WEBHOOK_URL" >> $GITHUB_STEP_SUMMARY
+          echo "Order API deployment configured." >> $GITHUB_STEP_SUMMARY
           echo "Merchant registration deployment configured." >> $GITHUB_STEP_SUMMARY
