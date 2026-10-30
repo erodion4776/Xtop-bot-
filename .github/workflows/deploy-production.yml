@@ -32,28 +32,30 @@ jobs:
       - name: Link project
         run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
 
-      - name: Deploy whatsapp-webhook
+      - name: Deploy WhatsApp webhook
         run: |
-          echo "Deploying existing WhatsApp webhook..."
           supabase functions deploy whatsapp-webhook \
             --project-ref "$SUPABASE_PROJECT_ID" \
             --no-verify-jwt
 
-      - name: Deploy wallet-api
+      - name: Deploy wallet API
         run: |
           if [ -d "supabase/functions/wallet-api" ]; then
-            echo "Deploying merchant wallet API..."
             supabase functions deploy wallet-api \
               --project-ref "$SUPABASE_PROJECT_ID" \
               --no-verify-jwt
-          else
-            echo "wallet-api directory not created yet. Skipping."
           fi
+
+      - name: Deploy merchant registration
+        run: |
+          supabase functions deploy merchant-register \
+            --project-ref "$SUPABASE_PROJECT_ID"
 
       - name: Deployment Summary
         run: |
-          echo "Both deployment targets checked."
           echo "WhatsApp webhook preserved."
+          echo "Wallet API deployment checked."
+          echo "Merchant registration deployment checked."
 
   verify:
     name: Verify Deployment
@@ -64,11 +66,8 @@ jobs:
       - name: Check Webhook Status
         run: |
           WEBHOOK_URL="https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/whatsapp-webhook"
-
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$WEBHOOK_URL" || true)
-
           echo "Webhook response status: $HTTP_STATUS"
-
           echo "## Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "WhatsApp Webhook: $WEBHOOK_URL" >> $GITHUB_STEP_SUMMARY
-          echo "Wallet API deployment target configured." >> $GITHUB_STEP_SUMMARY
+          echo "Merchant registration deployment configured." >> $GITHUB_STEP_SUMMARY
