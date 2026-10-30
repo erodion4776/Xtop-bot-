@@ -1,3 +1,4 @@
+
 // supabase/functions/whatsapp-webhook/router.ts
 
 import {
@@ -96,6 +97,29 @@ import {
 } from "./modules/admin-agent.ts";
 
 const supabase = getSupabaseClient();
+
+/**
+ * Sabi by XTOP onboarding actions.
+ *
+ * These must be handled before the legacy Demo Centre
+ * because some Sabi demo buttons also start with "demo_".
+ */
+function isSabiOnboardingAction(id: string): boolean {
+  return (
+    [
+      "demo_store",
+      "demo_products",
+      "demo_order",
+      "demo_faq",
+      "demo_signup",
+      "view_plans",
+      "onboard_agent",
+      "onboard_tools",
+    ].includes(id) ||
+    id.startsWith("plan_") ||
+    id.startsWith("getbot_")
+  );
+}
 
 /**
  * Demo Centre actions that must be routed to the Demo Centre handler.
@@ -302,7 +326,7 @@ export async function routeMessage(
     ) {
       const originalText = incoming.text || text;
 
-      // Handle structured demo request
+      // Handle structured demo request.
       const structuredDemoHandled =
         await handleStructuredPersonalizedDemoRequest(
           phone,
@@ -313,7 +337,7 @@ export async function routeMessage(
 
       if (structuredDemoHandled) return;
 
-      // Handle demo tokens
+      // Handle demo tokens.
       const detectedToken = extractTokenFromText(originalText);
 
       if (detectedToken) {
@@ -334,16 +358,28 @@ export async function routeMessage(
     }
 
     // =====================================================
-    // 7.5 ONBOARDING INTERCEPTION (Multi-Tenant Bot Signup)
+    // 7.5 SABI BY XTOP ONBOARDING INTERCEPTION
     //
-    // Placed BEFORE active workflow routing so that explicit
-    // requests ("I want a bot for my business", "signup", etc.)
-    // break out of any stale sales or quotation states.
+    // This runs before legacy workflow routing.
+    // It gives Sabi onboarding and demo buttons priority
+    // over the old Demo Centre actions.
     // =====================================================
 
     if (!isAcademicWorkflow) {
-      // Handle both text AND interactive payloads for active onboarding
-      if (currentModule === "ONBOARDING" || !isInteractivePayload(incoming)) {
+      const isSabiAction =
+        isSabiOnboardingAction(interactiveId);
+
+      const isOnboardingConversation =
+        currentModule === "ONBOARDING";
+
+      const isOnboardingText =
+        !isInteractivePayload(incoming);
+
+      if (
+        isSabiAction ||
+        isOnboardingConversation ||
+        isOnboardingText
+      ) {
         const onboardingHandled = await handleOnboardingRequest(
           phone,
           text || interactiveId,
@@ -393,7 +429,7 @@ export async function routeMessage(
       return;
     }
 
-    // Onboarding workflow (handoff from sales or direct signup).
+    // Onboarding workflow.
     if (currentModule === "ONBOARDING") {
       const onboardingHandled = await handleOnboardingRequest(
         phone,
@@ -404,12 +440,13 @@ export async function routeMessage(
 
       if (onboardingHandled) return;
 
-      // If onboarding handler didn't consume it, fall through to main menu
+      // If onboarding handler didn't consume it, return to main menu.
       await updateConversation(conversation.id, {
         current_module: "MAIN_MENU",
         current_state: "IDLE",
         context_json: {},
       });
+
       await showMainMenu(phone, conversation.id);
       return;
     }
@@ -554,7 +591,7 @@ export async function routeMessage(
     // 9. DIRECT INTENT OVERRIDES FROM IDLE / MAIN MENU
     // =====================================================
 
-    // Onboarding interactive actions (plan selection, get bot, agent, tools)
+    // Legacy onboarding interactive actions.
     if (
       interactiveId.startsWith("plan_") ||
       interactiveId.startsWith("getbot_") ||
