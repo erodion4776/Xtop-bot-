@@ -7,6 +7,8 @@ const PAYSTACK_SECRET_KEY = Deno.env.get("PAYSTACK_SECRET_KEY")!;
 
 const MIN_TOPUP_NGN = 500;
 const MAX_TOPUP_NGN = 5_000_000;
+const DASHBOARD_CALLBACK_URL =
+  "https://xtopbot.netlify.app/?wallet_payment=1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,7 +50,6 @@ async function getAuthenticatedUser(req: Request) {
   }
 
   const token = authorization.slice(7);
-
   const { data, error } = await db.auth.getUser(token);
 
   if (error || !data.user) {
@@ -190,6 +191,7 @@ async function initializeTopup(req: Request): Promise<Response> {
           amount: String(amount * 100),
           currency: "NGN",
           reference,
+          callback_url: DASHBOARD_CALLBACK_URL,
           metadata: {
             purpose: "SABI_MERCHANT_WALLET_TOPUP",
             tenant_id: tenantId,
@@ -221,8 +223,7 @@ async function initializeTopup(req: Request): Promise<Response> {
 
     return respond({
       success: true,
-      authorization_url:
-        paystackData.data.authorization_url,
+      authorization_url: paystackData.data.authorization_url,
       access_code: paystackData.data.access_code,
       reference,
       amount,
@@ -269,7 +270,7 @@ async function verifyPaystackTransaction(reference: string) {
 }
 
 // ==========================================
-// 3. CREDIT VERIFIED MERCHANT WALLET
+// 3. VERIFY AND CREDIT MERCHANT WALLET
 // ==========================================
 
 async function creditVerifiedTopup(reference: string) {
@@ -291,24 +292,85 @@ async function creditVerifiedTopup(reference: string) {
     };
   }
 
-  if (intent.status === "FAILED") {
-    throw new Error("PAYMENT_INTENT_FAILED");
+  if (
+    intent.status === "FAILED" ||
+    intent.status === "CANCELLED"
+  ) {
+    return {
+      success: false,
+      cancelled: intent.status === "CANCELLED",
+      message:
+        intent.status === "CANCELLED"
+          ? "This payment was cancelled. Your wallet was not credited."
+          : "This payment failed. Your wallet was not credited.",
+    };
   }
 
   const transaction = await verifyPaystackTransaction(reference);
+  const paystackStatus = String(transaction.status || "").toLowerCase();
 
-  if (transaction.status !== "success") {
-    await db
+  // Record an abandoned checkout as CANCELLED.
+  if (paystackStatus === "abandoned") {
+    const { error: updateError } = await db
       .from("wallet_topup_intents")
       .update({
-        paystack_status: transaction.status || "unknown",
+        status: "CANCELLED",
+        paystack_status: paystackStatus,
         updated_at: new Date().toISOString(),
       })
-      .eq("reference", reference);
+      .eq("reference", reference)
+      .neq("status", "COMPLETED");
+
+    if (updateError) {
+      console.error("Cancellation update failed:", updateError);
+      throw new Error("PAYMENT_STATUS_UPDATE_FAILED");
+    }
 
     return {
       success: false,
-      message: "Payment has not been confirmed as successful.",
+      cancelled: true,
+      message: "Payment cancelled. Your wallet was not charged.",
+    };
+  }
+
+  // Record a confirmed failed payment as FAILED.
+  if (paystackStatus === "failed") {
+    const { error: updateError } = await db
+      .from("wallet_topup_intents")
+      .update({
+        status: "FAILED",
+        paystack_status: paystackStatus,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("reference", reference)
+      .neq("status", "COMPLETED");
+
+    if (updateError) {
+      console.error("Failed payment update failed:", updateError);
+      throw new Error("PAYMENT_STATUS_UPDATE_FAILED");
+    }
+
+    return {
+      success: false,
+      message: "Payment failed. Your wallet was not charged.",
+    };
+  }
+
+  // Pending or other non-success states must never credit the wallet.
+  if (paystackStatus !== "success") {
+    await db
+      .from("wallet_topup_intents")
+      .update({
+        paystack_status: paystackStatus || "unknown",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("reference", reference)
+      .neq("status", "COMPLETED");
+
+    return {
+      success: false,
+      message:
+        "Payment has not been confirmed. Your wallet has not been credited.",
     };
   }
 
@@ -354,7 +416,6 @@ async function creditVerifiedTopup(reference: string) {
     throw new Error("WALLET_CREDIT_NOT_CONFIRMED");
   }
 
-  // A retry remains safe because the SQL function is idempotent.
   const { error: updateError } = await db
     .from("wallet_topup_intents")
     .update({
@@ -479,7 +540,7 @@ async function handlePaystackWebhook(
   try {
     event = JSON.parse(new TextDecoder().decode(rawBody));
   } catch {
-    return fail("Invalid webhook payload.");
+    return fail("Invalid Paystack webhook payload.");
   }
 
   if (event.event !== "charge.success") {
@@ -584,11 +645,11 @@ Deno.serve(async (req: Request) => {
         case "PAYMENT_REFERENCE_NOT_FOUND":
           return fail("Payment reference not found.", 404);
 
-        case "PAYMENT_INTENT_FAILED":
-          return fail("This payment request has failed.", 400);
-
         case "PAYSTACK_VERIFICATION_FAILED":
           return fail("Could not verify payment with Paystack. Please retry.", 502);
+
+        case "PAYMENT_STATUS_UPDATE_FAILED":
+          return fail("Could not update payment status. Please retry.", 503);
 
         case "PAYMENT_DETAILS_MISMATCH":
         case "PAYMENT_METADATA_MISMATCH":
@@ -596,6 +657,9 @@ Deno.serve(async (req: Request) => {
 
         case "WALLET_CREDIT_RETRY_REQUIRED":
           return fail("Payment verified but wallet credit needs retry.", 503);
+
+        case "WALLET_CREDIT_NOT_CONFIRMED":
+          return fail("Wallet credit could not be confirmed. Please retry.", 503);
 
         default:
           break;
