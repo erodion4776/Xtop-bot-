@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   Wallet as WalletIcon,
   RefreshCw,
@@ -54,8 +54,9 @@ function readableType(value: string) {
   if (type.includes("COMMISSION") || type.includes("ORDER_FEE")) return "Order commission";
   if (type.includes("REFUND")) return "Refund";
   if (type.includes("DEBIT")) return "Wallet debit";
-}
+
   return type.replace(/_/g, " ") || "Wallet transaction";
+}
 
 export default function Wallet({ tenantId }: { tenantId: string }) {
   const [wallet, setWallet] = useState<WalletRecord | null>(null);
@@ -143,7 +144,7 @@ export default function Wallet({ tenantId }: { tenantId: string }) {
     }
   }, [tenantId, pendingStorageKey, loadWallet]);
 
-  async function initializeTopup(event: React.FormEvent<HTMLFormElement>) {
+  async function initializeTopup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const numericAmount = Number(amount);
