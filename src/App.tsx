@@ -19,6 +19,7 @@ import Products from "./Products";
 import Orders from "./Orders";
 import SettingsPage from "./Settings";
 import PublicProduct from "./PublicProduct";
+import WalletPage from "./Wallet";
 import { supabase } from "./lib/supabase";
 
 const navigation = [
@@ -357,6 +358,8 @@ function Dashboard({
   <Products tenantId={tenantId} />
 ) : activePage === "Orders" ? (
   <Orders tenantId={tenantId} />
+) : activePage === "Wallet" ? (
+  <WalletPage tenantId={tenantId} />
 ) : activePage === "Settings" ? (
             <SettingsPage tenantId={tenantId} />
           ) : activePage === "Overview" ? (
