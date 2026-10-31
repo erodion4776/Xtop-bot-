@@ -205,6 +205,11 @@ async function createMerchantSubaccount(
     .maybeSingle();
 
   if (tenantError || !tenant) {
+    console.error("Tenant lookup failed:", {
+      tenant_id: tenantId,
+      error: tenantError?.message || null,
+    });
+
     throw new Error("TENANT_NOT_FOUND");
   }
 
@@ -217,10 +222,19 @@ async function createMerchantSubaccount(
     });
   }
 
+  // Diagnostic: identify the actual status blocking registration.
   if (
     tenant.paystack_subaccount_status !== "NOT_CONFIGURED"
   ) {
-    throw new Error("SUBACCOUNT_SETUP_IN_PROGRESS");
+    console.error("PAYOUT STATUS BLOCKED:", {
+      tenant_id: tenantId,
+      status: tenant.paystack_subaccount_status,
+      subaccount_code: tenant.paystack_subaccount_code,
+    });
+
+    throw new Error(
+      `SUBACCOUNT_STATUS_BLOCKED:${tenant.paystack_subaccount_status}`,
+    );
   }
 
   // Resolve again on the server immediately before creation.
@@ -245,8 +259,15 @@ async function createMerchantSubaccount(
     .select("id")
     .maybeSingle();
 
+  // Diagnostic: capture why the reservation failed.
   if (reserveError || !reserved) {
-    throw new Error("SUBACCOUNT_SETUP_IN_PROGRESS");
+    console.error("PAYOUT RESERVATION FAILED:", {
+      tenant_id: tenantId,
+      reserve_error: reserveError?.message || null,
+      reserved,
+    });
+
+    throw new Error("SUBACCOUNT_RESERVATION_FAILED");
   }
 
   let subaccount: any;
@@ -285,7 +306,7 @@ async function createMerchantSubaccount(
   } catch (error) {
     // A network timeout can occur after Paystack creates
     // the subaccount. Do not automatically retry and create
-    // a duplicate. Flag it for reconciliation.
+    // a duplicate. Flag uncertain outcomes for reconciliation.
     const message = error instanceof Error ? error.message : "";
 
     await db
@@ -486,8 +507,13 @@ Deno.serve(async (req: Request) => {
         "Complete the bank details and confirm the account name.",
       ACCOUNT_NAME_CONFIRMATION_MISMATCH:
         "The verified account name has changed. Please verify it again.",
-      SUBACCOUNT_SETUP_IN_PROGRESS:
-        "Subaccount registration is already in progress or needs review.",
+
+      SUBACCOUNT_RESERVATION_FAILED:
+        "The payout account could not be reserved. Please check the backend logs.",
+
+      SUBACCOUNT_STATUS_BLOCKED:
+        "The merchant payout account has a status that prevents registration. Please contact support.",
+
       SUBACCOUNT_CODE_MISSING:
         "Paystack did not return a subaccount code.",
       SUBACCOUNT_SAVE_FAILED:
@@ -500,17 +526,29 @@ Deno.serve(async (req: Request) => {
         "Subaccount registration needs support review before retrying.",
     };
 
+    const isBlockedStatus = message.startsWith(
+      "SUBACCOUNT_STATUS_BLOCKED:",
+    );
+
     const status =
       message === "AUTH_REQUIRED" ? 401 :
       message === "OWNER_ACCESS_REQUIRED" ? 403 :
       message === "TENANT_NOT_FOUND" ? 404 :
       message === "PAYSTACK_REQUEST_FAILED" ? 502 :
-      message === "SUBACCOUNT_SAVE_FAILED" ? 503 : 400;
+      message === "SUBACCOUNT_SAVE_FAILED" ? 503 :
+      message === "SUBACCOUNT_RESERVATION_FAILED" ? 503 :
+      isBlockedStatus ? 409 :
+      400;
 
     console.error("Merchant Paystack API error:", message);
 
     return fail(
-      messages[message] || "Unable to process payout account details.",
+      isBlockedStatus
+        ? `Payout registration is blocked by the current status: ${
+            message.split(":")[1] || "UNKNOWN"
+          }.`
+        : messages[message] ||
+          "Unable to process payout account details.",
       status,
     );
   }
