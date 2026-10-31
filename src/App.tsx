@@ -232,7 +232,11 @@ function Dashboard({
   email: string;
   onLogout: () => void;
 }) {
-  const [activePage, setActivePage] = useState("Overview");
+  const [activePage, setActivePage] = useState(() =>
+  new URLSearchParams(window.location.search).has("wallet_payment")
+    ? "Wallet"
+    : "Overview"
+);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
