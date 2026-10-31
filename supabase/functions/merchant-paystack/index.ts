@@ -338,7 +338,15 @@ async function createMerchantSubaccount(
   }
 
   const verified = subaccount.is_verified === true;
-
+console.log("PAYSTACK SUBACCOUNT VERIFICATION:", {
+  subaccount_code: subaccount.subaccount_code,
+  is_verified: subaccount.is_verified,
+  active: subaccount.active,
+  settlement_bank: subaccount.settlement_bank,
+  account_last_four: String(
+    subaccount.account_number || ""
+  ).slice(-4),
+});
   const { error: saveError } = await db
     .from("tenants")
     .update({
