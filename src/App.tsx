@@ -16,6 +16,7 @@ import {
 
 import Auth from "./Auth";
 import Products from "./Products";
+import Orders from "./Orders";
 import SettingsPage from "./Settings";
 import PublicProduct from "./PublicProduct";
 import { supabase } from "./lib/supabase";
@@ -353,8 +354,10 @@ function Dashboard({
           </div>
 
           {activePage === "Products" ? (
-            <Products tenantId={tenantId} />
-          ) : activePage === "Settings" ? (
+  <Products tenantId={tenantId} />
+) : activePage === "Orders" ? (
+  <Orders tenantId={tenantId} />
+) : activePage === "Settings" ? (
             <SettingsPage tenantId={tenantId} />
           ) : activePage === "Overview" ? (
             <>
