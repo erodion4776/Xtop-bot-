@@ -54,7 +54,7 @@ function readableType(value: string) {
   if (type.includes("COMMISSION") || type.includes("ORDER_FEE")) return "Order commission";
   if (type.includes("REFUND")) return "Refund";
   if (type.includes("DEBIT")) return "Wallet debit";
-
+}
   return type.replace(/_/g, " ") || "Wallet transaction";
 
 export default function Wallet({ tenantId }: { tenantId: string }) {
