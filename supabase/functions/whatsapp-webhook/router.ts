@@ -16,6 +16,7 @@ import {
 import {
   IncomingMessage,
   sendTextMessage,
+  sendImageMessage,
   WhatsAppCredentials,
 } from "./whatsapp.ts";
 
