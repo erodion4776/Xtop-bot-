@@ -55,8 +55,7 @@ function readableType(value: string) {
   if (type.includes("REFUND")) return "Refund";
   if (type.includes("DEBIT")) return "Wallet debit";
 
-  return type.replaceAll("_", " ") || "Wallet transaction";
-}
+  return type.replace(/_/g, " ") || "Wallet transaction";
 
 export default function Wallet({ tenantId }: { tenantId: string }) {
   const [wallet, setWallet] = useState<WalletRecord | null>(null);
@@ -308,7 +307,7 @@ export default function Wallet({ tenantId }: { tenantId: string }) {
               <div className="wallet-balance-footer">
                 <span className={`wallet-status ${statusClass}`}>
                   <span />
-                  {walletStatus.replaceAll("_", " ")}
+                  {walletStatus.replace(/_/g, " ")}
                 </span>
                 <small>Merchant wallet</small>
               </div>
@@ -543,7 +542,7 @@ export default function Wallet({ tenantId }: { tenantId: string }) {
                                   : "other"
                               }`}
                             >
-                              {(transaction.status || "UNKNOWN").replaceAll("_", " ")}
+                              {(transaction.status || "UNKNOWN").replace(/_/g, " ")}
                             </span>
                           </td>
                           <td>{formatDate(transaction.created_at)}</td>
