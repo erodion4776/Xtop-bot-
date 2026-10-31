@@ -21,3 +21,6 @@ verify_jwt = false
 
 [functions.order-api]
 verify_jwt = false
+
+[functions.merchant-paystack]
+verify_jwt = false
