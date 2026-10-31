@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Wallet as WalletIcon,
   RefreshCw,
@@ -66,10 +66,10 @@ export default function Wallet({ tenantId }: { tenantId: string }) {
   const [refreshing, setRefreshing] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [verifying, setVerifying] = useState(false);
-  const [authorizationUrl, setAuthorizationUrl] = useState("");
-  const [pendingReference, setPendingReference] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  const verificationStarted = useRef("");
 
   const pendingStorageKey = `sabi-wallet-pending-${tenantId}`;
 
@@ -122,6 +122,62 @@ export default function Wallet({ tenantId }: { tenantId: string }) {
     }
   }, [tenantId]);
 
+  async function verifyTopup(reference: string) {
+    if (!reference || verifying) return;
+
+    setVerifying(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const { data, error: functionError } = await supabase.functions.invoke(
+        "wallet-api?action=verify",
+        {
+          body: {
+            tenant_id: tenantId,
+            reference
+          }
+        }
+      );
+
+      if (functionError) throw functionError;
+
+      if (data?.success) {
+        localStorage.removeItem(pendingStorageKey);
+        setNotice("Payment verified. Your wallet has been credited.");
+        await loadWallet(true);
+        return;
+      }
+
+      if (data?.cancelled) {
+        localStorage.removeItem(pendingStorageKey);
+        setNotice("Payment cancelled. Your wallet was not charged.");
+        return;
+      }
+
+      if (
+        data?.status === "FAILED" ||
+        data?.failed === true
+      ) {
+        localStorage.removeItem(pendingStorageKey);
+        setNotice("Payment failed. Your wallet was not charged.");
+        return;
+      }
+
+      setNotice(
+        data?.message ||
+        "Payment has not been confirmed yet. Your wallet will only be credited after Paystack confirms payment."
+      );
+    } catch (err: any) {
+      setError(
+        err?.message ||
+        "We could not verify the payment right now. Please refresh your wallet shortly."
+      );
+    } finally {
+      setVerifying(false);
+    }
+  }
+
   useEffect(() => {
     loadWallet();
 
@@ -131,16 +187,31 @@ export default function Wallet({ tenantId }: { tenantId: string }) {
     const returnedReference =
       params.get("reference") || params.get("trxref");
 
+    const savedReference = localStorage.getItem(pendingStorageKey);
+    const referenceToVerify = returnedReference || savedReference;
+
     if (returnedReference) {
       localStorage.setItem(pendingStorageKey, returnedReference);
-      setPendingReference(returnedReference);
-      setNotice("Payment return detected. Verify the payment to update your wallet.");
-    } else {
-      const savedReference = localStorage.getItem(pendingStorageKey);
 
-      if (savedReference) {
-        setPendingReference(savedReference);
-      }
+      params.delete("reference");
+      params.delete("trxref");
+      params.delete("wallet_payment");
+
+      const remainingQuery = params.toString();
+      const cleanUrl =
+        window.location.pathname +
+        (remainingQuery ? `?${remainingQuery}` : "") +
+        window.location.hash;
+
+      window.history.replaceState({}, "", cleanUrl);
+    }
+
+    if (
+      referenceToVerify &&
+      verificationStarted.current !== referenceToVerify
+    ) {
+      verificationStarted.current = referenceToVerify;
+      verifyTopup(referenceToVerify);
     }
   }, [tenantId, pendingStorageKey, loadWallet]);
 
@@ -166,7 +237,6 @@ export default function Wallet({ tenantId }: { tenantId: string }) {
     setProcessing(true);
     setError("");
     setNotice("");
-    setAuthorizationUrl("");
 
     try {
       const { data, error: functionError } = await supabase.functions.invoke(
@@ -180,63 +250,21 @@ export default function Wallet({ tenantId }: { tenantId: string }) {
       );
 
       if (functionError) throw functionError;
+
       if (!data?.success || !data?.authorization_url || !data?.reference) {
         throw new Error(data?.error || "Could not initialize your payment.");
       }
 
       localStorage.setItem(pendingStorageKey, data.reference);
-      setPendingReference(data.reference);
-      setAuthorizationUrl(data.authorization_url);
       setAmount("");
-      setNotice("Your Paystack payment has been prepared. Continue securely to complete it.");
+
+      // Open Paystack in the current tab.
+      window.location.assign(data.authorization_url);
     } catch (err: any) {
       setError(
         err?.message || "Unable to start wallet top-up. Please try again."
       );
-    } finally {
       setProcessing(false);
-    }
-  }
-
-  async function verifyTopup() {
-    if (!pendingReference) return;
-
-    setVerifying(true);
-    setError("");
-    setNotice("");
-
-    try {
-      const { data, error: functionError } = await supabase.functions.invoke(
-        "wallet-api?action=verify",
-        {
-          body: {
-            tenant_id: tenantId,
-            reference: pendingReference
-          }
-        }
-      );
-
-      if (functionError) throw functionError;
-
-      if (!data?.success) {
-        setNotice(
-          data?.message ||
-          "Payment is not confirmed yet. If you have just paid, wait briefly and verify again."
-        );
-        return;
-      }
-
-      localStorage.removeItem(pendingStorageKey);
-      setPendingReference("");
-      setAuthorizationUrl("");
-      setNotice("Payment verified. Your wallet has been credited.");
-      await loadWallet(true);
-    } catch (err: any) {
-      setError(
-        err?.message || "Payment verification failed. Please retry."
-      );
-    } finally {
-      setVerifying(false);
     }
   }
 
@@ -289,6 +317,13 @@ export default function Wallet({ tenantId }: { tenantId: string }) {
       {notice && (
         <div className="wallet-alert wallet-alert-success" role="status">
           {notice}
+        </div>
+      )}
+
+      {verifying && (
+        <div className="wallet-alert" role="status">
+          <RefreshCw size={15} className="wallet-spin" />
+          {" "}Verifying your Paystack payment...
         </div>
       )}
 
@@ -389,41 +424,9 @@ export default function Wallet({ tenantId }: { tenantId: string }) {
                   className="wallet-primary-btn"
                   disabled={processing || walletStatus === "PAUSED"}
                 >
-                  {processing ? "Preparing payment..." : "Continue to payment"}
+                  {processing ? "Redirecting to Paystack..." : "Continue to payment"}
                 </button>
               </form>
-
-              {authorizationUrl && (
-                <div className="wallet-payment-next">
-                  <strong>Payment request created</strong>
-                  <p>
-                    Reference: <span>{pendingReference}</span>
-                  </p>
-                  <a
-                    href={authorizationUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Open secure Paystack payment
-                  </a>
-                </div>
-              )}
-
-              {pendingReference && (
-                <div className="wallet-pending-payment">
-                  <p>
-                    Have you completed a previous wallet payment?
-                  </p>
-                  <small>Reference: {pendingReference}</small>
-                  <button
-                    type="button"
-                    onClick={verifyTopup}
-                    disabled={verifying}
-                  >
-                    {verifying ? "Verifying payment..." : "Verify payment"}
-                  </button>
-                </div>
-              )}
 
               <div className="wallet-secure-note">
                 <ShieldCheck size={15} />
