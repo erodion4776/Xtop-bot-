@@ -1,4 +1,3 @@
-
 name: Deploy to Production
 
 on:
@@ -57,12 +56,18 @@ jobs:
           supabase functions deploy merchant-register \
             --project-ref "$SUPABASE_PROJECT_ID"
 
+      - name: Deploy Sabi dashboard API
+        run: |
+          supabase functions deploy xtop-dashboard \
+            --project-ref "$SUPABASE_PROJECT_ID"
+
       - name: Deployment Summary
         run: |
           echo "WhatsApp webhook preserved."
           echo "Wallet API deployment checked."
           echo "Order API deployment checked."
           echo "Merchant registration deployment checked."
+          echo "Sabi dashboard API deployment configured."
 
   verify:
     name: Verify Deployment
@@ -79,3 +84,4 @@ jobs:
           echo "WhatsApp Webhook: $WEBHOOK_URL" >> $GITHUB_STEP_SUMMARY
           echo "Order API deployment configured." >> $GITHUB_STEP_SUMMARY
           echo "Merchant registration deployment configured." >> $GITHUB_STEP_SUMMARY
+          echo "Sabi dashboard API deployment configured." >> $GITHUB_STEP_SUMMARY
