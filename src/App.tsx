@@ -238,7 +238,72 @@ function Dashboard({
     : "Overview"
 );
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+const [overviewStats, setOverviewStats] = useState({
+  orders: 0,
+  products: 0,
+  balance: 0,
+  whatsappConnected: false
+});
 
+const [statsLoading, setStatsLoading] = useState(true);
+
+useEffect(() => {
+  let cancelled = false;
+
+  async function loadOverviewStats() {
+    setStatsLoading(true);
+
+    const [
+      ordersResult,
+      productsResult,
+      walletResult,
+      whatsappResult
+    ] = await Promise.all([
+      supabase
+        .from("tenant_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId),
+
+      supabase
+        .from("products")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId),
+
+      supabase
+        .from("tenant_wallets")
+        .select("balance")
+        .eq("tenant_id", tenantId)
+        .maybeSingle(),
+
+      supabase
+        .from("tenant_whatsapp_accounts")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle()
+    ]);
+
+    if (cancelled) return;
+
+    setOverviewStats({
+      orders: ordersResult.error ? 0 : ordersResult.count || 0,
+      products: productsResult.error ? 0 : productsResult.count || 0,
+      balance: walletResult.error
+        ? 0
+        : Number(walletResult.data?.balance || 0),
+      whatsappConnected: !whatsappResult.error && !!whatsappResult.data
+    });
+
+    setStatsLoading(false);
+  }
+
+  loadOverviewStats();
+
+  return () => {
+    cancelled = true;
+  };
+}, [tenantId]);
   return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileMenuOpen ? "sidebar-open" : ""}`}>
