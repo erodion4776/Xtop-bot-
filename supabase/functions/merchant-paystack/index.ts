@@ -222,7 +222,6 @@ async function createMerchantSubaccount(
     });
   }
 
-  // Diagnostic: identify the actual status blocking registration.
   if (
     tenant.paystack_subaccount_status !== "NOT_CONFIGURED"
   ) {
@@ -237,7 +236,6 @@ async function createMerchantSubaccount(
     );
   }
 
-  // Resolve again on the server immediately before creation.
   const account = await resolveAccount(accountNumber, bankCode);
 
   if (
@@ -247,7 +245,6 @@ async function createMerchantSubaccount(
     throw new Error("ACCOUNT_NAME_CONFIRMATION_MISMATCH");
   }
 
-  // Reserve this tenant's setup to prevent duplicate creation.
   const { data: reserved, error: reserveError } = await db
     .from("tenants")
     .update({
@@ -259,7 +256,6 @@ async function createMerchantSubaccount(
     .select("id")
     .maybeSingle();
 
-  // Diagnostic: capture why the reservation failed.
   if (reserveError || !reserved) {
     console.error("PAYOUT RESERVATION FAILED:", {
       tenant_id: tenantId,
@@ -281,22 +277,14 @@ async function createMerchantSubaccount(
           tenant.business_name || tenant.name,
         settlement_bank: bankCode,
         account_number: accountNumber,
-
-        // Fixed Sabi commission is applied at transaction
-        // initialization, not through a percentage split.
         percentage_charge: 0,
-
         description: "Sabi by XTOP merchant settlement",
-
         primary_contact_name:
           tenant.contact_name || account.account_name,
-
         primary_contact_email:
           tenant.contact_email || undefined,
-
         primary_contact_phone:
           tenant.contact_phone || undefined,
-
         metadata: JSON.stringify({
           tenant_id: tenantId,
           platform: "Sabi by XTOP",
@@ -304,9 +292,6 @@ async function createMerchantSubaccount(
       },
     );
   } catch (error) {
-    // A network timeout can occur after Paystack creates
-    // the subaccount. Do not automatically retry and create
-    // a duplicate. Flag uncertain outcomes for reconciliation.
     const message = error instanceof Error ? error.message : "";
 
     await db
@@ -338,15 +323,7 @@ async function createMerchantSubaccount(
   }
 
   const verified = subaccount.is_verified === true;
-console.log("PAYSTACK SUBACCOUNT VERIFICATION:", {
-  subaccount_code: subaccount.subaccount_code,
-  is_verified: subaccount.is_verified,
-  active: subaccount.active,
-  settlement_bank: subaccount.settlement_bank,
-  account_last_four: String(
-    subaccount.account_number || ""
-  ).slice(-4),
-});
+
   const { error: saveError } = await db
     .from("tenants")
     .update({
@@ -399,7 +376,7 @@ async function refreshSubaccountStatus(
   const { data: tenant, error } = await db
     .from("tenants")
     .select(
-      "paystack_subaccount_code,paystack_subaccount_status",
+      "paystack_subaccount_code,paystack_subaccount_status,paystack_subaccount_verified_at",
     )
     .eq("id", tenantId)
     .maybeSingle();
@@ -424,23 +401,39 @@ async function refreshSubaccountStatus(
 
   const verified = subaccount.is_verified === true;
 
+  // Diagnostic: safely log Paystack's verification response.
+  // Never log the complete bank account number.
+  console.log("PAYSTACK SUBACCOUNT VERIFICATION:", {
+    subaccount_code: subaccount.subaccount_code,
+    is_verified: subaccount.is_verified,
+    active: subaccount.active,
+    settlement_bank: subaccount.settlement_bank,
+    account_last_four: String(
+      subaccount.account_number || "",
+    ).slice(-4),
+  });
+
   const status = verified
     ? "VERIFIED"
     : subaccount.active === false
       ? "INACTIVE"
       : "PENDING_VERIFICATION";
 
+  const verifiedAt = verified
+    ? tenant.paystack_subaccount_verified_at ||
+      new Date().toISOString()
+    : null;
+
   const { error: updateError } = await db
     .from("tenants")
     .update({
       paystack_subaccount_status: status,
-      paystack_subaccount_verified_at: verified
-        ? new Date().toISOString()
-        : null,
+      paystack_subaccount_verified_at: verifiedAt,
     })
     .eq("id", tenantId);
 
   if (updateError) {
+    console.error("Subaccount status update failed:", updateError);
     throw new Error("STATUS_UPDATE_FAILED");
   }
 
@@ -448,6 +441,8 @@ async function refreshSubaccountStatus(
     success: true,
     configured: true,
     status,
+    is_verified: verified,
+    active: subaccount.active,
     account_name: subaccount.account_name || null,
     bank_name: subaccount.settlement_bank || null,
     account_last_four: String(
@@ -515,13 +510,10 @@ Deno.serve(async (req: Request) => {
         "Complete the bank details and confirm the account name.",
       ACCOUNT_NAME_CONFIRMATION_MISMATCH:
         "The verified account name has changed. Please verify it again.",
-
       SUBACCOUNT_RESERVATION_FAILED:
         "The payout account could not be reserved. Please check the backend logs.",
-
       SUBACCOUNT_STATUS_BLOCKED:
         "The merchant payout account has a status that prevents registration. Please contact support.",
-
       SUBACCOUNT_CODE_MISSING:
         "Paystack did not return a subaccount code.",
       SUBACCOUNT_SAVE_FAILED:
