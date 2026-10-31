@@ -1,3 +1,4 @@
+
 // supabase/functions/whatsapp-webhook/router.ts
 
 import {
@@ -238,7 +239,6 @@ async function handleTenantStoreMessage(
   contact: Contact,
 ): Promise<void> {
   const credentials = account.credentials;
-
   if (!credentials) return;
 
   const phone = incoming.from;
@@ -257,135 +257,200 @@ async function handleTenantStoreMessage(
     account.welcomeGreeting ||
     `Welcome to *${account.businessName}*.`;
 
-  let reply: string;
+  const isCatalogueRequest = [
+    "",
+    "hi",
+    "hello",
+    "hey",
+    "menu",
+    "start",
+    "shop",
+    "catalogue",
+    "catalog",
+    "products",
+    "1",
+  ].includes(message);
 
-  if (
-    [
+  const sendAndLog = async (
+    body: string,
+    type: "text" | "image",
+    imageUrl?: string,
+  ): Promise<void> => {
+    const messageId =
+      type === "image" && imageUrl
+        ? await sendImageMessage(
+            phone,
+            imageUrl,
+            body,
+            credentials,
+          )
+        : await sendTextMessage(
+            phone,
+            body,
+            credentials,
+          );
+
+    if (!messageId) {
+      safeErrorLog(
+        "handleTenantStoreMessage.send",
+        new Error(`WhatsApp ${type} message failed.`),
+      );
+      return;
+    }
+
+    await storeMessage(
+      contact.id,
+      "OUTBOUND",
+      type,
+      body,
+      messageId,
+      account.tenantId,
+    );
+
+    await logBotActivity(
+      phone,
+      "OUTBOUND",
+      type,
+      "TENANT_STORE",
+      body,
+      contact.name || incoming.profileName,
       "",
-      "hi",
-      "hello",
-      "hey",
-      "menu",
-      "start",
-      "shop",
-      "catalogue",
-      "catalog",
-      "products",
-      "1",
-    ].includes(message)
-  ) {
+      messageId,
+      account.tenantId,
+    );
+  };
+
+  // CUSTOMER OPENS THE SHOP
+  if (isCatalogueRequest) {
     if (!products.length) {
-      reply =
-        `${greeting}\n\n` +
-        "Our product catalogue is being updated. " +
-        "Please contact the business for assistance.";
-    } else {
-      const lines = products
-        .slice(0, 20)
-        .map((product, index) =>
-          `${index + 1}. *${product.name}*` +
-          `${
-            product.price_text
-              ? ` — ${product.price_text}`
-              : ""
-          }` +
-          `${
-            product.description
-              ? `\n${product.description}`
-              : ""
-          }`
+      await sendAndLog(
+        `${greeting}\n\nOur product catalogue is being updated. Please contact the business for assistance.`,
+        "text",
+      );
+      return;
+    }
+
+    await sendAndLog(
+      `${greeting}\n\n🛍️ *Welcome to our shop!*\n\nHere are our available products. You can view each product below.\n\nReply with a product name to see its full details.`,
+      "text",
+    );
+
+    // Send up to 10 products per catalogue request.
+    for (const product of products.slice(0, 10)) {
+      const price =
+        product.price_text ||
+        (
+          product.price !== null &&
+          product.price !== undefined
+            ? `₦${Number(product.price).toLocaleString("en-NG")}`
+            : "Contact us for price"
         );
 
-      reply =
-        `${greeting}\n\n` +
-        `*Available products*\n\n` +
-        `${lines.join("\n\n")}\n\n` +
-        "Reply with a product name for details. " +
-        "Type *menu* to see this list again.";
+      const caption =
+        `🛍️ *${product.name}*\n\n` +
+        `${product.description || "Contact us for more information."}\n\n` +
+        `💰 Price: *${price}*\n\n` +
+        `Reply *${product.name}* for more details.`;
+
+      const imageUrl = String(
+        product.image_url || "",
+      ).trim();
+
+      if (
+        imageUrl.startsWith("https://") ||
+        imageUrl.startsWith("http://")
+      ) {
+        await sendAndLog(
+          caption,
+          "image",
+          imageUrl,
+        );
+      } else {
+        await sendAndLog(
+          caption,
+          "text",
+        );
+      }
     }
-  } else {
-    const match = products.find((product) => {
-      const name = String(
-        product.name || "",
-      ).toLowerCase();
 
-      const slug = String(
-        product.slug || "",
-      ).toLowerCase();
-
-      return (
-        message === name ||
-        message === slug ||
-        (
-          name.length > 2 &&
-          message.includes(name)
-        )
+    if (products.length > 10) {
+      await sendAndLog(
+        `There are ${products.length - 10} more products. Reply *menu* to view the catalogue again.`,
+        "text",
       );
-    });
+    }
 
-    reply = match
-      ? (
-        `*${match.name}*\n\n` +
-        `${
-          match.description ||
-          "Please contact us for more information."
-        }` +
-        `${
-          match.price_text
-            ? `\n\nPrice: *${match.price_text}*`
-            : ""
-        }` +
-        `${
-          match.website_url
-            ? `\n\nMore details: ${match.website_url}`
-            : ""
-        }` +
-        "\n\nType *menu* to view all products."
-      )
-      : (
-        `I couldn't find that product in *${account.businessName}*.\n\n` +
-        "Type *menu* to view the catalogue or contact the business for help."
-      );
+    return;
   }
 
-  // Explicit tenant credentials: no XTOP fallback.
-  const result = await sendTextMessage(
-    phone,
-    reply,
-    credentials,
-  );
+  // CUSTOMER SELECTS A PRODUCT BY NAME OR SLUG.
+  const match = products.find((product) => {
+    const name = String(
+      product.name || "",
+    ).toLowerCase();
 
-  // sendTextMessage returns the WhatsApp message ID or null.
-  if (!result) {
-    safeErrorLog(
-      "handleTenantStoreMessage.send",
-      new Error("WhatsApp message could not be sent."),
+    const slug = String(
+      product.slug || "",
+    ).toLowerCase();
+
+    return (
+      message === name ||
+      message === slug ||
+      (
+        name.length > 2 &&
+        message.includes(name)
+      )
+    );
+  });
+
+  if (!match) {
+    await sendAndLog(
+      `I couldn't find that product in *${account.businessName}*.\n\nReply *menu* to view the catalogue or contact the business for help.`,
+      "text",
     );
     return;
   }
 
-  const waMessageId = result;
+  // SHOW SELECTED PRODUCT DETAILS.
+  const price =
+    match.price_text ||
+    (
+      match.price !== null &&
+      match.price !== undefined
+        ? `₦${Number(match.price).toLocaleString("en-NG")}`
+        : "Contact us for price"
+    );
 
-  await storeMessage(
-    contact.id,
-    "OUTBOUND",
-    "text",
-    reply,
-    waMessageId,
-    account.tenantId,
-  );
+  const details =
+    `*${match.name}*\n\n` +
+    `${match.description || "Please contact us for more information."}\n\n` +
+    `💰 Price: *${price}*` +
+    (
+      match.website_url
+        ? `\n\nMore details: ${match.website_url}`
+        : ""
+    ) +
+    "\n\nReply *menu* to view all products.";
 
-  await logBotActivity(
-    phone,
-    "OUTBOUND",
-    "text",
-    "TENANT_STORE",
-    reply,
-    contact.name || incoming.profileName,
-    "",
-    waMessageId || undefined,
-    account.tenantId,
-  );
+  const imageUrl = String(
+    match.image_url || "",
+  ).trim();
+
+  if (
+    imageUrl.startsWith("https://") ||
+    imageUrl.startsWith("http://")
+  ) {
+    await sendAndLog(
+      details,
+      "image",
+      imageUrl,
+    );
+  } else {
+    await sendAndLog(
+      details,
+      "text",
+    );
+  }
 }
 
 // =====================================================
@@ -470,9 +535,9 @@ export async function routeMessage(
 
   if (!text && !interactiveId) return;
 
-  // =====================================================
+  // ===================================================
   // MESSAGE DEDUPLICATION — TENANT SCOPED
-  // =====================================================
+  // ===================================================
 
   if (incoming.messageId) {
     const { data: existingMsg, error } =
