@@ -112,8 +112,8 @@ export default function App() {
 
         setRegistrationError(
           data?.error ||
-          error?.message ||
-          "Unable to load your merchant workspace."
+            error?.message ||
+            "Unable to load your merchant workspace."
         );
 
         setRegistering(false);
@@ -203,10 +203,7 @@ export default function App() {
             Try again
           </button>
 
-          <button
-            className="forgot-password"
-            onClick={logout}
-          >
+          <button className="forgot-password" onClick={logout}>
             Log out
           </button>
         </div>
@@ -233,77 +230,81 @@ function Dashboard({
   onLogout: () => void;
 }) {
   const [activePage, setActivePage] = useState(() =>
-  new URLSearchParams(window.location.search).has("wallet_payment")
-    ? "Wallet"
-    : "Overview"
-);
+    new URLSearchParams(window.location.search).has("wallet_payment")
+      ? "Wallet"
+      : "Overview"
+  );
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-const [overviewStats, setOverviewStats] = useState({
-  orders: 0,
-  products: 0,
-  balance: 0,
-  whatsappConnected: false
-});
 
-const [statsLoading, setStatsLoading] = useState(true);
+  const [overviewStats, setOverviewStats] = useState({
+    orders: 0,
+    products: 0,
+    balance: 0,
+    whatsappConnected: false
+  });
 
-useEffect(() => {
-  let cancelled = false;
+  const [statsLoading, setStatsLoading] = useState(true);
 
-  async function loadOverviewStats() {
-    setStatsLoading(true);
+  useEffect(() => {
+    let cancelled = false;
 
-    const [
-      ordersResult,
-      productsResult,
-      walletResult,
-      whatsappResult
-    ] = await Promise.all([
-      supabase
-        .from("tenant_orders")
-        .select("id", { count: "exact", head: true })
-        .eq("tenant_id", tenantId),
+    async function loadOverviewStats() {
+      setStatsLoading(true);
 
-      supabase
-        .from("products")
-        .select("id", { count: "exact", head: true })
-        .eq("tenant_id", tenantId),
+      const [
+        ordersResult,
+        productsResult,
+        walletResult,
+        whatsappResult
+      ] = await Promise.all([
+        supabase
+          .from("tenant_orders")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenantId),
 
-      supabase
-        .from("tenant_wallets")
-        .select("balance")
-        .eq("tenant_id", tenantId)
-        .maybeSingle(),
+        supabase
+          .from("products")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenantId),
 
-      supabase
-        .from("tenant_whatsapp_accounts")
-        .select("id")
-        .eq("tenant_id", tenantId)
-        .eq("is_active", true)
-        .limit(1)
-        .maybeSingle()
-    ]);
+        supabase
+          .from("tenant_wallets")
+          .select("balance")
+          .eq("tenant_id", tenantId)
+          .maybeSingle(),
 
-    if (cancelled) return;
+        supabase
+          .from("tenant_whatsapp_accounts")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .eq("is_active", true)
+          .limit(1)
+          .maybeSingle()
+      ]);
 
-    setOverviewStats({
-      orders: ordersResult.error ? 0 : ordersResult.count || 0,
-      products: productsResult.error ? 0 : productsResult.count || 0,
-      balance: walletResult.error
-        ? 0
-        : Number(walletResult.data?.balance || 0),
-      whatsappConnected: !whatsappResult.error && !!whatsappResult.data
-    });
+      if (cancelled) return;
 
-    setStatsLoading(false);
-  }
+      setOverviewStats({
+        orders: ordersResult.error ? 0 : ordersResult.count || 0,
+        products: productsResult.error ? 0 : productsResult.count || 0,
+        balance: walletResult.error
+          ? 0
+          : Number(walletResult.data?.balance || 0),
+        whatsappConnected:
+          !whatsappResult.error && !!whatsappResult.data
+      });
 
-  loadOverviewStats();
+      setStatsLoading(false);
+    }
 
-  return () => {
-    cancelled = true;
-  };
-}, [tenantId]);
+    loadOverviewStats();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
+
   return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileMenuOpen ? "sidebar-open" : ""}`}>
@@ -424,38 +425,60 @@ useEffect(() => {
           </div>
 
           {activePage === "Products" ? (
-  <Products tenantId={tenantId} />
-) : activePage === "Orders" ? (
-  <Orders tenantId={tenantId} />
-) : activePage === "Wallet" ? (
-  <WalletPage tenantId={tenantId} />
-) : activePage === "Settings" ? (
+            <Products tenantId={tenantId} />
+          ) : activePage === "Orders" ? (
+            <Orders tenantId={tenantId} />
+          ) : activePage === "Wallet" ? (
+            <WalletPage tenantId={tenantId} />
+          ) : activePage === "Settings" ? (
             <SettingsPage tenantId={tenantId} />
           ) : activePage === "Overview" ? (
             <>
               <div className="stats-grid">
                 <div className="stat-card">
                   <span>Total orders</span>
-                  <strong>0</strong>
+                  <strong>
+                    {statsLoading ? "…" : overviewStats.orders}
+                  </strong>
                   <small>Orders received</small>
                 </div>
 
                 <div className="stat-card">
                   <span>Products</span>
-                  <strong>0</strong>
+                  <strong>
+                    {statsLoading ? "…" : overviewStats.products}
+                  </strong>
                   <small>Products listed</small>
                 </div>
 
                 <div className="stat-card">
                   <span>Wallet balance</span>
-                  <strong>₦0.00</strong>
+                  <strong>
+                    {statsLoading
+                      ? "…"
+                      : new Intl.NumberFormat("en-NG", {
+                          style: "currency",
+                          currency: "NGN",
+                          minimumFractionDigits: 2
+                        }).format(overviewStats.balance)}
+                  </strong>
                   <small>Available balance</small>
                 </div>
 
                 <div className="stat-card">
                   <span>WhatsApp status</span>
-                  <strong className="status-text">Not connected</strong>
-                  <small>Connect your business number</small>
+                  <strong className="status-text">
+                    {statsLoading
+                      ? "Checking..."
+                      : overviewStats.whatsappConnected
+                        ? "Connected"
+                        : "Not connected"}
+                  </strong>
+                  <small>
+                    {overviewStats.whatsappConnected
+                      ? "Business number connected"
+                      : "Connect your business number"}
+                  </small>
                 </div>
               </div>
 
@@ -522,9 +545,7 @@ useEffect(() => {
           ) : (
             <div className="panel placeholder-panel">
               <div className="placeholder-icon">
-                {activePage === "Orders" && <ShoppingCart size={28} />}
                 {activePage === "Inbox" && <MessageSquare size={28} />}
-                {activePage === "Wallet" && <Wallet size={28} />}
                 {activePage === "Analytics" && <BarChart3 size={28} />}
               </div>
 
