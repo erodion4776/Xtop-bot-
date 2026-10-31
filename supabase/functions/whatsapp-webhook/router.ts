@@ -108,6 +108,7 @@ interface ResolvedBotAccount {
   isSystem: boolean;
   businessName: string;
   welcomeGreeting: string | null;
+  merchantPaused: boolean;
 }
 
 async function resolveBotAccount(
@@ -139,6 +140,7 @@ async function resolveBotAccount(
       isSystem: true,
       businessName: "XTOP Retail Technologies",
       welcomeGreeting: null,
+      merchantPaused: false,
     };
   }
 
@@ -162,11 +164,11 @@ async function resolveBotAccount(
     return null;
   }
 
-  // Confirm tenant is active.
+  // Confirm tenant is active and retrieve its pause setting.
   const { data: tenant, error: tenantError } = await supabase
     .from("tenants")
     .select(
-      "id, name, business_name, welcome_greeting, is_active",
+      "id, name, business_name, welcome_greeting, is_active, metadata",
     )
     .eq("id", account.tenant_id)
     .eq("is_active", true)
@@ -182,52 +184,8 @@ async function resolveBotAccount(
     return null;
   }
 
-  // Check the latest active subscription.
-  const { data: subscription, error: subscriptionError } =
-    await supabase
-      .from("tenant_subscriptions")
-      .select(
-        "status, is_active, trial_expires_at, paid_expires_at",
-      )
-      .eq("tenant_id", account.tenant_id)
-      .eq("is_active", true)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-  if (subscriptionError) {
-    safeErrorLog(
-      "resolveBotAccount.subscription",
-      subscriptionError,
-    );
-    return null;
-  }
-
-  if (!subscription || subscription.is_active !== true) {
-    return null;
-  }
-
-  const now = Date.now();
-
-  const status = String(
-    subscription.status || "",
-  ).toUpperCase();
-
-  const trialValid =
-    status === "TRIAL" &&
-    !!subscription.trial_expires_at &&
-    new Date(subscription.trial_expires_at).getTime() > now;
-
-  const paidValid =
-    ["ACTIVE", "PAID"].includes(status) &&
-    (
-      !subscription.paid_expires_at ||
-      new Date(subscription.paid_expires_at).getTime() > now
-    );
-
-  if (!trialValid && !paidValid) {
-    return null;
-  }
+  // Sabi does not require subscriptions or trials.
+  // Merchant access depends on an active tenant and WhatsApp account.
 
   // Decrypt this tenant's own WhatsApp access token.
   let accessToken: string;
@@ -263,6 +221,9 @@ async function resolveBotAccount(
 
     welcomeGreeting:
       tenant.welcome_greeting || null,
+
+    merchantPaused:
+      tenant.metadata?.sabi_paused === true,
   };
 }
 
@@ -393,22 +354,16 @@ async function handleTenantStoreMessage(
     credentials,
   );
 
-  if (
-    !result ||
-    result.error ||
-    result.status >= 400
-  ) {
+  // sendTextMessage returns the WhatsApp message ID or null.
+  if (!result) {
     safeErrorLog(
       "handleTenantStoreMessage.send",
-      result?.error ||
-      result ||
-      new Error("WhatsApp send failed."),
+      new Error("WhatsApp message could not be sent."),
     );
     return;
   }
 
-  const waMessageId =
-    result.messages?.[0]?.id || null;
+  const waMessageId = result;
 
   await storeMessage(
     contact.id,
@@ -493,7 +448,7 @@ export async function routeMessage(
 
   if (!account) {
     console.error(
-      "[routeMessage] Rejected unknown, inactive, or expired WhatsApp number.",
+      "[routeMessage] Rejected unknown, inactive, or unregistered WhatsApp number.",
     );
     return;
   }
@@ -579,10 +534,36 @@ export async function routeMessage(
     ).catch(() => {});
 
     // ===================================================
-    // CUSTOMER TENANTS
+    // CUSTOMER TENANTS — PAUSE AND TAKEOVER
     // ===================================================
 
     if (!account.isSystem) {
+      const merchantContext = (
+        conversation.context_json || {}
+      ) as Record<string, any>;
+
+      const merchantAgentTakeover =
+        (contact as any)?.agent_mode === true ||
+        (conversation as any)?.agent_mode === true ||
+        merchantContext.agent_takeover === true ||
+        merchantContext.agent_mode === true;
+
+      // Merchant-wide pause affects only this merchant.
+      if (account.merchantPaused) {
+        console.log(
+          `[Merchant Pause] Automated replies paused for tenant ${tenantId}.`,
+        );
+        return;
+      }
+
+      // Individual takeover affects only this customer.
+      if (merchantAgentTakeover) {
+        console.log(
+          `[Merchant Agent Takeover] Bot paused for ${phone}.`,
+        );
+        return;
+      }
+
       await handleTenantStoreMessage(
         incoming,
         account,
@@ -671,7 +652,7 @@ export async function routeMessage(
     }
 
     // ===================================================
-    // INDIVIDUAL AGENT TAKEOVER
+    // INDIVIDUAL AGENT TAKEOVER — XTOP SYSTEM
     // ===================================================
 
     const ctx = (
@@ -1038,7 +1019,7 @@ export async function routeMessage(
 
     // ===================================================
     // DIRECT INTENT OVERRIDES
-    // ===================================================
+    // =====================================================
 
     if (
       interactiveId.startsWith("plan_") ||
