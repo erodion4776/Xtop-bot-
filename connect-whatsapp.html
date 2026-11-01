@@ -4,27 +4,186 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Connect Your WhatsApp Number | XTOP</title>
+<title>Connect Your Business WhatsApp | Sabi by XTOP</title>
+
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Arial,sans-serif;background:#f0f2f5;color:#1c1e21;min-height:100vh;display:flex;align-items:center;justify-content:center}
-.box{max-width:420px;width:calc(100% - 32px);background:#fff;border-radius:16px;padding:28px 24px;box-shadow:0 2px 12px #0001;text-align:center}
-h1{font-size:23px;color:#16a34a;margin-bottom:12px}
-p{font-size:15px;color:#65676b;line-height:1.6;margin-bottom:20px}
-.btn{width:100%;padding:16px;border:0;border-radius:10px;font-size:16px;font-weight:bold;background:#25D366;color:white;cursor:pointer}
-.btn:disabled{opacity:.6}
+body{
+ font-family:Arial,sans-serif;
+ background:#f0f2f5;
+ color:#1c1e21;
+ min-height:100vh;
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ padding:20px 0
+}
+.box{
+ max-width:460px;
+ width:calc(100% - 32px);
+ background:#fff;
+ border-radius:16px;
+ padding:28px 24px;
+ box-shadow:0 2px 12px #0001
+}
+h1{
+ font-size:23px;
+ color:#16a34a;
+ margin-bottom:12px;
+ text-align:center
+}
+.intro{
+ font-size:15px;
+ color:#65676b;
+ line-height:1.6;
+ margin-bottom:20px;
+ text-align:center
+}
+.warning{
+ background:#fff7ed;
+ border:1px solid #fed7aa;
+ border-radius:10px;
+ padding:15px;
+ margin-bottom:18px;
+ text-align:left
+}
+.warning h2{
+ font-size:16px;
+ color:#9a3412;
+ margin-bottom:9px
+}
+.warning p,.warning li{
+ font-size:14px;
+ color:#7c2d12;
+ line-height:1.55
+}
+.warning ul{
+ padding-left:20px;
+ margin-top:8px
+}
+.info{
+ background:#eff6ff;
+ border-radius:10px;
+ padding:13px;
+ margin-bottom:18px;
+ color:#1e40af;
+ font-size:14px;
+ line-height:1.55
+}
+.ack{
+ display:flex;
+ align-items:flex-start;
+ gap:10px;
+ margin:18px 0;
+ text-align:left;
+ font-size:14px;
+ line-height:1.5;
+ color:#374151
+}
+.ack input{
+ width:19px;
+ height:19px;
+ flex-shrink:0;
+ margin-top:1px
+}
+.btn{
+ width:100%;
+ padding:16px;
+ border:0;
+ border-radius:10px;
+ font-size:16px;
+ font-weight:bold;
+ background:#25D366;
+ color:white;
+ cursor:pointer
+}
+.btn:disabled{opacity:.5;cursor:not-allowed}
 .hidden{display:none}
-.error{background:#fef2f2;color:#b91c1c;padding:12px;border-radius:8px;margin-top:15px;font-size:14px}
-.success{color:#15803d;margin-top:18px;line-height:1.7;font-size:15px}
+.error{
+ background:#fef2f2;
+ color:#b91c1c;
+ padding:12px;
+ border-radius:8px;
+ margin-top:15px;
+ font-size:14px;
+ line-height:1.5
+}
+.success{
+ color:#15803d;
+ margin-top:18px;
+ line-height:1.7;
+ font-size:15px;
+ text-align:center
+}
+.dashboard-link{
+ display:block;
+ margin-top:16px;
+ padding:14px;
+ border-radius:9px;
+ background:#16a34a;
+ color:white;
+ text-decoration:none;
+ font-weight:bold
+}
+.small{
+ font-size:12px;
+ color:#6b7280;
+ text-align:center;
+ margin-top:16px;
+ line-height:1.5
+}
 </style>
 </head>
+
 <body>
 <div class="box">
-<h1>🟢 Connect Your WhatsApp</h1>
-<p id="planInfo">Connect your WhatsApp Business account securely through Meta.</p>
-<button class="btn" id="btnConnect" onclick="connectNow()">🔗 Connect My WhatsApp Number</button>
+
+<h1>🟢 Sabi by XTOP</h1>
+
+<p class="intro">
+Connect your dedicated business WhatsApp number to Sabi.
+This number will power your automated customer service and online store.
+</p>
+
+<div class="warning">
+<h2>⚠️ Important: Choose the right number</h2>
+
+<p>
+Before continuing, please understand how your WhatsApp number will be used.
+</p>
+
+<ul>
+<li>Use a spare or dedicated business WhatsApp number, not your main personal number.</li>
+<li>Sabi will use this connected number to receive and respond to your customers automatically.</li>
+<li>Depending on Meta's connection and migration options, you may no longer be able to use this number with the normal WhatsApp or WhatsApp Business mobile app in the usual way.</li>
+<li>Keep the SIM active and accessible because Meta may require verification.</li>
+<li>Do not connect a number you cannot afford to dedicate to your business automation.</li>
+</ul>
+</div>
+
+<div class="info">
+<strong>What about my personal WhatsApp?</strong><br>
+Your personal WhatsApp is optional. You can continue using it separately. It will not be connected to Sabi's automation.
+</div>
+
+<label class="ack">
+<input type="checkbox" id="acknowledge">
+<span>
+I understand that I should use a dedicated business number and that connecting it to Sabi may affect how I use it with the normal WhatsApp mobile app, depending on Meta's setup and migration options.
+</span>
+</label>
+
+<button class="btn" id="btnConnect" onclick="connectNow()" disabled>
+🔗 Connect My Business WhatsApp
+</button>
+
 <div id="errorMsg" class="error hidden"></div>
 <div id="successMsg" class="success hidden"></div>
+
+<p class="small">
+Secure connection powered by Meta Embedded Signup.
+</p>
+
 </div>
 
 <script async defer crossorigin="anonymous"
@@ -37,7 +196,6 @@ const CONFIG_ID="1470585484884368";
 
 const params=new URLSearchParams(location.search);
 const SESSION_TOKEN=params.get("token")||"";
-const PLAN=(params.get("plan")||"STANDARD").toUpperCase();
 
 let fbReady=false;
 let authCode=null;
@@ -46,6 +204,11 @@ let submitting=false;
 let cancelled=false;
 
 const btn=document.getElementById("btnConnect");
+const acknowledgement=document.getElementById("acknowledge");
+
+acknowledgement.addEventListener("change",function(){
+ btn.disabled=!this.checked;
+});
 
 window.fbAsyncInit=function(){
  try{
@@ -68,8 +231,8 @@ function showError(message){
 }
 
 function resetButton(){
- btn.disabled=false;
- btn.textContent="🔗 Connect My WhatsApp Number";
+ btn.disabled=!acknowledgement.checked;
+ btn.textContent="🔗 Connect My Business WhatsApp";
 }
 
 function validFacebookOrigin(origin){
@@ -78,25 +241,32 @@ function validFacebookOrigin(origin){
   return u.protocol==="https:" &&
    (u.hostname==="facebook.com" ||
     u.hostname.endsWith(".facebook.com"));
- }catch(e){return false;}
+ }catch(e){
+  return false;
+ }
 }
 
 window.addEventListener("message",function(event){
  if(!validFacebookOrigin(event.origin))return;
 
  let data=event.data;
+
  try{
   if(typeof data==="string")data=JSON.parse(data);
- }catch(e){return;}
+ }catch(e){
+  return;
+ }
 
  if(!data || data.type!=="WA_EMBEDDED_SIGNUP")return;
 
  if(data.event==="FINISH"){
   const d=data.data||{};
+
   signupInfo={
    waba_id:d.waba_id||"",
    phone_number_id:d.phone_number_id||""
   };
+
   tryFinish();
  }
  else if(data.event==="CANCEL"){
@@ -114,8 +284,13 @@ window.addEventListener("message",function(event){
 function connectNow(){
  document.getElementById("errorMsg").classList.add("hidden");
 
+ if(!acknowledgement.checked){
+  showError("Please confirm that you understand the dedicated-number requirement.");
+  return;
+ }
+
  if(!SESSION_TOKEN){
-  showError("Your signup link is invalid. Request a new link through WhatsApp.");
+  showError("Your registration link is invalid. Request a new link through Sabi on WhatsApp.");
   return;
  }
 
@@ -137,7 +312,7 @@ function connectNow(){
 
    if(response && response.authResponse && response.authResponse.code){
     authCode=response.authResponse.code;
-    btn.textContent="Verifying your WhatsApp account...";
+    btn.textContent="Verifying your business WhatsApp...";
     tryFinish();
    }else{
     resetButton();
@@ -167,55 +342,77 @@ async function tryFinish(){
 
  submitting=true;
  btn.disabled=true;
- btn.textContent="Activating your account...";
+ btn.textContent="Securing your WhatsApp connection...";
 
  try{
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),30000);
 
-  const response=await fetch(API,{
-   method:"POST",
-   headers:{"Content-Type":"application/json"},
-   body:JSON.stringify({
-    session_token:SESSION_TOKEN,
-    auth_code:authCode,
-    package_code:PLAN,
-    waba_id:signupInfo.waba_id,
-    phone_number_id:signupInfo.phone_number_id
-   }),
-   signal:controller.signal
-  });
+  let response;
 
-  clearTimeout(timeout);
+  try{
+   response=await fetch(API,{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+     session_token:SESSION_TOKEN,
+     auth_code:authCode,
+     waba_id:signupInfo.waba_id,
+     phone_number_id:signupInfo.phone_number_id
+    }),
+    signal:controller.signal
+   });
+  }finally{
+   clearTimeout(timeout);
+  }
 
   const result=await response.json();
 
   if(!response.ok || !result.success){
-   throw new Error(result.error||"Account activation failed.");
+   throw new Error(result.error||"WhatsApp connection failed.");
   }
 
   btn.classList.add("hidden");
-  document.getElementById("planInfo").classList.add("hidden");
+  document.getElementById("acknowledge").parentElement.classList.add("hidden");
+  document.getElementById("errorMsg").classList.add("hidden");
 
   const success=document.getElementById("successMsg");
   success.classList.remove("hidden");
 
-  const heading=document.createElement("strong");
-  heading.textContent="🎉 Your WhatsApp connection is complete!";
+  const heading=document.createElement("h2");
+  heading.textContent="🎉 WhatsApp Connected Successfully!";
+  success.appendChild(heading);
 
   const details=document.createElement("p");
   details.style.marginTop="12px";
   details.textContent=
-   "Number: "+(result.phone||"Connected")+
-   "\nPlan: "+(result.package||PLAN)+
-   "\nTrial ends: "+(result.trial_ends?
-    new Date(result.trial_ends).toLocaleDateString():"Activated");
+   "Business number: "+(result.phone||"Connected")+
+   "\n\nYour business WhatsApp is now connected to Sabi by XTOP.";
+  success.appendChild(details);
 
-  success.append(heading,details);
+  const next=document.createElement("p");
+  next.style.marginTop="14px";
+  next.textContent=
+   "Next, create your merchant dashboard login using your email address and a password. This will complete your business registration.";
+  success.appendChild(next);
+
+  if(result.dashboard_url){
+   const link=document.createElement("a");
+   link.href=result.dashboard_url;
+   link.className="dashboard-link";
+   link.textContent="Continue to Create Dashboard Account";
+   success.appendChild(link);
+  }else{
+   const instruction=document.createElement("p");
+   instruction.style.marginTop="12px";
+   instruction.textContent=
+    "Return to your Sabi WhatsApp chat and follow the next registration instructions.";
+   success.appendChild(instruction);
+  }
 
  }catch(error){
   showError(error.name==="AbortError"?
-   "The request timed out. Please try again.":
+   "The request timed out. Check your connection and try again.":
    error.message||"Something went wrong.");
   resetButton();
  }finally{
@@ -225,10 +422,9 @@ async function tryFinish(){
 
 window.addEventListener("load",function(){
  if(!SESSION_TOKEN){
-  showError("Your signup link is missing. Request a new link.");
+  showError("Your registration link is missing. Request a new link through Sabi on WhatsApp.");
+  btn.disabled=true;
  }
- document.getElementById("planInfo").textContent=
-  "You selected the "+PLAN+" plan. Connect your WhatsApp Business account securely through Meta.";
 });
 </script>
 </body>
