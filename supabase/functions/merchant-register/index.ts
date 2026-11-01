@@ -33,11 +33,14 @@ serve(async (req: Request) => {
       return jsonResponse({ error: "Authentication required" }, 401);
     }
 
-    const token = authorization.substring(7).trim();
+    const authToken = authorization.substring(7).trim();
 
-    if (!token) {
+    if (!authToken) {
       return jsonResponse({ error: "Invalid authentication token" }, 401);
     }
+
+    const body = await req.json().catch(() => ({}));
+    const sessionToken = String(body.session_token || "").trim();
 
     const admin = createClient(supabaseUrl, serviceRoleKey, {
       auth: {
@@ -49,76 +52,90 @@ serve(async (req: Request) => {
     const {
       data: { user },
       error: authError,
-    } = await admin.auth.getUser(token);
+    } = await admin.auth.getUser(authToken);
 
     if (authError || !user) {
       return jsonResponse({ error: "Invalid or expired session" }, 401);
+    }
+
+    // Existing merchants should continue to access their workspace.
+    const { data: memberships, error: membershipError } = await admin
+      .from("tenant_members")
+      .select("tenant_id, role")
+      .eq("user_id", user.id)
+      .eq("is_active", true)
+      .eq("role", "OWNER")
+      .limit(1);
+
+    if (membershipError) {
+      console.error("Membership lookup failed:", membershipError);
+      return jsonResponse({ error: "Unable to load your business account" }, 500);
+    }
+
+    if (memberships && memberships.length > 0) {
+      return jsonResponse({
+        success: true,
+        tenant_id: memberships[0].tenant_id,
+        existing_account: true,
+        message: "Merchant workspace is ready.",
+      });
+    }
+
+    // New registrations must have a valid WhatsApp onboarding session.
+    if (!sessionToken) {
+      return jsonResponse({
+        error: "Your WhatsApp registration session is missing. Please return to Sabi on WhatsApp and start registration again.",
+      }, 400);
     }
 
     const metadata = user.user_metadata || {};
 
     const ownerName = String(metadata.owner_name || "").trim();
     const businessName = String(metadata.business_name || "").trim();
-    const businessWhatsApp = String(
-      metadata.business_whatsapp || ""
-    ).trim();
     const personalWhatsApp = String(
       metadata.personal_whatsapp || ""
-    ).trim();
+    ).replace(/[^0-9]/g, "");
 
     if (!user.email || !ownerName || !businessName) {
       return jsonResponse({
-        error: "Your registration details are incomplete. Please update your registration information.",
+        error: "Your registration details are incomplete. Please sign up again with your owner name and business name.",
       }, 400);
     }
 
-    const cleanBusinessPhone = businessWhatsApp.replace(/[^0-9]/g, "");
-    const cleanPersonalPhone = personalWhatsApp.replace(/[^0-9]/g, "");
-
-    if (cleanBusinessPhone && cleanBusinessPhone.length < 10) {
+    if (personalWhatsApp && personalWhatsApp.length < 10) {
       return jsonResponse({
-        error: "Please provide a valid business WhatsApp number, or leave it blank to add later.",
+        error: "Please provide a valid personal WhatsApp number or leave it blank.",
       }, 400);
     }
 
-    if (
-      cleanBusinessPhone &&
-      cleanPersonalPhone &&
-      cleanPersonalPhone === cleanBusinessPhone
-    ) {
-      return jsonResponse({
-        error: "Your personal and business WhatsApp numbers must be different.",
-      }, 400);
-    }
-
+    // Attach this authenticated owner to the existing WhatsApp-connected tenant.
     const { data: tenantId, error: registrationError } = await admin.rpc(
-      "sabi_create_merchant_workspace",
+      "sabi_complete_merchant_registration",
       {
         p_user_id: user.id,
+        p_session_token: sessionToken,
         p_owner_name: ownerName,
         p_business_name: businessName,
         p_email: user.email,
-        p_business_whatsapp: cleanBusinessPhone || null,
-        p_personal_whatsapp: cleanPersonalPhone || null,
+        p_personal_whatsapp: personalWhatsApp || null,
       }
     );
 
     if (registrationError || !tenantId) {
-      console.error(
-        "Merchant workspace registration failed:",
-        registrationError
-      );
+      console.error("Merchant registration failed:", registrationError);
 
       return jsonResponse({
-        error: "Unable to create your merchant workspace. Please try again.",
-      }, 500);
+        error: registrationError?.message ||
+          "Unable to complete your merchant registration. Please try again.",
+      }, 400);
     }
 
     return jsonResponse({
       success: true,
       tenant_id: tenantId,
-      message: "Merchant workspace is ready.",
-    }, 200);
+      existing_account: false,
+      message: "Your Sabi merchant workspace is ready.",
+    });
 
   } catch (error) {
     console.error("Merchant registration error:", error);
