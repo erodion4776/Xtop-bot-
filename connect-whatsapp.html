@@ -38,51 +38,27 @@ h1{
  margin-bottom:20px;
  text-align:center
 }
-.warning{
- background:#fff7ed;
- border:1px solid #fed7aa;
+.warning,.info,.browser-help,.recovery,.diagnostics{
  border-radius:10px;
  padding:15px;
  margin-bottom:18px;
- text-align:left
-}
-.warning h2{
- font-size:16px;
- color:#9a3412;
- margin-bottom:9px
-}
-.warning p,.warning li{
- font-size:14px;
- color:#7c2d12;
- line-height:1.55
-}
-.warning ul{
- padding-left:20px;
- margin-top:8px
-}
-.info{
- background:#eff6ff;
- border-radius:10px;
- padding:13px;
- margin-bottom:18px;
- color:#1e40af;
  font-size:14px;
  line-height:1.55
 }
+.warning{
+ background:#fff7ed;
+ border:1px solid #fed7aa
+}
+.warning h2{font-size:16px;color:#9a3412;margin-bottom:9px}
+.warning p,.warning li{color:#7c2d12}
+.warning ul,.info ul{padding-left:20px;margin-top:8px}
+.info{background:#eff6ff;color:#1e40af}
 .browser-help{
  background:#f0fdf4;
  border:1px solid #bbf7d0;
- border-radius:10px;
- padding:15px;
- margin-bottom:18px;
- font-size:14px;
- line-height:1.6;
  color:#166534
 }
-.browser-help h2{
- font-size:16px;
- margin-bottom:7px
-}
+.browser-help h2{font-size:16px;margin-bottom:7px}
 .browser-btn{
  display:block;
  width:100%;
@@ -95,39 +71,25 @@ h1{
  font-size:15px;
  font-weight:bold;
  text-align:center;
- text-decoration:none;
- cursor:pointer
+ text-decoration:none
 }
 .recovery{
  background:#fff7ed;
  border:1px solid #fed7aa;
- border-radius:10px;
- padding:14px;
- margin-top:15px;
- font-size:13px;
- line-height:1.6;
- color:#7c2d12
+ color:#7c2d12;
+ margin-top:15px
 }
-.recovery h2{
- font-size:15px;
- margin-bottom:7px
-}
+.recovery h2{font-size:15px;margin-bottom:7px}
 .ack{
  display:flex;
  align-items:flex-start;
  gap:10px;
  margin:18px 0;
- text-align:left;
  font-size:14px;
  line-height:1.5;
  color:#374151
 }
-.ack input{
- width:19px;
- height:19px;
- flex-shrink:0;
- margin-top:1px
-}
+.ack input{width:19px;height:19px;flex-shrink:0;margin-top:1px}
 .btn{
  width:100%;
  padding:16px;
@@ -140,7 +102,7 @@ h1{
  cursor:pointer
 }
 .btn:disabled{opacity:.5;cursor:not-allowed}
-.hidden{display:none}
+.hidden{display:none!important}
 .error{
  background:#fef2f2;
  color:#b91c1c;
@@ -169,6 +131,39 @@ h1{
  text-decoration:none;
  font-weight:bold
 }
+.diagnostics{
+ background:#f8fafc;
+ border:1px solid #cbd5e1;
+ margin-top:16px;
+ color:#334155
+}
+.diagnostics h2{font-size:16px;margin-bottom:10px}
+.diag-row{
+ display:flex;
+ justify-content:space-between;
+ gap:12px;
+ padding:7px 0;
+ border-bottom:1px solid #e2e8f0;
+ font-size:13px
+}
+.diag-row:last-child{border-bottom:0}
+.diag-value{
+ font-weight:bold;
+ text-align:right;
+ overflow-wrap:anywhere
+}
+.diag-log{
+ margin-top:10px;
+ padding:10px;
+ border-radius:7px;
+ background:#e2e8f0;
+ font-size:12px;
+ line-height:1.5;
+ white-space:pre-wrap;
+ overflow-wrap:anywhere;
+ max-height:180px;
+ overflow:auto
+}
 .small{
  font-size:12px;
  color:#6b7280;
@@ -180,7 +175,6 @@ h1{
 </head>
 
 <body>
-
 <div id="fb-root"></div>
 
 <div class="box">
@@ -194,38 +188,30 @@ This number will power your automated customer service and online store.
 
 <div id="browserHelp" class="browser-help hidden">
 <h2>Open secure registration in Chrome</h2>
-For a more reliable Meta connection, open this same registration page in Chrome instead of continuing inside WhatsApp.
+For a more reliable Meta connection, open this same registration page in Chrome.
 
-<a id="openChrome" class="browser-btn" href="#">
-Open in Chrome
-</a>
-
+<a id="openChrome" class="browser-btn" href="#">Open in Chrome</a>
 <p style="margin-top:9px;font-size:12px">
-Your registration link will be preserved when you open Chrome.
+Your registration link will be preserved.
 </p>
 </div>
 
 <div class="warning">
 <h2>⚠️ Important: Choose the right number</h2>
-
-<p>
-Before continuing, please understand how your WhatsApp number will be used.
-</p>
-
+<p>Before continuing, understand how your WhatsApp number will be used.</p>
 <ul>
 <li>Use a spare or dedicated business WhatsApp number, not your main personal number.</li>
 <li>Sabi will use this connected number to receive and respond to your customers automatically.</li>
-<li>Depending on Meta's connection and migration options, you may no longer be able to use this number with the normal WhatsApp or WhatsApp Business mobile app in the usual way.</li>
+<li>Depending on Meta's connection and migration options, normal WhatsApp mobile-app use may be affected.</li>
 <li>Keep the SIM active and accessible because Meta may require verification.</li>
-<li>Do not connect a number you cannot afford to dedicate to your business automation.</li>
+<li>Do not connect a number you cannot afford to dedicate to business automation.</li>
 </ul>
 </div>
 
 <div class="info">
 <strong>Don't have a business WhatsApp number yet?</strong><br>
-You can register a new number during Meta's setup if that option is available.
-
-<ul style="padding-left:20px;margin-top:8px">
+You may be able to register a new number during Meta's setup.
+<ul>
 <li>Select Nigeria (+234) when choosing your country.</li>
 <li>Enter a mobile number you can access.</li>
 <li>Complete the SMS or phone-call verification requested by Meta.</li>
@@ -235,13 +221,13 @@ You can register a new number during Meta's setup if that option is available.
 
 <div class="info">
 <strong>What about my personal WhatsApp?</strong><br>
-Your personal WhatsApp is optional. You can continue using it separately. It will not be connected to Sabi's automation.
+Your personal WhatsApp is optional. It will not be connected to Sabi's automation.
 </div>
 
 <label class="ack">
 <input type="checkbox" id="acknowledge">
 <span>
-I understand that I should use a dedicated business number and that connecting it to Sabi may affect how I use it with the normal WhatsApp mobile app, depending on Meta's setup and migration options.
+I understand that I should use a dedicated business number and that connecting it to Sabi may affect normal WhatsApp mobile-app use, depending on Meta's setup and migration options.
 </span>
 </label>
 
@@ -252,31 +238,68 @@ I understand that I should use a dedicated business number and that connecting i
 <div id="errorMsg" class="error hidden"></div>
 <div id="successMsg" class="success hidden"></div>
 
+<div id="diagnostics" class="diagnostics hidden">
+<h2>Connection diagnostics</h2>
+
+<div class="diag-row">
+<span>Facebook SDK</span>
+<span class="diag-value" id="diagSdk">Loading</span>
+</div>
+
+<div class="diag-row">
+<span>Login launched</span>
+<span class="diag-value" id="diagLogin">No</span>
+</div>
+
+<div class="diag-row">
+<span>Login response</span>
+<span class="diag-value" id="diagResponse">Waiting</span>
+</div>
+
+<div class="diag-row">
+<span>Meta signup event</span>
+<span class="diag-value" id="diagEvent">Not received</span>
+</div>
+
+<div class="diag-row">
+<span>Authorization code</span>
+<span class="diag-value" id="diagCode">Not received</span>
+</div>
+
+<div class="diag-row">
+<span>WhatsApp account details</span>
+<span class="diag-value" id="diagAccount">Not received</span>
+</div>
+
+<div class="diag-row">
+<span>Current stage</span>
+<span class="diag-value" id="diagStage">Page loaded</span>
+</div>
+
+<div class="diag-log" id="diagLog">Waiting for connection attempt.</div>
+</div>
+
 <div id="androidRecovery" class="recovery hidden">
 <h2>Having trouble opening Meta?</h2>
 If Meta's page closes immediately on Android:
-
 <ol style="padding-left:19px;margin-top:7px">
 <li>Open your phone's Settings.</li>
 <li>Go to Apps, then Facebook.</li>
 <li>Open "Open by default" or "Set as default".</li>
 <li>If "Open supported links" is enabled, turn it off.</li>
-<li>Return to Chrome and retry this registration page.</li>
+<li>Return to Chrome and retry.</li>
 </ol>
 <p style="margin-top:8px">
-This is only a troubleshooting option if the connection fails. Most merchants should not need to change this setting.
+This is a troubleshooting option, not a requirement for every merchant.
 </p>
 </div>
 
-<p class="small">
-Secure connection powered by Meta Embedded Signup.
-</p>
+<p class="small">Secure connection powered by Meta Embedded Signup.</p>
 
 </div>
 
 <script>
 const API="https://mldywarnnwjitfvqpgis.supabase.co/functions/v1/whatsapp-webhook?action=onboard";
-
 const APP_ID="1947931015867084";
 const CONFIG_ID="1470585484884368";
 
@@ -288,18 +311,36 @@ let authCode=null;
 let signupInfo=null;
 let submitting=false;
 let cancelled=false;
+let loginStarted=false;
+let loginTimer=null;
+let eventReceived=false;
 
 const btn=document.getElementById("btnConnect");
 const acknowledgement=document.getElementById("acknowledge");
 
-acknowledgement.addEventListener("change",function(){
- btn.disabled=!this.checked;
-});
+function diagnosticLog(message){
+ const el=document.getElementById("diagLog");
+ const time=new Date().toLocaleTimeString();
+ el.textContent+="\n["+time+"] "+message;
+ el.scrollTop=el.scrollHeight;
+}
+
+function setDiagnostic(id,value){
+ const el=document.getElementById(id);
+ if(el)el.textContent=value;
+}
+
+function setStage(stage){
+ setDiagnostic("diagStage",stage);
+ diagnosticLog(stage);
+ document.getElementById("diagnostics").classList.remove("hidden");
+}
 
 function showError(message){
  const el=document.getElementById("errorMsg");
  el.textContent=message;
  el.classList.remove("hidden");
+ document.getElementById("diagnostics").classList.remove("hidden");
 
  if(isAndroid()){
   document.getElementById("androidRecovery").classList.remove("hidden");
@@ -323,126 +364,43 @@ function isWhatsAppBrowser(){
  return /WhatsApp/i.test(navigator.userAgent);
 }
 
-/*
- Show the Chrome handoff only when this page
- is opened inside WhatsApp on Android.
-*/
+acknowledgement.addEventListener("change",function(){
+ btn.disabled=!this.checked;
+});
 
 function setupBrowserHandoff(){
-
  if(!isAndroid() || !isWhatsAppBrowser())return;
 
- const help=document.getElementById("browserHelp");
+ document.getElementById("browserHelp").classList.remove("hidden");
+
  const link=document.getElementById("openChrome");
-
- help.classList.remove("hidden");
-
  const currentUrl=location.href;
  const parsed=new URL(currentUrl);
 
- const intentUrl=
-  "intent://"+
-  parsed.host+
-  parsed.pathname+
-  parsed.search+
-  parsed.hash+
+ link.href=
+  "intent://"+parsed.host+parsed.pathname+parsed.search+parsed.hash+
   "#Intent;scheme=https;package=com.android.chrome;"+
-  "S.browser_fallback_url="+
-  encodeURIComponent(currentUrl)+
-  ";end";
-
- link.href=intentUrl;
+  "S.browser_fallback_url="+encodeURIComponent(currentUrl)+";end";
 
  link.addEventListener("click",function(){
   link.textContent="Opening Chrome...";
  });
-
-}
-
-function getMetaDiagnostic(response){
-
- const diagnostic={
-  response_received:!!response,
-  status:response?.status||"not provided",
-  error:response?.error?.message||response?.error||"none",
-  error_message:response?.error_message||"none",
-  error_description:response?.error_description||"none",
-  has_auth_response:!!response?.authResponse,
-  has_authorization_code:!!response?.authResponse?.code,
-  response_keys:response?Object.keys(response):[]
- };
-
- console.error("SABI META DIAGNOSTIC:",diagnostic);
-
- const details=
-  "\n\nDiagnostic details:"+
-  "\nStatus: "+diagnostic.status+
-  "\nError: "+diagnostic.error+
-  "\nError message: "+diagnostic.error_message+
-  "\nError description: "+diagnostic.error_description+
-  "\nAuthorization response received: "+diagnostic.has_auth_response+
-  "\nAuthorization code received: "+diagnostic.has_authorization_code+
-  "\nResponse fields: "+diagnostic.response_keys.join(", ");
-
- if(!response){
-  return "Meta returned no authorization response."+details;
- }
-
- if(response.error_message){
-  return "META ERROR: "+response.error_message+details;
- }
-
- if(response.error_description){
-  return "META ERROR: "+response.error_description+details;
- }
-
- if(response.error){
-  const message=typeof response.error==="object"?
-   response.error.message||"Unknown Meta error":
-   response.error;
-
-  return "META ERROR: "+message+details;
- }
-
- if(response.status==="not_authorized"){
-  return "Meta reports that permission to connect Sabi was not completed. Please try again and approve the requested permissions."+details;
- }
-
- if(response.status==="unknown"){
-  return "Meta did not complete the signup or return an authorization response. If you are using Android, try opening this page in Chrome. If it still fails, use the Android recovery instructions below."+details;
- }
-
- if(response.authResponse && !response.authResponse.code){
-  return "Facebook returned a login response, but the authorization code is missing."+details;
- }
-
- return "Meta did not return an authorization code. Please try again."+details;
 }
 
 function validFacebookOrigin(origin){
  try{
   const u=new URL(origin);
-
-  return u.protocol==="https:" &&
-   (
-    u.hostname==="facebook.com" ||
-    u.hostname.endsWith(".facebook.com")
-   );
-
+  return u.protocol==="https://" &&
+   (u.hostname==="facebook.com" || u.hostname.endsWith(".facebook.com"));
  }catch(e){
   return false;
  }
 }
 
-/*
- Meta Facebook SDK initialization.
- Keep the existing SDK version and active configuration.
-*/
+/* Facebook SDK initialization */
 
 window.fbAsyncInit=function(){
-
  try{
-
   FB.init({
    appId:APP_ID,
    autoLogAppEvents:true,
@@ -452,23 +410,26 @@ window.fbAsyncInit=function(){
   });
 
   fbReady=true;
-
-  console.info("Sabi: Facebook SDK v26.0 initialized.");
+  setDiagnostic("diagSdk","Loaded successfully");
+  diagnosticLog("Facebook SDK initialized using v26.0.");
+  setStage("Facebook SDK ready");
 
  }catch(error){
-
-  console.error("Sabi Facebook initialization error:",error);
-
-  showError(
-   "Facebook could not be initialized. Refresh this page and try again."
-  );
+  setDiagnostic("diagSdk","Initialization failed");
+  setStage("Facebook SDK initialization failed");
+  showError("Facebook SDK initialization failed: "+error.message);
  }
-
 };
 
-/*
- Listen for WhatsApp Embedded Signup events.
-*/
+/* SDK script download failure */
+
+function facebookSdkFailed(){
+ setDiagnostic("diagSdk","Download failed");
+ setStage("Facebook SDK could not be downloaded");
+ showError("Facebook SDK could not be downloaded. Check your internet connection or browser restrictions, then refresh.");
+}
+
+/* Listen for Meta Embedded Signup events */
 
 window.addEventListener("message",function(event){
 
@@ -477,16 +438,17 @@ window.addEventListener("message",function(event){
  let data=event.data;
 
  try{
-  if(typeof data==="string"){
-   data=JSON.parse(data);
-  }
+  if(typeof data==="string")data=JSON.parse(data);
  }catch(error){
   return;
  }
 
  if(!data || data.type!=="WA_EMBEDDED_SIGNUP")return;
 
- console.info("Sabi Embedded Signup event:",data.event);
+ eventReceived=true;
+
+ setDiagnostic("diagEvent",data.event||"Unknown event");
+ setStage("Meta signup event received: "+(data.event||"Unknown"));
 
  if(data.event==="FINISH"){
 
@@ -497,51 +459,40 @@ window.addEventListener("message",function(event){
    phone_number_id:d.phone_number_id||""
   };
 
+  const valid=!!(signupInfo.waba_id && signupInfo.phone_number_id);
+
+  setDiagnostic("diagAccount",valid?"Received":"Incomplete");
+  diagnosticLog("Meta FINISH event received. WABA ID present: "+!!signupInfo.waba_id+". Phone number ID present: "+!!signupInfo.phone_number_id+".");
+
   tryFinish();
 
- }
+ }else if(data.event==="CANCEL"){
 
- else if(data.event==="CANCEL"){
+  cancelled=true;
+  setStage("Merchant cancelled Meta signup");
+  showError("You cancelled the WhatsApp connection. You can try again.");
+  resetButton();
+
+ }else if(data.event==="ERROR"){
 
   cancelled=true;
 
-  showError(
-   "You cancelled the WhatsApp connection. You can try again."
-  );
+  const details=data.error_message ||
+   (data.data && data.data.error_message) ||
+   "Meta did not provide an error description.";
 
+  setStage("Meta reported an Embedded Signup error");
+  diagnosticLog("Meta error details: "+details);
+  showError("Meta reported an error: "+details);
   resetButton();
 
- }
-
- else if(data.event==="ERROR"){
-
-  cancelled=true;
-
-  const details=
-   data.error_message ||
-   (data.data && data.data.error_message);
-
-  console.error("SABI EMBEDDED SIGNUP ERROR:",{
-   event:data.event,
-   error_message:details||"not provided",
-   data_keys:data.data?Object.keys(data.data):[]
-  });
-
-  showError(
-   details?
-   "Meta reported an error: "+details:
-   "Meta reported an error during signup. Please restart the connection."
-  );
-
-  resetButton();
-
+ }else{
+  diagnosticLog("Additional Meta event received: "+data.event);
  }
 
 });
 
-/*
- Start Facebook Login for Business.
-*/
+/* Meta Login for Business */
 
 function connectNow(){
 
@@ -555,11 +506,14 @@ function connectNow(){
  }
 
  if(!SESSION_TOKEN){
+  setStage("Registration token missing");
   showError("Your registration link is invalid. Request a new link through Sabi on WhatsApp.");
   return;
  }
 
  if(!fbReady || typeof FB==="undefined"){
+  setDiagnostic("diagSdk","Not ready");
+  setStage("Facebook SDK is not ready");
   showError("Facebook is still loading. Wait a few seconds and try again. If this continues, refresh the page.");
   return;
  }
@@ -567,19 +521,43 @@ function connectNow(){
  authCode=null;
  signupInfo=null;
  cancelled=false;
+ loginStarted=true;
+ eventReceived=false;
+
+ setDiagnostic("diagLogin","Yes");
+ setDiagnostic("diagResponse","Waiting for callback");
+ setDiagnostic("diagEvent","Not received");
+ setDiagnostic("diagCode","Not received");
+ setDiagnostic("diagAccount","Not received");
+
+ document.getElementById("diagnostics").classList.remove("hidden");
 
  btn.disabled=true;
  btn.textContent="Opening Meta...";
+
+ setStage("Calling Facebook Login");
 
  try{
 
   FB.login(function(response){
 
+   if(loginTimer){
+    clearTimeout(loginTimer);
+    loginTimer=null;
+   }
+
+   setDiagnostic("diagResponse","Callback received");
+
    if(cancelled)return;
+
+   diagnosticLog("Facebook Login callback received.");
 
    if(response && response.authResponse && response.authResponse.code){
 
     authCode=response.authResponse.code;
+
+    setDiagnostic("diagCode","Received");
+    setStage("Authorization code received");
 
     btn.textContent="Verifying your business WhatsApp...";
 
@@ -587,10 +565,36 @@ function connectNow(){
 
    }else{
 
+    const status=response && response.status?
+     response.status:"No status returned";
+
+    setDiagnostic("diagResponse","Status: "+status);
+
+    const errorMessage=
+     response && (response.error_message || response.error_description)?
+     (response.error_message || response.error_description):
+     "No detailed error returned by Facebook.";
+
+    setStage("Facebook Login returned without an authorization code");
+
+    diagnosticLog("Facebook status: "+status);
+    diagnosticLog("Facebook error: "+errorMessage);
+
+    if(status==="unknown"){
+     showError(
+      "Meta returned status UNKNOWN without an authorization code.\n\n"+
+      "This means the login process did not complete successfully.\n\n"+
+      "Please share the diagnostic information shown below."
+     );
+    }else{
+     showError(
+      "Meta did not return an authorization code.\n"+
+      "Status: "+status+"\n"+
+      "Details: "+errorMessage
+     );
+    }
+
     resetButton();
-
-    showError(getMetaDiagnostic(response));
-
    }
 
   },{
@@ -601,175 +605,138 @@ function connectNow(){
    extras:{}
   });
 
+  setStage("Facebook Login called; waiting for Meta response");
+
+  loginTimer=setTimeout(function(){
+
+   if(!authCode && !cancelled){
+    setStage("No authorization code received after waiting");
+    diagnosticLog("No completed authorization response was available after 20 seconds.");
+    showError(
+     "Meta has not completed the login process.\n\n"+
+     "The diagnostic information below will help identify where it stopped."
+    );
+    resetButton();
+   }
+
+  },20000);
+
  }catch(error){
 
-  console.error("Sabi FB.login error:",error);
+  if(loginTimer){
+   clearTimeout(loginTimer);
+   loginTimer=null;
+  }
+
+  setStage("Facebook Login could not be launched");
+  diagnosticLog("JavaScript error: "+error.message);
+
+  showError("Could not open Meta signup: "+(error.message||"Unknown browser error"));
 
   resetButton();
-
-  showError(
-   "Could not open Meta signup: "+
-   (error.message||"Unknown browser error")+
-   ". Try opening this page in Chrome and try again."
-  );
-
  }
-
 }
 
-/*
- Complete Sabi onboarding after both:
- 1. Meta authorization code.
- 2. WhatsApp account details.
-*/
+/* Complete Sabi onboarding after both Meta responses arrive */
 
 async function tryFinish(){
 
  if(submitting || cancelled || !authCode || !signupInfo)return;
 
  if(!signupInfo.waba_id || !signupInfo.phone_number_id){
-
+  setStage("WhatsApp account details are incomplete");
   showError("Meta did not return the WhatsApp account details. Please restart signup.");
-
   resetButton();
-
   return;
  }
 
  submitting=true;
-
  btn.disabled=true;
  btn.textContent="Securing your WhatsApp connection...";
+
+ setStage("Sending verified details to Sabi");
 
  try{
 
   const controller=new AbortController();
 
-  const timeout=setTimeout(
-   ()=>controller.abort(),
-   30000
-  );
+  const timeout=setTimeout(function(){
+   controller.abort();
+  },30000);
 
   let response;
 
   try{
 
    response=await fetch(API,{
-
     method:"POST",
-
-    headers:{
-     "Content-Type":"application/json"
-    },
-
+    headers:{"Content-Type":"application/json"},
     body:JSON.stringify({
-
      session_token:SESSION_TOKEN,
-
      auth_code:authCode,
-
      waba_id:signupInfo.waba_id,
-
      phone_number_id:signupInfo.phone_number_id
-
     }),
-
     signal:controller.signal
-
    });
 
   }finally{
-
    clearTimeout(timeout);
-
   }
 
   let result;
 
   try{
-
    result=await response.json();
-
   }catch(error){
-
-   throw new Error(
-    "Sabi received an unreadable response from the registration server. Please try again."
-   );
-
+   throw new Error("Sabi received an unreadable response from the registration server.");
   }
 
   if(!response.ok || !result.success){
-
-   throw new Error(
-    result.error ||
-    "WhatsApp connection failed. Server response: "+response.status
-   );
-
+   throw new Error(result.error || "WhatsApp connection failed. Server response: "+response.status);
   }
 
+  setStage("Sabi successfully connected your WhatsApp account");
+
   btn.classList.add("hidden");
-
   acknowledgement.parentElement.classList.add("hidden");
-
   hideError();
 
   const success=document.getElementById("successMsg");
-
   success.classList.remove("hidden");
 
   const heading=document.createElement("h2");
-
   heading.textContent="🎉 WhatsApp Connected Successfully!";
-
   success.appendChild(heading);
 
   const details=document.createElement("p");
-
   details.style.marginTop="12px";
-
-  details.textContent=
-   "Business number: "+(result.phone||"Connected")+
+  details.textContent="Business number: "+(result.phone||"Connected")+
    "\n\nYour business WhatsApp is now connected to Sabi by XTOP.";
-
   success.appendChild(details);
 
   const next=document.createElement("p");
-
   next.style.marginTop="14px";
-
-  next.textContent=
-   "Next, create your merchant dashboard login using your email address and a password. This will complete your business registration.";
-
+  next.textContent="Next, create your merchant dashboard login using your email address and a password.";
   success.appendChild(next);
 
   if(result.dashboard_url){
-
    const link=document.createElement("a");
-
    link.href=result.dashboard_url;
-
    link.className="dashboard-link";
-
    link.textContent="Continue to Create Dashboard Account";
-
    success.appendChild(link);
-
   }else{
-
    const instruction=document.createElement("p");
-
    instruction.style.marginTop="12px";
-
-   instruction.textContent=
-    "Return to your Sabi WhatsApp chat and follow the next registration instructions.";
-
+   instruction.textContent="Return to your Sabi WhatsApp chat and follow the next registration instructions.";
    success.appendChild(instruction);
-
   }
 
  }catch(error){
 
-  console.error("Sabi onboarding callback error:",error);
+  setStage("Sabi could not complete the connection");
+  diagnosticLog("Server error: "+(error.message||"Unknown error"));
 
   showError(
    error.name==="AbortError"?
@@ -780,25 +747,20 @@ async function tryFinish(){
   resetButton();
 
  }finally{
-
   submitting=false;
-
  }
-
 }
 
 window.addEventListener("load",function(){
 
  setupBrowserHandoff();
 
+ setStage("Registration page loaded");
+
  if(!SESSION_TOKEN){
-
-  showError(
-   "Your registration link is missing. Request a new link through Sabi on WhatsApp."
-  );
-
+  setStage("Registration token missing");
+  showError("Your registration link is missing. Request a new link through Sabi on WhatsApp.");
   btn.disabled=true;
-
  }
 
 });
@@ -810,7 +772,7 @@ window.addEventListener("load",function(){
  defer
  crossorigin="anonymous"
  src="https://connect.facebook.net/en_US/sdk.js"
- onerror="showError('Facebook SDK could not be downloaded. Check your internet connection or browser restrictions and refresh this page.')">
+ onerror="facebookSdkFailed()">
 </script>
 
 </body>
