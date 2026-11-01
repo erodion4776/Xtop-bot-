@@ -230,39 +230,62 @@ function resetButton(){
 
 function getMetaDiagnostic(response){
 
+ const diagnostic={
+  response_received:!!response,
+  status:response?.status||"not provided",
+  error:response?.error?.message||response?.error||"none",
+  error_message:response?.error_message||"none",
+  error_description:response?.error_description||"none",
+  has_auth_response:!!response?.authResponse,
+  has_authorization_code:!!response?.authResponse?.code,
+  response_keys:response?Object.keys(response):[]
+ };
+
+ console.error("SABI META DIAGNOSTIC:",diagnostic);
+
+ const details=
+  "\n\nDiagnostic details:"+
+  "\nStatus: "+diagnostic.status+
+  "\nError: "+diagnostic.error+
+  "\nError message: "+diagnostic.error_message+
+  "\nError description: "+diagnostic.error_description+
+  "\nAuthorization response received: "+diagnostic.has_auth_response+
+  "\nAuthorization code received: "+diagnostic.has_authorization_code+
+  "\nResponse fields: "+diagnostic.response_keys.join(", ");
+
  if(!response){
-  return "Meta did not return an authorization response. Please refresh the page and try again.";
+  return "Meta returned no authorization response."+details;
  }
 
- const errorMessage=
-  response.error_message ||
-  response.error_description ||
-  (response.error && (
-   response.error.message ||
-   response.error
-  ));
+ if(response.error_message){
+  return "META ERROR: "+response.error_message+details;
+ }
 
- if(errorMessage){
-  return "Meta authorization error: "+String(errorMessage);
+ if(response.error_description){
+  return "META ERROR: "+response.error_description+details;
+ }
+
+ if(response.error){
+  const message=typeof response.error==="object"?
+   response.error.message||"Unknown Meta error":
+   response.error;
+
+  return "META ERROR: "+message+details;
  }
 
  if(response.status==="not_authorized"){
-  return "You are logged into Facebook, but permission to connect Sabi was not completed. Please try again and approve the requested permissions.";
+  return "Meta reports that permission to connect Sabi was not completed. Please try again and approve the requested permissions."+details;
  }
 
  if(response.status==="unknown"){
-  return "Meta opened the connection process but did not return an authorization code. Please make sure you complete every step of the WhatsApp signup process before returning to Sabi. If this continues in normal Chrome, we will investigate its browser session and cookie settings.";
+  return "META STATUS: Signup did not complete or Meta did not return an authorization response. The diagnostic details below will help us investigate."+details;
  }
 
  if(response.authResponse && !response.authResponse.code){
-  return "Facebook returned a login response but no authorization code. Please restart the connection.";
+  return "Facebook returned a login response, but the authorization code is missing."+details;
  }
 
- if(response.status){
-  return "Facebook returned status '"+response.status+"' without an authorization code. Please try again.";
- }
-
- return "Facebook did not return an authorization code. Please try again.";
+ return "Meta did not return an authorization code. Please try again."+details;
 }
 
 function validFacebookOrigin(origin){
@@ -282,8 +305,6 @@ function validFacebookOrigin(origin){
 
 /*
  Meta Facebook SDK initialization.
- The initialization callback is defined before
- the asynchronous SDK script is loaded.
 */
 
 window.fbAsyncInit=function(){
@@ -368,6 +389,12 @@ window.addEventListener("message",function(event){
    data.error_message ||
    (data.data && data.data.error_message);
 
+  console.error("SABI EMBEDDED SIGNUP ERROR:",{
+   event:data.event,
+   error_message:details||"not provided",
+   data_keys:data.data?Object.keys(data.data):[]
+  });
+
   showError(
    details?
    "Meta reported an error: "+details:
@@ -427,13 +454,6 @@ function connectNow(){
     tryFinish();
 
    }else{
-
-    console.warn("Sabi Facebook authorization response:",{
-     status:response && response.status,
-     error:response && response.error,
-     error_message:response && response.error_message,
-     has_auth_response:!!(response && response.authResponse)
-    });
 
     resetButton();
 
