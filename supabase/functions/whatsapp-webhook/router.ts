@@ -36,6 +36,12 @@ import {
 } from "./utils.ts";
 
 import { showMainMenu } from "./modules/main-menu.ts";
+import { showSabiWelcomeMenu } from "./modules/sabi-menu.ts";
+
+import {
+  startSabiShopDemo,
+  handleSabiShopDemo,
+} from "./modules/sabi-shop-demo.ts";
 import {
   handleProducts,
   showProductsList,
