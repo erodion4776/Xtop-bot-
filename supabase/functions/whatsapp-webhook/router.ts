@@ -1,3 +1,4 @@
+
 // supabase/functions/whatsapp-webhook/router.ts
 
 import {
@@ -36,6 +37,10 @@ import {
 
 import { showMainMenu } from "./modules/main-menu.ts";
 import { showSabiWelcomeMenu } from "./modules/sabi-menu.ts";
+
+import {
+  startMerchantRegistration,
+} from "./modules/onboarding.ts";
 
 import {
   startSabiShopDemo,
@@ -881,13 +886,13 @@ export async function routeMessage(
     // SABI GATEWAY ACTIONS
     // ===================================================
 
-    if (interactiveId === "sabi_register") {
-      await sendTextMessage(
-        phone,
-        "🏪 *Register your business on Sabi by XTOP*\n\nBusiness registration is being prepared. You will be able to connect your dedicated business WhatsApp number and create your merchant dashboard account.\n\nYour personal WhatsApp number will remain separate from the automated business number.",
-      );
-
-      await showSabiWelcomeMenu(
+    if (
+      interactiveId === "sabi_register" ||
+      lowerText === "register my business" ||
+      lowerText === "register business" ||
+      lowerText === "sabi_register"
+    ) {
+      await startMerchantRegistration(
         phone,
         conversation.id,
       );
