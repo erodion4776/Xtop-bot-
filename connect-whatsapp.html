@@ -138,6 +138,9 @@ h1{
 </head>
 
 <body>
+
+<div id="fb-root"></div>
+
 <div class="box">
 
 <h1>🟢 Sabi by XTOP</h1>
@@ -190,6 +193,7 @@ Secure connection powered by Meta Embedded Signup.
 
 <script>
 const API="https://mldywarnnwjitfvqpgis.supabase.co/functions/v1/whatsapp-webhook?action=onboard";
+
 const APP_ID="1947931015867084";
 const CONFIG_ID="1470585484884368";
 
@@ -225,8 +229,9 @@ function resetButton(){
 }
 
 function getMetaDiagnostic(response){
+
  if(!response){
-  return "Facebook did not return an authorization response. Check your browser's popup permissions and try again.";
+  return "Meta did not return an authorization response. Please refresh the page and try again.";
  }
 
  const errorMessage=
@@ -246,7 +251,7 @@ function getMetaDiagnostic(response){
  }
 
  if(response.status==="unknown"){
-  return "Facebook did not complete the login. The popup may have been closed, blocked, or interrupted.";
+  return "Meta opened the connection process but did not return an authorization code. Please make sure you complete every step of the WhatsApp signup process before returning to Sabi. If this continues in normal Chrome, we will investigate its browser session and cookie settings.";
  }
 
  if(response.authResponse && !response.authResponse.code){
@@ -263,38 +268,57 @@ function getMetaDiagnostic(response){
 function validFacebookOrigin(origin){
  try{
   const u=new URL(origin);
+
   return u.protocol==="https:" &&
-   (u.hostname==="facebook.com" ||
-    u.hostname.endsWith(".facebook.com"));
+   (
+    u.hostname==="facebook.com" ||
+    u.hostname.endsWith(".facebook.com")
+   );
+
  }catch(e){
   return false;
  }
 }
 
 /*
- IMPORTANT:
- Define fbAsyncInit BEFORE loading the Facebook SDK.
- This prevents the asynchronous SDK from loading before
- Sabi's initialization callback is available.
+ Meta Facebook SDK initialization.
+ The initialization callback is defined before
+ the asynchronous SDK script is loaded.
 */
+
 window.fbAsyncInit=function(){
+
  try{
+
   FB.init({
    appId:APP_ID,
+   autoLogAppEvents:true,
    cookie:true,
-   xfbml:false,
-   version:"v21.0"
+   xfbml:true,
+   version:"v26.0"
   });
 
   fbReady=true;
-  console.info("Sabi: Facebook SDK initialized.");
+
+  console.info("Sabi: Facebook SDK v26.0 initialized.");
+
  }catch(error){
+
   console.error("Sabi Facebook initialization error:",error);
-  showError("Facebook could not be initialized. Refresh this page and try again.");
+
+  showError(
+   "Facebook could not be initialized. Refresh this page and try again."
+  );
  }
+
 };
 
+/*
+ Listen for WhatsApp Embedded Signup events.
+*/
+
 window.addEventListener("message",function(event){
+
  if(!validFacebookOrigin(event.origin))return;
 
  let data=event.data;
@@ -312,6 +336,7 @@ window.addEventListener("message",function(event){
  console.info("Sabi Embedded Signup event:",data.event);
 
  if(data.event==="FINISH"){
+
   const d=data.data||{};
 
   signupInfo={
@@ -320,13 +345,23 @@ window.addEventListener("message",function(event){
   };
 
   tryFinish();
+
  }
+
  else if(data.event==="CANCEL"){
+
   cancelled=true;
-  showError("You cancelled the WhatsApp connection. You can try again.");
+
+  showError(
+   "You cancelled the WhatsApp connection. You can try again."
+  );
+
   resetButton();
+
  }
+
  else if(data.event==="ERROR"){
+
   cancelled=true;
 
   const details=
@@ -340,10 +375,17 @@ window.addEventListener("message",function(event){
   );
 
   resetButton();
+
  }
+
 });
 
+/*
+ Start Facebook Login for Business.
+*/
+
 function connectNow(){
+
  hideError();
 
  if(submitting)return;
@@ -371,23 +413,34 @@ function connectNow(){
  btn.textContent="Opening Meta...";
 
  try{
+
   FB.login(function(response){
+
    if(cancelled)return;
 
    if(response && response.authResponse && response.authResponse.code){
+
     authCode=response.authResponse.code;
+
     btn.textContent="Verifying your business WhatsApp...";
+
     tryFinish();
+
    }else{
-    console.warn("Sabi Facebook authorization did not return a code.",{
+
+    console.warn("Sabi Facebook authorization response:",{
      status:response && response.status,
      error:response && response.error,
-     error_message:response && response.error_message
+     error_message:response && response.error_message,
+     has_auth_response:!!(response && response.authResponse)
     });
 
     resetButton();
+
     showError(getMetaDiagnostic(response));
+
    }
+
   },{
    config_id:CONFIG_ID,
    auth_type:"rerequest",
@@ -395,8 +448,11 @@ function connectNow(){
    override_default_response_type:true,
    extras:{}
   });
+
  }catch(error){
+
   console.error("Sabi FB.login error:",error);
+
   resetButton();
 
   showError(
@@ -404,98 +460,163 @@ function connectNow(){
    (error.message||"Unknown browser error")+
    ". Refresh the page and try again."
   );
+
  }
+
 }
 
+/*
+ Complete Sabi onboarding after both:
+ 1. Meta authorization code.
+ 2. WhatsApp account details.
+*/
+
 async function tryFinish(){
+
  if(submitting || cancelled || !authCode || !signupInfo)return;
 
  if(!signupInfo.waba_id || !signupInfo.phone_number_id){
+
   showError("Meta did not return the WhatsApp account details. Please restart signup.");
+
   resetButton();
+
   return;
  }
 
  submitting=true;
+
  btn.disabled=true;
  btn.textContent="Securing your WhatsApp connection...";
 
  try{
+
   const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),30000);
+
+  const timeout=setTimeout(
+   ()=>controller.abort(),
+   30000
+  );
 
   let response;
 
   try{
+
    response=await fetch(API,{
+
     method:"POST",
-    headers:{"Content-Type":"application/json"},
+
+    headers:{
+     "Content-Type":"application/json"
+    },
+
     body:JSON.stringify({
+
      session_token:SESSION_TOKEN,
+
      auth_code:authCode,
+
      waba_id:signupInfo.waba_id,
+
      phone_number_id:signupInfo.phone_number_id
+
     }),
+
     signal:controller.signal
+
    });
+
   }finally{
+
    clearTimeout(timeout);
+
   }
 
   let result;
 
   try{
+
    result=await response.json();
+
   }catch(error){
-   throw new Error("Sabi received an unreadable response from the registration server. Please try again.");
+
+   throw new Error(
+    "Sabi received an unreadable response from the registration server. Please try again."
+   );
+
   }
 
   if(!response.ok || !result.success){
+
    throw new Error(
     result.error ||
     "WhatsApp connection failed. Server response: "+response.status
    );
+
   }
 
   btn.classList.add("hidden");
+
   acknowledgement.parentElement.classList.add("hidden");
+
   hideError();
 
   const success=document.getElementById("successMsg");
+
   success.classList.remove("hidden");
 
   const heading=document.createElement("h2");
+
   heading.textContent="🎉 WhatsApp Connected Successfully!";
+
   success.appendChild(heading);
 
   const details=document.createElement("p");
+
   details.style.marginTop="12px";
+
   details.textContent=
    "Business number: "+(result.phone||"Connected")+
    "\n\nYour business WhatsApp is now connected to Sabi by XTOP.";
+
   success.appendChild(details);
 
   const next=document.createElement("p");
+
   next.style.marginTop="14px";
+
   next.textContent=
    "Next, create your merchant dashboard login using your email address and a password. This will complete your business registration.";
+
   success.appendChild(next);
 
   if(result.dashboard_url){
+
    const link=document.createElement("a");
+
    link.href=result.dashboard_url;
+
    link.className="dashboard-link";
+
    link.textContent="Continue to Create Dashboard Account";
+
    success.appendChild(link);
+
   }else{
+
    const instruction=document.createElement("p");
+
    instruction.style.marginTop="12px";
+
    instruction.textContent=
     "Return to your Sabi WhatsApp chat and follow the next registration instructions.";
+
    success.appendChild(instruction);
+
   }
 
  }catch(error){
+
   console.error("Sabi onboarding callback error:",error);
 
   showError(
@@ -505,17 +626,29 @@ async function tryFinish(){
   );
 
   resetButton();
+
  }finally{
+
   submitting=false;
+
  }
+
 }
 
 window.addEventListener("load",function(){
+
  if(!SESSION_TOKEN){
-  showError("Your registration link is missing. Request a new link through Sabi on WhatsApp.");
+
+  showError(
+   "Your registration link is missing. Request a new link through Sabi on WhatsApp."
+  );
+
   btn.disabled=true;
+
  }
+
 });
+
 </script>
 
 <script
