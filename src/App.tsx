@@ -6,7 +6,6 @@ import {
   Package,
   ShoppingCart,
   MessageSquare,
-  Wallet,
   BarChart3,
   Settings,
   Menu,
@@ -19,7 +18,6 @@ import Products from "./Products";
 import Orders from "./Orders";
 import SettingsPage from "./Settings";
 import PublicProduct from "./PublicProduct";
-import WalletPage from "./Wallet";
 import { supabase } from "./lib/supabase";
 
 const navigation = [
@@ -27,7 +25,6 @@ const navigation = [
   { label: "Products", icon: Package },
   { label: "Orders", icon: ShoppingCart },
   { label: "Inbox", icon: MessageSquare },
-  { label: "Wallet", icon: Wallet },
   { label: "Analytics", icon: BarChart3 },
   { label: "Settings", icon: Settings }
 ];
@@ -47,6 +44,10 @@ export default function App() {
 
   const isPublicProductPage =
     new URLSearchParams(window.location.search).has("product");
+
+  const registrationToken = new URLSearchParams(
+    window.location.search
+  ).get("session_token")?.trim() || "";
 
   useEffect(() => {
     if (isPublicProductPage) return;
@@ -102,7 +103,12 @@ export default function App() {
       setRegistrationError("");
 
       const { data, error } = await supabase.functions.invoke(
-        "merchant-register"
+        "merchant-register",
+        {
+          body: {
+            session_token: registrationToken || null
+          }
+        }
       );
 
       if (cancelled) return;
@@ -130,7 +136,12 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [session?.user?.id, registrationRetry, isPublicProductPage]);
+  }, [
+    session?.user?.id,
+    registrationRetry,
+    isPublicProductPage,
+    registrationToken
+  ]);
 
   async function refreshSession() {
     const { data } = await supabase.auth.getSession();
@@ -174,7 +185,7 @@ export default function App() {
             style={{ width: 90, height: 90, objectFit: "contain" }}
           />
           <h2>Preparing your workspace</h2>
-          <p>Setting up your merchant account and wallet.</p>
+          <p>Verifying your merchant account and business connection.</p>
         </div>
       </div>
     );
@@ -229,18 +240,12 @@ function Dashboard({
   email: string;
   onLogout: () => void;
 }) {
-  const [activePage, setActivePage] = useState(() =>
-    new URLSearchParams(window.location.search).has("wallet_payment")
-      ? "Wallet"
-      : "Overview"
-  );
-
+  const [activePage, setActivePage] = useState("Overview");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [overviewStats, setOverviewStats] = useState({
     orders: 0,
     products: 0,
-    balance: 0,
     whatsappConnected: false
   });
 
@@ -255,7 +260,6 @@ function Dashboard({
       const [
         ordersResult,
         productsResult,
-        walletResult,
         whatsappResult
       ] = await Promise.all([
         supabase
@@ -267,12 +271,6 @@ function Dashboard({
           .from("products")
           .select("id", { count: "exact", head: true })
           .eq("tenant_id", tenantId),
-
-        supabase
-          .from("tenant_wallets")
-          .select("balance")
-          .eq("tenant_id", tenantId)
-          .maybeSingle(),
 
         supabase
           .from("tenant_whatsapp_accounts")
@@ -288,9 +286,6 @@ function Dashboard({
       setOverviewStats({
         orders: ordersResult.error ? 0 : ordersResult.count || 0,
         products: productsResult.error ? 0 : productsResult.count || 0,
-        balance: walletResult.error
-          ? 0
-          : Number(walletResult.data?.balance || 0),
         whatsappConnected:
           !whatsappResult.error && !!whatsappResult.data
       });
@@ -428,8 +423,6 @@ function Dashboard({
             <Products tenantId={tenantId} />
           ) : activePage === "Orders" ? (
             <Orders tenantId={tenantId} />
-          ) : activePage === "Wallet" ? (
-            <WalletPage tenantId={tenantId} />
           ) : activePage === "Settings" ? (
             <SettingsPage tenantId={tenantId} />
           ) : activePage === "Overview" ? (
@@ -449,20 +442,6 @@ function Dashboard({
                     {statsLoading ? "…" : overviewStats.products}
                   </strong>
                   <small>Products listed</small>
-                </div>
-
-                <div className="stat-card">
-                  <span>Wallet balance</span>
-                  <strong>
-                    {statsLoading
-                      ? "…"
-                      : new Intl.NumberFormat("en-NG", {
-                          style: "currency",
-                          currency: "NGN",
-                          minimumFractionDigits: 2
-                        }).format(overviewStats.balance)}
-                  </strong>
-                  <small>Available balance</small>
                 </div>
 
                 <div className="stat-card">
@@ -533,11 +512,6 @@ function Dashboard({
                   <button onClick={() => setActivePage("Orders")}>
                     <ShoppingCart size={18} />
                     View orders
-                  </button>
-
-                  <button onClick={() => setActivePage("Wallet")}>
-                    <Wallet size={18} />
-                    Fund wallet
                   </button>
                 </div>
               </div>
