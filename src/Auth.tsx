@@ -12,10 +12,13 @@ export default function Auth({ onAuthenticated }: AuthProps) {
   const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [businessWhatsApp, setBusinessWhatsApp] = useState("");
   const [personalWhatsApp, setPersonalWhatsApp] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const sessionToken = new URLSearchParams(
+    window.location.search
+  ).get("session_token")?.trim() || "";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -24,35 +27,35 @@ export default function Auth({ onAuthenticated }: AuthProps) {
 
     try {
       if (mode === "signup") {
+        if (!sessionToken) {
+          throw new Error(
+            "Please start registration from Sabi on WhatsApp and connect your dedicated business number first."
+          );
+        }
+
         if (!ownerName.trim() || !businessName.trim()) {
           throw new Error("Please enter your name and business name.");
         }
 
-        const cleanBusinessPhone = businessWhatsApp.replace(/\D/g, "");
         const cleanPersonalPhone = personalWhatsApp.replace(/\D/g, "");
 
-        if (cleanBusinessPhone && cleanBusinessPhone.length < 10) {
-          throw new Error("Please enter a valid business WhatsApp number or leave it blank.");
-        }
-
-        if (
-          cleanBusinessPhone &&
-          cleanPersonalPhone &&
-          cleanBusinessPhone === cleanPersonalPhone
-        ) {
+        if (cleanPersonalPhone && cleanPersonalPhone.length < 10) {
           throw new Error(
-            "Your personal and business WhatsApp numbers must be different."
+            "Please enter a valid personal WhatsApp number or leave it blank."
           );
         }
+
+        const redirectUrl = new URL("/", window.location.origin);
+        redirectUrl.searchParams.set("session_token", sessionToken);
 
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
           options: {
+            emailRedirectTo: redirectUrl.toString(),
             data: {
               owner_name: ownerName.trim(),
               business_name: businessName.trim(),
-              business_whatsapp: businessWhatsApp.trim() || null,
               personal_whatsapp: personalWhatsApp.trim() || null
             }
           }
@@ -64,7 +67,7 @@ export default function Auth({ onAuthenticated }: AuthProps) {
           onAuthenticated();
         } else {
           setMessage(
-            "Registration received. Check your email and confirm your account before logging in."
+            "Your account has been created. Please check your email and confirm your address. After confirmation, you will return to Sabi to finish setting up your business."
           );
           setMode("login");
         }
@@ -97,7 +100,10 @@ export default function Auth({ onAuthenticated }: AuthProps) {
     setMessage("");
 
     const { error } = await supabase.auth.resetPasswordForEmail(
-      email.trim()
+      email.trim(),
+      {
+        redirectTo: window.location.origin
+      }
     );
 
     setLoading(false);
@@ -140,6 +146,7 @@ export default function Auth({ onAuthenticated }: AuthProps) {
           <button
             type="button"
             className={mode === "signup" ? "selected" : ""}
+            disabled={!sessionToken}
             onClick={() => {
               setMode("signup");
               setMessage("");
@@ -148,6 +155,27 @@ export default function Auth({ onAuthenticated }: AuthProps) {
             Create account
           </button>
         </div>
+
+        {!sessionToken && mode === "login" && (
+          <div className="auth-notice">
+            <strong>New to Sabi?</strong>
+            <p>
+              To register your business, start from Sabi on WhatsApp.
+              Connect your dedicated business WhatsApp number first.
+              You can log in here if you already have an account.
+            </p>
+          </div>
+        )}
+
+        {mode === "signup" && sessionToken && (
+          <div className="auth-notice">
+            <strong>WhatsApp connection received.</strong>
+            <p>
+              Your dedicated business number is connected to Sabi.
+              Complete your details below to create your merchant account.
+            </p>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit}>
           {mode === "signup" && (
@@ -196,17 +224,6 @@ export default function Auth({ onAuthenticated }: AuthProps) {
 
           {mode === "signup" && (
             <>
-              <label>
-                Business WhatsApp number (optional — add later)
-              </label>
-
-              <input
-                type="tel"
-                value={businessWhatsApp}
-                onChange={(e) => setBusinessWhatsApp(e.target.value)}
-                placeholder="Add your dedicated number later"
-              />
-
               <label>Personal WhatsApp number (optional)</label>
 
               <input
@@ -217,12 +234,13 @@ export default function Auth({ onAuthenticated }: AuthProps) {
               />
 
               <div className="auth-notice">
-                <strong>WhatsApp connection can wait.</strong>
+                <strong>Important about your WhatsApp numbers</strong>
                 <p>
-                  You can create your Sabi account now and add a
-                  dedicated business WhatsApp number later in Settings.
-                  Do not connect your personal WhatsApp number to
-                  Sabi automation.
+                  The business WhatsApp number you connected is the
+                  number Sabi will automate for your customers.
+                  Keep your personal WhatsApp separate. You may provide
+                  it above for contact purposes, but it will not be
+                  connected to Sabi automation.
                 </p>
               </div>
             </>
@@ -237,13 +255,13 @@ export default function Auth({ onAuthenticated }: AuthProps) {
           <button
             className="auth-submit"
             type="submit"
-            disabled={loading}
+            disabled={loading || (mode === "signup" && !sessionToken)}
           >
             {loading
               ? "Please wait..."
               : mode === "login"
                 ? "Login to dashboard"
-                : "Create merchant account"}
+                : "Complete business registration"}
           </button>
         </form>
 
