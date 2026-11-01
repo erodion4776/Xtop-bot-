@@ -1,4 +1,3 @@
-
 // supabase/functions/whatsapp-webhook/router.ts
 
 import {
@@ -42,46 +41,59 @@ import {
   startSabiShopDemo,
   handleSabiShopDemo,
 } from "./modules/sabi-shop-demo.ts";
+
 import {
   handleProducts,
   showProductsList,
 } from "./modules/products.ts";
+
 import {
   handleServices,
   showServicesList,
 } from "./modules/services.ts";
+
 import {
   handleDemos,
   showDemoCentreMenu,
 } from "./modules/demos/index.ts";
+
 import {
   handleMagazine,
   displayMagazine,
 } from "./modules/magazine.ts";
+
 import {
   handleAgent,
   showAgentCategories,
 } from "./modules/agents.ts";
+
 import { handleLearning } from "./modules/learning.ts";
+
 import {
   handleSales,
   showServiceTypeSelector,
 } from "./modules/sales.ts";
+
 import { handleExams } from "./modules/exams.ts";
+
 import {
   handleTools,
   showToolsMenu,
 } from "./modules/tools.ts";
+
 import { handleWebsiteDomain } from "./modules/website-domain.ts";
 import { handleFlightChecker } from "./modules/flight-checker.ts";
+
 import {
   handleGames,
   showGamesMenu,
 } from "./modules/games/index.ts";
+
 import {
   handleAbout,
   showAboutMenu,
 } from "./modules/about.ts";
+
 import {
   handleMagazineStudio,
   showStudioMenu,
@@ -94,8 +106,6 @@ import {
 } from "./modules/demos/personalized.ts";
 
 import { extractTokenFromText } from "./modules/demos/tokens.ts";
-
-import { handleOnboardingRequest } from "./modules/onboarding.ts";
 
 import {
   isAdminPhone,
@@ -460,27 +470,6 @@ async function handleTenantStoreMessage(
 }
 
 // =====================================================
-// SABI ONBOARDING ACTIONS
-// =====================================================
-
-function isSabiOnboardingAction(id: string): boolean {
-  return (
-    [
-      "demo_store",
-      "demo_products",
-      "demo_order",
-      "demo_faq",
-      "demo_signup",
-      "view_plans",
-      "onboard_agent",
-      "onboard_tools",
-    ].includes(id) ||
-    id.startsWith("plan_") ||
-    id.startsWith("getbot_")
-  );
-}
-
-// =====================================================
 // DEMO CENTRE ACTIONS
 // =====================================================
 
@@ -504,6 +493,49 @@ function isInteractivePayload(
   incoming: IncomingMessage,
 ): boolean {
   return Boolean(incoming.interactiveId);
+}
+
+// =====================================================
+// SABI KEYWORD HELPERS
+// =====================================================
+
+function isSabiDemoRequest(text: string): boolean {
+  const value = text.trim().toLowerCase();
+
+  return [
+    "demo",
+    "try demo",
+    "try shop demo",
+    "shop demo",
+    "sabi demo",
+    "try sabi",
+    "try sabi demo",
+  ].includes(value);
+}
+
+function isMyBusinessRequest(text: string): boolean {
+  const value = text.trim().toLowerCase();
+
+  return [
+    "my business",
+    "xtop retail",
+    "xtop retail technologies",
+    "business menu",
+    "xtop business",
+  ].includes(value);
+}
+
+function isEngrEroRequest(text: string): boolean {
+  const value = text.trim().toLowerCase();
+
+  return [
+    "engr ero",
+    "eng ero",
+    "engr. ero",
+    "ero learning",
+    "learning centre",
+    "learning center",
+  ].includes(value);
 }
 
 // =====================================================
@@ -754,19 +786,176 @@ export async function routeMessage(
 
     if (
       interactiveId === "menu_home" ||
-      lowerText === "menu_home"
+      interactiveId === "sabi_home" ||
+      lowerText === "menu_home" ||
+      lowerText === "sabi_home"
+    ) {
+      await showSabiWelcomeMenu(
+        phone,
+        conversation.id,
+      );
+      return;
+    }
+
+    // ===================================================
+    // EXPLICIT XTOP BUSINESS ROUTE
+    // ===================================================
+
+    if (
+      interactiveId === "my_business" ||
+      isMyBusinessRequest(text)
+    ) {
+      await showMainMenu(
+        phone,
+        conversation.id,
+      );
+      return;
+    }
+
+    // ===================================================
+    // EXPLICIT ENGR ERO LEARNING ROUTE
+    // ===================================================
+
+    if (
+      interactiveId === "engr_ero" ||
+      isEngrEroRequest(text) ||
+      isLearningKeyword(text)
     ) {
       await updateConversation(
         conversation.id,
         {
-          current_module: "MAIN_MENU",
-          current_state: "IDLE",
-          context_json: {},
+          current_module: "LEARNING",
+          current_state: "ENTRY",
+          context_json: {
+            learningUnlocked: true,
+            step: "ENTRY",
+          },
         },
         tenantId,
       );
 
-      await showMainMenu(
+      await handleLearning(
+        phone,
+        text,
+        contact,
+        conversation,
+      );
+      return;
+    }
+
+    // ===================================================
+    // SABI SHOP DEMO — START
+    // ===================================================
+
+    if (
+      interactiveId === "sabi_demo" ||
+      isSabiDemoRequest(text)
+    ) {
+      await startSabiShopDemo(
+        phone,
+        conversation.id,
+      );
+      return;
+    }
+
+    // ===================================================
+    // SABI SHOP DEMO — ACTIVE SESSION
+    // ===================================================
+
+    if (currentModule === "SABI_SHOP_DEMO") {
+      const demoHandled =
+        await handleSabiShopDemo(
+          phone,
+          text || interactiveId,
+          conversation.id,
+          conversation.current_state || "",
+          (
+            conversation.context_json || {}
+          ) as Record<string, unknown>,
+        );
+
+      if (demoHandled) return;
+    }
+
+    // ===================================================
+    // SABI GATEWAY ACTIONS
+    // ===================================================
+
+    if (interactiveId === "sabi_register") {
+      await sendTextMessage(
+        phone,
+        "🏪 *Register your business on Sabi by XTOP*\n\nBusiness registration is being prepared. You will be able to connect your dedicated business WhatsApp number and create your merchant dashboard account.\n\nYour personal WhatsApp number will remain separate from the automated business number.",
+      );
+
+      await showSabiWelcomeMenu(
+        phone,
+        conversation.id,
+      );
+      return;
+    }
+
+    if (interactiveId === "sabi_about") {
+      await sendTextMessage(
+        phone,
+        "ℹ️ *About Sabi by XTOP*\n\nSabi helps businesses serve customers directly on WhatsApp.\n\nWith Sabi, a business can present its products, receive customer enquiries and orders, and manage its shop through a merchant dashboard.\n\nSabi is designed to make shopping and business communication simple and convenient.",
+      );
+
+      await showSabiWelcomeMenu(
+        phone,
+        conversation.id,
+      );
+      return;
+    }
+
+    if (interactiveId === "sabi_support") {
+      await updateConversation(
+        conversation.id,
+        {
+          current_module: "SABI_GATEWAY",
+          current_state: "SUPPORT",
+          context_json: {
+            sabi_gateway: true,
+            sabi_support_waiting: true,
+          },
+        },
+        tenantId,
+      );
+
+      await sendTextMessage(
+        phone,
+        "💬 *Sabi Support*\n\nPlease describe the issue or question you need help with. Our team will follow up.",
+      );
+      return;
+    }
+
+    // ===================================================
+    // SABI SUPPORT MESSAGE
+    // ===================================================
+
+    if (
+      currentModule === "SABI_GATEWAY" &&
+      conversation.current_state === "SUPPORT"
+    ) {
+      await sendTextMessage(
+        phone,
+        "Thank you for contacting Sabi Support. Your message has been received in this conversation.\n\nType *Hi* to return to the Sabi welcome menu.",
+      );
+
+      await showSabiWelcomeMenu(
+        phone,
+        conversation.id,
+      );
+      return;
+    }
+
+    // ===================================================
+    // LEGACY ONBOARDING STATE
+    // Return to Sabi without invoking old plans/trials.
+    // The Meta embedded-signup callback is handled separately.
+    // ===================================================
+
+    if (currentModule === "ONBOARDING") {
+      await showSabiWelcomeMenu(
         phone,
         conversation.id,
       );
@@ -783,6 +972,8 @@ export async function routeMessage(
 
     if (
       !isAcademicWorkflow &&
+      currentModule !== "SABI_GATEWAY" &&
+      currentModule !== "SABI_SHOP_DEMO" &&
       !isInteractivePayload(incoming)
     ) {
       const originalText =
@@ -816,37 +1007,6 @@ export async function routeMessage(
     }
 
     // ===================================================
-    // SABI BY XTOP ONBOARDING
-    // ===================================================
-
-    if (!isAcademicWorkflow) {
-      const isSabiAction =
-        isSabiOnboardingAction(interactiveId);
-
-      const isOnboardingConversation =
-        currentModule === "ONBOARDING";
-
-      const isOnboardingText =
-        !isInteractivePayload(incoming);
-
-      if (
-        isSabiAction ||
-        isOnboardingConversation ||
-        isOnboardingText
-      ) {
-        const onboardingHandled =
-          await handleOnboardingRequest(
-            phone,
-            text || interactiveId,
-            contact.id || "",
-            conversation.id,
-          );
-
-        if (onboardingHandled) return;
-      }
-    }
-
-    // ===================================================
     // ACTIVE LEARNING WORKFLOW
     // ===================================================
 
@@ -860,59 +1020,14 @@ export async function routeMessage(
       return;
     }
 
-    if (isLearningKeyword(text)) {
-      const existingCtx =
-        conversation.context_json || {};
-
-      await updateConversation(
-        conversation.id,
-        {
-          current_module: "LEARNING",
-          current_state: "ENTRY",
-          context_json: {
-            ...existingCtx,
-            learningUnlocked: true,
-            step: "ENTRY",
-          },
-        },
-        tenantId,
-      );
-
-      await handleLearning(
-        phone,
-        text,
-        contact,
-        conversation,
-      );
-      return;
-    }
-
     // ===================================================
-    // ONBOARDING WORKFLOW
+    // ACTIVE SABI GATEWAY
+    // Any ordinary or unrecognised message returns
+    // the customer to the Sabi welcome menu.
     // ===================================================
 
-    if (currentModule === "ONBOARDING") {
-      const onboardingHandled =
-        await handleOnboardingRequest(
-          phone,
-          text || interactiveId,
-          contact.id || "",
-          conversation.id,
-        );
-
-      if (onboardingHandled) return;
-
-      await updateConversation(
-        conversation.id,
-        {
-          current_module: "MAIN_MENU",
-          current_state: "IDLE",
-          context_json: {},
-        },
-        tenantId,
-      );
-
-      await showMainMenu(
+    if (currentModule === "SABI_GATEWAY") {
+      await showSabiWelcomeMenu(
         phone,
         conversation.id,
       );
@@ -920,7 +1035,7 @@ export async function routeMessage(
     }
 
     // ===================================================
-    // SALES WORKFLOW
+    // ACTIVE SALES WORKFLOW
     // ===================================================
 
     if (currentModule === "SALES") {
@@ -934,7 +1049,7 @@ export async function routeMessage(
     }
 
     // ===================================================
-    // AGENT WORKFLOW
+    // ACTIVE AGENT WORKFLOW
     // ===================================================
 
     if (currentModule === "AGENT") {
@@ -948,7 +1063,7 @@ export async function routeMessage(
     }
 
     // ===================================================
-    // EXAMS WORKFLOW
+    // ACTIVE EXAMS WORKFLOW
     // ===================================================
 
     if (currentModule === "EXAMS") {
@@ -962,7 +1077,7 @@ export async function routeMessage(
     }
 
     // ===================================================
-    // TOOLS WORKFLOW
+    // ACTIVE TOOLS WORKFLOW
     // ===================================================
 
     if (currentModule === "TOOLS") {
@@ -977,7 +1092,7 @@ export async function routeMessage(
     }
 
     // ===================================================
-    // GAMES WORKFLOW
+    // ACTIVE GAMES WORKFLOW
     // ===================================================
 
     if (currentModule === "GAMES") {
@@ -992,7 +1107,7 @@ export async function routeMessage(
     }
 
     // ===================================================
-    // DEMO WORKFLOW
+    // ACTIVE DEMO CENTRE WORKFLOW
     // ===================================================
 
     if (currentModule === "DEMOS") {
@@ -1017,7 +1132,7 @@ export async function routeMessage(
     }
 
     // ===================================================
-    // MAGAZINE STUDIO WORKFLOW
+    // ACTIVE MAGAZINE STUDIO WORKFLOW
     // ===================================================
 
     if (currentModule === "MAGAZINE") {
@@ -1032,7 +1147,7 @@ export async function routeMessage(
     }
 
     // ===================================================
-    // ABOUT WORKFLOW
+    // ACTIVE ABOUT WORKFLOW
     // ===================================================
 
     if (currentModule === "ABOUT") {
@@ -1047,7 +1162,7 @@ export async function routeMessage(
     }
 
     // ===================================================
-    // PRODUCTS WORKFLOW
+    // ACTIVE PRODUCTS WORKFLOW
     // ===================================================
 
     if (currentModule === "PRODUCTS") {
@@ -1061,7 +1176,7 @@ export async function routeMessage(
     }
 
     // ===================================================
-    // SERVICES WORKFLOW
+    // ACTIVE SERVICES WORKFLOW
     // ===================================================
 
     if (currentModule === "SERVICES") {
@@ -1075,7 +1190,7 @@ export async function routeMessage(
     }
 
     // ===================================================
-    // MAGAZINE CATALOGUE
+    // ACTIVE MAGAZINE CATALOGUE
     // ===================================================
 
     if (currentModule === "MAGAZINE_CATALOG") {
@@ -1091,24 +1206,7 @@ export async function routeMessage(
 
     // ===================================================
     // DIRECT INTENT OVERRIDES
-    // =====================================================
-
-    if (
-      interactiveId.startsWith("plan_") ||
-      interactiveId.startsWith("getbot_") ||
-      interactiveId === "onboard_agent" ||
-      interactiveId === "onboard_tools"
-    ) {
-      const onboardingHandled =
-        await handleOnboardingRequest(
-          phone,
-          interactiveId,
-          contact.id || "",
-          conversation.id,
-        );
-
-      if (onboardingHandled) return;
-    }
+    // ===================================================
 
     // ABOUT
     if (
@@ -1153,6 +1251,7 @@ export async function routeMessage(
     }
 
     // DEMO CENTRE
+    // Sabi shop demo actions are handled above first.
     if (isDemoInteractiveAction(interactiveId)) {
       const personalizedHandled =
         await handlePersonalizedDemoAction(
@@ -1255,30 +1354,20 @@ export async function routeMessage(
     // GLOBAL COMMANDS
     // ===================================================
 
+    // Greetings and help always open the Sabi gateway.
     if (isGreeting(text) || isHelp(text)) {
-      await showMainMenu(
+      await showSabiWelcomeMenu(
         phone,
         conversation.id,
       );
       return;
     }
 
+    // Exit an active XTOP workflow.
     if (isExit(text)) {
-      await updateConversation(
-        conversation.id,
-        {
-          current_module: "MAIN_MENU",
-          current_state: "IDLE",
-          context_json: {},
-        },
-        tenantId,
-      );
-
-      await sendTextMessage(
+      await showSabiWelcomeMenu(
         phone,
-        `👋 Thank you for contacting *Xtop Retail Technologies*, ${
-          contact.name || ""
-        }.\n\nType *hi* or *menu* to return anytime.`,
+        conversation.id,
       );
       return;
     }
@@ -1292,7 +1381,7 @@ export async function routeMessage(
     }
 
     // ===================================================
-    // MAIN MENU DISPATCH
+    // MAIN MENU DISPATCH — EXISTING XTOP SERVICES
     // ===================================================
 
     const intent = detectIntent(
@@ -1308,7 +1397,10 @@ export async function routeMessage(
         phone,
         conversation.id,
       );
-    } else if (
+      return;
+    }
+
+    if (
       intent === "SERVICES" ||
       interactiveId === "menu_services"
     ) {
@@ -1316,15 +1408,21 @@ export async function routeMessage(
         phone,
         conversation.id,
       );
-    } else if (
+      return;
+    }
+
+    if (
       interactiveId === "menu_demos" ||
-      lowerText.includes("demo")
+      lowerText.includes("xtop demo")
     ) {
       await showDemoCentreMenu(
         phone,
         conversation.id,
       );
-    } else if (
+      return;
+    }
+
+    if (
       interactiveId === "menu_games" ||
       lowerText.includes("games")
     ) {
@@ -1332,7 +1430,10 @@ export async function routeMessage(
         phone,
         conversation.id,
       );
-    } else if (
+      return;
+    }
+
+    if (
       interactiveId === "menu_tools" ||
       lowerText.includes("tools")
     ) {
@@ -1340,7 +1441,10 @@ export async function routeMessage(
         phone,
         conversation.id,
       );
-    } else if (
+      return;
+    }
+
+    if (
       interactiveId === "menu_magazine_studio" ||
       lowerText.includes("magazine studio") ||
       lowerText.includes("create magazine")
@@ -1349,7 +1453,10 @@ export async function routeMessage(
         phone,
         conversation.id,
       );
-    } else if (
+      return;
+    }
+
+    if (
       intent === "MAGAZINE" ||
       interactiveId === "menu_magazine"
     ) {
@@ -1357,7 +1464,10 @@ export async function routeMessage(
         phone,
         conversation.id,
       );
-    } else if (
+      return;
+    }
+
+    if (
       intent === "AGENT" ||
       interactiveId === "menu_agent"
     ) {
@@ -1365,7 +1475,10 @@ export async function routeMessage(
         phone,
         conversation.id,
       );
-    } else if (
+      return;
+    }
+
+    if (
       intent === "SALES" ||
       interactiveId === "menu_sales"
     ) {
@@ -1373,7 +1486,10 @@ export async function routeMessage(
         phone,
         conversation.id,
       );
-    } else if (
+      return;
+    }
+
+    if (
       interactiveId === "menu_about" ||
       lowerText.includes("about")
     ) {
@@ -1381,29 +1497,33 @@ export async function routeMessage(
         phone,
         conversation.id,
       );
-    } else if (isBack(text)) {
-      await showMainMenu(
-        phone,
-        conversation.id,
-      );
-    } else {
-      await sendTextMessage(
-        phone,
-        "Please select an option from the menu below:",
-      );
-
-      await showMainMenu(
-        phone,
-        conversation.id,
-      );
+      return;
     }
+
+    if (isBack(text)) {
+      await showSabiWelcomeMenu(
+        phone,
+        conversation.id,
+      );
+      return;
+    }
+
+    // ===================================================
+    // DEFAULT ROUTE
+    // ===================================================
+
+    // New users and unrecognised messages always see Sabi.
+    await showSabiWelcomeMenu(
+      phone,
+      conversation.id,
+    );
   } catch (err) {
     safeErrorLog("routeMessage", err);
 
     try {
       await sendTextMessage(
         phone,
-        "Sorry, an error occurred. Type *menu* to return to the home screen.",
+        "Sorry, an error occurred. Type *Hi* to return to the Sabi welcome menu.",
         account.credentials,
       );
     } catch (sendError) {
