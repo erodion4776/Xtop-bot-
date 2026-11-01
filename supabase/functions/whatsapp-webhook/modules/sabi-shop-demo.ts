@@ -226,13 +226,13 @@ async function showProducts(
 ): Promise<void> {
   await sendTextMessage(
     phone,
-    "🛍️ *Welcome to the Sabi Demo Shop!*\n\nExplore our product categories below. Select a category to see its products, pictures and prices.\n\nAdd your favourite items to your cart and experience a sample WhatsApp checkout.",
+    "🛍️ *Welcome to the Sabi Demo Shop!*\n\nExplore our sample products, place a demo order, track your order or see how Sabi transfers a conversation to a human agent.\n\nChoose an option below.",
   );
 
   await sendListMessage(
     phone,
-    "Which category would you like to explore?",
-    "Browse Categories",
+    "What would you like to do?",
+    "Explore Sabi Shop",
     [
       {
         title: "Shop by Category",
@@ -245,15 +245,17 @@ async function showProducts(
         ),
       },
       {
-        title: "Shop Options",
+        title: "Shopping & Customer Service",
         rows: [
           makeListRow("demo_cart", "🛒 View My Cart"),
-          makeListRow("demo_exit", "Exit Demo"),
+          makeListRow("demo_track_order", "📦 Track My Order"),
+          makeListRow("demo_agent", "👨‍💼 Speak to an Agent"),
+          makeListRow("demo_exit", "🏠 Return to Sabi Home"),
         ],
       },
     ],
     "Sabi Demo Shop",
-    "12 sample products across 6 categories",
+    "Shopping and customer service demonstration",
   );
 }
 
@@ -311,6 +313,8 @@ async function showCategory(
         rows: [
           makeListRow("demo_categories", "Browse Categories"),
           makeListRow("demo_cart", "View My Cart"),
+          makeListRow("demo_track_order", "Track My Order"),
+          makeListRow("demo_agent", "Speak to an Agent"),
           makeListRow("demo_exit", "Exit Demo"),
         ],
       },
@@ -505,11 +509,49 @@ async function confirmDemoPayment(
     "What would you like to do next?",
     [
       makeButton("demo_track_order", "Track Order"),
+      makeButton("demo_agent", "Speak to an Agent"),
       makeButton("demo_new_order", "New Order"),
-      makeButton("demo_exit", "Exit Demo"),
     ],
     "Order Confirmation",
     orderNumber,
+  );
+}
+
+async function askForTrackingNumber(
+  phone: string,
+  conversationId: string,
+  context: DemoContext,
+): Promise<void> {
+  await saveDemoState(
+    conversationId,
+    "WAITING_TRACKING_NUMBER",
+    context,
+  );
+
+  if (!context.demoOrderNumber) {
+    await sendTextMessage(
+      phone,
+      "📦 *Track Your Demo Order*\n\nYou have not placed a sample order yet.\n\nPlease browse the products, complete a demo checkout and then return here to track your order.",
+    );
+
+    await sendButtonMessage(
+      phone,
+      "Would you like to start a sample order?",
+      [
+        makeButton("demo_products", "Browse Products"),
+        makeButton("demo_agent", "Speak to an Agent"),
+        makeButton("demo_exit", "Exit Demo"),
+      ],
+      "Sabi Demo Tracking",
+      "Sample tracking only",
+    );
+
+    return;
+  }
+
+  await sendTextMessage(
+    phone,
+    `📦 *Track My Order*\n\nPlease enter your demo order number.\n\nYour sample order number is:\n*${context.demoOrderNumber}*\n\nEnter that number to view its tracking progress.`,
   );
 }
 
@@ -520,25 +562,85 @@ async function trackDemoOrder(
   await sendTextMessage(
     phone,
     `📍 *Demo Order Tracking*\n\n` +
-    `Order: *${context.demoOrderNumber || "SABI-DEMO"}*\n\n` +
+    `Order: *${context.demoOrderNumber}*\n` +
+    `Customer: ${context.customerName || "Demo Customer"}\n\n` +
     `✅ Order received\n` +
     `✅ Simulated payment confirmed\n` +
     `🟡 Order being prepared\n` +
     `⚪ Out for delivery\n` +
     `⚪ Delivered\n\n` +
-    `This is sample tracking information, not a real delivery.`,
+    `This is sample tracking information. No real delivery has been created.`,
   );
 
   await sendButtonMessage(
     phone,
-    "Would you like to place another sample order?",
+    "What would you like to do next?",
     [
-      makeButton("demo_new_order", "New Order"),
-      makeButton("demo_products", "View Categories"),
+      makeButton("demo_products", "Continue Shopping"),
+      makeButton("demo_agent", "Speak to an Agent"),
       makeButton("demo_exit", "Exit Demo"),
     ],
     "Demo Tracking",
     "Sabi by XTOP",
+  );
+}
+
+async function showAgentHandoffDemo(
+  phone: string,
+  conversationId: string,
+  context: DemoContext,
+): Promise<void> {
+  await saveDemoState(
+    conversationId,
+    "AGENT_HANDOFF_DEMO",
+    context,
+  );
+
+  await sendTextMessage(
+    phone,
+    "👨‍💼 *Sabi Human Agent Handoff Demonstration*\n\nYou selected Speak to an Agent.\n\nThis sample shows how Sabi can transfer a customer conversation from the AI assistant to a human support agent.",
+  );
+
+  await sendTextMessage(
+    phone,
+    "🤖 *Sabi AI Assistant:*\n\nI understand you would like to speak with a human support agent. I will now hand over this sample conversation.",
+  );
+
+  await sendTextMessage(
+    phone,
+    "⏸️ *AI assistant paused*\n\nIn a real merchant setup, the automated assistant can pause while an authorised human agent handles the conversation.",
+  );
+
+  await sendTextMessage(
+    phone,
+    "👨‍💼 *Sample Human Agent:*\n\nHello! Welcome to our store. My name is Daniel, and I will be assisting you today. How may I help you?",
+  );
+
+  await sendTextMessage(
+    phone,
+    "👤 *Sample Customer:*\n\nI would like to know when my order will be delivered.",
+  );
+
+  await sendTextMessage(
+    phone,
+    "👨‍💼 *Sample Human Agent:*\n\nThank you for contacting us. I have checked your sample order. It is currently being prepared. We appreciate your patience!",
+  );
+
+  await sendTextMessage(
+    phone,
+    "🤖 *Sabi Handoff Demonstration Complete*\n\nThe conversation has been handled by the sample human agent.\n\nIn the real Sabi system, an authorised merchant or staff member can take over customer conversations and return them to the AI assistant when finished.\n\n*This demonstration does not contact a real agent or change your actual WhatsApp handoff settings.*",
+  );
+
+  await sendButtonMessage(
+    phone,
+    "Would you like to return to the Sabi AI shopping assistant?",
+    [
+      makeButton("demo_agent_return", "Return to Sabi AI"),
+      makeButton("demo_products", "Browse Products"),
+      makeButton("demo_exit", "Exit Demo"),
+    ],
+    "Sample Agent Handoff",
+    "Simulation only — no real agent connected",
   );
 }
 
@@ -597,6 +699,39 @@ export async function handleSabiShopDemo(
   }
 
   if (
+    action === "demo_agent" ||
+    action === "speak to an agent" ||
+    action === "talk to an agent"
+  ) {
+    await showAgentHandoffDemo(
+      phone,
+      conversationId,
+      context,
+    );
+
+    return true;
+  }
+
+  if (
+    action === "demo_agent_return" ||
+    action === "return to sabi ai"
+  ) {
+    await saveDemoState(
+      conversationId,
+      "SHOPPING",
+      context,
+    );
+
+    await sendTextMessage(
+      phone,
+      "🤖 *Welcome back to Sabi AI!*\n\nThe sample human agent has finished the demonstration. Sabi's automated shopping assistant is ready to help you again.",
+    );
+
+    await showProducts(phone, context);
+    return true;
+  }
+
+  if (
     action === "demo_new_order" ||
     action === "new order"
   ) {
@@ -620,8 +755,17 @@ export async function handleSabiShopDemo(
     return true;
   }
 
-  if (action === "demo_track_order") {
-    await trackDemoOrder(phone, context);
+  if (
+    action === "demo_track_order" ||
+    action === "track my order" ||
+    action === "track order"
+  ) {
+    await askForTrackingNumber(
+      phone,
+      conversationId,
+      context,
+    );
+
     return true;
   }
 
@@ -760,6 +904,41 @@ export async function handleSabiShopDemo(
     return true;
   }
 
+  if (currentState === "WAITING_TRACKING_NUMBER") {
+    const enteredNumber = text.trim().toUpperCase();
+    const savedNumber = (
+      context.demoOrderNumber || ""
+    ).toUpperCase();
+
+    if (!savedNumber) {
+      await sendTextMessage(
+        phone,
+        "You do not have a sample order to track yet. Please place a demo order first.",
+      );
+
+      await showProducts(phone, context);
+      return true;
+    }
+
+    if (enteredNumber !== savedNumber) {
+      await sendTextMessage(
+        phone,
+        "I could not find that sample order number.\n\nPlease enter the demo order number shown in your order confirmation.",
+      );
+
+      return true;
+    }
+
+    await saveDemoState(
+      conversationId,
+      "DEMO_ORDER_PLACED",
+      context,
+    );
+
+    await trackDemoOrder(phone, context);
+    return true;
+  }
+
   if (currentState === "WAITING_CUSTOMER_NAME") {
     if (text.trim().length < 2) {
       await sendTextMessage(
@@ -814,14 +993,34 @@ export async function handleSabiShopDemo(
     return true;
   }
 
+  if (currentState === "AGENT_HANDOFF_DEMO") {
+    await sendTextMessage(
+      phone,
+      "The sample human agent is handling this demonstration. Select *Return to Sabi AI* to continue with the automated assistant.",
+    );
+
+    await sendButtonMessage(
+      phone,
+      "Would you like to return to Sabi AI?",
+      [
+        makeButton("demo_agent_return", "Return to Sabi AI"),
+        makeButton("demo_exit", "Exit Demo"),
+      ],
+      "Sample Agent Handoff",
+      "No real agent is connected",
+    );
+
+    return true;
+  }
+
   if (currentState === "DEMO_ORDER_PLACED") {
     await sendButtonMessage(
       phone,
-      "Your sample order has already been confirmed. You can track it or start another demo order.",
+      "Your sample order has already been confirmed. You can track it, speak to a sample agent or start another demo order.",
       [
         makeButton("demo_track_order", "Track Order"),
+        makeButton("demo_agent", "Speak to an Agent"),
         makeButton("demo_new_order", "New Order"),
-        makeButton("demo_exit", "Exit Demo"),
       ],
       "Demo Order",
       context.demoOrderNumber || "Sabi Demo",
