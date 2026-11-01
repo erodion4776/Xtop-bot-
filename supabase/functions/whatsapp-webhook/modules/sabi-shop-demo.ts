@@ -160,6 +160,10 @@ type DemoContext = {
   searchResults?: string[];
   searchPage?: number;
   productPage?: number;
+  paymentMethod?: "PAY_ON_DELIVERY" | "PAY_NOW";
+  paymentStatus?: string;
+  deliveryFeePaid?: number;
+  productBalanceDue?: number;
 };
 
 function money(amount: number): string {
@@ -283,6 +287,16 @@ function searchProducts(query: string): Product[] {
     return { product, score };
   });
 
+  // If the customer only entered a price filter, return products
+  // that satisfy that price instead of returning no results.
+  if (terms.length === 0 && (price.maximum !== undefined || price.minimum !== undefined)) {
+    return PRODUCTS.filter((product) => {
+      if (price.maximum !== undefined && product.price > price.maximum) return false;
+      if (price.minimum !== undefined && product.price < price.minimum) return false;
+      return true;
+    }).sort((a, b) => a.price - b.price);
+  }
+
   return matches
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score || a.product.price - b.product.price)
@@ -355,16 +369,8 @@ async function showCategory(
 
   await sendTextMessage(
     phone,
-    `🛍️ *${category.name}*\n\nPage ${safePage + 1} of ${totalPages}\n\nHere are the available products. Select an item to see its details.`,
+    `🛍️ *${category.name}*\n\nPage ${safePage + 1} of ${totalPages}\n\nSelect a product to see its details. You can also type a product description to search.`,
   );
-
-  for (const product of products) {
-    await sendImageMessage(
-      phone,
-      product.image,
-      `*${product.name}*\n${product.description}\n\nPrice: ${money(product.price)}`,
-    );
-  }
 
   const rows = products.map((product) =>
     makeListRow(product.id, product.name, money(product.price))
@@ -378,10 +384,8 @@ async function showCategory(
     rows.push(makeListRow("demo_category_next", "Next Products ➡️"));
   }
 
-  rows.push(makeListRow("demo_search_help", "🔎 Search Products"));
   rows.push(makeListRow("demo_categories", "Browse Categories"));
   rows.push(makeListRow("demo_cart", "View My Cart"));
-  rows.push(makeListRow("demo_exit", "Exit Demo"));
 
   await sendListMessage(
     phone,
@@ -415,16 +419,8 @@ async function showSearchResults(
 
   await sendTextMessage(
     phone,
-    `🔎 *Search Results*\n\nYou searched for: *${context.searchQuery || ""}*\n\nFound ${ids.length} matching product(s).\nPage ${safePage + 1} of ${totalPages}.`,
+    `🔎 *Search Results*\n\nYou searched for: *${context.searchQuery || ""}*\n\nFound ${ids.length} matching product(s).\nPage ${safePage + 1} of ${totalPages}.\n\nYou can type another product description to search again.`,
   );
-
-  for (const product of products) {
-    await sendImageMessage(
-      phone,
-      product.image,
-      `*${product.name}*\n${product.description}\n\nPrice: ${money(product.price)}`,
-    );
-  }
 
   const rows = products.map((product) =>
     makeListRow(product.id, product.name, money(product.price))
@@ -438,10 +434,8 @@ async function showSearchResults(
     rows.push(makeListRow("demo_search_next", "Next Results ➡️"));
   }
 
-  rows.push(makeListRow("demo_search_again", "Search Again"));
   rows.push(makeListRow("demo_categories", "Browse Categories"));
   rows.push(makeListRow("demo_cart", "View My Cart"));
-  rows.push(makeListRow("demo_exit", "Exit Demo"));
 
   await sendListMessage(
     phone,
@@ -553,12 +547,16 @@ async function showCart(
   }
 
   const subtotal = getTotal(cart);
+  const total = subtotal + DEMO_DELIVERY_FEE;
 
   await saveDemoState(conversationId, "CART", context);
 
   await sendTextMessage(
     phone,
-    `🛒 *Your Demo Cart*\n\n${getCartLines(cart)}\n\n*Subtotal: ${money(subtotal)}*`,
+    `🛒 *Your Demo Cart*\n\n${getCartLines(cart)}\n\n` +
+    `Product subtotal: ${money(subtotal)}\n` +
+    `Sample delivery fee: ${money(DEMO_DELIVERY_FEE)}\n` +
+    `*Estimated order total: ${money(total)}*`,
   );
 
   await sendButtonMessage(
@@ -606,7 +604,13 @@ async function showCheckoutSummary(
   const subtotal = getTotal(context.cart || []);
   const total = subtotal + DEMO_DELIVERY_FEE;
 
-  await saveDemoState(conversationId, "WAITING_DEMO_PAYMENT", context);
+  await saveDemoState(conversationId, "WAITING_DEMO_PAYMENT", {
+    ...context,
+    paymentMethod: undefined,
+    paymentStatus: undefined,
+    deliveryFeePaid: 0,
+    productBalanceDue: subtotal,
+  });
 
   await sendTextMessage(
     phone,
@@ -615,21 +619,24 @@ async function showCheckoutSummary(
     `Delivery address: ${context.deliveryAddress}\n\n` +
     `${getCartLines(context.cart || [])}\n\n` +
     `Product subtotal: ${money(subtotal)}\n` +
-    `Sample delivery fee: ${money(DEMO_DELIVERY_FEE)}\n` +
-    `*Demo total: ${money(total)}*\n\n` +
+    `Delivery fee: ${money(DEMO_DELIVERY_FEE)}\n` +
+    `*Total order value: ${money(total)}*\n\n` +
+    `💡 *Choose how you want to pay:*\n\n` +
+    `*Pay on Delivery:* Pay the delivery fee of ${money(DEMO_DELIVERY_FEE)} now. Pay the product balance of ${money(subtotal)} when your order arrives.\n\n` +
+    `*Pay Now:* Pay the full ${money(total)} before delivery.\n\n` +
     `This is a demonstration. No real payment will be collected.`,
   );
 
   await sendButtonMessage(
     phone,
-    "Would you like to simulate a successful payment?",
+    "Select your preferred payment method.",
     [
-      makeButton("demo_confirm_payment", "Pay Demo Order"),
+      makeButton("demo_pay_on_delivery", "Pay on Delivery"),
+      makeButton("demo_pay_now", "Pay Now"),
       makeButton("demo_cart", "View Cart"),
-      makeButton("demo_exit", "Exit Demo"),
     ],
-    "Demo Checkout",
-    "Simulation only — no real charge",
+    "Choose Payment Method",
+    "Sabi Demo Checkout",
   );
 }
 
@@ -637,26 +644,60 @@ async function confirmDemoPayment(
   phone: string,
   conversationId: string,
   context: DemoContext,
+  paymentMethod: "PAY_ON_DELIVERY" | "PAY_NOW",
 ): Promise<void> {
+  const subtotal = getTotal(context.cart || []);
+  const total = subtotal + DEMO_DELIVERY_FEE;
+
+  const deliveryFeePaid =
+    paymentMethod === "PAY_ON_DELIVERY"
+      ? DEMO_DELIVERY_FEE
+      : total;
+
+  const productBalanceDue =
+    paymentMethod === "PAY_ON_DELIVERY"
+      ? subtotal
+      : 0;
+
   const orderNumber = `SABI-DEMO-${Date.now().toString().slice(-6)}`;
+
+  const paymentStatus =
+    paymentMethod === "PAY_ON_DELIVERY"
+      ? "DELIVERY_FEE_PAID_PRODUCT_BALANCE_DUE"
+      : "PAID_IN_FULL";
 
   const nextContext: DemoContext = {
     ...context,
     demoOrderNumber: orderNumber,
     demoOrderStatus: "CONFIRMED",
+    paymentMethod,
+    paymentStatus,
+    deliveryFeePaid,
+    productBalanceDue,
   };
 
-  await saveDemoState(conversationId, "DEMO_ORDER_PLACED", nextContext);
+  await saveDemoState(
+    conversationId,
+    "DEMO_ORDER_PLACED",
+    nextContext,
+  );
 
-  const total = getTotal(context.cart || []) + DEMO_DELIVERY_FEE;
+  const paymentDetails =
+    paymentMethod === "PAY_ON_DELIVERY"
+      ? `Payment method: *Pay on Delivery*\n\n` +
+        `✅ Delivery fee paid upfront: ${money(DEMO_DELIVERY_FEE)}\n` +
+        `🟡 Product balance due on delivery: ${money(subtotal)}\n` +
+        `Total order value: ${money(total)}`
+      : `Payment method: *Pay Now*\n\n` +
+        `✅ Full payment received: ${money(total)}\n` +
+        `Product balance due: ${money(0)}`;
 
   await sendTextMessage(
     phone,
     `🎉 *Demo Order Confirmed!*\n\n` +
     `Order number: *${orderNumber}*\n` +
-    `Customer: ${context.customerName}\n` +
-    `Amount: ${money(total)}\n\n` +
-    `✅ Simulated payment successful.\n` +
+    `Customer: ${context.customerName}\n\n` +
+    `${paymentDetails}\n\n` +
     `📦 Your sample order has been received.\n\n` +
     `This is a demonstration order. No real payment or delivery has been created.`,
   );
@@ -711,13 +752,20 @@ async function trackDemoOrder(
   phone: string,
   context: DemoContext,
 ): Promise<void> {
+  const isPOD = context.paymentMethod === "PAY_ON_DELIVERY";
+
+  const paymentProgress = isPOD
+    ? `✅ Delivery fee paid upfront: ${money(context.deliveryFeePaid || 0)}\n` +
+      `🟡 Product balance due on delivery: ${money(context.productBalanceDue || 0)}`
+    : `✅ Full payment confirmed: ${money(context.deliveryFeePaid || 0)}`;
+
   await sendTextMessage(
     phone,
     `📍 *Demo Order Tracking*\n\n` +
     `Order: *${context.demoOrderNumber}*\n` +
     `Customer: ${context.customerName || "Demo Customer"}\n\n` +
     `✅ Order received\n` +
-    `✅ Simulated payment confirmed\n` +
+    `${paymentProgress}\n` +
     `🟡 Order being prepared\n` +
     `⚪ Out for delivery\n` +
     `⚪ Delivered\n\n` +
@@ -922,7 +970,11 @@ export async function handleSabiShopDemo(
     return true;
   }
 
-  if (action === "demo_confirm_payment") {
+  // Customer selects Pay on Delivery or Pay Now.
+  if (
+    action === "demo_pay_on_delivery" ||
+    action === "demo_pay_now"
+  ) {
     if (currentState !== "WAITING_DEMO_PAYMENT") {
       await sendTextMessage(
         phone,
@@ -931,7 +983,135 @@ export async function handleSabiShopDemo(
       return true;
     }
 
-    await confirmDemoPayment(phone, conversationId, context);
+    const subtotal = getTotal(cart);
+
+    if (!cart.length) {
+      await sendTextMessage(
+        phone,
+        "Your cart is empty. Please select a product first.",
+      );
+      return true;
+    }
+
+    if (action === "demo_pay_on_delivery") {
+      await saveDemoState(
+        conversationId,
+        "WAITING_DELIVERY_FEE_PAYMENT",
+        {
+          ...context,
+          paymentMethod: "PAY_ON_DELIVERY",
+          paymentStatus: "DELIVERY_FEE_PENDING",
+          deliveryFeePaid: 0,
+          productBalanceDue: subtotal,
+        },
+      );
+
+      await sendTextMessage(
+        phone,
+        `🚚 *Pay on Delivery Selected*\n\n` +
+        `Your product subtotal is ${money(subtotal)}.\n` +
+        `To confirm your order, you must pay the delivery fee upfront.\n\n` +
+        `*Delivery fee to pay now: ${money(DEMO_DELIVERY_FEE)}*\n` +
+        `Product balance to pay when delivered: ${money(subtotal)}\n\n` +
+        `Your order will only be confirmed after the delivery fee payment is successful.`,
+      );
+
+      await sendButtonMessage(
+        phone,
+        `Simulate payment of ${money(DEMO_DELIVERY_FEE)} for delivery.`,
+        [
+          makeButton("demo_pay_delivery_fee", "Pay Delivery Fee"),
+          makeButton("demo_cart", "View Cart"),
+          makeButton("demo_exit", "Exit Demo"),
+        ],
+        "Delivery Fee Payment",
+        "Demo payment only",
+      );
+
+      return true;
+    }
+
+    await saveDemoState(
+      conversationId,
+      "WAITING_FULL_PAYMENT",
+      {
+        ...context,
+        paymentMethod: "PAY_NOW",
+        paymentStatus: "FULL_PAYMENT_PENDING",
+        deliveryFeePaid: 0,
+        productBalanceDue: 0,
+      },
+    );
+
+    await sendTextMessage(
+      phone,
+      `💳 *Pay Now Selected*\n\n` +
+      `Product subtotal: ${money(subtotal)}\n` +
+      `Delivery fee: ${money(DEMO_DELIVERY_FEE)}\n` +
+      `*Full amount to pay: ${money(subtotal + DEMO_DELIVERY_FEE)}*`,
+    );
+
+    await sendButtonMessage(
+      phone,
+      `Simulate full payment of ${money(subtotal + DEMO_DELIVERY_FEE)}.`,
+      [
+        makeButton("demo_pay_full", "Pay Full Amount"),
+        makeButton("demo_cart", "View Cart"),
+        makeButton("demo_exit", "Exit Demo"),
+      ],
+      "Full Payment",
+      "Demo payment only",
+    );
+
+    return true;
+  }
+
+  // Simulate payment of the delivery fee for Pay on Delivery.
+  if (action === "demo_pay_delivery_fee") {
+    if (
+      currentState !== "WAITING_DELIVERY_FEE_PAYMENT" ||
+      context.paymentMethod !== "PAY_ON_DELIVERY"
+    ) {
+      await sendTextMessage(
+        phone,
+        "There is no pending delivery fee payment. Please complete checkout again.",
+      );
+      return true;
+    }
+
+    await confirmDemoPayment(
+      phone,
+      conversationId,
+      context,
+      "PAY_ON_DELIVERY",
+    );
+
+    return true;
+  }
+
+  // Simulate payment of the full order amount.
+  if (
+    action === "demo_pay_full" ||
+    action === "demo_confirm_payment"
+  ) {
+    if (
+      currentState !== "WAITING_FULL_PAYMENT" ||
+      context.paymentMethod !== "PAY_NOW"
+    ) {
+      await sendTextMessage(
+        phone,
+        "There is no pending full payment. Please complete checkout again.",
+      );
+      return true;
+    }
+
+    await confirmDemoPayment(
+      phone,
+      conversationId,
+      context,
+      "PAY_NOW",
+    );
+
     return true;
   }
 
@@ -941,7 +1121,14 @@ export async function handleSabiShopDemo(
   }
 
   if (action === "demo_empty_cart") {
-    const nextContext: DemoContext = { ...context, cart: [] };
+    const nextContext: DemoContext = {
+      ...context,
+      cart: [],
+      paymentMethod: undefined,
+      paymentStatus: undefined,
+      deliveryFeePaid: undefined,
+      productBalanceDue: undefined,
+    };
 
     await saveDemoState(conversationId, "SHOPPING", nextContext);
     await sendTextMessage(phone, "Your demo cart has been cleared.");
@@ -951,7 +1138,10 @@ export async function handleSabiShopDemo(
 
   if (action === "demo_checkout" || action === "checkout") {
     if (!cart.length) {
-      await sendTextMessage(phone, "Your cart is empty. Please select a product first.");
+      await sendTextMessage(
+        phone,
+        "Your cart is empty. Please select a product first.",
+      );
       await showProducts(phone, context);
       return true;
     }
@@ -963,14 +1153,26 @@ export async function handleSabiShopDemo(
   const selectedCategory = getCategory(action);
 
   if (selectedCategory) {
-    await showCategory(phone, conversationId, selectedCategory.id, context);
+    await showCategory(
+      phone,
+      conversationId,
+      selectedCategory.id,
+      context,
+    );
     return true;
   }
 
-  const selectedProduct = PRODUCTS.find((product) => product.id === action);
+  const selectedProduct = PRODUCTS.find(
+    (product) => product.id === action,
+  );
 
   if (selectedProduct) {
-    await showProduct(phone, conversationId, selectedProduct.id, context);
+    await showProduct(
+      phone,
+      conversationId,
+      selectedProduct.id,
+      context,
+    );
     return true;
   }
 
@@ -983,12 +1185,17 @@ export async function handleSabiShopDemo(
     }
 
     const updatedCart = [...cart];
-    const existing = updatedCart.find((item) => item.productId === product.id);
+    const existing = updatedCart.find(
+      (item) => item.productId === product.id,
+    );
 
     if (existing) {
       existing.quantity += 1;
     } else {
-      updatedCart.push({ productId: product.id, quantity: 1 });
+      updatedCart.push({
+        productId: product.id,
+        quantity: 1,
+      });
     }
 
     const nextContext: DemoContext = {
@@ -996,7 +1203,11 @@ export async function handleSabiShopDemo(
       cart: updatedCart,
     };
 
-    await sendTextMessage(phone, `✅ ${product.name} added to your cart.`);
+    await sendTextMessage(
+      phone,
+      `✅ ${product.name} added to your cart.`,
+    );
+
     await showCart(phone, conversationId, nextContext);
     return true;
   }
@@ -1022,41 +1233,64 @@ export async function handleSabiShopDemo(
       return true;
     }
 
-    await saveDemoState(conversationId, "DEMO_ORDER_PLACED", context);
+    await saveDemoState(
+      conversationId,
+      "DEMO_ORDER_PLACED",
+      context,
+    );
+
     await trackDemoOrder(phone, context);
     return true;
   }
 
   if (currentState === "WAITING_CUSTOMER_NAME") {
     if (text.trim().length < 2) {
-      await sendTextMessage(phone, "Please enter a valid customer name.");
+      await sendTextMessage(
+        phone,
+        "Please enter a valid customer name.",
+      );
       return true;
     }
 
-    await askForDeliveryAddress(phone, conversationId, {
-      ...context,
-      customerName: text.trim(),
-    });
+    await askForDeliveryAddress(
+      phone,
+      conversationId,
+      {
+        ...context,
+        customerName: text.trim(),
+      },
+    );
     return true;
   }
 
   if (currentState === "WAITING_DELIVERY_ADDRESS") {
     if (text.trim().length < 5) {
-      await sendTextMessage(phone, "Please enter a more complete sample delivery address.");
+      await sendTextMessage(
+        phone,
+        "Please enter a more complete sample delivery address.",
+      );
       return true;
     }
 
-    await showCheckoutSummary(phone, conversationId, {
-      ...context,
-      deliveryAddress: text.trim(),
-    });
+    await showCheckoutSummary(
+      phone,
+      conversationId,
+      {
+        ...context,
+        deliveryAddress: text.trim(),
+      },
+    );
     return true;
   }
 
-  if (currentState === "WAITING_DEMO_PAYMENT") {
+  if (
+    currentState === "WAITING_DEMO_PAYMENT" ||
+    currentState === "WAITING_DELIVERY_FEE_PAYMENT" ||
+    currentState === "WAITING_FULL_PAYMENT"
+  ) {
     await sendTextMessage(
       phone,
-      "Please use the *Pay Demo Order* button to simulate payment, or choose View Cart.",
+      "Please select one of the payment buttons shown to complete your demo checkout.",
     );
     return true;
   }
@@ -1096,7 +1330,12 @@ export async function handleSabiShopDemo(
   }
 
   if (currentState === "WAITING_PRODUCT_SEARCH") {
-    await runProductSearch(phone, conversationId, text, context);
+    await runProductSearch(
+      phone,
+      conversationId,
+      text,
+      context,
+    );
     return true;
   }
 
@@ -1109,7 +1348,12 @@ export async function handleSabiShopDemo(
     currentState === "CART"
   ) {
     if (text.trim().length >= 2) {
-      await runProductSearch(phone, conversationId, text, context);
+      await runProductSearch(
+        phone,
+        conversationId,
+        text,
+        context,
+      );
       return true;
     }
   }
