@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -69,6 +68,49 @@ h1{
  color:#1e40af;
  font-size:14px;
  line-height:1.55
+}
+.browser-help{
+ background:#f0fdf4;
+ border:1px solid #bbf7d0;
+ border-radius:10px;
+ padding:15px;
+ margin-bottom:18px;
+ font-size:14px;
+ line-height:1.6;
+ color:#166534
+}
+.browser-help h2{
+ font-size:16px;
+ margin-bottom:7px
+}
+.browser-btn{
+ display:block;
+ width:100%;
+ padding:13px;
+ margin-top:12px;
+ border:0;
+ border-radius:9px;
+ background:#15803d;
+ color:white;
+ font-size:15px;
+ font-weight:bold;
+ text-align:center;
+ text-decoration:none;
+ cursor:pointer
+}
+.recovery{
+ background:#fff7ed;
+ border:1px solid #fed7aa;
+ border-radius:10px;
+ padding:14px;
+ margin-top:15px;
+ font-size:13px;
+ line-height:1.6;
+ color:#7c2d12
+}
+.recovery h2{
+ font-size:15px;
+ margin-bottom:7px
 }
 .ack{
  display:flex;
@@ -150,6 +192,19 @@ Connect your dedicated business WhatsApp number to Sabi.
 This number will power your automated customer service and online store.
 </p>
 
+<div id="browserHelp" class="browser-help hidden">
+<h2>Open secure registration in Chrome</h2>
+For a more reliable Meta connection, open this same registration page in Chrome instead of continuing inside WhatsApp.
+
+<a id="openChrome" class="browser-btn" href="#">
+Open in Chrome
+</a>
+
+<p style="margin-top:9px;font-size:12px">
+Your registration link will be preserved when you open Chrome.
+</p>
+</div>
+
 <div class="warning">
 <h2>⚠️ Important: Choose the right number</h2>
 
@@ -163,6 +218,18 @@ Before continuing, please understand how your WhatsApp number will be used.
 <li>Depending on Meta's connection and migration options, you may no longer be able to use this number with the normal WhatsApp or WhatsApp Business mobile app in the usual way.</li>
 <li>Keep the SIM active and accessible because Meta may require verification.</li>
 <li>Do not connect a number you cannot afford to dedicate to your business automation.</li>
+</ul>
+</div>
+
+<div class="info">
+<strong>Don't have a business WhatsApp number yet?</strong><br>
+You can register a new number during Meta's setup if that option is available.
+
+<ul style="padding-left:20px;margin-top:8px">
+<li>Select Nigeria (+234) when choosing your country.</li>
+<li>Enter a mobile number you can access.</li>
+<li>Complete the SMS or phone-call verification requested by Meta.</li>
+<li>If the number is already registered on WhatsApp, follow Meta's migration or coexistence instructions where offered.</li>
 </ul>
 </div>
 
@@ -184,6 +251,22 @@ I understand that I should use a dedicated business number and that connecting i
 
 <div id="errorMsg" class="error hidden"></div>
 <div id="successMsg" class="success hidden"></div>
+
+<div id="androidRecovery" class="recovery hidden">
+<h2>Having trouble opening Meta?</h2>
+If Meta's page closes immediately on Android:
+
+<ol style="padding-left:19px;margin-top:7px">
+<li>Open your phone's Settings.</li>
+<li>Go to Apps, then Facebook.</li>
+<li>Open "Open by default" or "Set as default".</li>
+<li>If "Open supported links" is enabled, turn it off.</li>
+<li>Return to Chrome and retry this registration page.</li>
+</ol>
+<p style="margin-top:8px">
+This is only a troubleshooting option if the connection fails. Most merchants should not need to change this setting.
+</p>
+</div>
 
 <p class="small">
 Secure connection powered by Meta Embedded Signup.
@@ -217,6 +300,10 @@ function showError(message){
  const el=document.getElementById("errorMsg");
  el.textContent=message;
  el.classList.remove("hidden");
+
+ if(isAndroid()){
+  document.getElementById("androidRecovery").classList.remove("hidden");
+ }
 }
 
 function hideError(){
@@ -226,6 +313,50 @@ function hideError(){
 function resetButton(){
  btn.disabled=!acknowledgement.checked;
  btn.textContent="🔗 Connect My Business WhatsApp";
+}
+
+function isAndroid(){
+ return /Android/i.test(navigator.userAgent);
+}
+
+function isWhatsAppBrowser(){
+ return /WhatsApp/i.test(navigator.userAgent);
+}
+
+/*
+ Show the Chrome handoff only when this page
+ is opened inside WhatsApp on Android.
+*/
+
+function setupBrowserHandoff(){
+
+ if(!isAndroid() || !isWhatsAppBrowser())return;
+
+ const help=document.getElementById("browserHelp");
+ const link=document.getElementById("openChrome");
+
+ help.classList.remove("hidden");
+
+ const currentUrl=location.href;
+ const parsed=new URL(currentUrl);
+
+ const intentUrl=
+  "intent://"+
+  parsed.host+
+  parsed.pathname+
+  parsed.search+
+  parsed.hash+
+  "#Intent;scheme=https;package=com.android.chrome;"+
+  "S.browser_fallback_url="+
+  encodeURIComponent(currentUrl)+
+  ";end";
+
+ link.href=intentUrl;
+
+ link.addEventListener("click",function(){
+  link.textContent="Opening Chrome...";
+ });
+
 }
 
 function getMetaDiagnostic(response){
@@ -278,7 +409,7 @@ function getMetaDiagnostic(response){
  }
 
  if(response.status==="unknown"){
-  return "META STATUS: Signup did not complete or Meta did not return an authorization response. The diagnostic details below will help us investigate."+details;
+  return "Meta did not complete the signup or return an authorization response. If you are using Android, try opening this page in Chrome. If it still fails, use the Android recovery instructions below."+details;
  }
 
  if(response.authResponse && !response.authResponse.code){
@@ -305,6 +436,7 @@ function validFacebookOrigin(origin){
 
 /*
  Meta Facebook SDK initialization.
+ Keep the existing SDK version and active configuration.
 */
 
 window.fbAsyncInit=function(){
@@ -478,7 +610,7 @@ function connectNow(){
   showError(
    "Could not open Meta signup: "+
    (error.message||"Unknown browser error")+
-   ". Refresh the page and try again."
+   ". Try opening this page in Chrome and try again."
   );
 
  }
@@ -656,6 +788,8 @@ async function tryFinish(){
 }
 
 window.addEventListener("load",function(){
+
+ setupBrowserHandoff();
 
  if(!SESSION_TOKEN){
 
