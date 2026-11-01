@@ -16,39 +16,16 @@ type Product = {
   image: string;
   description: string;
   category: string;
+  keywords: string[];
 };
 
 const CATEGORIES = [
-  {
-    id: "cat_fashion",
-    name: "Fashion & Clothing",
-    description: "Clothing and fashion items",
-  },
-  {
-    id: "cat_bags",
-    name: "Bags & Accessories",
-    description: "Bags and everyday accessories",
-  },
-  {
-    id: "cat_watches",
-    name: "Watches",
-    description: "Elegant watches and timepieces",
-  },
-  {
-    id: "cat_shoes",
-    name: "Shoes & Sneakers",
-    description: "Footwear for every occasion",
-  },
-  {
-    id: "cat_electronics",
-    name: "Phones & Electronics",
-    description: "Gadgets and electronic devices",
-  },
-  {
-    id: "cat_home",
-    name: "Home & Living",
-    description: "Useful home products",
-  },
+  { id: "cat_fashion", name: "Fashion & Clothing", description: "Clothing and fashion items" },
+  { id: "cat_bags", name: "Bags & Accessories", description: "Bags and everyday accessories" },
+  { id: "cat_watches", name: "Watches", description: "Elegant watches and timepieces" },
+  { id: "cat_shoes", name: "Shoes & Sneakers", description: "Footwear for every occasion" },
+  { id: "cat_electronics", name: "Phones & Electronics", description: "Gadgets and electronic devices" },
+  { id: "cat_home", name: "Home & Living", description: "Useful home products" },
 ];
 
 const PRODUCTS: Product[] = [
@@ -59,6 +36,7 @@ const PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1603252109303-2751441dd157?w=800",
     description: "A smart casual shirt for everyday wear.",
     category: "cat_fashion",
+    keywords: ["shirt", "clothing", "men", "casual", "top", "wear"],
   },
   {
     id: "demo_dress",
@@ -67,6 +45,7 @@ const PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=800",
     description: "A stylish dress for special occasions.",
     category: "cat_fashion",
+    keywords: ["dress", "gown", "women", "female", "fashion", "clothing"],
   },
   {
     id: "demo_bag",
@@ -75,6 +54,7 @@ const PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=800",
     description: "A stylish everyday handbag.",
     category: "cat_bags",
+    keywords: ["bag", "handbag", "purse", "leather", "women", "black", "accessory"],
   },
   {
     id: "demo_backpack",
@@ -83,6 +63,7 @@ const PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=800",
     description: "A practical backpack for work and travel.",
     category: "cat_bags",
+    keywords: ["backpack", "school bag", "school", "travel", "laptop bag", "bag"],
   },
   {
     id: "demo_watch",
@@ -91,6 +72,7 @@ const PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800",
     description: "A simple, elegant wristwatch.",
     category: "cat_watches",
+    keywords: ["watch", "wristwatch", "timepiece", "men", "women", "classic"],
   },
   {
     id: "demo_smartwatch",
@@ -99,6 +81,7 @@ const PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1524805444758-089113d48a6d?w=800",
     description: "A modern watch for your everyday lifestyle.",
     category: "cat_watches",
+    keywords: ["smartwatch", "smart watch", "watch", "digital", "fitness", "gadget"],
   },
   {
     id: "demo_shoes",
@@ -107,14 +90,16 @@ const PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800",
     description: "Comfortable everyday sneakers.",
     category: "cat_shoes",
+    keywords: ["shoe", "shoes", "sneaker", "sneakers", "sport", "sports", "red", "footwear"],
   },
   {
     id: "demo_formal_shoes",
     name: "Classic Formal Shoes",
     price: 26500,
     image: "https://images.unsplash.com/photo-1614252235316-8c857d38b5f4?w=800",
-    description: "Smart footwear for formal occasions.",
+    description: "Smart black footwear for formal occasions.",
     category: "cat_shoes",
+    keywords: ["shoe", "shoes", "formal", "black", "office", "leather", "men", "footwear"],
   },
   {
     id: "demo_headphones",
@@ -123,6 +108,7 @@ const PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800",
     description: "Wireless audio for music and entertainment.",
     category: "cat_electronics",
+    keywords: ["headphones", "headphone", "earphones", "audio", "music", "wireless"],
   },
   {
     id: "demo_phone",
@@ -131,6 +117,7 @@ const PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=800",
     description: "A modern smartphone for everyday use.",
     category: "cat_electronics",
+    keywords: ["phone", "smartphone", "mobile", "android", "samsung", "iphone", "electronics"],
   },
   {
     id: "demo_lamp",
@@ -139,6 +126,7 @@ const PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=800",
     description: "A stylish lamp for your living space.",
     category: "cat_home",
+    keywords: ["lamp", "light", "lighting", "home", "bedroom", "table"],
   },
   {
     id: "demo_chair",
@@ -147,10 +135,12 @@ const PRODUCTS: Product[] = [
     image: "https://images.unsplash.com/photo-1503602642458-232111445657?w=800",
     description: "A comfortable chair for your home.",
     category: "cat_home",
+    keywords: ["chair", "furniture", "seat", "home", "living room"],
   },
 ];
 
 const DEMO_DELIVERY_FEE = 1500;
+const PAGE_SIZE = 6;
 
 type CartItem = {
   productId: string;
@@ -166,6 +156,10 @@ type DemoContext = {
   deliveryAddress?: string;
   demoOrderNumber?: string;
   demoOrderStatus?: string;
+  searchQuery?: string;
+  searchResults?: string[];
+  searchPage?: number;
+  productPage?: number;
 };
 
 function money(amount: number): string {
@@ -181,9 +175,7 @@ function getCategory(id: string) {
 }
 
 function getCategoryProducts(categoryId: string) {
-  return PRODUCTS.filter(
-    (product) => product.category === categoryId,
-  );
+  return PRODUCTS.filter((product) => product.category === categoryId);
 }
 
 function getTotal(cart: CartItem[]): number {
@@ -196,12 +188,8 @@ function getTotal(cart: CartItem[]): number {
 function getCartLines(cart: CartItem[]): string {
   return cart.map((item) => {
     const product = getProduct(item.productId);
-
     if (!product) return "";
-
-    return `${product.name} × ${item.quantity} — ${money(
-      product.price * item.quantity,
-    )}`;
+    return `${product.name} × ${item.quantity} — ${money(product.price * item.quantity)}`;
   }).filter(Boolean).join("\n");
 }
 
@@ -220,13 +208,94 @@ async function saveDemoState(
   });
 }
 
+function extractPriceLimit(query: string): {
+  maximum?: number;
+  minimum?: number;
+} {
+  const cleaned = query.toLowerCase().replace(/,/g, "");
+  const match = cleaned.match(
+    /(?:under|below|less than|up to|maximum|max|within|above|over|more than|at least)\s*₦?\s*(\d+(?:\.\d+)?)\s*(k)?/,
+  );
+
+  if (!match) return {};
+
+  let amount = Number(match[1]);
+  if (match[2]) amount *= 1000;
+
+  if (!Number.isFinite(amount)) return {};
+
+  if (/above|over|more than|at least/.test(cleaned)) {
+    return { minimum: amount };
+  }
+
+  return { maximum: amount };
+}
+
+function searchProducts(query: string): Product[] {
+  const cleaned = query
+    .toLowerCase()
+    .replace(/[₦,]/g, "")
+    .replace(/[?!.,]/g, " ")
+    .trim();
+
+  const price = extractPriceLimit(query);
+
+  const stopWords = new Set([
+    "i", "want", "need", "a", "an", "the", "please",
+    "show", "me", "do", "you", "have", "any", "some",
+    "find", "get", "buy", "looking", "for", "can",
+    "could", "give", "available", "product", "products",
+    "under", "below", "less", "than", "up", "to",
+    "maximum", "max", "within", "above", "over",
+    "more", "at", "least", "₦",
+  ]);
+
+  const terms = cleaned
+    .split(/\s+/)
+    .filter((word) => word.length > 1 && !stopWords.has(word) && !/^\d+$/.test(word));
+
+  const matches = PRODUCTS.map((product) => {
+    const category = getCategory(product.category);
+
+    const searchable = [
+      product.name,
+      product.description,
+      ...(product.keywords || []),
+      category?.name || "",
+    ].join(" ").toLowerCase();
+
+    let score = 0;
+
+    for (const term of terms) {
+      if (product.name.toLowerCase().includes(term)) score += 5;
+      else if ((product.keywords || []).some((word) => word.includes(term) || term.includes(word))) score += 4;
+      else if (searchable.includes(term)) score += 2;
+    }
+
+    if (price.maximum !== undefined && product.price > price.maximum) {
+      score = 0;
+    }
+
+    if (price.minimum !== undefined && product.price < price.minimum) {
+      score = 0;
+    }
+
+    return { product, score };
+  });
+
+  return matches
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.product.price - b.product.price)
+    .map((item) => item.product);
+}
+
 async function showProducts(
   phone: string,
-  context?: DemoContext,
+  context: DemoContext = {},
 ): Promise<void> {
   await sendTextMessage(
     phone,
-    "🛍️ *Welcome to the Sabi Demo Shop!*\n\nExplore our sample products, place a demo order, track your order or see how Sabi transfers a conversation to a human agent.\n\nChoose an option below.",
+    "🛍️ *Welcome to the Sabi Demo Shop!*\n\nExplore sample products, search by typing what you want, place a demo order, track an order or see how Sabi transfers a conversation to a human agent.\n\nYou can type something like:\n• I want a black shoe\n• Show me a wristwatch\n• Bags under 20k\n• I need a smartphone",
   );
 
   await sendListMessage(
@@ -237,11 +306,7 @@ async function showProducts(
       {
         title: "Shop by Category",
         rows: CATEGORIES.map((category) =>
-          makeListRow(
-            category.id,
-            category.name,
-            category.description,
-          )
+          makeListRow(category.id, category.name, category.description)
         ),
       },
       {
@@ -255,7 +320,7 @@ async function showProducts(
       },
     ],
     "Sabi Demo Shop",
-    "Shopping and customer service demonstration",
+    "You can also type a product name to search",
   );
 }
 
@@ -264,6 +329,7 @@ async function showCategory(
   conversationId: string,
   categoryId: string,
   context: DemoContext,
+  page = 0,
 ): Promise<void> {
   const category = getCategory(categoryId);
 
@@ -273,16 +339,23 @@ async function showCategory(
     return;
   }
 
-  const products = getCategoryProducts(categoryId);
+  const allProducts = getCategoryProducts(categoryId);
+  const totalPages = Math.max(1, Math.ceil(allProducts.length / PAGE_SIZE));
+  const safePage = Math.max(0, Math.min(page, totalPages - 1));
+  const products = allProducts.slice(
+    safePage * PAGE_SIZE,
+    (safePage + 1) * PAGE_SIZE,
+  );
 
   await saveDemoState(conversationId, "CATEGORY_SELECTED", {
     ...context,
     selectedCategory: categoryId,
+    productPage: safePage,
   });
 
   await sendTextMessage(
     phone,
-    `🛍️ *${category.name}*\n\nHere are the products available in this category. Select an item to see its details.`,
+    `🛍️ *${category.name}*\n\nPage ${safePage + 1} of ${totalPages}\n\nHere are the available products. Select an item to see its details.`,
   );
 
   for (const product of products) {
@@ -293,35 +366,137 @@ async function showCategory(
     );
   }
 
+  const rows = products.map((product) =>
+    makeListRow(product.id, product.name, money(product.price))
+  );
+
+  if (safePage > 0) {
+    rows.push(makeListRow("demo_category_prev", "⬅️ Previous Products"));
+  }
+
+  if (safePage < totalPages - 1) {
+    rows.push(makeListRow("demo_category_next", "Next Products ➡️"));
+  }
+
+  rows.push(makeListRow("demo_search_help", "🔎 Search Products"));
+  rows.push(makeListRow("demo_categories", "Browse Categories"));
+  rows.push(makeListRow("demo_cart", "View My Cart"));
+  rows.push(makeListRow("demo_exit", "Exit Demo"));
+
   await sendListMessage(
     phone,
-    "Select a product to view more details.",
+    "Select a product or choose another option.",
     "View Products",
-    [
-      {
-        title: category.name,
-        rows: products.map((product) =>
-          makeListRow(
-            product.id,
-            product.name,
-            money(product.price),
-          )
-        ),
-      },
-      {
-        title: "Shop Options",
-        rows: [
-          makeListRow("demo_categories", "Browse Categories"),
-          makeListRow("demo_cart", "View My Cart"),
-          makeListRow("demo_track_order", "Track My Order"),
-          makeListRow("demo_agent", "Speak to an Agent"),
-          makeListRow("demo_exit", "Exit Demo"),
-        ],
-      },
-    ],
+    [{ title: category.name, rows }],
     "Sabi Demo Shop",
-    "Sample products only",
+    "Select a product to view its details",
   );
+}
+
+async function showSearchResults(
+  phone: string,
+  conversationId: string,
+  context: DemoContext,
+  page = 0,
+): Promise<void> {
+  const ids = context.searchResults || [];
+  const totalPages = Math.max(1, Math.ceil(ids.length / PAGE_SIZE));
+  const safePage = Math.max(0, Math.min(page, totalPages - 1));
+
+  const products = ids
+    .slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE)
+    .map(getProduct)
+    .filter((product): product is Product => Boolean(product));
+
+  await saveDemoState(conversationId, "SEARCH_RESULTS", {
+    ...context,
+    searchPage: safePage,
+  });
+
+  await sendTextMessage(
+    phone,
+    `🔎 *Search Results*\n\nYou searched for: *${context.searchQuery || ""}*\n\nFound ${ids.length} matching product(s).\nPage ${safePage + 1} of ${totalPages}.`,
+  );
+
+  for (const product of products) {
+    await sendImageMessage(
+      phone,
+      product.image,
+      `*${product.name}*\n${product.description}\n\nPrice: ${money(product.price)}`,
+    );
+  }
+
+  const rows = products.map((product) =>
+    makeListRow(product.id, product.name, money(product.price))
+  );
+
+  if (safePage > 0) {
+    rows.push(makeListRow("demo_search_prev", "⬅️ Previous Results"));
+  }
+
+  if (safePage < totalPages - 1) {
+    rows.push(makeListRow("demo_search_next", "Next Results ➡️"));
+  }
+
+  rows.push(makeListRow("demo_search_again", "Search Again"));
+  rows.push(makeListRow("demo_categories", "Browse Categories"));
+  rows.push(makeListRow("demo_cart", "View My Cart"));
+  rows.push(makeListRow("demo_exit", "Exit Demo"));
+
+  await sendListMessage(
+    phone,
+    "Select a product to view its details.",
+    "Search Results",
+    [{ title: "Matching Products", rows }],
+    "Sabi Demo Shop",
+    "Search results",
+  );
+}
+
+async function runProductSearch(
+  phone: string,
+  conversationId: string,
+  query: string,
+  context: DemoContext,
+): Promise<void> {
+  const results = searchProducts(query);
+
+  if (!results.length) {
+    await saveDemoState(conversationId, "SHOPPING", {
+      ...context,
+      searchQuery: query,
+      searchResults: [],
+      searchPage: 0,
+    });
+
+    await sendTextMessage(
+      phone,
+      `I couldn't find a matching sample product for *${query}*.\n\nTry another description, product name or category.\n\nExamples:\n• black shoe\n• wristwatch\n• backpack\n• smartphone\n• home chair`,
+    );
+
+    await sendButtonMessage(
+      phone,
+      "Would you like to try again?",
+      [
+        makeButton("demo_search_again", "Search Again"),
+        makeButton("demo_categories", "Browse Categories"),
+        makeButton("demo_cart", "View Cart"),
+      ],
+      "No Matching Products",
+      "Sabi Demo Shop",
+    );
+
+    return;
+  }
+
+  const nextContext: DemoContext = {
+    ...context,
+    searchQuery: query,
+    searchResults: results.map((product) => product.id),
+    searchPage: 0,
+  };
+
+  await showSearchResults(phone, conversationId, nextContext, 0);
 }
 
 async function showProduct(
@@ -404,12 +579,7 @@ async function askForCustomerName(
   conversationId: string,
   context: DemoContext,
 ): Promise<void> {
-  await saveDemoState(
-    conversationId,
-    "WAITING_CUSTOMER_NAME",
-    context,
-  );
-
+  await saveDemoState(conversationId, "WAITING_CUSTOMER_NAME", context);
   await sendTextMessage(
     phone,
     "📦 *Demo Checkout*\n\nPlease enter your full name for this sample order.",
@@ -421,12 +591,7 @@ async function askForDeliveryAddress(
   conversationId: string,
   context: DemoContext,
 ): Promise<void> {
-  await saveDemoState(
-    conversationId,
-    "WAITING_DELIVERY_ADDRESS",
-    context,
-  );
-
+  await saveDemoState(conversationId, "WAITING_DELIVERY_ADDRESS", context);
   await sendTextMessage(
     phone,
     `Thank you, *${context.customerName}*.\n\nPlease enter a sample delivery address, including the area and city.`,
@@ -441,11 +606,7 @@ async function showCheckoutSummary(
   const subtotal = getTotal(context.cart || []);
   const total = subtotal + DEMO_DELIVERY_FEE;
 
-  await saveDemoState(
-    conversationId,
-    "WAITING_DEMO_PAYMENT",
-    context,
-  );
+  await saveDemoState(conversationId, "WAITING_DEMO_PAYMENT", context);
 
   await sendTextMessage(
     phone,
@@ -485,11 +646,7 @@ async function confirmDemoPayment(
     demoOrderStatus: "CONFIRMED",
   };
 
-  await saveDemoState(
-    conversationId,
-    "DEMO_ORDER_PLACED",
-    nextContext,
-  );
+  await saveDemoState(conversationId, "DEMO_ORDER_PLACED", nextContext);
 
   const total = getTotal(context.cart || []) + DEMO_DELIVERY_FEE;
 
@@ -522,11 +679,7 @@ async function askForTrackingNumber(
   conversationId: string,
   context: DemoContext,
 ): Promise<void> {
-  await saveDemoState(
-    conversationId,
-    "WAITING_TRACKING_NUMBER",
-    context,
-  );
+  await saveDemoState(conversationId, "WAITING_TRACKING_NUMBER", context);
 
   if (!context.demoOrderNumber) {
     await sendTextMessage(
@@ -545,7 +698,6 @@ async function askForTrackingNumber(
       "Sabi Demo Tracking",
       "Sample tracking only",
     );
-
     return;
   }
 
@@ -590,11 +742,7 @@ async function showAgentHandoffDemo(
   conversationId: string,
   context: DemoContext,
 ): Promise<void> {
-  await saveDemoState(
-    conversationId,
-    "AGENT_HANDOFF_DEMO",
-    context,
-  );
+  await saveDemoState(conversationId, "AGENT_HANDOFF_DEMO", context);
 
   await sendTextMessage(
     phone,
@@ -653,12 +801,7 @@ export async function startSabiShopDemo(
     sabi_shop_demo: true,
   };
 
-  await saveDemoState(
-    conversationId,
-    "SHOPPING",
-    context,
-  );
-
+  await saveDemoState(conversationId, "SHOPPING", context);
   await showProducts(phone, context);
 }
 
@@ -670,11 +813,7 @@ export async function handleSabiShopDemo(
   savedContext?: Record<string, unknown> | null,
 ): Promise<boolean> {
   const action = text.trim().toLowerCase();
-
-  const context = (
-    savedContext || {}
-  ) as DemoContext;
-
+  const context = (savedContext || {}) as DemoContext;
   const cart = context.cart || [];
 
   if (
@@ -685,16 +824,13 @@ export async function handleSabiShopDemo(
     await updateConversation(conversationId, {
       current_module: "SABI_GATEWAY",
       current_state: "SHOWING_WELCOME",
-      context_json: {
-        sabi_gateway: true,
-      },
+      context_json: { sabi_gateway: true },
     });
 
     await sendTextMessage(
       phone,
       "You have left the shop demo. Type *Hi* to return to the Sabi welcome menu.",
     );
-
     return true;
   }
 
@@ -703,12 +839,7 @@ export async function handleSabiShopDemo(
     action === "speak to an agent" ||
     action === "talk to an agent"
   ) {
-    await showAgentHandoffDemo(
-      phone,
-      conversationId,
-      context,
-    );
-
+    await showAgentHandoffDemo(phone, conversationId, context);
     return true;
   }
 
@@ -716,17 +847,11 @@ export async function handleSabiShopDemo(
     action === "demo_agent_return" ||
     action === "return to sabi ai"
   ) {
-    await saveDemoState(
-      conversationId,
-      "SHOPPING",
-      context,
-    );
-
+    await saveDemoState(conversationId, "SHOPPING", context);
     await sendTextMessage(
       phone,
       "🤖 *Welcome back to Sabi AI!*\n\nThe sample human agent has finished the demonstration. Sabi's automated shopping assistant is ready to help you again.",
     );
-
     await showProducts(phone, context);
     return true;
   }
@@ -740,17 +865,50 @@ export async function handleSabiShopDemo(
   }
 
   if (
+    action === "demo_search_help" ||
+    action === "demo_search_again" ||
+    action === "search products"
+  ) {
+    await saveDemoState(conversationId, "WAITING_PRODUCT_SEARCH", context);
+    await sendTextMessage(
+      phone,
+      "🔎 *Search the Demo Shop*\n\nType the product you are looking for.\n\nExamples:\n• Black shoe\n• Wristwatch\n• Backpack\n• Smartphone under 100k",
+    );
+    return true;
+  }
+
+  if (action === "demo_search_next" || action === "demo_search_prev") {
+    const page = context.searchPage || 0;
+    const nextPage = action === "demo_search_next" ? page + 1 : page - 1;
+    await showSearchResults(phone, conversationId, context, nextPage);
+    return true;
+  }
+
+  if (action === "demo_category_next" || action === "demo_category_prev") {
+    const page = context.productPage || 0;
+    const nextPage = action === "demo_category_next" ? page + 1 : page - 1;
+
+    if (context.selectedCategory) {
+      await showCategory(
+        phone,
+        conversationId,
+        context.selectedCategory,
+        context,
+        nextPage,
+      );
+    } else {
+      await showProducts(phone, context);
+    }
+    return true;
+  }
+
+  if (
     action === "demo_categories" ||
     action === "demo_products" ||
     action === "shop" ||
     action === "continue shopping"
   ) {
-    await saveDemoState(
-      conversationId,
-      "SHOPPING",
-      context,
-    );
-
+    await saveDemoState(conversationId, "SHOPPING", context);
     await showProducts(phone, context);
     return true;
   }
@@ -760,12 +918,7 @@ export async function handleSabiShopDemo(
     action === "track my order" ||
     action === "track order"
   ) {
-    await askForTrackingNumber(
-      phone,
-      conversationId,
-      context,
-    );
-
+    await askForTrackingNumber(phone, conversationId, context);
     return true;
   }
 
@@ -778,12 +931,7 @@ export async function handleSabiShopDemo(
       return true;
     }
 
-    await confirmDemoPayment(
-      phone,
-      conversationId,
-      context,
-    );
-
+    await confirmDemoPayment(phone, conversationId, context);
     return true;
   }
 
@@ -793,78 +941,41 @@ export async function handleSabiShopDemo(
   }
 
   if (action === "demo_empty_cart") {
-    const nextContext: DemoContext = {
-      ...context,
-      cart: [],
-    };
+    const nextContext: DemoContext = { ...context, cart: [] };
 
-    await saveDemoState(
-      conversationId,
-      "SHOPPING",
-      nextContext,
-    );
-
-    await sendTextMessage(
-      phone,
-      "Your demo cart has been cleared.",
-    );
-
+    await saveDemoState(conversationId, "SHOPPING", nextContext);
+    await sendTextMessage(phone, "Your demo cart has been cleared.");
     await showProducts(phone, nextContext);
     return true;
   }
 
   if (action === "demo_checkout" || action === "checkout") {
     if (!cart.length) {
-      await sendTextMessage(
-        phone,
-        "Your cart is empty. Please select a product first.",
-      );
-
+      await sendTextMessage(phone, "Your cart is empty. Please select a product first.");
       await showProducts(phone, context);
       return true;
     }
 
-    await askForCustomerName(
-      phone,
-      conversationId,
-      context,
-    );
-
+    await askForCustomerName(phone, conversationId, context);
     return true;
   }
 
   const selectedCategory = getCategory(action);
 
   if (selectedCategory) {
-    await showCategory(
-      phone,
-      conversationId,
-      selectedCategory.id,
-      context,
-    );
-
+    await showCategory(phone, conversationId, selectedCategory.id, context);
     return true;
   }
 
-  const selectedProduct = PRODUCTS.find(
-    (product) => product.id === action,
-  );
+  const selectedProduct = PRODUCTS.find((product) => product.id === action);
 
   if (selectedProduct) {
-    await showProduct(
-      phone,
-      conversationId,
-      selectedProduct.id,
-      context,
-    );
-
+    await showProduct(phone, conversationId, selectedProduct.id, context);
     return true;
   }
 
   if (action === "demo_add_one") {
-    const product = getProduct(
-      context.selectedProduct || "",
-    );
+    const product = getProduct(context.selectedProduct || "");
 
     if (!product) {
       await showProducts(phone, context);
@@ -872,17 +983,12 @@ export async function handleSabiShopDemo(
     }
 
     const updatedCart = [...cart];
-    const existing = updatedCart.find(
-      (item) => item.productId === product.id,
-    );
+    const existing = updatedCart.find((item) => item.productId === product.id);
 
     if (existing) {
       existing.quantity += 1;
     } else {
-      updatedCart.push({
-        productId: product.id,
-        quantity: 1,
-      });
+      updatedCart.push({ productId: product.id, quantity: 1 });
     }
 
     const nextContext: DemoContext = {
@@ -890,32 +996,20 @@ export async function handleSabiShopDemo(
       cart: updatedCart,
     };
 
-    await sendTextMessage(
-      phone,
-      `✅ ${product.name} added to your cart.`,
-    );
-
-    await showCart(
-      phone,
-      conversationId,
-      nextContext,
-    );
-
+    await sendTextMessage(phone, `✅ ${product.name} added to your cart.`);
+    await showCart(phone, conversationId, nextContext);
     return true;
   }
 
   if (currentState === "WAITING_TRACKING_NUMBER") {
     const enteredNumber = text.trim().toUpperCase();
-    const savedNumber = (
-      context.demoOrderNumber || ""
-    ).toUpperCase();
+    const savedNumber = (context.demoOrderNumber || "").toUpperCase();
 
     if (!savedNumber) {
       await sendTextMessage(
         phone,
         "You do not have a sample order to track yet. Please place a demo order first.",
       );
-
       await showProducts(phone, context);
       return true;
     }
@@ -925,63 +1019,37 @@ export async function handleSabiShopDemo(
         phone,
         "I could not find that sample order number.\n\nPlease enter the demo order number shown in your order confirmation.",
       );
-
       return true;
     }
 
-    await saveDemoState(
-      conversationId,
-      "DEMO_ORDER_PLACED",
-      context,
-    );
-
+    await saveDemoState(conversationId, "DEMO_ORDER_PLACED", context);
     await trackDemoOrder(phone, context);
     return true;
   }
 
   if (currentState === "WAITING_CUSTOMER_NAME") {
     if (text.trim().length < 2) {
-      await sendTextMessage(
-        phone,
-        "Please enter a valid customer name.",
-      );
+      await sendTextMessage(phone, "Please enter a valid customer name.");
       return true;
     }
 
-    const nextContext: DemoContext = {
+    await askForDeliveryAddress(phone, conversationId, {
       ...context,
       customerName: text.trim(),
-    };
-
-    await askForDeliveryAddress(
-      phone,
-      conversationId,
-      nextContext,
-    );
-
+    });
     return true;
   }
 
   if (currentState === "WAITING_DELIVERY_ADDRESS") {
     if (text.trim().length < 5) {
-      await sendTextMessage(
-        phone,
-        "Please enter a more complete sample delivery address.",
-      );
+      await sendTextMessage(phone, "Please enter a more complete sample delivery address.");
       return true;
     }
 
-    const nextContext: DemoContext = {
+    await showCheckoutSummary(phone, conversationId, {
       ...context,
       deliveryAddress: text.trim(),
-    };
-
-    await showCheckoutSummary(
-      phone,
-      conversationId,
-      nextContext,
-    );
-
+    });
     return true;
   }
 
@@ -1009,7 +1077,6 @@ export async function handleSabiShopDemo(
       "Sample Agent Handoff",
       "No real agent is connected",
     );
-
     return true;
   }
 
@@ -1025,8 +1092,26 @@ export async function handleSabiShopDemo(
       "Demo Order",
       context.demoOrderNumber || "Sabi Demo",
     );
-
     return true;
+  }
+
+  if (currentState === "WAITING_PRODUCT_SEARCH") {
+    await runProductSearch(phone, conversationId, text, context);
+    return true;
+  }
+
+  // Ordinary customer messages become product searches while in the demo.
+  if (
+    currentState === "SHOPPING" ||
+    currentState === "CATEGORY_SELECTED" ||
+    currentState === "SEARCH_RESULTS" ||
+    currentState === "PRODUCT_SELECTED" ||
+    currentState === "CART"
+  ) {
+    if (text.trim().length >= 2) {
+      await runProductSearch(phone, conversationId, text, context);
+      return true;
+    }
   }
 
   return false;
