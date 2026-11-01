@@ -106,7 +106,9 @@ h1{
  border-radius:8px;
  margin-top:15px;
  font-size:14px;
- line-height:1.5
+ line-height:1.5;
+ white-space:pre-wrap;
+ overflow-wrap:anywhere
 }
 .success{
  color:#15803d;
@@ -186,9 +188,6 @@ Secure connection powered by Meta Embedded Signup.
 
 </div>
 
-<script async defer crossorigin="anonymous"
-src="https://connect.facebook.net/en_US/sdk.js"></script>
-
 <script>
 const API="https://mldywarnnwjitfvqpgis.supabase.co/functions/v1/whatsapp-webhook?action=onboard";
 const APP_ID="1947931015867084";
@@ -210,29 +209,55 @@ acknowledgement.addEventListener("change",function(){
  btn.disabled=!this.checked;
 });
 
-window.fbAsyncInit=function(){
- try{
-  FB.init({
-   appId:APP_ID,
-   cookie:true,
-   xfbml:false,
-   version:"v21.0"
-  });
-  fbReady=true;
- }catch(e){
-  showError("Meta could not be initialized. Refresh and try again.");
- }
-};
-
 function showError(message){
  const el=document.getElementById("errorMsg");
  el.textContent=message;
  el.classList.remove("hidden");
 }
 
+function hideError(){
+ document.getElementById("errorMsg").classList.add("hidden");
+}
+
 function resetButton(){
  btn.disabled=!acknowledgement.checked;
  btn.textContent="🔗 Connect My Business WhatsApp";
+}
+
+function getMetaDiagnostic(response){
+ if(!response){
+  return "Facebook did not return an authorization response. Check your browser's popup permissions and try again.";
+ }
+
+ const errorMessage=
+  response.error_message ||
+  response.error_description ||
+  (response.error && (
+   response.error.message ||
+   response.error
+  ));
+
+ if(errorMessage){
+  return "Meta authorization error: "+String(errorMessage);
+ }
+
+ if(response.status==="not_authorized"){
+  return "You are logged into Facebook, but permission to connect Sabi was not completed. Please try again and approve the requested permissions.";
+ }
+
+ if(response.status==="unknown"){
+  return "Facebook did not complete the login. The popup may have been closed, blocked, or interrupted.";
+ }
+
+ if(response.authResponse && !response.authResponse.code){
+  return "Facebook returned a login response but no authorization code. Please restart the connection.";
+ }
+
+ if(response.status){
+  return "Facebook returned status '"+response.status+"' without an authorization code. Please try again.";
+ }
+
+ return "Facebook did not return an authorization code. Please try again.";
 }
 
 function validFacebookOrigin(origin){
@@ -246,18 +271,45 @@ function validFacebookOrigin(origin){
  }
 }
 
+/*
+ IMPORTANT:
+ Define fbAsyncInit BEFORE loading the Facebook SDK.
+ This prevents the asynchronous SDK from loading before
+ Sabi's initialization callback is available.
+*/
+window.fbAsyncInit=function(){
+ try{
+  FB.init({
+   appId:APP_ID,
+   cookie:true,
+   xfbml:false,
+   version:"v21.0"
+  });
+
+  fbReady=true;
+  console.info("Sabi: Facebook SDK initialized.");
+ }catch(error){
+  console.error("Sabi Facebook initialization error:",error);
+  showError("Facebook could not be initialized. Refresh this page and try again.");
+ }
+};
+
 window.addEventListener("message",function(event){
  if(!validFacebookOrigin(event.origin))return;
 
  let data=event.data;
 
  try{
-  if(typeof data==="string")data=JSON.parse(data);
- }catch(e){
+  if(typeof data==="string"){
+   data=JSON.parse(data);
+  }
+ }catch(error){
   return;
  }
 
  if(!data || data.type!=="WA_EMBEDDED_SIGNUP")return;
+
+ console.info("Sabi Embedded Signup event:",data.event);
 
  if(data.event==="FINISH"){
   const d=data.data||{};
@@ -276,13 +328,25 @@ window.addEventListener("message",function(event){
  }
  else if(data.event==="ERROR"){
   cancelled=true;
-  showError("Meta reported an error during signup. Please try again.");
+
+  const details=
+   data.error_message ||
+   (data.data && data.data.error_message);
+
+  showError(
+   details?
+   "Meta reported an error: "+details:
+   "Meta reported an error during signup. Please restart the connection."
+  );
+
   resetButton();
  }
 });
 
 function connectNow(){
- document.getElementById("errorMsg").classList.add("hidden");
+ hideError();
+
+ if(submitting)return;
 
  if(!acknowledgement.checked){
   showError("Please confirm that you understand the dedicated-number requirement.");
@@ -295,7 +359,7 @@ function connectNow(){
  }
 
  if(!fbReady || typeof FB==="undefined"){
-  showError("Meta is still loading. Wait a few seconds and try again.");
+  showError("Facebook is still loading. Wait a few seconds and try again. If this continues, refresh the page.");
   return;
  }
 
@@ -315,8 +379,14 @@ function connectNow(){
     btn.textContent="Verifying your business WhatsApp...";
     tryFinish();
    }else{
+    console.warn("Sabi Facebook authorization did not return a code.",{
+     status:response && response.status,
+     error:response && response.error,
+     error_message:response && response.error_message
+    });
+
     resetButton();
-    showError("Authorization was not completed. Please try again.");
+    showError(getMetaDiagnostic(response));
    }
   },{
    config_id:CONFIG_ID,
@@ -326,8 +396,14 @@ function connectNow(){
    extras:{}
   });
  }catch(error){
+  console.error("Sabi FB.login error:",error);
   resetButton();
-  showError("Could not open Meta signup. Please refresh and try again.");
+
+  showError(
+   "Could not open Meta signup: "+
+   (error.message||"Unknown browser error")+
+   ". Refresh the page and try again."
+  );
  }
 }
 
@@ -366,15 +442,24 @@ async function tryFinish(){
    clearTimeout(timeout);
   }
 
-  const result=await response.json();
+  let result;
+
+  try{
+   result=await response.json();
+  }catch(error){
+   throw new Error("Sabi received an unreadable response from the registration server. Please try again.");
+  }
 
   if(!response.ok || !result.success){
-   throw new Error(result.error||"WhatsApp connection failed.");
+   throw new Error(
+    result.error ||
+    "WhatsApp connection failed. Server response: "+response.status
+   );
   }
 
   btn.classList.add("hidden");
-  document.getElementById("acknowledge").parentElement.classList.add("hidden");
-  document.getElementById("errorMsg").classList.add("hidden");
+  acknowledgement.parentElement.classList.add("hidden");
+  hideError();
 
   const success=document.getElementById("successMsg");
   success.classList.remove("hidden");
@@ -411,9 +496,14 @@ async function tryFinish(){
   }
 
  }catch(error){
-  showError(error.name==="AbortError"?
-   "The request timed out. Check your connection and try again.":
-   error.message||"Something went wrong.");
+  console.error("Sabi onboarding callback error:",error);
+
+  showError(
+   error.name==="AbortError"?
+   "The request timed out. Check your internet connection and try again.":
+   error.message||"Something went wrong during WhatsApp registration."
+  );
+
   resetButton();
  }finally{
   submitting=false;
@@ -427,5 +517,14 @@ window.addEventListener("load",function(){
  }
 });
 </script>
+
+<script
+ async
+ defer
+ crossorigin="anonymous"
+ src="https://connect.facebook.net/en_US/sdk.js"
+ onerror="showError('Facebook SDK could not be downloaded. Check your internet connection or browser restrictions and refresh this page.')">
+</script>
+
 </body>
 </html>
