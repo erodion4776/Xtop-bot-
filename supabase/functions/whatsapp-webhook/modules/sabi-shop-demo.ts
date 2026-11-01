@@ -9,13 +9,80 @@ import {
   makeButton,
 } from "../whatsapp.ts";
 
-const PRODUCTS = [
+type Product = {
+  id: string;
+  name: string;
+  price: number;
+  image: string;
+  description: string;
+  category: string;
+};
+
+const CATEGORIES = [
+  {
+    id: "cat_fashion",
+    name: "Fashion & Clothing",
+    description: "Clothing and fashion items",
+  },
+  {
+    id: "cat_bags",
+    name: "Bags & Accessories",
+    description: "Bags and everyday accessories",
+  },
+  {
+    id: "cat_watches",
+    name: "Watches",
+    description: "Elegant watches and timepieces",
+  },
+  {
+    id: "cat_shoes",
+    name: "Shoes & Sneakers",
+    description: "Footwear for every occasion",
+  },
+  {
+    id: "cat_electronics",
+    name: "Phones & Electronics",
+    description: "Gadgets and electronic devices",
+  },
+  {
+    id: "cat_home",
+    name: "Home & Living",
+    description: "Useful home products",
+  },
+];
+
+const PRODUCTS: Product[] = [
+  {
+    id: "demo_shirt",
+    name: "Classic Casual Shirt",
+    price: 9500,
+    image: "https://images.unsplash.com/photo-1603252109303-2751441dd157?w=800",
+    description: "A smart casual shirt for everyday wear.",
+    category: "cat_fashion",
+  },
+  {
+    id: "demo_dress",
+    name: "Elegant Fashion Dress",
+    price: 16500,
+    image: "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=800",
+    description: "A stylish dress for special occasions.",
+    category: "cat_fashion",
+  },
   {
     id: "demo_bag",
     name: "Classic Leather Bag",
     price: 18500,
     image: "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=800",
     description: "A stylish everyday handbag.",
+    category: "cat_bags",
+  },
+  {
+    id: "demo_backpack",
+    name: "Urban Travel Backpack",
+    price: 22000,
+    image: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=800",
+    description: "A practical backpack for work and travel.",
+    category: "cat_bags",
   },
   {
     id: "demo_watch",
@@ -23,6 +90,15 @@ const PRODUCTS = [
     price: 12500,
     image: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800",
     description: "A simple, elegant wristwatch.",
+    category: "cat_watches",
+  },
+  {
+    id: "demo_smartwatch",
+    name: "Modern Smartwatch",
+    price: 28000,
+    image: "https://images.unsplash.com/photo-1524805444758-089113d48a6d?w=800",
+    description: "A modern watch for your everyday lifestyle.",
+    category: "cat_watches",
   },
   {
     id: "demo_shoes",
@@ -30,6 +106,47 @@ const PRODUCTS = [
     price: 22000,
     image: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800",
     description: "Comfortable everyday sneakers.",
+    category: "cat_shoes",
+  },
+  {
+    id: "demo_formal_shoes",
+    name: "Classic Formal Shoes",
+    price: 26500,
+    image: "https://images.unsplash.com/photo-1614252235316-8c857d38b5f4?w=800",
+    description: "Smart footwear for formal occasions.",
+    category: "cat_shoes",
+  },
+  {
+    id: "demo_headphones",
+    name: "Wireless Headphones",
+    price: 19500,
+    image: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800",
+    description: "Wireless audio for music and entertainment.",
+    category: "cat_electronics",
+  },
+  {
+    id: "demo_phone",
+    name: "Smartphone",
+    price: 145000,
+    image: "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=800",
+    description: "A modern smartphone for everyday use.",
+    category: "cat_electronics",
+  },
+  {
+    id: "demo_lamp",
+    name: "Modern Table Lamp",
+    price: 14500,
+    image: "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=800",
+    description: "A stylish lamp for your living space.",
+    category: "cat_home",
+  },
+  {
+    id: "demo_chair",
+    name: "Modern Home Chair",
+    price: 42000,
+    image: "https://images.unsplash.com/photo-1503602642458-232111445657?w=800",
+    description: "A comfortable chair for your home.",
+    category: "cat_home",
   },
 ];
 
@@ -44,6 +161,7 @@ type DemoContext = {
   sabi_shop_demo?: boolean;
   cart?: CartItem[];
   selectedProduct?: string;
+  selectedCategory?: string;
   customerName?: string;
   deliveryAddress?: string;
   demoOrderNumber?: string;
@@ -56,6 +174,16 @@ function money(amount: number): string {
 
 function getProduct(id: string) {
   return PRODUCTS.find((product) => product.id === id);
+}
+
+function getCategory(id: string) {
+  return CATEGORIES.find((category) => category.id === id);
+}
+
+function getCategoryProducts(categoryId: string) {
+  return PRODUCTS.filter(
+    (product) => product.category === categoryId,
+  );
 }
 
 function getTotal(cart: CartItem[]): number {
@@ -92,13 +220,70 @@ async function saveDemoState(
   });
 }
 
-async function showProducts(phone: string): Promise<void> {
+async function showProducts(
+  phone: string,
+  context?: DemoContext,
+): Promise<void> {
   await sendTextMessage(
     phone,
-    "🛍️ *Welcome to the Sabi Demo Shop!*\n\nExplore our sample products below. You can view a product, add it to your cart and complete a simulated checkout.",
+    "🛍️ *Welcome to the Sabi Demo Shop!*\n\nExplore our product categories below. Select a category to see its products, pictures and prices.\n\nAdd your favourite items to your cart and experience a sample WhatsApp checkout.",
   );
 
-  for (const product of PRODUCTS) {
+  await sendListMessage(
+    phone,
+    "Which category would you like to explore?",
+    "Browse Categories",
+    [
+      {
+        title: "Shop by Category",
+        rows: CATEGORIES.map((category) =>
+          makeListRow(
+            category.id,
+            category.name,
+            category.description,
+          )
+        ),
+      },
+      {
+        title: "Shop Options",
+        rows: [
+          makeListRow("demo_cart", "🛒 View My Cart"),
+          makeListRow("demo_exit", "Exit Demo"),
+        ],
+      },
+    ],
+    "Sabi Demo Shop",
+    "12 sample products across 6 categories",
+  );
+}
+
+async function showCategory(
+  phone: string,
+  conversationId: string,
+  categoryId: string,
+  context: DemoContext,
+): Promise<void> {
+  const category = getCategory(categoryId);
+
+  if (!category) {
+    await sendTextMessage(phone, "That category was not found.");
+    await showProducts(phone, context);
+    return;
+  }
+
+  const products = getCategoryProducts(categoryId);
+
+  await saveDemoState(conversationId, "CATEGORY_SELECTED", {
+    ...context,
+    selectedCategory: categoryId,
+  });
+
+  await sendTextMessage(
+    phone,
+    `🛍️ *${category.name}*\n\nHere are the products available in this category. Select an item to see its details.`,
+  );
+
+  for (const product of products) {
     await sendImageMessage(
       phone,
       product.image,
@@ -108,12 +293,12 @@ async function showProducts(phone: string): Promise<void> {
 
   await sendListMessage(
     phone,
-    "Choose a product to view, or open your cart.",
-    "Explore Shop",
+    "Select a product to view more details.",
+    "View Products",
     [
       {
-        title: "Sample Products",
-        rows: PRODUCTS.map((product) =>
+        title: category.name,
+        rows: products.map((product) =>
           makeListRow(
             product.id,
             product.name,
@@ -124,6 +309,7 @@ async function showProducts(phone: string): Promise<void> {
       {
         title: "Shop Options",
         rows: [
+          makeListRow("demo_categories", "Browse Categories"),
           makeListRow("demo_cart", "View My Cart"),
           makeListRow("demo_exit", "Exit Demo"),
         ],
@@ -144,19 +330,20 @@ async function showProduct(
 
   if (!product) {
     await sendTextMessage(phone, "That product was not found.");
-    await showProducts(phone);
+    await showProducts(phone, context);
     return;
   }
 
   await saveDemoState(conversationId, "PRODUCT_SELECTED", {
     ...context,
     selectedProduct: productId,
+    selectedCategory: product.category,
   });
 
   await sendImageMessage(
     phone,
     product.image,
-    `*${product.name}*\n${product.description}\n\nPrice: ${money(product.price)}`,
+    `*${product.name}*\n${product.description}\n\nCategory: ${getCategory(product.category)?.name}\nPrice: ${money(product.price)}`,
   );
 
   await sendButtonMessage(
@@ -182,7 +369,7 @@ async function showCart(
   if (!cart.length) {
     await saveDemoState(conversationId, "SHOPPING", context);
     await sendTextMessage(phone, "🛒 Your demo cart is empty.");
-    await showProducts(phone);
+    await showProducts(phone, context);
     return;
   }
 
@@ -221,7 +408,7 @@ async function askForCustomerName(
 
   await sendTextMessage(
     phone,
-    "📦 *Demo Checkout*\n\nPlease enter the customer's full name for this sample order.",
+    "📦 *Demo Checkout*\n\nPlease enter your full name for this sample order.",
   );
 }
 
@@ -347,7 +534,7 @@ async function trackDemoOrder(
     "Would you like to place another sample order?",
     [
       makeButton("demo_new_order", "New Order"),
-      makeButton("demo_products", "View Products"),
+      makeButton("demo_products", "View Categories"),
       makeButton("demo_exit", "Exit Demo"),
     ],
     "Demo Tracking",
@@ -370,7 +557,7 @@ export async function startSabiShopDemo(
     context,
   );
 
-  await showProducts(phone);
+  await showProducts(phone, context);
 }
 
 export async function handleSabiShopDemo(
@@ -418,6 +605,7 @@ export async function handleSabiShopDemo(
   }
 
   if (
+    action === "demo_categories" ||
     action === "demo_products" ||
     action === "shop" ||
     action === "continue shopping"
@@ -428,7 +616,7 @@ export async function handleSabiShopDemo(
       context,
     );
 
-    await showProducts(phone);
+    await showProducts(phone, context);
     return true;
   }
 
@@ -477,7 +665,7 @@ export async function handleSabiShopDemo(
       "Your demo cart has been cleared.",
     );
 
-    await showProducts(phone);
+    await showProducts(phone, nextContext);
     return true;
   }
 
@@ -488,13 +676,26 @@ export async function handleSabiShopDemo(
         "Your cart is empty. Please select a product first.",
       );
 
-      await showProducts(phone);
+      await showProducts(phone, context);
       return true;
     }
 
     await askForCustomerName(
       phone,
       conversationId,
+      context,
+    );
+
+    return true;
+  }
+
+  const selectedCategory = getCategory(action);
+
+  if (selectedCategory) {
+    await showCategory(
+      phone,
+      conversationId,
+      selectedCategory.id,
       context,
     );
 
@@ -522,7 +723,7 @@ export async function handleSabiShopDemo(
     );
 
     if (!product) {
-      await showProducts(phone);
+      await showProducts(phone, context);
       return true;
     }
 
