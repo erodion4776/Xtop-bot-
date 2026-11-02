@@ -10,7 +10,8 @@ import {
   ChevronUp,
   Plus,
   Trash2,
-  ShoppingCart
+  ShoppingCart,
+  ShieldCheck
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 
@@ -355,15 +356,15 @@ export default function Orders({ tenantId }: Props) {
 
       if (paymentError) {
         throw new Error(
-          `Order ${orderResult.order_number} was created, but Paystack initialization failed: ${paymentError.message}. Refresh and contact support before creating another order.`
+          `Order ${orderResult.order_number} was created, but Paystack initialization failed: ${paymentError.message}. Refresh your orders before trying again. Do not create the same order again.`
         );
       }
 
       if (!paymentData?.success || !paymentData?.authorization_url) {
         throw new Error(
-          paymentData?.error ||
           paymentData?.message ||
-          `Order ${orderResult.order_number} was created, but a Paystack checkout link was not returned.`
+          paymentData?.error ||
+          `Order ${orderResult.order_number} was created, but a Paystack checkout link was not returned. Refresh your orders before trying again.`
         );
       }
 
@@ -388,9 +389,9 @@ export default function Orders({ tenantId }: Props) {
     action: "dispatch" | "confirm" | "cancel"
   ) {
     const messages = {
-      dispatch: "Dispatch this order? Sabi will check payment and wallet commission first.",
+      dispatch: "Dispatch this order? Sabi will confirm that the required customer payment has been received.",
       confirm: "Confirm that this order has been delivered?",
-      cancel: "Cancel this order? Stock will be restored and any eligible Sabi commission refunded."
+      cancel: "Cancel this unpaid order? Stock will be restored if the cancellation is accepted. Paid orders cannot be cancelled until Paystack refunds are supported."
     };
 
     if (!window.confirm(messages[action])) return;
@@ -476,7 +477,9 @@ export default function Orders({ tenantId }: Props) {
       <div className="orders-toolbar">
         <div>
           <h2>Order management</h2>
-          <p>Review customer orders, create orders, dispatch and confirm deliveries.</p>
+          <p>
+            Review customer orders, create orders, dispatch and confirm deliveries.
+          </p>
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -703,7 +706,8 @@ export default function Orders({ tenantId }: Props) {
                   <span>
                     <strong>ONLINE</strong>
                     <small style={{ display: "block" }}>
-                      Customer pays the full order total through Paystack.
+                      Customer pays the products, delivery fee (if applicable),
+                      and ₦50 Sabi Service Fee through Paystack.
                     </small>
                   </span>
                 </label>
@@ -717,13 +721,36 @@ export default function Orders({ tenantId }: Props) {
                     onChange={() => setPaymentMethod("POD")}
                   />
                   <span>
-                    <strong>POD</strong>
+                    <strong>PAY ON DELIVERY</strong>
                     <small style={{ display: "block" }}>
-                      Customer pays delivery fee through Paystack first; product payment is due on delivery.
+                      Customer pays the delivery fee and ₦50 Sabi Service Fee
+                      online. Product payment is due to you on delivery.
                     </small>
                   </span>
                 </label>
               </div>
+            </div>
+
+            <div style={{
+              marginTop: 16,
+              padding: 14,
+              borderRadius: 9,
+              background: "#f0fdfa",
+              color: "#115e59"
+            }}>
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8
+              }}>
+                <ShieldCheck size={18} />
+                <strong>How Sabi charges work</strong>
+              </div>
+              <p style={{ marginBottom: 0, fontSize: 13 }}>
+                The applicable merchant commission and ₦50 Sabi Service Fee
+                are collected through Paystack split settlement. They are
+                not deducted from your Sabi wallet.
+              </p>
             </div>
 
             <div style={{ marginTop: 16 }}>
@@ -751,7 +778,9 @@ export default function Orders({ tenantId }: Props) {
                 disabled={creatingOrder || cart.length === 0}
               >
                 <ShoppingCart size={16} />
-                {creatingOrder ? "Creating order..." : "Create order and open Paystack"}
+                {creatingOrder
+                  ? "Creating order..."
+                  : "Create order and open Paystack"}
               </button>
 
               <button
@@ -765,7 +794,9 @@ export default function Orders({ tenantId }: Props) {
             </div>
 
             <p style={{ fontSize: 12, marginTop: 12, opacity: 0.75 }}>
-              Product prices and stock are validated by Supabase when the order is created. Delivery charges are calculated using your business shipping settings.
+              Product prices and stock are validated by Supabase when the
+              order is created. Delivery charges are calculated using your
+              business shipping settings.
             </p>
           </form>
         </div>
@@ -836,6 +867,10 @@ export default function Orders({ tenantId }: Props) {
                     order.shipping_payment_status === "PAID"
                   : order.payment_status === "PAID";
 
+              const paidOrder =
+                order.payment_status === "PAID" ||
+                order.shipping_payment_status === "PAID";
+
               return (
                 <article className="order-card" key={order.id}>
                   <div className="order-card-top">
@@ -890,13 +925,15 @@ export default function Orders({ tenantId }: Props) {
                         : order.payment_status
                     )}>
                       {order.payment_method === "POD"
-                        ? `Delivery fee: ${order.shipping_payment_status}`
+                        ? `Delivery payment: ${order.shipping_payment_status}`
                         : `Payment: ${order.payment_status}`}
                     </span>
 
-                    <span className={statusClass(order.sales_fee_status)}>
-                      Commission: {order.sales_fee_status}
-                    </span>
+                    {paidOrder && (
+                      <span className="order-status success">
+                        Sabi charges collected through Paystack
+                      </span>
+                    )}
                   </div>
 
                   <button
@@ -940,10 +977,15 @@ export default function Orders({ tenantId }: Props) {
                       </div>
 
                       <div className="order-detail-row">
-                        <span>Sabi commission</span>
+                        <span>Settlement method</span>
                         <strong>
-                          {money(order.sales_fee_amount)} — {order.sales_fee_status}
+                          Paystack split settlement
                         </strong>
+                      </div>
+
+                      <div className="order-detail-row">
+                        <span>Sabi Service Fee</span>
+                        <strong>₦50</strong>
                       </div>
 
                       {order.notes && (
@@ -974,7 +1016,7 @@ export default function Orders({ tenantId }: Props) {
                           }
                           title={
                             !paymentReady
-                              ? "Required payment has not been verified."
+                              ? "Required customer payment has not been verified."
                               : "Dispatch order"
                           }
                         >
@@ -996,7 +1038,7 @@ export default function Orders({ tenantId }: Props) {
                         </button>
                       )}
 
-                      {status === "PENDING" && (
+                      {status === "PENDING" && !paidOrder && (
                         <button
                           className="order-action-danger"
                           disabled={isBusy}
