@@ -21,7 +21,7 @@ body{
 }
 
 .box{
- max-width:540px;
+ max-width:560px;
  width:calc(100% - 28px);
  background:#fff;
  border:1px solid #e2eee7;
@@ -52,64 +52,132 @@ body{
  line-height:1.6;
 }
 
+/* META AND WHATSAPP TRUST AREA */
+
 .trust{
+ background:#f7fbff;
+ border:1px solid #dce9f7;
+ border-radius:17px;
+ padding:19px 15px;
+ margin-bottom:22px;
+ text-align:center;
+}
+
+.trust-logos{
  display:flex;
- gap:12px;
- align-items:flex-start;
- background:#effaf3;
- border:1px solid #ccebd7;
- border-radius:13px;
- padding:15px;
- margin-bottom:20px;
+ align-items:center;
+ justify-content:center;
+ gap:22px;
+ margin-bottom:15px;
+}
+
+.trust-logos img{
+ width:54px;
+ height:54px;
+ object-fit:contain;
+}
+
+.trust-divider{
+ width:1px;
+ height:42px;
+ background:#d5e0eb;
+}
+
+.trust h2{
+ font-size:17px;
+ color:#173d2b;
+ margin-bottom:7px;
+}
+
+.trust-description{
  font-size:13px;
  line-height:1.6;
- color:#145c38;
+ color:#526579;
 }
 
-.trust-icon{font-size:23px;flex-shrink:0}
-.trust strong{display:block;margin-bottom:3px}
+.certification{
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ gap:8px;
+ margin-top:15px;
+ padding:12px;
+ background:#eaf4ff;
+ border:1px solid #cfe3fa;
+ border-radius:11px;
+ color:#174b83;
+ font-size:13px;
+ font-weight:bold;
+}
+
+.certification img{
+ width:21px;
+ height:21px;
+ object-fit:contain;
+}
+
+/* REGISTRATION GUIDE */
 
 .section-title{
- font-size:18px;
+ font-size:19px;
  color:#173d2b;
- margin:22px 0 12px;
+ margin:23px 0 13px;
 }
 
-.steps{display:grid;gap:12px;margin-bottom:20px}
+.steps{
+ display:grid;
+ gap:14px;
+ margin-bottom:22px;
+}
 
 .step{
  display:flex;
  align-items:center;
  gap:14px;
- padding:14px;
+ padding:12px;
  border:1px solid #e6eee9;
- border-radius:14px;
+ border-radius:15px;
  background:#fbfdfb;
+ overflow:hidden;
 }
 
-.step-icon{
- width:52px;
- height:52px;
+.step-image{
+ width:116px;
+ height:116px;
  flex-shrink:0;
- display:grid;
- place-items:center;
+ object-fit:cover;
+ border-radius:12px;
  background:#e8f7ee;
- border-radius:13px;
- font-size:25px;
+}
+
+.step-content{
+ flex:1;
+ min-width:0;
+}
+
+.step-number{
+ display:inline-block;
+ color:#087c45;
+ font-size:11px;
+ font-weight:800;
+ letter-spacing:.7px;
+ margin-bottom:6px;
 }
 
 .step strong{
  display:block;
  color:#173d2b;
  font-size:14px;
- margin-bottom:5px;
+ margin-bottom:6px;
 }
 
 .step p{
  color:#66766d;
  font-size:12px;
- line-height:1.5;
+ line-height:1.55;
 }
+
+/* INFORMATION BOXES */
 
 .warning,.info,.browser-help,.recovery,.diagnostics{
  border-radius:13px;
@@ -124,7 +192,12 @@ body{
  border:1px solid #f4d8ae;
 }
 
-.warning h2{font-size:16px;color:#9a3412;margin-bottom:9px}
+.warning h2{
+ font-size:16px;
+ color:#9a3412;
+ margin-bottom:9px;
+}
+
 .warning p,.warning li{color:#7c2d12}
 .warning ul,.info ul{padding-left:20px;margin-top:8px}
 
@@ -140,7 +213,10 @@ body{
  color:#145c38;
 }
 
-.browser-help h2{font-size:16px;margin-bottom:7px}
+.browser-help h2{
+ font-size:16px;
+ margin-bottom:7px;
+}
 
 .browser-btn{
  display:block;
@@ -164,7 +240,10 @@ body{
  margin-top:15px;
 }
 
-.recovery h2{font-size:15px;margin-bottom:7px}
+.recovery h2{
+ font-size:15px;
+ margin-bottom:7px;
+}
 
 .ack{
  display:flex;
@@ -242,7 +321,10 @@ body{
  color:#334155;
 }
 
-.diagnostics h2{font-size:16px;margin-bottom:10px}
+.diagnostics h2{
+ font-size:16px;
+ margin-bottom:10px;
+}
 
 .diag-row{
  display:flex;
@@ -282,9 +364,18 @@ body{
  line-height:1.5;
 }
 
-@media(max-width:380px){
- .box{padding:22px 16px}
+@media(max-width:420px){
+ .box{padding:22px 15px}
  .brand h1{font-size:23px}
+ .step{gap:10px;padding:10px}
+ .step-image{width:94px;height:105px}
+ .step strong{font-size:13px}
+ .step p{font-size:11px}
+}
+
+@media(max-width:340px){
+ .step-image{width:78px;height:95px}
+ .trust-logos img{width:45px;height:45px}
 }
 </style>
 </head>
@@ -309,48 +400,98 @@ customer conversations and orders.
 </p>
 </div>
 
+<!-- META AND WHATSAPP TRUST -->
+
 <div class="trust">
-<div class="trust-icon">✓</div>
-<div>
-<strong>Meta Technology Provider Certified</strong>
+
+<div class="trust-logos">
+<img
+ src="https://cdn.simpleicons.org/meta/0866FF"
+ alt="Meta logo"
+>
+<span class="trust-divider"></span>
+<img
+ src="https://cdn.simpleicons.org/whatsapp/25D366"
+ alt="WhatsApp logo"
+>
+</div>
+
+<h2>Powered by the WhatsApp Business Platform</h2>
+
+<p class="trust-description">
+Sabi by XTOP connects your dedicated business number
+through Meta's official WhatsApp Embedded Signup process.
+</p>
+
+<div class="certification">
+<img
+ src="https://cdn.simpleicons.org/meta/0866FF"
+ alt="Meta"
+>
+<span>Meta Technology Provider Certified</span>
+</div>
+
+<p class="trust-description" style="margin-top:10px">
 XTOP Retail Technologies has been certified as a
-Meta Technology Provider. Your WhatsApp connection
-uses Meta's official Embedded Signup process.
+Meta Technology Provider. This certification confirms
+XTOP's technology-provider status; it does not mean
+Meta endorses Sabi.
+</p>
+
 </div>
-</div>
+
+<!-- VISUAL REGISTRATION GUIDE -->
 
 <h2 class="section-title">How registration works</h2>
 
 <div class="steps">
 
 <div class="step">
-<div class="step-icon">📱</div>
-<div>
-<strong>1. Prepare your business number</strong>
+<img
+ class="step-image"
+ src="https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=500&h=500&fit=crop"
+ alt="Person using a smartphone"
+ loading="lazy"
+>
+<div class="step-content">
+<span class="step-number">STEP 1</span>
+<strong>Prepare your business number</strong>
 <p>
-Use a dedicated business WhatsApp number that
-you can access for verification.
+Have a dedicated business WhatsApp number ready.
+You must be able to receive its verification code.
 </p>
 </div>
 </div>
 
 <div class="step">
-<div class="step-icon">🔐</div>
-<div>
-<strong>2. Connect securely through Meta</strong>
+<img
+ class="step-image"
+ src="https://images.unsplash.com/photo-1551650975-87deedd944c3?w=500&h=500&fit=crop"
+ alt="Using a mobile application"
+ loading="lazy"
+>
+<div class="step-content">
+<span class="step-number">STEP 2</span>
+<strong>Connect securely through Meta</strong>
 <p>
-Sign in to Facebook and follow Meta's official
-WhatsApp Business setup instructions.
+Tap Connect My Business WhatsApp and follow
+Meta's official WhatsApp Business setup instructions.
 </p>
 </div>
 </div>
 
 <div class="step">
-<div class="step-icon">🚀</div>
-<div>
-<strong>3. Continue to your Sabi dashboard</strong>
+<img
+ class="step-image"
+ src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500&h=500&fit=crop"
+ alt="Working with a digital business dashboard"
+ loading="lazy"
+>
+<div class="step-content">
+<span class="step-number">STEP 3</span>
+<strong>Continue to your Sabi dashboard</strong>
 <p>
-After successful connection, proceed to create
+After a successful connection, continue to create
 your merchant dashboard login.
 </p>
 </div>
@@ -370,7 +511,7 @@ Your registration link will be preserved.
 </div>
 
 <div class="warning">
-<h2>⚠️ Important: Choose the right number</h2>
+<h2>Important: Choose the right number</h2>
 <p>Before continuing, understand how your WhatsApp number will be used.</p>
 <ul>
 <li>Use a spare or dedicated business WhatsApp number, not your main personal number.</li>
@@ -394,7 +535,7 @@ You may be able to register a new number during Meta's setup.
 
 <div class="info">
 <strong>What about my personal WhatsApp?</strong><br>
-Your personal WhatsApp is optional. It will not be connected to Sabi's automation.
+Your personal WhatsApp is optional. It will not be connected to Sabi's automation. You can continue using it separately.
 </div>
 
 <label class="ack">
@@ -405,7 +546,7 @@ I understand that I should use a dedicated business number and that connecting i
 </label>
 
 <button class="btn" id="btnConnect" onclick="connectNow()" disabled>
-🔗 Connect My Business WhatsApp
+Connect My Business WhatsApp
 </button>
 
 <div id="errorMsg" class="error hidden"></div>
@@ -464,7 +605,7 @@ If Facebook opens a black screen, a blank page, or closes before registration fi
 <li>If you opened this page inside WhatsApp, use the Open in Chrome button above.</li>
 <li>Make sure you reopen the original registration link. Do not remove the registration token.</li>
 <li>Wait for the page to load completely before tapping Connect My Business WhatsApp.</li>
-<li>If Facebook keeps intercepting the link, check Android Settings → Apps → Facebook → Open by default. Review its supported-link settings and retry in Chrome.</li>
+<li>If Facebook keeps intercepting the link, check Android Settings → Apps → Facebook → Open by default. Review its supported-link settings and retry in Chrome. The exact options vary by phone.</li>
 <li>If the problem continues, send Sabi support a screenshot and the connection diagnostics shown on this page.</li>
 </ol>
 
@@ -480,7 +621,7 @@ If Meta's page closes immediately on Android:
 <li>Open your phone's Settings.</li>
 <li>Go to Apps, then Facebook.</li>
 <li>Open "Open by default" or "Set as default".</li>
-<li>If "Open supported links" is enabled, turn it off.</li>
+<li>If "Open supported links" is enabled, you can try turning it off.</li>
 <li>Return to Chrome and retry.</li>
 </ol>
 <p style="margin-top:8px">
@@ -547,7 +688,7 @@ function hideError(){
 
 function resetButton(){
  btn.disabled=!acknowledgement.checked;
- btn.textContent="🔗 Connect My Business WhatsApp";
+ btn.textContent="Connect My Business WhatsApp";
 }
 
 function isAndroid(){
@@ -584,7 +725,7 @@ function setupBrowserHandoff(){
 function validFacebookOrigin(origin){
  try{
   const u=new URL(origin);
-  return u.protocol==="https://" &&
+  return u.protocol==="https:" &&
    (u.hostname==="facebook.com" || u.hostname.endsWith(".facebook.com"));
  }catch(e){
   return false;
@@ -890,7 +1031,7 @@ async function tryFinish(){
   success.classList.remove("hidden");
 
   const heading=document.createElement("h2");
-  heading.textContent="🎉 WhatsApp Connected Successfully!";
+  heading.textContent="WhatsApp Connected Successfully!";
   success.appendChild(heading);
 
   const details=document.createElement("p");
