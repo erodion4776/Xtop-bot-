@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,58 +8,140 @@
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
+
 body{
- font-family:Arial,sans-serif;
- background:#f0f2f5;
- color:#1c1e21;
+ font-family:Inter,Arial,sans-serif;
+ background:linear-gradient(145deg,#edf7f1,#f4f7fb);
+ color:#172b24;
  min-height:100vh;
  display:flex;
  align-items:center;
  justify-content:center;
- padding:20px 0
+ padding:24px 0;
 }
+
 .box{
- max-width:460px;
- width:calc(100% - 32px);
+ max-width:540px;
+ width:calc(100% - 28px);
  background:#fff;
- border-radius:16px;
- padding:28px 24px;
- box-shadow:0 2px 12px #0001
+ border:1px solid #e2eee7;
+ border-radius:22px;
+ padding:28px 22px;
+ box-shadow:0 16px 45px rgba(15,50,35,.09);
 }
-h1{
- font-size:23px;
- color:#16a34a;
+
+.brand{text-align:center;margin-bottom:22px}
+
+.brand img{
+ width:100px;
+ height:100px;
+ object-fit:contain;
+ border-radius:18px;
  margin-bottom:12px;
- text-align:center
 }
-.intro{
- font-size:15px;
- color:#65676b;
+
+.brand h1{
+ font-size:26px;
+ color:#087443;
+ margin-bottom:8px;
+}
+
+.brand p{
+ color:#64756c;
+ font-size:14px;
  line-height:1.6;
- margin-bottom:20px;
- text-align:center
 }
+
+.trust{
+ display:flex;
+ gap:12px;
+ align-items:flex-start;
+ background:#effaf3;
+ border:1px solid #ccebd7;
+ border-radius:13px;
+ padding:15px;
+ margin-bottom:20px;
+ font-size:13px;
+ line-height:1.6;
+ color:#145c38;
+}
+
+.trust-icon{font-size:23px;flex-shrink:0}
+.trust strong{display:block;margin-bottom:3px}
+
+.section-title{
+ font-size:18px;
+ color:#173d2b;
+ margin:22px 0 12px;
+}
+
+.steps{display:grid;gap:12px;margin-bottom:20px}
+
+.step{
+ display:flex;
+ align-items:center;
+ gap:14px;
+ padding:14px;
+ border:1px solid #e6eee9;
+ border-radius:14px;
+ background:#fbfdfb;
+}
+
+.step-icon{
+ width:52px;
+ height:52px;
+ flex-shrink:0;
+ display:grid;
+ place-items:center;
+ background:#e8f7ee;
+ border-radius:13px;
+ font-size:25px;
+}
+
+.step strong{
+ display:block;
+ color:#173d2b;
+ font-size:14px;
+ margin-bottom:5px;
+}
+
+.step p{
+ color:#66766d;
+ font-size:12px;
+ line-height:1.5;
+}
+
 .warning,.info,.browser-help,.recovery,.diagnostics{
- border-radius:10px;
+ border-radius:13px;
  padding:15px;
  margin-bottom:18px;
  font-size:14px;
- line-height:1.55
+ line-height:1.55;
 }
+
 .warning{
- background:#fff7ed;
- border:1px solid #fed7aa
+ background:#fff8ed;
+ border:1px solid #f4d8ae;
 }
+
 .warning h2{font-size:16px;color:#9a3412;margin-bottom:9px}
 .warning p,.warning li{color:#7c2d12}
 .warning ul,.info ul{padding-left:20px;margin-top:8px}
-.info{background:#eff6ff;color:#1e40af}
-.browser-help{
- background:#f0fdf4;
- border:1px solid #bbf7d0;
- color:#166534
+
+.info{
+ background:#f1f6ff;
+ border:1px solid #d9e5fb;
+ color:#244b82;
 }
+
+.browser-help{
+ background:#effaf3;
+ border:1px solid #ccebd7;
+ color:#145c38;
+}
+
 .browser-help h2{font-size:16px;margin-bottom:7px}
+
 .browser-btn{
  display:block;
  width:100%;
@@ -66,20 +149,23 @@ h1{
  margin-top:12px;
  border:0;
  border-radius:9px;
- background:#15803d;
+ background:#087c45;
  color:white;
  font-size:15px;
  font-weight:bold;
  text-align:center;
- text-decoration:none
+ text-decoration:none;
 }
+
 .recovery{
- background:#fff7ed;
- border:1px solid #fed7aa;
+ background:#fff8ed;
+ border:1px solid #f4d8ae;
  color:#7c2d12;
- margin-top:15px
+ margin-top:15px;
 }
+
 .recovery h2{font-size:15px;margin-bottom:7px}
+
 .ack{
  display:flex;
  align-items:flex-start;
@@ -87,22 +173,37 @@ h1{
  margin:18px 0;
  font-size:14px;
  line-height:1.5;
- color:#374151
+ color:#374151;
 }
-.ack input{width:19px;height:19px;flex-shrink:0;margin-top:1px}
+
+.ack input{
+ width:19px;
+ height:19px;
+ flex-shrink:0;
+ margin-top:1px;
+}
+
 .btn{
  width:100%;
- padding:16px;
+ padding:17px;
  border:0;
- border-radius:10px;
+ border-radius:12px;
  font-size:16px;
  font-weight:bold;
- background:#25D366;
+ background:#087c45;
  color:white;
- cursor:pointer
+ cursor:pointer;
+ box-shadow:0 5px 14px rgba(8,124,69,.15);
 }
-.btn:disabled{opacity:.5;cursor:not-allowed}
+
+.btn:disabled{
+ background:#9bb9a8;
+ box-shadow:none;
+ cursor:not-allowed;
+}
+
 .hidden{display:none!important}
+
 .error{
  background:#fef2f2;
  color:#b91c1c;
@@ -112,15 +213,17 @@ h1{
  font-size:14px;
  line-height:1.5;
  white-space:pre-wrap;
- overflow-wrap:anywhere
+ overflow-wrap:anywhere;
 }
+
 .success{
  color:#15803d;
  margin-top:18px;
  line-height:1.7;
  font-size:15px;
- text-align:center
+ text-align:center;
 }
+
 .dashboard-link{
  display:block;
  margin-top:16px;
@@ -129,29 +232,35 @@ h1{
  background:#16a34a;
  color:white;
  text-decoration:none;
- font-weight:bold
+ font-weight:bold;
 }
+
 .diagnostics{
  background:#f8fafc;
  border:1px solid #cbd5e1;
  margin-top:16px;
- color:#334155
+ color:#334155;
 }
+
 .diagnostics h2{font-size:16px;margin-bottom:10px}
+
 .diag-row{
  display:flex;
  justify-content:space-between;
  gap:12px;
  padding:7px 0;
  border-bottom:1px solid #e2e8f0;
- font-size:13px
+ font-size:13px;
 }
+
 .diag-row:last-child{border-bottom:0}
+
 .diag-value{
  font-weight:bold;
  text-align:right;
- overflow-wrap:anywhere
+ overflow-wrap:anywhere;
 }
+
 .diag-log{
  margin-top:10px;
  padding:10px;
@@ -162,14 +271,20 @@ h1{
  white-space:pre-wrap;
  overflow-wrap:anywhere;
  max-height:180px;
- overflow:auto
+ overflow:auto;
 }
+
 .small{
  font-size:12px;
- color:#6b7280;
+ color:#829087;
  text-align:center;
- margin-top:16px;
- line-height:1.5
+ margin-top:22px;
+ line-height:1.5;
+}
+
+@media(max-width:380px){
+ .box{padding:22px 16px}
+ .brand h1{font-size:23px}
 }
 </style>
 </head>
@@ -179,18 +294,76 @@ h1{
 
 <div class="box">
 
-<h1>🟢 Sabi by XTOP</h1>
+<div class="brand">
+<img
+ src="https://i.ibb.co/N2b6rJnY/Untitled-design-20261030-044935-0000.png"
+ alt="Sabi by XTOP logo"
+>
 
-<p class="intro">
-Connect your dedicated business WhatsApp number to Sabi.
-This number will power your automated customer service and online store.
+<h1>Connect your business to Sabi</h1>
+
+<p>
+Your business deserves a smarter way to serve customers.
+Connect your business WhatsApp and let Sabi help manage
+customer conversations and orders.
 </p>
+</div>
+
+<div class="trust">
+<div class="trust-icon">✓</div>
+<div>
+<strong>Meta Technology Provider Certified</strong>
+XTOP Retail Technologies has been certified as a
+Meta Technology Provider. Your WhatsApp connection
+uses Meta's official Embedded Signup process.
+</div>
+</div>
+
+<h2 class="section-title">How registration works</h2>
+
+<div class="steps">
+
+<div class="step">
+<div class="step-icon">📱</div>
+<div>
+<strong>1. Prepare your business number</strong>
+<p>
+Use a dedicated business WhatsApp number that
+you can access for verification.
+</p>
+</div>
+</div>
+
+<div class="step">
+<div class="step-icon">🔐</div>
+<div>
+<strong>2. Connect securely through Meta</strong>
+<p>
+Sign in to Facebook and follow Meta's official
+WhatsApp Business setup instructions.
+</p>
+</div>
+</div>
+
+<div class="step">
+<div class="step-icon">🚀</div>
+<div>
+<strong>3. Continue to your Sabi dashboard</strong>
+<p>
+After successful connection, proceed to create
+your merchant dashboard login.
+</p>
+</div>
+</div>
+
+</div>
 
 <div id="browserHelp" class="browser-help hidden">
 <h2>Open secure registration in Chrome</h2>
 For a more reliable Meta connection, open this same registration page in Chrome.
 
 <a id="openChrome" class="browser-btn" href="#">Open in Chrome</a>
+
 <p style="margin-top:9px;font-size:12px">
 Your registration link will be preserved.
 </p>
@@ -277,6 +450,27 @@ I understand that I should use a dedicated business number and that connecting i
 </div>
 
 <div class="diag-log" id="diagLog">Waiting for connection attempt.</div>
+</div>
+
+<div class="recovery">
+<h2>Having trouble opening the Meta registration page?</h2>
+
+<p style="margin-bottom:10px">
+If Facebook opens a black screen, a blank page, or closes before registration finishes:
+</p>
+
+<ol style="padding-left:20px;line-height:1.8">
+<li>Close the blank Facebook window and return to this original Sabi registration page.</li>
+<li>If you opened this page inside WhatsApp, use the Open in Chrome button above.</li>
+<li>Make sure you reopen the original registration link. Do not remove the registration token.</li>
+<li>Wait for the page to load completely before tapping Connect My Business WhatsApp.</li>
+<li>If Facebook keeps intercepting the link, check Android Settings → Apps → Facebook → Open by default. Review its supported-link settings and retry in Chrome.</li>
+<li>If the problem continues, send Sabi support a screenshot and the connection diagnostics shown on this page.</li>
+</ol>
+
+<p style="margin-top:12px;font-size:12px">
+Never share your Facebook password or verification codes with anyone.
+</p>
 </div>
 
 <div id="androidRecovery" class="recovery hidden">
@@ -397,8 +591,6 @@ function validFacebookOrigin(origin){
  }
 }
 
-/* Facebook SDK initialization */
-
 window.fbAsyncInit=function(){
  try{
   FB.init({
@@ -421,15 +613,11 @@ window.fbAsyncInit=function(){
  }
 };
 
-/* SDK script download failure */
-
 function facebookSdkFailed(){
  setDiagnostic("diagSdk","Download failed");
  setStage("Facebook SDK could not be downloaded");
  showError("Facebook SDK could not be downloaded. Check your internet connection or browser restrictions, then refresh.");
 }
-
-/* Listen for Meta Embedded Signup events */
 
 window.addEventListener("message",function(event){
 
@@ -491,8 +679,6 @@ window.addEventListener("message",function(event){
  }
 
 });
-
-/* Meta Login for Business */
 
 function connectNow(){
 
@@ -637,8 +823,6 @@ function connectNow(){
  }
 }
 
-/* Complete Sabi onboarding after both Meta responses arrive */
-
 async function tryFinish(){
 
  if(submitting || cancelled || !authCode || !signupInfo)return;
@@ -764,7 +948,6 @@ window.addEventListener("load",function(){
  }
 
 });
-
 </script>
 
 <script
