@@ -35,7 +35,7 @@ function getPaymentCallback(orderId: string): string {
   return `https://xtopbot.netlify.app/?order=${encodeURIComponent(orderId)}&payment=return`;
 }
 
-// INITIALIZE PAYSTACK FROM AN EXISTING PAYMENT INTENT
+// INITIALIZE PAYSTACK WITH MERCHANT SPLIT SETTLEMENT
 async function initializePaystack(
   intent: Record<string, unknown>,
   orderNumber: string,
@@ -45,6 +45,57 @@ async function initializePaystack(
   const tenantId = String(intent.tenant_id);
   const orderId = String(intent.order_id);
   const paymentType = String(intent.payment_type);
+
+  // Read the fee calculation saved by the database trigger.
+  const feeSnapshot = (intent.metadata || {}) as Record<string, unknown>;
+
+  const basePaymentAmount = Number(feeSnapshot.base_payment_amount);
+  const commissionAmount = Number(
+    feeSnapshot.merchant_commission_amount,
+  );
+  const serviceFee = Number(feeSnapshot.customer_service_fee);
+  const xtopTransactionCharge = Number(
+    feeSnapshot.xtop_transaction_charge,
+  );
+  const expectedAmount = Number(intent.expected_amount);
+
+  // Reject incomplete or inconsistent fee calculations.
+  if (
+    !Number.isFinite(basePaymentAmount) ||
+    !Number.isFinite(commissionAmount) ||
+    !Number.isFinite(serviceFee) ||
+    !Number.isFinite(xtopTransactionCharge) ||
+    !Number.isFinite(expectedAmount) ||
+    serviceFee !== 50 ||
+    commissionAmount < 0 ||
+    xtopTransactionCharge !== commissionAmount + serviceFee ||
+    Math.round((basePaymentAmount + serviceFee) * 100) !==
+      Math.round(expectedAmount * 100)
+  ) {
+    throw new Error("INVALID_PAYSTACK_FEE_SNAPSHOT");
+  }
+
+  // Confirm that the merchant has a verified Paystack subaccount.
+  const { data: tenant, error: tenantError } = await db
+    .from("tenants")
+    .select(
+      "paystack_subaccount_code,paystack_subaccount_status,paystack_subaccount_verified_at",
+    )
+    .eq("id", tenantId)
+    .maybeSingle();
+
+  if (
+    tenantError ||
+    !tenant?.paystack_subaccount_code ||
+    tenant.paystack_subaccount_status !== "VERIFIED" ||
+    !tenant.paystack_subaccount_verified_at
+  ) {
+    console.error(
+      "Merchant Paystack subaccount is not verified:",
+      tenantError,
+    );
+    throw new Error("MERCHANT_SUBACCOUNT_NOT_VERIFIED");
+  }
 
   const paystackResponse = await fetch(
     "https://api.paystack.co/transaction/initialize",
@@ -56,12 +107,21 @@ async function initializePaystack(
       },
       body: JSON.stringify({
         email: intent.customer_email,
-        amount: String(
-          Math.round(Number(intent.expected_amount) * 100),
-        ),
+        amount: String(Math.round(expectedAmount * 100)),
         currency: intent.currency,
         reference,
+
+        // Merchant receives the balance.
+        subaccount: tenant.paystack_subaccount_code,
+
+        // XTOP receives commission plus the ₦50 service fee.
+        // Paystack expects this amount in kobo.
+        transaction_charge: Math.round(
+          xtopTransactionCharge * 100,
+        ),
+
         callback_url: getPaymentCallback(orderId),
+
         metadata: {
           purpose,
           tenant_id: tenantId,
@@ -69,6 +129,10 @@ async function initializePaystack(
           payment_type: paymentType,
           payment_reference: reference,
           order_number: orderNumber,
+          merchant_commission_amount: commissionAmount,
+          customer_service_fee: serviceFee,
+          xtop_transaction_charge: xtopTransactionCharge,
+          commission_basis_amount: basePaymentAmount,
         },
       }),
     },
@@ -150,10 +214,11 @@ async function createOrder(body: Record<string, unknown>) {
     throw new Error("ORDER_CREATION_FAILED");
   }
 
+  // Metadata is required for the fee and split-settlement calculation.
   const { data: intent, error: intentError } = await db
     .from("tenant_order_payment_intents")
     .select(
-      "tenant_id,order_id,payment_type,reference,expected_amount,currency,customer_email",
+      "tenant_id,order_id,payment_type,reference,expected_amount,currency,customer_email,metadata",
     )
     .eq("reference", order.payment_reference)
     .single();
@@ -174,16 +239,23 @@ async function createOrder(body: Record<string, unknown>) {
   } catch (error) {
     console.error("Public Paystack initialization failed:", error);
 
+    const errorMessage =
+      error instanceof Error ? error.message : "";
+
     return respond({
       success: false,
       order_created: true,
       order_id: order.order_id,
       order_number: order.order_number,
-      error: "PAYMENT_INITIALIZATION_FAILED",
+      error: errorMessage || "PAYMENT_INITIALIZATION_FAILED",
       message:
-        "Your order was created, but payment could not start. Please contact the merchant before trying again.",
+        errorMessage === "MERCHANT_SUBACCOUNT_NOT_VERIFIED"
+          ? "This merchant has not completed Paystack account verification. Please contact the merchant."
+          : "Your order was created, but payment could not start. Please contact the merchant before trying again.",
     }, 502);
   }
+
+  const feeSnapshot = (intent.metadata || {}) as Record<string, unknown>;
 
   return respond({
     success: true,
@@ -196,6 +268,7 @@ async function createOrder(body: Record<string, unknown>) {
     delivery_fee: order.delivery_fee,
     total: order.total,
     payment_amount: Number(intent.expected_amount),
+    sabi_service_fee: Number(feeSnapshot.customer_service_fee),
     currency: intent.currency,
     authorization_url: payment.authorization_url,
     access_code: payment.access_code,
@@ -305,7 +378,7 @@ async function initializeMerchantOrder(
     throw new Error("PAYMENT_INTENT_NOT_PENDING");
   }
 
-  const metadata = intent.metadata || {};
+  const metadata = (intent.metadata || {}) as Record<string, unknown>;
 
   if (metadata.purpose !== "SABI_MERCHANT_ORDER") {
     throw new Error("INVALID_MERCHANT_PAYMENT_INTENT");
@@ -324,6 +397,7 @@ async function initializeMerchantOrder(
     payment_reference: payment.reference,
     payment_type: intent.payment_type,
     payment_amount: Number(intent.expected_amount),
+    sabi_service_fee: Number(metadata.customer_service_fee),
     currency: intent.currency,
     authorization_url: payment.authorization_url,
     access_code: payment.access_code,
@@ -401,12 +475,29 @@ async function verifyOrderPayment(body: Record<string, unknown>) {
   );
 
   const metadata = transaction.metadata || {};
-  const expectedPurpose = intent.metadata?.purpose;
+  const intentMetadata = (intent.metadata || {}) as Record<
+    string,
+    unknown
+  >;
+  const expectedPurpose = intentMetadata.purpose;
 
   const validPurpose = [
     "SABI_PUBLIC_ORDER",
     "SABI_MERCHANT_ORDER",
-  ].includes(expectedPurpose);
+  ].includes(String(expectedPurpose));
+
+  const expectedCommission = Number(
+    intentMetadata.merchant_commission_amount,
+  );
+  const expectedServiceFee = Number(
+    intentMetadata.customer_service_fee,
+  );
+  const expectedTransactionCharge = Number(
+    intentMetadata.xtop_transaction_charge,
+  );
+  const expectedBasis = Number(
+    intentMetadata.commission_basis_amount,
+  );
 
   if (
     transaction.reference !== reference ||
@@ -420,13 +511,23 @@ async function verifyOrderPayment(body: Record<string, unknown>) {
     metadata.tenant_id !== intent.tenant_id ||
     metadata.order_id !== intent.order_id ||
     metadata.payment_type !== intent.payment_type ||
-    metadata.payment_reference !== reference
+    metadata.payment_reference !== reference ||
+    Number(metadata.merchant_commission_amount) !==
+      expectedCommission ||
+    Number(metadata.customer_service_fee) !== expectedServiceFee ||
+    Number(metadata.xtop_transaction_charge) !==
+      expectedTransactionCharge ||
+    Number(metadata.commission_basis_amount) !== expectedBasis ||
+    expectedServiceFee !== 50 ||
+    expectedTransactionCharge !==
+      expectedCommission + expectedServiceFee
   ) {
     console.error("Payment verification mismatch:", reference);
     throw new Error("PAYMENT_DETAILS_MISMATCH");
   }
 
-  // Secure database confirmation and commission processing.
+  // Secure database confirmation.
+  // The database records the split-settlement charge exactly once.
   const { data: confirmation, error: confirmationError } =
     await db.rpc("sabi_confirm_order_payment", {
       p_reference: reference,
@@ -512,6 +613,10 @@ Deno.serve(async (req: Request) => {
         "This payment request is no longer pending.",
       PAYMENT_INITIALIZATION_FAILED:
         "Paystack could not create the payment link. Please retry.",
+      INVALID_PAYSTACK_FEE_SNAPSHOT:
+        "The order payment fee calculation is invalid. Please contact support.",
+      MERCHANT_SUBACCOUNT_NOT_VERIFIED:
+        "This merchant has not completed Paystack account verification. Please contact the merchant.",
       PAYMENT_DETAILS_MISMATCH:
         "Payment validation failed. Please contact support.",
       PAYSTACK_VERIFICATION_FAILED:
@@ -541,7 +646,8 @@ Deno.serve(async (req: Request) => {
       message === "MERCHANT_NOT_AUTHORIZED" ? 403 :
       message === "PAYMENT_INITIALIZATION_FAILED" ||
       message === "PAYSTACK_VERIFICATION_FAILED" ? 502 :
-      message === "ORDER_PAYMENT_CONFIRMATION_FAILED" ? 503 : 400;
+      message === "ORDER_PAYMENT_CONFIRMATION_FAILED" ? 503 :
+      400;
 
     return fail(
       messages[message] || "An unexpected order payment error occurred.",
