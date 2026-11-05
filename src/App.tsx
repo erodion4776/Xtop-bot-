@@ -47,7 +47,7 @@ export default function App() {
 
   const query = new URLSearchParams(window.location.search);
   const isPublicProductPage = query.has("product");
-  const isMarketingPage = window.location.pathname === "/" && !query.has("login") && !isPublicProductPage;
+  const isMarketingPage = window.location.pathname === "/" && !query.has("login") && !query.has("session_token") && !isPublicProductPage;
 
   const registrationToken = new URLSearchParams(
     window.location.search
