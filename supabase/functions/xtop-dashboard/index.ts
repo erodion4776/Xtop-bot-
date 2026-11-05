@@ -142,7 +142,7 @@ serve(async (req: Request) => {
     // Session ownership comes only from authenticated membership.
     // =================================================
 
-    if (action === "whatsapp-status" && req.method === "GET") {
+    if (action === "whatsapp-status" && (req.method === "GET" || req.method === "POST")) {
       const { data: account, error: accountError } = await sb
         .from("tenant_whatsapp_accounts")
         .select("display_phone_number, verified_name, is_active, updated_at")
