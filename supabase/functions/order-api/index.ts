@@ -53,6 +53,9 @@ async function initializePaystack(
   const commissionAmount = Number(
     feeSnapshot.merchant_commission_amount,
   );
+  const commissionBasisAmount = Number(
+    feeSnapshot.commission_basis_amount,
+  );
   const serviceFee = Number(feeSnapshot.customer_service_fee);
   const xtopTransactionCharge = Number(
     feeSnapshot.xtop_transaction_charge,
@@ -63,6 +66,7 @@ async function initializePaystack(
   if (
     !Number.isFinite(basePaymentAmount) ||
     !Number.isFinite(commissionAmount) ||
+    !Number.isFinite(commissionBasisAmount) ||
     !Number.isFinite(serviceFee) ||
     !Number.isFinite(xtopTransactionCharge) ||
     !Number.isFinite(expectedAmount) ||
@@ -132,7 +136,7 @@ async function initializePaystack(
           merchant_commission_amount: commissionAmount,
           customer_service_fee: serviceFee,
           xtop_transaction_charge: xtopTransactionCharge,
-          commission_basis_amount: basePaymentAmount,
+          commission_basis_amount: commissionBasisAmount,
         },
       }),
     },
