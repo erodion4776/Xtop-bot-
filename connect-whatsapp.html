@@ -640,6 +640,13 @@ const CONFIG_ID="1470585484884368";
 
 const params=new URLSearchParams(location.search);
 const SESSION_TOKEN=params.get("token")||"";
+let RETURN_TO="";
+try {
+ const requestedReturn=params.get("return_to")||"";
+ const parsedReturn=new URL(requestedReturn,location.origin);
+ if(parsedReturn.origin===location.origin) RETURN_TO=parsedReturn.href;
+} catch (_) {}
+
 
 let fbReady=false;
 let authCode=null;
@@ -1042,14 +1049,17 @@ async function tryFinish(){
 
   const next=document.createElement("p");
   next.style.marginTop="14px";
-  next.textContent="Next, create your merchant dashboard login using your email address and a password.";
+  next.textContent=RETURN_TO
+   ? "Your business number is now linked to this merchant dashboard."
+   : "Next, create your merchant dashboard login using your email address and a password.";
   success.appendChild(next);
 
-  if(result.dashboard_url){
+  const destination=RETURN_TO||result.dashboard_url||"";
+  if(destination){
    const link=document.createElement("a");
-   link.href=result.dashboard_url;
+   link.href=destination;
    link.className="dashboard-link";
-   link.textContent="Continue to Create Dashboard Account";
+   link.textContent=RETURN_TO?"Return to Merchant Dashboard":"Continue to Create Dashboard Account";
    success.appendChild(link);
   }else{
    const instruction=document.createElement("p");
