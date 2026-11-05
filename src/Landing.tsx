@@ -6,7 +6,6 @@ import {
   CreditCard,
   Truck,
   BarChart3,
-  ShieldCheck,
   Store,
   Facebook,
   CheckCircle2,
@@ -20,9 +19,9 @@ import "./Landing.css";
 
 const LOGO_URL =
   "https://i.ibb.co/N2b6rJnY/Untitled-design-20261030-044935-0000.png";
-const DEMO_VIDEO_URL = import.meta.env.VITE_SABI_DEMO_VIDEO_URL as
-  | string
-  | undefined;
+const DEMO_VIDEO_URL = (import.meta as ImportMeta & {
+  env: { VITE_SABI_DEMO_VIDEO_URL?: string };
+}).env.VITE_SABI_DEMO_VIDEO_URL;
 
 function getVideoEmbed(url: string) {
   try {
