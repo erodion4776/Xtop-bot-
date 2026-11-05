@@ -258,220 +258,266 @@ async function handleTenantStoreMessage(
   incoming: IncomingMessage,
   account: ResolvedBotAccount,
   contact: Contact,
+  conversation: Conversation,
 ): Promise<void> {
   const credentials = account.credentials;
   if (!credentials) return;
-
   const phone = incoming.from;
+  const raw = String(incoming.interactiveId || incoming.text || "").trim();
+  const message = raw.toLowerCase();
+  const products = await getActiveProducts(account.tenantId);
+  const greeting = account.welcomeGreeting || `Welcome to *${account.businessName}*.`;
+  const context = (conversation.context_json || {}) as Record<string, any>;
+  const cart: Array<{product_id:string;name:string;price:number;quantity:number}> =
+    Array.isArray(context.store_cart) ? context.store_cart : [];
+  const state = String(conversation.current_state || "IDLE");
 
-  const message = String(
-    incoming.interactiveId ||
-    incoming.text ||
-    "",
-  ).trim().toLowerCase();
-
-  const products = await getActiveProducts(
-    account.tenantId,
-  );
-
-  const greeting =
-    account.welcomeGreeting ||
-    `Welcome to *${account.businessName}*.`;
-
-  const isCatalogueRequest = [
-    "",
-    "hi",
-    "hello",
-    "hey",
-    "menu",
-    "start",
-    "shop",
-    "catalogue",
-    "catalog",
-    "products",
-    "1",
-  ].includes(message);
-
-  const sendAndLog = async (
-    body: string,
-    type: "text" | "image",
-    imageUrl?: string,
-  ): Promise<void> => {
-    const messageId =
-      type === "image" && imageUrl
-        ? await sendImageMessage(
-            phone,
-            imageUrl,
-            body,
-            credentials,
-          )
-        : await sendTextMessage(
-            phone,
-            body,
-            credentials,
-          );
-
-    if (!messageId) {
-      safeErrorLog(
-        "handleTenantStoreMessage.send",
-        new Error(`WhatsApp ${type} message failed.`),
-      );
+  const send = async (body: string, imageUrl?: string) => {
+    const id = imageUrl
+      ? await sendImageMessage(phone, imageUrl, body, credentials)
+      : await sendTextMessage(phone, body, credentials);
+    if (!id) {
+      safeErrorLog("tenantStore.send", new Error("WhatsApp send failed"));
       return;
     }
-
-    await storeMessage(
-      contact.id,
-      "OUTBOUND",
-      type,
-      body,
-      messageId,
-      account.tenantId,
-    );
-
-    await logBotActivity(
-      phone,
-      "OUTBOUND",
-      type,
-      "TENANT_STORE",
-      body,
-      contact.name || incoming.profileName,
-      "",
-      messageId,
-      account.tenantId,
-    );
+    await storeMessage(contact.id, "OUTBOUND", imageUrl ? "image" : "text", body, id, account.tenantId);
+    await logBotActivity(phone, "OUTBOUND", imageUrl ? "image" : "text", "TENANT_STORE", body,
+      contact.name || incoming.profileName, "", id, account.tenantId);
   };
 
-  // CUSTOMER OPENS THE SHOP
-  if (isCatalogueRequest) {
-    if (!products.length) {
-      await sendAndLog(
-        `${greeting}\n\nOur product catalogue is being updated. Please contact the business for assistance.`,
-        "text",
-      );
-      return;
-    }
+  const save = async (nextState: string, patch: Record<string, unknown> = {}) => {
+    await updateConversation(conversation.id, {
+      current_module: "TENANT_STORE",
+      current_state: nextState,
+      context_json: { ...context, ...patch },
+    }, account.tenantId);
+  };
 
-    await sendAndLog(
-      `${greeting}\n\n🛍️ *Welcome to our shop!*\n\nHere are our available products. You can view each product below.\n\nReply with a product name to see its full details.`,
-      "text",
-    );
+  const money = (n: number) => `₦${Number(n || 0).toLocaleString("en-NG")}`;
+  const productPrice = (p: any) => Number(p.price ?? 0);
+  const productStock = (p: any) => p.stock_quantity == null ? null : Number(p.stock_quantity);
 
-    // Send up to 10 products per catalogue request.
-    for (const product of products.slice(0, 10)) {
-      const price =
-        product.price_text ||
-        (
-          product.price !== null &&
-          product.price !== undefined
-            ? `₦${Number(product.price).toLocaleString("en-NG")}`
-            : "Contact us for price"
-        );
-
-      const caption =
-        `🛍️ *${product.name}*\n\n` +
-        `${product.description || "Contact us for more information."}\n\n` +
-        `💰 Price: *${price}*\n\n` +
-        `Reply *${product.name}* for more details.`;
-
-      const imageUrl = String(
-        product.image_url || "",
-      ).trim();
-
-      if (
-        imageUrl.startsWith("https://") ||
-        imageUrl.startsWith("http://")
-      ) {
-        await sendAndLog(
-          caption,
-          "image",
-          imageUrl,
-        );
-      } else {
-        await sendAndLog(
-          caption,
-          "text",
-        );
-      }
-    }
-
-    if (products.length > 10) {
-      await sendAndLog(
-        `There are ${products.length - 10} more products. Reply *menu* to view the catalogue again.`,
-        "text",
-      );
-    }
-
+  if (["cancel", "cancel checkout", "stop"].includes(message)) {
+    await save("IDLE", { store_checkout: null });
+    await send("Checkout cancelled. Your cart is still saved. Reply *cart* to view it or *menu* to shop.");
     return;
   }
 
-  // CUSTOMER SELECTS A PRODUCT BY NAME OR SLUG.
-  const match = products.find((product) => {
-    const name = String(
-      product.name || "",
-    ).toLowerCase();
+  if (["cart", "my cart", "view cart", "2"].includes(message)) {
+    if (!cart.length) {
+      await send("🛒 Your cart is empty. Reply *menu* to browse products.");
+      return;
+    }
+    const lines = cart.map((item, i) => `${i + 1}. ${item.name} × ${item.quantity} — ${money(item.price * item.quantity)}`);
+    const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    await send(`🛒 *Your cart*\n\n${lines.join("\n")}\n\n*Products subtotal: ${money(total)}*\n\nReply *remove product name* to remove an item, *clear cart* to empty it, or *checkout* to continue.`);
+    return;
+  }
 
-    const slug = String(
-      product.slug || "",
-    ).toLowerCase();
+  if (message === "clear cart") {
+    await save("IDLE", { store_cart: [], store_checkout: null });
+    await send("Your cart has been cleared. Reply *menu* to continue shopping.");
+    return;
+  }
 
-    return (
-      message === name ||
-      message === slug ||
-      (
-        name.length > 2 &&
-        message.includes(name)
-      )
+  if (message.startsWith("remove ")) {
+    const term = message.slice(7).trim();
+    const next = cart.filter(item => item.name.toLowerCase() !== term && !item.name.toLowerCase().includes(term));
+    if (next.length === cart.length) {
+      await send("I couldn't find that item in your cart. Reply *cart* to see the exact product names.");
+    } else {
+      await save("IDLE", { store_cart: next });
+      await send("Item removed. Reply *cart* to review your updated cart.");
+    }
+    return;
+  }
+
+  if (message === "checkout" || message === "buy now") {
+    if (!cart.length) {
+      await send("Your cart is empty. Reply *menu* to choose products first.");
+      return;
+    }
+    await save("CHECKOUT_NAME", { store_checkout: { name: "", email: "", address: "", payment_method: "" } });
+    await send("Let's complete your order.\n\nPlease enter your *full name*.");
+    return;
+  }
+
+  // Continue the persisted checkout conversation.
+  if (state.startsWith("CHECKOUT_")) {
+    const checkout = { ...(context.store_checkout || {}) };
+    if (state === "CHECKOUT_NAME") {
+      if (raw.length < 2 || raw.length > 100) {
+        await send("Please enter your full name so the merchant can identify your order.");
+        return;
+      }
+      checkout.name = raw;
+      await save("CHECKOUT_EMAIL", { store_checkout: checkout });
+      await send("Thank you. Now enter your *email address* for your order confirmation and delivery updates.");
+      return;
+    }
+    if (state === "CHECKOUT_EMAIL") {
+      const email = raw.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        await send("That email address doesn't look valid. Please enter it again (example: name@gmail.com).");
+        return;
+      }
+      checkout.email = email;
+      await save("CHECKOUT_ADDRESS", { store_checkout: checkout });
+      await send("Please enter your *full delivery address*, including area and city.");
+      return;
+    }
+    if (state === "CHECKOUT_ADDRESS") {
+      if (raw.length < 8) {
+        await send("Please provide a more complete delivery address, including area and city.");
+        return;
+      }
+      checkout.address = raw;
+      await save("CHECKOUT_PAYMENT", { store_checkout: checkout });
+      const tenantResult = await supabase.from("tenants")
+        .select("pod_enabled,shipping_enabled,shipping_fee")
+        .eq("id", account.tenantId).maybeSingle();
+      const podAvailable = tenantResult.data?.pod_enabled === true &&
+        tenantResult.data?.shipping_enabled === true && Number(tenantResult.data?.shipping_fee || 0) > 0;
+      await send(`Choose how you want to pay:\n\nReply *ONLINE* to pay for the products and delivery now.${podAvailable ? "\nReply *POD* to pay the delivery fee now and the product balance when your order arrives." : ""}\n\nYour WhatsApp number will be used for order updates.`);
+      return;
+    }
+    if (state === "CHECKOUT_PAYMENT") {
+      const paymentMethod = message === "pod" || message === "pay on delivery" ? "POD"
+        : message === "online" || message === "pay now" ? "ONLINE" : "";
+      if (!paymentMethod) {
+        await send("Please reply *ONLINE* or *POD* to choose a payment method.");
+        return;
+      }
+      if (!cart.length) {
+        await save("IDLE", { store_checkout: null });
+        await send("Your cart is empty. Reply *menu* to shop again.");
+        return;
+      }
+      await send("⏳ Creating your order and preparing checkout. Please wait...");
+      try {
+        const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/order-api`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": Deno.env.get("SUPABASE_ANON_KEY") || "",
+            "Authorization": `Bearer ${Deno.env.get("SUPABASE_ANON_KEY") || ""}`,
+          },
+          body: JSON.stringify({
+            action: "create_cart",
+            items: cart.map(item => ({ product_id: item.product_id, quantity: item.quantity })),
+            customer_name: checkout.name,
+            customer_phone: phone,
+            customer_email: checkout.email,
+            delivery_address: checkout.address,
+            payment_method: paymentMethod,
+          }),
+        });
+        const result = await response.json();
+        if (result.order_created && result.order_number) {
+          await save("ORDER_PAYMENT_PENDING", {
+            store_last_order: result.order_number,
+            store_checkout: null,
+          });
+          await send(`Your order *${result.order_number}* has been recorded, but payment setup is not ready yet. The merchant needs to complete Paystack verification. Please contact the shop before making another order.`);
+          return;
+        }
+        if (!response.ok || result.success !== true) {
+          await send(result.message || "I couldn't complete checkout. Your cart is saved; reply *checkout* to try again or *agent* to contact the shop.");
+          return;
+        }
+        await save("ORDER_AWAITING_PAYMENT", {
+          store_last_order: result.order_number,
+          store_last_payment_reference: result.payment_reference,
+          store_checkout: null,
+          store_cart: [],
+        });
+        await send(`✅ *Order created: ${result.order_number}*\n\nProducts: ${money(Number(result.subtotal))}\nDelivery: ${money(Number(result.delivery_fee))}\nPayment due now: ${money(Number(result.payment_amount))}\n\nComplete your secure Paystack payment here:\n${result.authorization_url}\n\nYour order will be confirmed after Paystack verifies the payment. We will send updates to this WhatsApp number and ${checkout.email}.`);
+      } catch (error) {
+        safeErrorLog("tenantStore.checkout", error);
+        await send("The checkout service is temporarily unavailable. Your cart is saved. Please try *checkout* again shortly.");
+      }
+      return;
+    }
+  }
+
+  if (["hi", "hello", "hey", "menu", "start", "shop", "catalogue", "catalog", "products", ""].includes(message)) {
+    if (!products.length) {
+      await send(`${greeting}\n\nOur product catalogue is being updated. Please contact the business for assistance.`);
+      return;
+    }
+    const categories = [...new Set(products.map(p => String((p as any).category || "Other")).filter(Boolean))];
+    const list = products.slice(0, 10).map((p: any, i: number) =>
+      `${i + 1}. *${p.name}* — ${p.price_text || money(productPrice(p))}${productStock(p) === null ? "" : productStock(p) <= 0 ? " (Out of stock)" : ""}`
     );
+    await save("IDLE", { store_page: 0 });
+    await send(`${greeting}\n\n🛍️ *Welcome to ${account.businessName}*\nBrowse our real products below.\n\n${list.join("\n")}\n\nReply with a product name for details. To add one, reply *ADD product name*.\n\nCategories: ${categories.join(", ")}\n\nReply *cart* to view your basket or *more* to see more products.`);
+    return;
+  }
+
+  if (message === "more" || message.startsWith("more ")) {
+    const page = Number(context.store_page || 0) + 1;
+    const slice = products.slice(page * 10, (page + 1) * 10);
+    if (!slice.length) {
+      await send("You've reached the end of the catalogue. Reply *menu* to start again or *cart* to view your basket.");
+      return;
+    }
+    await save("IDLE", { store_page: page });
+    await send(slice.map((p: any, i: number) =>
+      `${page * 10 + i + 1}. *${p.name}* — ${p.price_text || money(productPrice(p))}`
+    ).join("\n") + "\n\nReply with a product name or *ADD product name*.");
+    return;
+  }
+
+  if (message.startsWith("category ")) {
+    const category = message.slice(9).trim();
+    const matches = products.filter(p => String((p as any).category || "").toLowerCase().includes(category));
+    if (!matches.length) await send("I couldn't find that category. Reply *menu* to see available categories.");
+    else await send(matches.slice(0, 20).map((p: any) => `• *${p.name}* — ${p.price_text || money(productPrice(p))}`).join("\n") + "\n\nReply with a product name to view it.");
+    return;
+  }
+
+  const addCommand = message.match(/^add\s+(.+?)(?:\s+x(\d+))?$/i);
+  const searchTerm = addCommand ? addCommand[1].trim() : message;
+  const match = products.find((p: any) => {
+    const name = String(p.name || "").toLowerCase();
+    const slug = String(p.slug || "").toLowerCase();
+    return searchTerm === name || searchTerm === slug || (name.length > 2 && searchTerm.includes(name));
   });
 
   if (!match) {
-    await sendAndLog(
-      `I couldn't find that product in *${account.businessName}*.\n\nReply *menu* to view the catalogue or contact the business for help.`,
-      "text",
-    );
+    await send(`I couldn't find that product in *${account.businessName}*. Reply *menu* to browse, *cart* to view your cart, or *agent* to contact the shop.`);
     return;
   }
 
-  // SHOW SELECTED PRODUCT DETAILS.
-  const price =
-    match.price_text ||
-    (
-      match.price !== null &&
-      match.price !== undefined
-        ? `₦${Number(match.price).toLocaleString("en-NG")}`
-        : "Contact us for price"
-    );
-
-  const details =
-    `*${match.name}*\n\n` +
-    `${match.description || "Please contact us for more information."}\n\n` +
-    `💰 Price: *${price}*` +
-    (
-      match.website_url
-        ? `\n\nMore details: ${match.website_url}`
-        : ""
-    ) +
-    "\n\nReply *menu* to view all products.";
-
-  const imageUrl = String(
-    match.image_url || "",
-  ).trim();
-
-  if (
-    imageUrl.startsWith("https://") ||
-    imageUrl.startsWith("http://")
-  ) {
-    await sendAndLog(
-      details,
-      "image",
-      imageUrl,
-    );
-  } else {
-    await sendAndLog(
-      details,
-      "text",
-    );
+  const price = productPrice(match);
+  if (!Number.isFinite(price) || price <= 0) {
+    await send(`*${match.name}*\n\nPlease contact the shop for the current price before ordering.`);
+    return;
   }
+  const stock = productStock(match);
+  if (stock !== null && stock <= 0) {
+    await send(`Sorry, *${match.name}* is currently out of stock. Reply *menu* to choose another product.`);
+    return;
+  }
+
+  if (addCommand) {
+    const quantity = Math.max(1, Math.min(100, Number(addCommand[2] || 1)));
+    if (stock !== null && stock < quantity) {
+      await send(`Only ${stock} unit(s) of *${match.name}* are currently available.`);
+      return;
+    }
+    const existing = cart.find(item => item.product_id === match.id);
+    const next = existing
+      ? cart.map(item => item.product_id === match.id ? { ...item, quantity: item.quantity + quantity } : item)
+      : [...cart, { product_id: String(match.id), name: String(match.name), price, quantity }];
+    await save("IDLE", { store_cart: next });
+    await send(`🛒 Added *${quantity} × ${match.name}* to your cart.\n\nReply *cart* to review or *checkout* when ready.`);
+    return;
+  }
+
+  const details = `* ${match.name} *\n\n${match.description || "Contact the shop for more information."}\n\nPrice: *${match.price_text || money(price)}*\nStock available: *${stock === null ? "Please confirm with shop" : stock}*\n\nReply *ADD ${match.name}* to add one to your cart. You can also say *ADD ${match.name} x2*.\nReply *menu* to browse more products.`;
+  const imageUrl = String(match.image_url || "").trim();
+  await send(details, imageUrl.startsWith("https://") || imageUrl.startsWith("http://") ? imageUrl : undefined);
 }
 
 // =====================================================
@@ -677,6 +723,7 @@ export async function routeMessage(
         incoming,
         account,
         contact,
+        conversation,
       );
       return;
     }
