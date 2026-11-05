@@ -17,6 +17,8 @@ import Auth from "./Auth";
 import Products from "./Products";
 import Orders from "./Orders";
 import SettingsPage from "./Settings";
+import Inbox from "./Inbox";
+import Analytics from "./Analytics";
 import PublicProduct from "./PublicProduct";
 import { supabase } from "./lib/supabase";
 
@@ -425,6 +427,10 @@ function Dashboard({
             <Orders tenantId={tenantId} />
           ) : activePage === "Settings" ? (
             <SettingsPage tenantId={tenantId} />
+          ) : activePage === "Inbox" ? (
+            <Inbox />
+          ) : activePage === "Analytics" ? (
+            <Analytics />
           ) : activePage === "Overview" ? (
             <>
               <div className="stats-grid">
