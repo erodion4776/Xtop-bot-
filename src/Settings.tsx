@@ -7,7 +7,8 @@ import {
   ShieldCheck,
   Building2,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  MessageCircle
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 
@@ -61,6 +62,12 @@ export default function Settings({ tenantId }: { tenantId: string }) {
   const [payoutError, setPayoutError] = useState("");
   const [payoutSuccess, setPayoutSuccess] = useState("");
   const [lastFour, setLastFour] = useState("");
+  const [whatsappLoading, setWhatsappLoading] = useState(true);
+  const [whatsappConnecting, setWhatsappConnecting] = useState(false);
+  const [whatsappConnected, setWhatsappConnected] = useState(false);
+  const [whatsappPhone, setWhatsappPhone] = useState("");
+  const [whatsappVerifiedName, setWhatsappVerifiedName] = useState("");
+  const [whatsappError, setWhatsappError] = useState("");
 
   const card: React.CSSProperties = {
     background: "#fff",
