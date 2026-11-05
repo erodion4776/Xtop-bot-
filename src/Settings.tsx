@@ -131,6 +131,42 @@ export default function Settings({ tenantId }: { tenantId: string }) {
     return data;
   }
 
+  async function loadWhatsAppStatus() {
+    setWhatsappLoading(true);
+    setWhatsappError("");
+    const { data, error } = await supabase.functions.invoke(
+      "xtop-dashboard?action=whatsapp-status",
+      { body: {} }
+    );
+    if (error || data?.error) {
+      setWhatsappError(data?.error || error?.message || "Unable to check WhatsApp status.");
+      setWhatsappConnected(false);
+    } else {
+      setWhatsappConnected(data?.connected === true);
+      setWhatsappPhone(data?.phone || "");
+      setWhatsappVerifiedName(data?.verified_name || "");
+    }
+    setWhatsappLoading(false);
+  }
+
+  async function connectWhatsApp() {
+    setWhatsappError("");
+    setWhatsappConnecting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "xtop-dashboard?action=whatsapp-connect",
+        { body: {} }
+      );
+      if (error || !data?.success || !data?.connect_url) {
+        throw new Error(data?.error || error?.message || "Could not start WhatsApp registration.");
+      }
+      window.location.assign(data.connect_url);
+    } catch (err) {
+      setWhatsappError(err instanceof Error ? err.message : "Could not start WhatsApp registration.");
+      setWhatsappConnecting(false);
+    }
+  }
+
   async function loadBanks() {
     try {
       const data = await payoutRequest({ action: "banks" });
@@ -175,6 +211,7 @@ export default function Settings({ tenantId }: { tenantId: string }) {
     if (!tenantId) return;
 
     loadSettings();
+    loadWhatsAppStatus();
     loadBanks();
     loadPayoutStatus();
   }, [tenantId]);
