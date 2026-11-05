@@ -574,6 +574,38 @@ export default function Settings({ tenantId }: { tenantId: string }) {
       </form>
 
       <div style={{ ...card, marginTop: 28 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+          <MessageCircle size={26} color="#16a34a" />
+          <div>
+            <h2 style={{ margin: 0 }}>Business WhatsApp connection</h2>
+            <p style={{ color: "#64748b", marginBottom: 0 }}>Connect the dedicated WhatsApp number your customers will use to contact your business.</p>
+          </div>
+        </div>
+        <div style={{ padding: 14, borderRadius: 10, background: whatsappConnected ? "#ecfdf5" : "#f8fafc", border: "1px solid #e2e8f0", marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            {whatsappConnected ? <CheckCircle size={20} color="#047857" /> : <AlertCircle size={20} color="#64748b" />}
+            <strong>{whatsappLoading ? "Checking connection..." : whatsappConnected ? "WhatsApp connected" : "WhatsApp not connected"}</strong>
+          </div>
+          {whatsappConnected && <div style={{ marginTop: 8, color: "#047857" }}>
+            <strong>{whatsappPhone || "Business number connected"}</strong>
+            {whatsappVerifiedName && <small style={{ display: "block", marginTop: 4 }}>Verified business name: {whatsappVerifiedName}</small>}
+          </div>}
+        </div>
+        {whatsappError && <div role="alert" style={{ padding: 12, marginBottom: 14, borderRadius: 9, background: "#fef2f2", color: "#b91c1c" }}>{whatsappError}</div>}
+        {whatsappConnected ? (
+          <p style={{ color: "#047857" }}>Your business number is connected to this merchant workspace. Contact support if you need to change it.</p>
+        ) : (
+          <>
+            <p style={{ color: "#64748b", lineHeight: 1.6 }}>Use a dedicated business number that you can verify by SMS or phone call. Do not connect your personal number unless you deliberately intend to dedicate it to business automation.</p>
+            <button type="button" onClick={connectWhatsApp} disabled={whatsappLoading || whatsappConnecting} style={{ display: "inline-flex", alignItems: "center", gap: 9, padding: "12px 20px", border: 0, borderRadius: 9, background: "#16a34a", color: "#fff", fontWeight: 700, cursor: whatsappConnecting ? "wait" : "pointer", opacity: whatsappLoading || whatsappConnecting ? 0.65 : 1 }}>
+              <MessageCircle size={18} />
+              {whatsappConnecting ? "Preparing Meta signup..." : "Connect Business WhatsApp"}
+            </button>
+          </>
+        )}
+      </div>
+
+      <div style={{ ...card, marginTop: 28 }}>
         <div style={{
           display: "flex",
           alignItems: "center",
