@@ -20,6 +20,7 @@ import SettingsPage from "./Settings";
 import Inbox from "./Inbox";
 import Analytics from "./Analytics";
 import PublicProduct from "./PublicProduct";
+import Landing from "./Landing";
 import { supabase } from "./lib/supabase";
 
 const navigation = [
@@ -44,15 +45,16 @@ export default function App() {
 
   const registeredUser = useRef("");
 
-  const isPublicProductPage =
-    new URLSearchParams(window.location.search).has("product");
+  const query = new URLSearchParams(window.location.search);
+  const isPublicProductPage = query.has("product");
+  const isMarketingPage = window.location.pathname === "/" && !query.has("login") && !isPublicProductPage;
 
   const registrationToken = new URLSearchParams(
     window.location.search
   ).get("session_token")?.trim() || "";
 
   useEffect(() => {
-    if (isPublicProductPage) return;
+    if (isPublicProductPage || isMarketingPage) return;
 
     let mounted = true;
 
@@ -83,10 +85,10 @@ export default function App() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [isPublicProductPage]);
+  }, [isPublicProductPage, isMarketingPage]);
 
   useEffect(() => {
-    if (isPublicProductPage) return;
+    if (isPublicProductPage || isMarketingPage) return;
 
     if (!session?.user?.id) {
       setTenantId("");
@@ -142,6 +144,7 @@ export default function App() {
     session?.user?.id,
     registrationRetry,
     isPublicProductPage,
+    isMarketingPage,
     registrationToken
   ]);
 
@@ -160,6 +163,10 @@ export default function App() {
 
   if (isPublicProductPage) {
     return <PublicProduct />;
+  }
+
+  if (isMarketingPage) {
+    return <Landing />;
   }
 
   if (checkingSession) {
