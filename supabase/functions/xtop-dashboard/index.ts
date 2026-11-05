@@ -138,6 +138,75 @@ serve(async (req: Request) => {
     const merchant = merchantResult.context;
 
     // =================================================
+    // MERCHANT WHATSAPP CONNECTION
+    // Session ownership comes only from authenticated membership.
+    // =================================================
+
+    if (action === "whatsapp-status" && req.method === "GET") {
+      const { data: account, error: accountError } = await sb
+        .from("tenant_whatsapp_accounts")
+        .select("display_phone_number, verified_name, is_active, updated_at")
+        .eq("tenant_id", merchant.tenantId)
+        .eq("is_active", true)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (accountError) {
+        return jsonResponse({ error: "Could not load WhatsApp connection status" }, 500);
+      }
+
+      return jsonResponse({
+        connected: !!account,
+        phone: account?.display_phone_number || "",
+        verified_name: account?.verified_name || "",
+      });
+    }
+
+    if (action === "whatsapp-connect" && req.method === "POST") {
+      const { data: existingAccount, error: existingError } = await sb
+        .from("tenant_whatsapp_accounts")
+        .select("display_phone_number")
+        .eq("tenant_id", merchant.tenantId)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingError) {
+        return jsonResponse({ error: "Could not verify the current WhatsApp connection" }, 500);
+      }
+
+      if (existingAccount) {
+        return jsonResponse({
+          error: "A WhatsApp number is already connected. Contact support if you need to change it.",
+        }, 409);
+      }
+
+      const sessionToken = crypto.randomUUID().replace(/-/g, "");
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+      const { error: sessionError } = await sb
+        .from("onboarding_sessions")
+        .insert({
+          tenant_id: merchant.tenantId,
+          session_token: sessionToken,
+          package_code: null,
+          status: "PENDING",
+          expires_at: expiresAt,
+        });
+
+      if (sessionError) {
+        console.error("Dashboard WhatsApp session creation failed:", sessionError);
+        return jsonResponse({ error: "Could not prepare WhatsApp registration. Please try again." }, 500);
+      }
+
+      const baseUrl = (Deno.env.get("DASHBOARD_ONBOARDING_BASE_URL") || "https://xtopbot.netlify.app").replace(/\\/+$/, "");
+      const connectUrl = baseUrl + "/connect-whatsapp.html?token=" + encodeURIComponent(sessionToken) + "&return_to=" + encodeURIComponent(baseUrl + "/");
+
+      return jsonResponse({ success: true, connect_url: connectUrl, expires_at: expiresAt });
+    }
+
+    // =================================================
     // MERCHANT INBOX LIST
     // =================================================
 
