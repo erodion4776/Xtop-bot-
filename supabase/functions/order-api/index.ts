@@ -73,7 +73,7 @@ async function initializePaystack(
     serviceFee !== 50 ||
     commissionAmount < 0 ||
     xtopTransactionCharge !== commissionAmount + serviceFee ||
-    Math.round((basePaymentAmount + serviceFee) * 100) !==
+    Math.round((basePaymentAmount + xtopTransactionCharge) * 100) !==
       Math.round(expectedAmount * 100)
   ) {
     throw new Error("INVALID_PAYSTACK_FEE_SNAPSHOT");
