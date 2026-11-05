@@ -200,7 +200,8 @@ serve(async (req: Request) => {
         return jsonResponse({ error: "Could not prepare WhatsApp registration. Please try again." }, 500);
       }
 
-      const baseUrl = (Deno.env.get("DASHBOARD_ONBOARDING_BASE_URL") || "https://xtopbot.netlify.app").replace(/\\/+$/, "");
+      const configuredBaseUrl = Deno.env.get("DASHBOARD_ONBOARDING_BASE_URL") || "https://xtopbot.netlify.app";
+      const baseUrl = configuredBaseUrl.endsWith("/") ? configuredBaseUrl.slice(0, -1) : configuredBaseUrl;
       const connectUrl = baseUrl + "/connect-whatsapp.html?token=" + encodeURIComponent(sessionToken) + "&return_to=" + encodeURIComponent(baseUrl + "/");
 
       return jsonResponse({ success: true, connect_url: connectUrl, expires_at: expiresAt });
