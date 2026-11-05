@@ -2124,3 +2124,62 @@ button {
     align-items: flex-start;
   }
 }
+
+
+/* =========================================
+   MERCHANT INBOX
+========================================= */
+.inbox-layout{display:grid;grid-template-columns:minmax(270px,340px) minmax(0,1fr);gap:18px;min-height:620px}
+.inbox-list-panel,.chat-panel{padding:20px;min-width:0}
+.inbox-heading,.analytics-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
+.inbox-heading h2,.analytics-toolbar h2{font-size:18px;margin-bottom:5px}
+.inbox-heading p,.analytics-toolbar p{font-size:13px;color:#718078;line-height:1.5}
+.icon-action{border:1px solid #dce5e0;background:#fff;border-radius:10px;padding:9px;color:#315b4b;display:inline-flex;align-items:center;justify-content:center}
+.conversation-list{display:flex;flex-direction:column;gap:5px;max-height:540px;overflow:auto}
+.conversation-item{width:100%;display:flex;align-items:center;gap:11px;text-align:left;border:0;background:#fff;padding:12px 9px;border-radius:11px;color:#1b2b24}
+.conversation-item:hover,.conversation-item.selected{background:#eef5f1}
+.contact-avatar{width:38px;height:38px;flex:0 0 38px;border-radius:50%;background:#e3eee8;display:grid;place-items:center;color:#276148}
+.conversation-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}
+.conversation-copy strong,.conversation-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conversation-copy strong{font-size:13px}
+.conversation-copy small{font-size:12px;color:#75827b}
+.takeover-dot{width:9px;height:9px;border-radius:50%;background:#e49a35;flex:0 0 9px}
+.empty-state{min-height:160px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;text-align:center;color:#839088;font-size:13px;padding:24px}
+.empty-state strong{color:#30453a;font-size:15px}
+.empty-state span{max-width:260px;line-height:1.5}
+.chat-panel{display:flex;flex-direction:column;min-height:620px}
+.chat-empty{flex:1}
+.chat-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:15px;border-bottom:1px solid #e8eeea}
+.chat-header>div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.chat-header strong{font-size:14px}
+.chat-header small{font-size:12px;color:#7a8980}
+.takeover-button{display:flex;align-items:center;gap:6px;border:1px solid #d9e5de;border-radius:9px;background:#f5f8f6;padding:8px 10px;color:#315b4b;font-size:12px;white-space:nowrap}
+.takeover-button.enabled{background:#fff4e5;border-color:#f2d6a8;color:#8a5a16}
+.chat-messages{flex:1;min-height:300px;max-height:440px;overflow:auto;display:flex;flex-direction:column;gap:10px;padding:18px 2px}
+.chat-bubble{max-width:82%;padding:10px 12px;border-radius:13px;display:flex;flex-direction:column;gap:6px;overflow-wrap:anywhere}
+.chat-bubble p{font-size:13px;line-height:1.5;white-space:pre-wrap}
+.chat-bubble small{font-size:10px;color:#78867e;align-self:flex-end}
+.chat-bubble.incoming{align-self:flex-start;background:#f0f3f1;border-bottom-left-radius:4px}
+.chat-bubble.outgoing{align-self:flex-end;background:#e5f4e9;border-bottom-right-radius:4px}
+.reply-box{display:flex;gap:9px;align-items:flex-end;border-top:1px solid #e8eeea;padding-top:14px}
+.reply-box textarea{flex:1;min-width:0;resize:vertical;border:1px solid #dce5e0;border-radius:10px;padding:11px;font:inherit;font-size:13px;outline-color:#39775b}
+.reply-box button{display:flex;align-items:center;gap:7px;border:0;border-radius:10px;background:#174b37;color:white;padding:12px 15px;font-size:13px}
+.reply-box button:disabled{opacity:.5;cursor:not-allowed}
+.inbox-footnote{font-size:11px;color:#8a958e;line-height:1.5;margin-top:9px}
+.inline-error{background:#fff1ef;color:#a53d32;border:1px solid #f4d2cd;padding:10px 12px;border-radius:9px;font-size:12px;margin:10px 0}
+.analytics-toolbar{align-items:center}
+.analytics-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px}
+.analytics-stats .stat-card{min-width:0}
+.analytics-stats .stat-card strong{font-size:clamp(20px,2.4vw,28px);overflow-wrap:anywhere}
+.analytics-stats .stat-card small{display:flex;align-items:center;gap:5px}
+.sales-panel{padding:20px;overflow:hidden}
+.sales-panel .panel-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.sales-panel .panel-heading>strong{font-size:15px;color:#24543f;text-align:right}
+.sales-panel .panel-heading>strong small{display:block;color:#819087;font-size:10px;font-weight:400;margin-top:4px}
+.sales-chart{height:230px;display:flex;align-items:stretch;gap:5px;overflow-x:auto;padding-top:18px}
+.sales-column{flex:1;min-width:20px;display:flex;flex-direction:column;align-items:center;gap:8px}
+.sales-bar-wrap{height:185px;width:100%;display:flex;align-items:flex-end;justify-content:center;background:linear-gradient(to top,#f4f7f5 1px,transparent 1px);background-size:100% 25%}
+.sales-bar{width:min(70%,22px);min-height:0;background:#2e7653;border-radius:5px 5px 0 0}
+.sales-column small{font-size:9px;color:#839088;white-space:nowrap}
+@media(max-width:900px){.analytics-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.inbox-layout{grid-template-columns:minmax(230px,290px) minmax(0,1fr)}}
+@media(max-width:680px){.inbox-layout{grid-template-columns:1fr;min-height:0}.inbox-list-panel{padding:14px}.conversation-list{max-height:260px}.chat-panel{min-height:540px;padding:14px}.chat-messages{max-height:360px}.analytics-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.sales-panel{padding:14px}.sales-chart{gap:3px}.sales-column{min-width:18px}.sales-column small{font-size:8px}}
