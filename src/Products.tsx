@@ -11,7 +11,9 @@ import {
   RefreshCw,
   Image as ImageIcon,
   Copy,
-  Share2
+  Share2,
+  Facebook,
+  FileText
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 
@@ -116,6 +118,57 @@ export default function Products({ tenantId }: { tenantId: string }) {
       `https://wa.me/?text=${encodeURIComponent(message)}`;
 
     window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+  }
+
+  // Build a Facebook-ready caption that the merchant can paste into a post.
+  function getProductAdvertCaption(product: Product) {
+    const price =
+      product.price === null
+        ? "Contact us for price"
+        : `₦${Number(product.price).toLocaleString("en-NG")}`;
+
+    return [
+      `🛍️ ${product.name}`,
+      price,
+      product.description || "",
+      product.category ? `Category: ${product.category}` : "",
+      "Order securely through WhatsApp:",
+      getProductLink(product),
+      "",
+      "Powered by Sabi"
+    ].filter(Boolean).join("\\n\\n");
+  }
+
+  async function copyProductAdvert(product: Product) {
+    if (product.status !== "ACTIVE") {
+      setError("Activate this product before marketing it.");
+      return;
+    }
+
+    const caption = getProductAdvertCaption(product);
+
+    try {
+      await navigator.clipboard.writeText(caption);
+      setSuccess(`Facebook advert caption for "${product.name}" copied. Paste it into your Facebook post.`);
+      setError("");
+    } catch {
+      window.prompt("Copy this Facebook advert caption:", caption);
+    }
+  }
+
+  function shareProductOnFacebook(product: Product) {
+    if (product.status !== "ACTIVE") {
+      setError("Activate this product before sharing its public link.");
+      return;
+    }
+
+    const link = getProductLink(product);
+    const facebookUrl =
+      `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link)}`;
+
+    window.open(facebookUrl, "_blank", "noopener,noreferrer");
+    setSuccess("Facebook share window opened. Paste the copied advert caption into your post.");
+    setError("");
   }
 
   async function loadProducts() {
@@ -545,7 +598,7 @@ export default function Products({ tenantId }: { tenantId: string }) {
 
                         <button
                           onClick={() => shareProductOnWhatsApp(product)}
-                          title="Share on WhatsApp"
+                          title="Share product advert on WhatsApp"
                           aria-label={`Share ${product.name} on WhatsApp`}
                           disabled={product.status !== "ACTIVE"}
                         >
@@ -553,7 +606,25 @@ export default function Products({ tenantId }: { tenantId: string }) {
                         </button>
 
                         <button
-                          onClick={() => openEditProduct(product)}
+                          onClick={() => shareProductOnFacebook(product)}
+                          title="Share product link on Facebook"
+                          aria-label={`Share ${product.name} on Facebook`}
+                          disabled={product.status !== "ACTIVE"}
+                        >
+                          <Facebook size={17} />
+                        </button>
+
+                        <button
+                          onClick={() => copyProductAdvert(product)}
+                          title="Copy Facebook advert caption"
+                          aria-label={`Copy advert caption for ${product.name}`}
+                          disabled={product.status !== "ACTIVE"}
+                        >
+                          <FileText size={17} />
+                        </button>
+
+                        <button
+                          onClick={() => openEditProduct(product)
                           title="Edit product"
                           aria-label={`Edit ${product.name}`}
                         >
