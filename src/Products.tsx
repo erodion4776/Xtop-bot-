@@ -624,7 +624,7 @@ export default function Products({ tenantId }: { tenantId: string }) {
                         </button>
 
                         <button
-                          onClick={() => openEditProduct(product)
+                          onClick={() => openEditProduct(product)}
                           title="Edit product"
                           aria-label={`Edit ${product.name}`}
                         >
