@@ -280,6 +280,64 @@ async function createOrder(body: Record<string, unknown>) {
   });
 }
 
+
+async function createCartOrder(body: Record<string, unknown>) {
+  const items = Array.isArray(body.items) ? body.items : [];
+  const customerName = String(body.customer_name || "").trim();
+  const customerPhone = String(body.customer_phone || "").trim();
+  const customerEmail = String(body.customer_email || "").trim().toLowerCase();
+  const deliveryAddress = String(body.delivery_address || "").trim();
+  const paymentMethod = String(body.payment_method || "ONLINE").toUpperCase();
+  if (!items.length || items.length > 30) throw new Error("INVALID_ORDER_DETAILS");
+  if (!customerName || !customerPhone || !customerEmail || !deliveryAddress) throw new Error("CUSTOMER_DETAILS_REQUIRED");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) throw new Error("INVALID_CUSTOMER_EMAIL");
+  if (!["ONLINE", "POD"].includes(paymentMethod)) throw new Error("INVALID_PAYMENT_METHOD");
+  const normalizedItems = items.map((item: Record<string, unknown>) => ({
+    product_id: String(item.product_id || ""), quantity: Number(item.quantity),
+  }));
+  if (normalizedItems.some((item: {product_id:string;quantity:number}) =>
+    !item.product_id || !Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 100
+  )) throw new Error("INVALID_ORDER_DETAILS");
+
+  const { data: order, error: orderError } = await db.rpc("sabi_create_public_cart_order", {
+    p_items: normalizedItems, p_customer_name: customerName, p_customer_phone: customerPhone,
+    p_customer_email: customerEmail, p_delivery_address: deliveryAddress,
+    p_notes: body.notes == null ? null : String(body.notes), p_payment_method: paymentMethod,
+  });
+  if (orderError || !order?.success) {
+    console.error("WhatsApp cart order creation failed:", orderError);
+    throw new Error("ORDER_CREATION_FAILED");
+  }
+
+  const { data: intent, error: intentError } = await db.from("tenant_order_payment_intents")
+    .select("tenant_id,order_id,payment_type,reference,expected_amount,currency,customer_email,metadata")
+    .eq("reference", order.payment_reference).single();
+  if (intentError || !intent) throw new Error("PAYMENT_INTENT_NOT_FOUND");
+
+  try {
+    const payment = await initializePaystack(intent, order.order_number, "SABI_PUBLIC_ORDER");
+    return respond({
+      success: true, order_id: order.order_id, order_number: order.order_number,
+      payment_reference: payment.reference, payment_type: intent.payment_type,
+      payment_method: paymentMethod, subtotal: order.subtotal, delivery_fee: order.delivery_fee,
+      total: order.total, payment_amount: Number(intent.expected_amount),
+      sabi_service_fee: Number((intent.metadata || {}).customer_service_fee),
+      currency: intent.currency, authorization_url: payment.authorization_url,
+      customer_confirmation_token: order.customer_confirmation_token,
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "";
+    console.error("WhatsApp cart Paystack initialization failed:", error);
+    return respond({
+      success: false, order_created: true, order_id: order.order_id, order_number: order.order_number,
+      error: errorMessage || "PAYMENT_INITIALIZATION_FAILED",
+      message: errorMessage === "MERCHANT_SUBACCOUNT_NOT_VERIFIED"
+        ? "Merchant Paystack verification is still pending. Contact the merchant to complete payment."
+        : "The order was created, but payment could not start. Contact the merchant before retrying.",
+    }, 502);
+  }
+}
+
 // AUTHENTICATED MERCHANT PAYMENT INITIALIZATION
 async function initializeMerchantOrder(
   req: Request,
@@ -578,6 +636,10 @@ Deno.serve(async (req: Request) => {
 
     if (action === "create") {
       return await createOrder(body);
+    }
+
+    if (action === "create_cart") {
+      return await createCartOrder(body);
     }
 
     if (action === "initialize_merchant") {
