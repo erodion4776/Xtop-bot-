@@ -567,6 +567,62 @@ serve(async (req: Request) => {
     // MERCHANT DASHBOARD STATISTICS
     // =================================================
 
+    if (action === "analytics" && req.method === "GET") {
+      const since = new Date();
+      since.setUTCDate(since.getUTCDate() - 29);
+      since.setUTCHours(0, 0, 0, 0);
+
+      const { data: orders, error } = await sb
+        .from("tenant_orders")
+        .select("created_at,total,payment_status,status")
+        .eq("tenant_id", merchant.tenantId)
+        .gte("created_at", since.toISOString())
+        .order("created_at", { ascending: true })
+        .limit(5000);
+
+      if (error) {
+        return jsonResponse({ error: "Could not load business analytics" }, 500);
+      }
+
+      const days = new Map<string, { date: string; revenue: number; orders: number }>();
+      for (let offset = 0; offset < 30; offset++) {
+        const day = new Date(since);
+        day.setUTCDate(since.getUTCDate() + offset);
+        const key = day.toISOString().slice(0, 10);
+        days.set(key, { date: key, revenue: 0, orders: 0 });
+      }
+
+      let revenue = 0;
+      let paidOrders = 0;
+      let pendingPayments = 0;
+
+      for (const order of orders || []) {
+        const key = new Date(order.created_at).toISOString().slice(0, 10);
+        const day = days.get(key);
+        if (day) day.orders += 1;
+
+        if (order.payment_status === "PAID") {
+          const amount = Number(order.total) || 0;
+          revenue += amount;
+          paidOrders += 1;
+          if (day) day.revenue += amount;
+        } else {
+          pendingPayments += 1;
+        }
+      }
+
+      return jsonResponse({
+        data: {
+          totalOrders: (orders || []).length,
+          paidOrders,
+          pendingPayments,
+          revenue,
+          averageOrderValue: paidOrders ? revenue / paidOrders : 0,
+          dailySales: Array.from(days.values()),
+        },
+      });
+    }
+
     if (action === "stats" && req.method === "GET") {
       const today = new Date().toISOString().split("T")[0];
 
