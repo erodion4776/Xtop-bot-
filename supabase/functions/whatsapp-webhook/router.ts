@@ -272,6 +272,35 @@ async function handleTenantStoreMessage(
     Array.isArray(context.store_cart) ? context.store_cart : [];
   const state = String(conversation.current_state || "IDLE");
 
+  if (message === "agent" || message === "human" || message === "talk to human" || message === "customer service") {
+    await supabase.from("contacts").update({ agent_mode: true }).eq("tenant_id", account.tenantId).eq("id", contact.id);
+    await updateConversation(conversation.id, {
+      current_module: "TENANT_STORE",
+      current_state: "AGENT_TAKEOVER",
+      context_json: { ...context, agent_takeover: true, agent_mode: true },
+      agent_mode: true,
+    }, account.tenantId);
+    await send("👤 Your request for human assistance has been recorded in the shop's Sabi Inbox. Automated replies are paused for this conversation so the shop team can take over.");
+    return;
+  }
+
+  if (message === "track" || message.startsWith("track ")) {
+    const requestedNumber = message.startsWith("track ") ? raw.slice(6).trim().toUpperCase() : String(context.store_last_order || "").toUpperCase();
+    let orderQuery = supabase.from("tenant_orders")
+      .select("order_number,status,payment_status,shipping_payment_status,payment_method,created_at,subtotal,delivery_fee,total")
+      .eq("tenant_id", account.tenantId)
+      .eq("customer_phone", phone);
+    if (requestedNumber) orderQuery = orderQuery.eq("order_number", requestedNumber);
+    const { data: tracked, error: trackError } = await orderQuery.order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (trackError) safeErrorLog("tenantStore.track", trackError);
+    if (!tracked) {
+      await send("I couldn't find an order for this WhatsApp number. Reply *track ORDER_NUMBER* using the number in your confirmation message, or contact the shop.");
+      return;
+    }
+    await send(`📦 *Order tracking: ${tracked.order_number}*\n\nOrder status: *${tracked.status}*\nProduct payment: *${tracked.payment_status}*\nDelivery payment: *${tracked.shipping_payment_status || "Not applicable"}*\nPayment method: *${tracked.payment_method}*\nOrder date: ${new Date(tracked.created_at).toLocaleString("en-NG")}\n\nReply *agent* if you need help from the shop.`);
+    return;
+  }
+
   const send = async (body: string, imageUrl?: string) => {
     const id = imageUrl
       ? await sendImageMessage(phone, imageUrl, body, credentials)
