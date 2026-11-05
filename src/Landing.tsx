@@ -78,12 +78,14 @@ const benefits = [
 ];
 
 const steps = [
-  ["01", "Connect your business WhatsApp", "Use a dedicated business number for Sabi automation. Keep your personal WhatsApp separate."],
+  ["01", "Connect your number — free to start", "Get started without a monthly Sabi subscription. Use a dedicated business number for automation and keep your personal WhatsApp separate."],
   ["02", "Add the products you sell", "Upload product details, prices, categories and pictures so customers can browse what is available."],
   ["03", "Share your shop and start serving", "Share product links, receive customer orders and manage the work from your dashboard."]
 ];
 
 const faqs = [
+  ["Is it free to start using Sabi?", "Yes. You can get started with Sabi at no monthly Sabi subscription cost. Connect your dedicated business WhatsApp number, add your products and start selling. Any charges set by WhatsApp/Meta or payment providers are separate third-party charges, not a Sabi monthly subscription."],
+  ["Do I pay a monthly subscription to Sabi?", "No. Sabi does not require a monthly subscription or paid trial. Connect your dedicated business WhatsApp number, set up your products and begin serving customers."],
   ["Is Sabi only for big businesses?", "No. Sabi is designed for the everyday business owner too: a fashion seller, food vendor, beauty store, phone dealer, home business, distributor or growing retail shop."],
   ["Do my customers need to download an app?", "No extra shopping app is required for the WhatsApp shopping conversation. Customers can chat with your business on WhatsApp and follow the product or payment links provided in the order flow."],
   ["Can I use my personal WhatsApp number?", "Sabi automation is intended for a dedicated business WhatsApp number. Your personal WhatsApp can remain personal and separate."],
@@ -115,6 +117,7 @@ export default function Landing() {
       <section className="lp-hero">
         <div className="lp-hero-copy">
           <div className="lp-kicker"><span /> MADE FOR THE WAY AFRICA DOES BUSINESS</div>
+          <div className="lp-free-start"><strong>₦0 MONTHLY SABI SUBSCRIPTION</strong><span>Start free — connect your business WhatsApp number, add your products and start selling.</span></div>
           <h1>Your customers are on WhatsApp. <em>Your business should be ready.</em></h1>
           <p className="lp-hero-lead">
             You work hard to find customers. You post on Facebook, reply to messages,
@@ -126,9 +129,9 @@ export default function Landing() {
             <a className="lp-button lp-button-ghost" href="#demo"><Play size={16} /> See how Sabi works</a>
           </div>
           <div className="lp-reassurance">
-            <span><CheckCircle2 size={16} /> Built around WhatsApp</span>
-            <span><CheckCircle2 size={16} /> Your products, your business</span>
-            <span><CheckCircle2 size={16} /> Human support stays important</span>
+            <span><CheckCircle2 size={16} /> Free to get started</span>
+            <span><CheckCircle2 size={16} /> No monthly subscription</span>
+            <span><CheckCircle2 size={16} /> Connect and start selling</span>
           </div>
         </div>
 
@@ -217,8 +220,8 @@ export default function Landing() {
       <section className="lp-section lp-steps-section" id="how-it-works">
         <div className="lp-section-heading lp-center">
           <span className="lp-eyebrow">GETTING STARTED</span>
-          <h2>Start simple. Build at your pace.</h2>
-          <p>You know your business. Sabi gives you tools to organise the way customers shop with you.</p>
+          <h2>Start free. Connect your number. Start selling.</h2>
+          <p>No monthly Sabi subscription and no paid trial. Connect your dedicated business WhatsApp number, add your products and let customers start shopping with you.</p>
         </div>
         <div className="lp-steps-grid">
           {steps.map(([number, title, body]) => (
@@ -259,9 +262,9 @@ export default function Landing() {
 
       <section className="lp-final-cta">
         <div className="lp-final-icon"><Store size={27} /></div>
-        <span className="lp-eyebrow">YOUR BUSINESS HAS COME TOO FAR</span>
-        <h2>Let every customer conversation have a clearer next step.</h2>
-        <p>You have put in the work. Your products deserve to be seen, your customers deserve a smoother experience, and you deserve more control over the busywork.</p>
+        <span className="lp-eyebrow">FREE TO GET STARTED · NO MONTHLY SUBSCRIPTION</span>
+        <h2>Connect your business number. Put your products on WhatsApp. Start selling.</h2>
+        <p>Start with Sabi at no monthly subscription cost. Connect your dedicated WhatsApp number, add your products and give customers a simple way to browse and order. You run your business — Sabi helps organise the conversations.</p>
         <a className="lp-button lp-button-light" href="/app">Go to Sabi merchant dashboard <ArrowRight size={18} /></a>
         <small>Sabi by XTOP · A product of XTOP Retail Technologies</small>
       </section>
