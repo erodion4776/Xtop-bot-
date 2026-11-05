@@ -247,7 +247,7 @@ export default function Landing() {
         </div>
         <div className="lp-review-honesty">
           <div className="lp-review-mark">“</div>
-          <div><h3>Your experience should be the proof.</h3><p>Are you an early merchant using Sabi? We want to hear what made your work easier, what needs improvement and what your customers think. Honest feedback helps us build something that deserves your trust.</p><a href="mailto:hello@xtopretail.com?subject=Sabi%20merchant%20feedback">Share your Sabi experience <ArrowRight size={16} /></a></div>
+          <div><h3>Your experience should be the proof.</h3><p>Are you an early merchant using Sabi? We want to hear what made your work easier, what needs improvement and what your customers think. Honest feedback helps us build something that deserves your trust.</p><a href="/app">Open your merchant dashboard <ArrowRight size={16} /></a></div>
         </div>
       </section>
 
