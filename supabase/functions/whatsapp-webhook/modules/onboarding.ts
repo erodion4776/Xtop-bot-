@@ -471,6 +471,18 @@ export async function handleOnboardingCallback(
       return jsonResponse({ error: "Signup session has no tenant." }, 400);
     }
 
+    // The Sabi support number belongs to the system router and must never
+    // be registered as a merchant number.
+    const systemPhoneNumberId = String(
+      Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "",
+    ).trim();
+
+    if (systemPhoneNumberId && phoneNumberId === systemPhoneNumberId) {
+      return jsonResponse({
+        error: "The Sabi support number cannot be connected as a merchant number. Please use a dedicated business number.",
+      }, 409);
+    }
+
     // Ensure the selected WhatsApp number is not assigned to another tenant.
     const { data: existingAccount, error: existingError } = await sb
       .from("tenant_whatsapp_accounts")
