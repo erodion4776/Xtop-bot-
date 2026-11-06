@@ -487,6 +487,22 @@ async function verifyOrderPayment(body: Record<string, unknown>) {
     throw new Error("PAYMENT_REFERENCE_NOT_FOUND");
   }
 
+  // A pending Paystack reference must not revive a cancelled order.
+  const { data: order, error: orderError } = await db
+    .from("tenant_orders")
+    .select("status")
+    .eq("id", intent.order_id)
+    .eq("tenant_id", intent.tenant_id)
+    .maybeSingle();
+
+  if (orderError || !order) {
+    throw new Error("PAYMENT_REFERENCE_NOT_FOUND");
+  }
+
+  if (order.status === "CANCELLED") {
+    throw new Error("MERCHANT_ORDER_CANCELLED");
+  }
+
   if (intent.status === "FAILED") {
     throw new Error("PAYMENT_INTENT_FAILED");
   }
