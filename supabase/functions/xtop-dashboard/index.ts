@@ -267,6 +267,18 @@ serve(async (req: Request) => {
         last_message: latestMessages.get(contact.id) || null,
       }));
 
+      // Sort by actual message activity; contacts.updated_at is not changed
+      // by inbound message inserts in the webhook storage helper.
+      result.sort((a, b) => {
+        const aTime = new Date(
+          a.last_message?.created_at || a.updated_at || a.created_at,
+        ).getTime();
+        const bTime = new Date(
+          b.last_message?.created_at || b.updated_at || b.created_at,
+        ).getTime();
+        return bTime - aTime;
+      });
+
       return jsonResponse({ data: result });
     }
 
