@@ -688,7 +688,7 @@ serve(async (req: Request) => {
           revenue += amount;
           paidOrders += 1;
           if (day) day.revenue += amount;
-        } else {
+        } else if (order.status !== "CANCELLED") {
           pendingPayments += 1;
         }
       }
