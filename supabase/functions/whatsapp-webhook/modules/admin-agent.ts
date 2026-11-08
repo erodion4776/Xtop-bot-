@@ -237,16 +237,16 @@ async function getLearningCentreProgress(): Promise<string> {
   return [
     "🎓 *ENGR. ERO LEARNING CENTRE*",
     "",
-    \`Course: *\${course.course_code} — \${course.course_name}*\`,
-    \`Course status: \${course.status || "Not reported"}\`,
-    \`Modules: \${moduleResult.error ? "Unavailable" : modules.length}\`,
-    \`Lessons total: \${lessonResult.count ?? lessons.length}\`,
-    \`Published lessons: \${published}\`,
-    \`Draft / not published: \${drafts}\`,
-    \`Registered students (all courses): \${studentResult.count ?? "Unavailable"}\`,
-    \`ELA401 enrolments: \${enrollmentResult.count ?? "Unavailable"}\`,
+    `Course: *${course.course_code} — ${course.course_name}*`,
+    `Course status: ${course.status || "Not reported"}`,
+    `Modules: ${moduleResult.error ? "Unavailable" : modules.length}`,
+    `Lessons total: ${lessonResult.count ?? lessons.length}`,
+    `Published lessons: ${published}`,
+    `Draft / not published: ${drafts}`,
+    `Registered students (all courses): ${studentResult.count ?? "Unavailable"}`,
+    `ELA401 enrolments: ${enrollmentResult.count ?? "Unavailable"}`,
     "",
-    failures.length ? \`Some figures unavailable: \${failures.join(", ")}\` : "Database checks completed successfully.",
+    failures.length ? `Some figures unavailable: ${failures.join(", ")}` : "Database checks completed successfully.",
     "",
     "All lessons remain drafts until lecturer approval.",
   ].join("\n");
@@ -276,22 +276,22 @@ async function listLearningModules(phone: string, page = 0): Promise<void> {
   const visible = data.slice(safePage * pageSize, (safePage + 1) * pageSize);
   const rows = visible.map((module: any) =>
     makeListRow(
-      \`admin_learning_module_\${module.id}\`,
-      \`Module \${module.module_order}: \${String(module.title || "Untitled").slice(0, 22)}\`,
+      `admin_learning_module_${module.id}`,
+      `Module ${module.module_order}: ${String(module.title || "Untitled").slice(0, 22)}`,
       "Open lessons • Draft review"
     )
   );
 
   if (safePage > 0) {
-    rows.push(makeListRow(\`admin_learning_page_\${safePage - 1}\`, "⬅ Previous modules", "Go to previous page"));
+    rows.push(makeListRow(`admin_learning_page_${safePage - 1}`, "⬅ Previous modules", "Go to previous page"));
   }
   if (safePage < pageCount - 1) {
-    rows.push(makeListRow(\`admin_learning_page_\${safePage + 1}\`, "Next modules ➡", "View remaining modules"));
+    rows.push(makeListRow(`admin_learning_page_${safePage + 1}`, "Next modules ➡", "View remaining modules"));
   }
 
   await sendListMessage(
     phone,
-    \`ELA401 — Time Measurement\n12-module course outline\nPage \${safePage + 1} of \${pageCount}\n\nChoose a module to inspect its lessons. Draft status is preserved.\`,
+    `ELA401 — Time Measurement\n12-module course outline\nPage ${safePage + 1} of ${pageCount}\n\nChoose a module to inspect its lessons. Draft status is preserved.`,
     "Choose Module",
     [{ title: "ELA401 Modules", rows }],
     "Learning Centre",
@@ -325,19 +325,19 @@ async function showLearningModule(phone: string, moduleId: string): Promise<void
 
   const rows = (lessons || []).slice(0, 8).map((lesson: any, index: number) =>
     makeListRow(
-      \`admin_learning_lesson_\${lesson.id}\`,
-      String(lesson.title || \`Lesson \${index + 1}\`).slice(0, 24),
-      \`\${lesson.is_draft ? "DRAFT" : lesson.status || "REVIEW"} • \${lesson.estimated_minutes || "—"} min\`
+      `admin_learning_lesson_${lesson.id}`,
+      String(lesson.title || `Lesson ${index + 1}`).slice(0, 24),
+      `${lesson.is_draft ? "DRAFT" : lesson.status || "REVIEW"} • ${lesson.estimated_minutes || "—"} min`
     )
   );
 
   const body = [
-    \`🎓 *MODULE \${module.module_order}: \${module.title}*\`,
+    `🎓 *MODULE ${module.module_order}: ${module.title}*`,
     "",
     module.description || "",
-    module.objectives ? \`Objectives: \${module.objectives}\` : "",
+    module.objectives ? `Objectives: ${module.objectives}` : "",
     "",
-    \`Lessons in module: \${(lessons || []).length}\`,
+    `Lessons in module: ${(lessons || []).length}`,
     "Select a lesson to read the teaching material and practical instructions.",
     "",
     "🔒 Draft material — not visible to students yet.",
@@ -379,13 +379,13 @@ async function showLearningLesson(phone: string, lessonId: string): Promise<void
       if (Array.isArray(section)) {
         const heading = String(section[0] || "").trim();
         const body = String(section[1] || "").trim();
-        if (heading) sectionLines.push(\`* \${heading}*\`);
+        if (heading) sectionLines.push(`* ${heading}*`);
         if (body) sectionLines.push(body);
         sectionLines.push("");
       } else if (section && typeof section === "object") {
         const heading = String(section.title || section.heading || "").trim();
         const body = String(section.content || section.body || "").trim();
-        if (heading) sectionLines.push(\`* \${heading}*\`);
+        if (heading) sectionLines.push(`* ${heading}*`);
         if (body) sectionLines.push(body);
         sectionLines.push("");
       }
@@ -395,9 +395,9 @@ async function showLearningLesson(phone: string, lessonId: string): Promise<void
   const mainContent = sectionLines.join("\n").trim() || String(lesson.content || "Lesson content is not available yet.").trim();
   const header = [
     "🎓 *ELA401 — LESSON PREVIEW*",
-    \`* \${lesson.title || "Untitled lesson"}*\`,
-    \`Status: \${lesson.is_draft ? "DRAFT — NOT PUBLISHED" : lesson.status || "REVIEW"}\`,
-    \`Estimated study time: \${lesson.estimated_minutes || "Not specified"} minutes\`,
+    `* ${lesson.title || "Untitled lesson"}*`,
+    `Status: ${lesson.is_draft ? "DRAFT — NOT PUBLISHED" : lesson.status || "REVIEW"}`,
+    `Estimated study time: ${lesson.estimated_minutes || "Not specified"} minutes`,
     "",
     "⚠️ This material is for lecturer review and is not released to students.",
     "",
@@ -409,7 +409,7 @@ async function showLearningLesson(phone: string, lessonId: string): Promise<void
 
   await sendTextMessage(phone, header + body);
   await sendButtonMessage(phone, "Lesson navigation:", [
-    makeButton(\`admin_learning_module_\${lesson.module_id}\`, "↩ Module Lessons"),
+    makeButton(`admin_learning_module_${lesson.module_id}`, "↩ Module Lessons"),
     makeButton("admin_learning", "📚 All Modules"),
     makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
   ]);
