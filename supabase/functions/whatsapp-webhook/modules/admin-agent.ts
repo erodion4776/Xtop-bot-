@@ -570,8 +570,7 @@ async function listDepartmentStudents(phone: string, departmentInput: string, pa
     .select("id, name, matric_number, serial_number, department, level", { count: "exact" })
     .eq("status", "ACTIVE").eq("department", department)
     .order("serial_number", { ascending: true })
-    .order("matric_number", { ascending: true })
-    .range(from, from + 9);
+    .order("matric_number", { ascending: true });
   if (error) {
     safeErrorLog("listDepartmentStudents", error);
     await sendTextMessage(phone, "⚠️ Could not load this department's student register.");
@@ -581,19 +580,22 @@ async function listDepartmentStudents(phone: string, departmentInput: string, pa
     await sendTextMessage(phone, "No approved students found in this department.");
     return;
   }
-  const rows = data.map((s: any) => makeListRow(
+  data.sort((a: any, b: any) => String(a.serial_number || "").localeCompare(String(b.serial_number || ""), undefined, { numeric: true, sensitivity: "base" }) || String(a.matric_number || "").localeCompare(String(b.matric_number || "")));
+  const totalStudents = data.length;
+  const pageStudents = data.slice(from, from + 10);
+  const rows = pageStudents.map((s: any) => makeListRow(
     `admin_roster_student_${s.id}_${encodeURIComponent(department)}_${safePage}`,
     `S/N ${s.serial_number || "—"} • ${String(s.name || "Student").slice(0, 13)}`,
     `Mat: ${s.matric_number || "—"} • ${s.level || "—"}L`
   ));
   await sendListMessage(phone,
-    `🏫 *${department.toUpperCase()}*\nApproved students: ${count ?? data.length}\nPage ${safePage + 1}\n\nSorted by class S/N, then matriculation number. Select a student for attendance dates and CBT results.`,
+    `🏫 *${department.toUpperCase()}*\nApproved students: ${totalStudents}\nPage ${safePage + 1}\n\nSorted by class S/N, then matriculation number. Select a student for attendance dates and CBT results.`,
     "Student Register", [{ title: "Students • S/N order", rows }],
     "Lizzy • Department Register", "Student academic records"
   );
   const nav = [];
   if (safePage > 0) nav.push(makeButton(`admin_roster_page_${encodeURIComponent(department)}_${safePage - 1}`, "⬅ Previous"));
-  if ((count ?? 0) > from + data.length) nav.push(makeButton(`admin_roster_page_${encodeURIComponent(department)}_${safePage + 1}`, "Next ➡"));
+  if (totalStudents > from + pageStudents.length) nav.push(makeButton(`admin_roster_page_${encodeURIComponent(department)}_${safePage + 1}`, "Next ➡"));
   nav.push(makeButton("admin_student_records", "↩ Departments"));
   await sendButtonMessage(phone, "Department navigation:", nav);
 }
@@ -1681,10 +1683,11 @@ export async function handleAdminAgent(
   }
   if (command.startsWith("admin_roster_student_")) {
     const payload = inputRaw.slice("admin_roster_student_".length);
-    const parts = payload.split("_");
-    const page = parts.pop() || "0";
-    const department = parts.pop() || "";
-    const studentId = parts.join("_");
+    const studentId = payload.slice(0, 36);
+    const rest = payload.slice(37);
+    const lastSep = rest.lastIndexOf("_");
+    const department = lastSep >= 0 ? rest.slice(0, lastSep) : "";
+    const page = lastSep >= 0 ? rest.slice(lastSep + 1) : "0";
     await showStudentAcademicRecord(phone, studentId, department, page); return;
   }
 
