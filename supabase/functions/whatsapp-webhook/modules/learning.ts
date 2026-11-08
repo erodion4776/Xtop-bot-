@@ -65,6 +65,11 @@ export interface LearningCtx {
   currentPracticeIndex?: number;
   practiceScore?: number;
   totalLessons?: number;
+  labMode?: string;
+  labStage?: string;
+  labObservations?: number[];
+  labAverage?: number;
+  labRating?: number;
 }
 
 function getCtx(conv: Conversation): LearningCtx {
@@ -218,6 +223,12 @@ export async function handleLearning(
     case "COURSE_MENU":
       await processCourseMenuSelection(phone, text, conv, ctx);
       break;
+    case "PRACTICAL_LAB_MENU":
+      await processPracticalLabMenu(phone, text, conv, ctx);
+      break;
+    case "PRACTICAL_LAB_INPUT":
+      await processPracticalLabInput(phone, text, conv, ctx);
+      break;
     case "VIEWING_LESSON":
     case "VIEWING_SECTION":
       await processLessonNavigation(phone, text, conv, ctx);
@@ -362,6 +373,7 @@ export async function showCourseMenu(
         makeListRow("cm_lecture", "1️⃣ Lecture / Classroom", "Start or continue"),
         makeListRow("cm_materials", "2️⃣ Course Materials", "Handouts, diagrams & PDFs"),
         makeListRow("cm_progress", "3️⃣ My Progress", "Lesson completion status"),
+        ...(ctx.courseCode === "ELA401" ? [makeListRow("cm_lab", "🧪 Practical Lab & Simulations", "12 physical guides + phone calculators")] : []),
       ]},
       { title: "Assessments & Exit", rows: [
         makeListRow("cm_test", "4️⃣ Final CBT Exam", "Take course test"),
@@ -383,6 +395,11 @@ async function processCourseMenuSelection(
 
   if (n === "cm_lecture" || num === 1 || n.includes("lecture") || n.includes("classroom")) {
     await deliverLesson(phone, conv.id, ctx, ctx.currentLessonOrder || 1);
+    return;
+  }
+  if (n === "cm_lab" || n.includes("practical lab")) {
+    if (ctx.courseCode !== "ELA401") { await sendTextMessage(phone, "The practical simulation tools are currently configured for ELA401."); await showCourseMenu(phone, conv.id, ctx); return; }
+    await showPracticalLabMenu(phone, conv.id, ctx);
     return;
   }
   if (n === "cm_materials" || num === 2 || n.includes("materials")) {
@@ -412,6 +429,180 @@ async function processCourseMenuSelection(
 
   await sendTextMessage(phone, "⚠️ Please select a valid course option (1–8):");
   await showCourseMenu(phone, conv.id, ctx);
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   ELA401 PHONE-BASED PRACTICAL SIMULATIONS
+   Physical experiment procedures remain in the course practical guides.
+   Phone results are learning simulations, not certified measurements.
+═══════════════════════════════════════════════════════ */
+
+async function showPracticalLabMenu(phone: string, convId: string, ctx: LearningCtx): Promise<void> {
+  ctx.labMode = undefined;
+  ctx.labStage = undefined;
+  ctx.labObservations = undefined;
+  ctx.labAverage = undefined;
+  ctx.labRating = undefined;
+  await saveCtx(convId, ctx, "PRACTICAL_LAB_MENU");
+  await sendListMessage(phone,
+    "🧪 *ELA401 Practical Lab & Simulations*\n\nChoose a phone-based calculator. Complete the physical experiment from the matching practical guide when laboratory equipment is available.\n\n_Simulated results are for learning and are not calibration certificates._",
+    "Choose a simulation",
+    [
+      { title: "Industrial Work Measurement", rows: [
+        makeListRow("lab_work_time", "1. Work Time Calculator", "Mean, rating, normal & standard time"),
+        makeListRow("lab_work_sample", "2. Work Sampling", "Calculate activity proportions"),
+      ]},
+      { title: "Precision Time Measurement", rows: [
+        makeListRow("lab_pendulum", "3. Pendulum Period", "Length to theoretical period"),
+        makeListRow("lab_quartz", "4. Quartz Clock Drift", "ppm to daily/weekly time error"),
+        makeListRow("lab_frequency", "5. Frequency Converter", "Hz to period and milliseconds"),
+        makeListRow("lab_calibration", "6. Timing Comparison", "Indication error and correction"),
+        makeListRow("lab_uncertainty", "7. Uncertainty Calculator", "Combine uncertainty components"),
+      ]},
+      { title: "Navigation", rows: [
+        makeListRow("lab_back", "Course Menu", "Return to ELA401 options")
+      ]}
+    ],
+    "ELA401 Lab", "Engr. Ero Learning Centre"
+  );
+}
+
+async function processPracticalLabMenu(phone: string, text: string, conv: Conversation, ctx: LearningCtx): Promise<void> {
+  const n = normalise(text);
+  const num = extractSelection(text);
+  if (n === "lab_back" || n.includes("course menu") || n === "back") {
+    await showCourseMenu(phone, conv.id, ctx);
+    return;
+  }
+  const selected = n === "lab_work_time" || num === 1 ? "work_time"
+    : n === "lab_work_sample" || num === 2 ? "work_sample"
+    : n === "lab_pendulum" || num === 3 ? "pendulum"
+    : n === "lab_quartz" || num === 4 ? "quartz"
+    : n === "lab_frequency" || num === 5 ? "frequency"
+    : n === "lab_calibration" || num === 6 ? "calibration"
+    : n === "lab_uncertainty" || num === 7 ? "uncertainty" : "";
+  if (!selected) {
+    await sendTextMessage(phone, "Please choose one of the listed simulations, or select Course Menu.");
+    return;
+  }
+  ctx.labMode = selected;
+  if (selected === "work_time") {
+    ctx.labStage = "observations";
+    await saveCtx(conv.id, ctx, "PRACTICAL_LAB_INPUT");
+    await sendTextMessage(phone, "⏱️ *Work Time Calculator — Step 1 of 3*\n\nEnter at least two observed cycle times in seconds, separated by commas.\nExample: 12.4, 12.8, 12.6, 12.2, 12.5");
+  } else if (selected === "work_sample") {
+    ctx.labStage = "sample";
+    await saveCtx(conv.id, ctx, "PRACTICAL_LAB_INPUT");
+    await sendTextMessage(phone, "📊 *Work Sampling Calculator*\n\nEnter the number of observations in the activity, followed by the total observations, separated by a comma.\nExample: 35, 100");
+  } else if (selected === "pendulum") {
+    ctx.labStage = "length";
+    await saveCtx(conv.id, ctx, "PRACTICAL_LAB_INPUT");
+    await sendTextMessage(phone, "🔔 *Pendulum Period Simulator*\n\nEnter pendulum length in metres (from pivot to the centre of the bob). Example: 0.50");
+  } else if (selected === "quartz") {
+    ctx.labStage = "ppm";
+    await saveCtx(conv.id, ctx, "PRACTICAL_LAB_INPUT");
+    await sendTextMessage(phone, "⌚ *Quartz Drift Simulator*\n\nEnter the signed frequency offset in ppm. Example: 10 for a clock running fast by +10 ppm, or -10 for slow.");
+  } else if (selected === "frequency") {
+    ctx.labStage = "hz";
+    await saveCtx(conv.id, ctx, "PRACTICAL_LAB_INPUT");
+    await sendTextMessage(phone, "〰️ *Frequency Converter*\n\nEnter frequency in hertz (Hz). Example: 32768");
+  } else if (selected === "calibration") {
+    ctx.labStage = "comparison";
+    await saveCtx(conv.id, ctx, "PRACTICAL_LAB_INPUT");
+    await sendTextMessage(phone, "🎯 *Timing Instrument Comparison*\n\nEnter instrument indication and reference value in the same unit, separated by a comma. Example: 5.02, 5.00");
+  } else {
+    ctx.labStage = "uncertainty";
+    await saveCtx(conv.id, ctx, "PRACTICAL_LAB_INPUT");
+    await sendTextMessage(phone, "📐 *Uncertainty Calculator*\n\nEnter independent standard uncertainty components in the same unit, separated by commas. Example: 0.01, 0.02, 0.015");
+  }
+}
+
+function parseLabNumbers(value: string): number[] {
+  return value.split(/[;,\s]+/).map(v => Number(v.trim())).filter(v => Number.isFinite(v));
+}
+
+async function processPracticalLabInput(phone: string, text: string, conv: Conversation, ctx: LearningCtx): Promise<void> {
+  const values = parseLabNumbers(text);
+  const onePositive = values.length === 1 && values[0] > 0;
+  const finish = async (message: string) => {
+    await sendTextMessage(phone, message + "\n\nType *1* to run another simulation or *Course Menu* to return.");
+    ctx.labMode = undefined;
+    ctx.labStage = undefined;
+    await saveCtx(conv.id, ctx, "PRACTICAL_LAB_MENU");
+    await showPracticalLabMenu(phone, conv.id, ctx);
+  };
+  const retry = async (message: string) => {
+    await sendTextMessage(phone, "⚠️ " + message);
+  };
+
+  if (ctx.labMode === "work_time") {
+    if (ctx.labStage === "observations") {
+      if (values.length < 2 || values.some(v => v <= 0)) { await retry("Enter at least two positive time observations, separated by commas."); return; }
+      ctx.labObservations = values;
+      ctx.labAverage = values.reduce((a,b) => a+b,0) / values.length;
+      ctx.labStage = "rating";
+      await saveCtx(conv.id, ctx, "PRACTICAL_LAB_INPUT");
+      await sendTextMessage(phone, "Average observed time: *" + ctx.labAverage.toFixed(4) + " s*\n\n*Step 2 of 3:* Enter performance rating as a percentage. Example: 110");
+      return;
+    }
+    if (ctx.labStage === "rating") {
+      if (!onePositive || values[0] > 200) { await retry("Enter one rating percentage greater than 0 and not above 200. Example: 110"); return; }
+      ctx.labRating = values[0];
+      ctx.labStage = "allowance";
+      await saveCtx(conv.id, ctx, "PRACTICAL_LAB_INPUT");
+      await sendTextMessage(phone, "Rating factor: *" + (values[0]/100).toFixed(4) + "*\n\n*Step 3 of 3:* Enter allowance percentage as a fraction of total standard time. Example: 15. Enter 0 if no allowance is being applied.");
+      return;
+    }
+    if (ctx.labStage === "allowance") {
+      if (values.length !== 1 || values[0] < 0 || values[0] >= 100) { await retry("Enter one allowance percentage from 0 up to (but not including) 100."); return; }
+      const avg = ctx.labAverage || 0;
+      const rating = ctx.labRating || 100;
+      const normal = avg * rating / 100;
+      const allowance = values[0] / 100;
+      const standard = normal / (1 - allowance);
+      await finish("🧮 *Work Measurement Result*\nObservations: " + (ctx.labObservations || []).length + "\nAverage observed time: " + avg.toFixed(4) + " s\nRating: " + rating.toFixed(2) + "%\nNormal time: " + normal.toFixed(4) + " s\nAllowance: " + values[0].toFixed(2) + "% of standard time\n*Standard time: " + standard.toFixed(4) + " s*\n\nFormula: NT = average × rating factor; ST = NT ÷ (1 − allowance).");
+      return;
+    }
+  }
+
+  if (ctx.labMode === "work_sample") {
+    if (values.length !== 2 || values[0] < 0 || values[1] <= 0 || values[0] > values[1]) { await retry("Enter activity count,total count. Both must be non-negative, total must be positive, and activity count cannot exceed total. Example: 35,100"); return; }
+    const p = values[0] / values[1] * 100;
+    await finish("📊 *Work Sampling Result*\nActivity observations: " + values[0] + "\nTotal observations: " + values[1] + "\n*Estimated activity proportion: " + p.toFixed(2) + "%*\n\nThis is a sample estimate. Its precision depends on the sampling design and sample size.");
+    return;
+  }
+  if (ctx.labMode === "pendulum") {
+    if (!onePositive || values[0] > 10) { await retry("Enter one pendulum length in metres greater than 0 and no more than 10. Example: 0.50"); return; }
+    const period = 2 * Math.PI * Math.sqrt(values[0] / 9.80665);
+    await finish("🔔 *Pendulum Simulation Result*\nLength: " + values[0].toFixed(4) + " m\nTheoretical period: *" + period.toFixed(6) + " s*\nFrequency: " + (1/period).toFixed(6) + " Hz\n\nFormula: T = 2π√(L/g), using g = 9.80665 m/s² and the small-angle approximation.");
+    return;
+  }
+  if (ctx.labMode === "quartz") {
+    if (values.length !== 1 || Math.abs(values[0]) > 100000) { await retry("Enter one signed frequency offset in ppm. Example: +10 or -10."); return; }
+    const daily = values[0] * 1e-6 * 86400;
+    await finish("⌚ *Quartz Drift Result*\nFrequency offset: " + values[0] + " ppm\nDaily time error: *" + daily.toFixed(6) + " s/day*\nWeekly time error: " + (daily*7).toFixed(6) + " s/week\n\nPositive means the clock gains time; negative means it loses time. Assumes a constant frequency offset.");
+    return;
+  }
+  if (ctx.labMode === "frequency") {
+    if (!onePositive || values[0] > 1e12) { await retry("Enter one positive frequency in hertz. Example: 32768"); return; }
+    const period = 1 / values[0];
+    await finish("〰️ *Frequency Conversion Result*\nFrequency: " + values[0] + " Hz\nPeriod: *" + period.toExponential(6) + " s*\nPeriod: " + (period*1000).toExponential(6) + " ms\n\nFormula: T = 1/f.");
+    return;
+  }
+  if (ctx.labMode === "calibration") {
+    if (values.length !== 2) { await retry("Enter exactly two numbers: instrument indication, reference value. Example: 5.02, 5.00"); return; }
+    const error = values[0] - values[1];
+    await finish("🎯 *Timing Comparison Result*\nInstrument indication: " + values[0] + "\nReference value: " + values[1] + "\nIndication error: *" + error.toFixed(6) + "*\nCorrection (negative of error): " + (-error).toFixed(6) + "\n\nThis is a numerical comparison only. Formal calibration requires a suitable documented reference and uncertainty statement.");
+    return;
+  }
+  if (ctx.labMode === "uncertainty") {
+    if (values.length < 2 || values.some(v => v < 0)) { await retry("Enter at least two non-negative uncertainty components in the same unit. Example: 0.01, 0.02, 0.015"); return; }
+    const combined = Math.sqrt(values.reduce((sum,v) => sum + v*v,0));
+    await finish("📐 *Combined Standard Uncertainty*\nComponents: " + values.length + "\nCombined value (RSS): *" + combined.toFixed(6) + "*\n\nFormula: u_c = √(u₁² + u₂² + …). Use this only when the components are independent and expressed in the same unit.");
+    return;
+  }
+  await showPracticalLabMenu(phone, conv.id, ctx);
 }
 
 // ═══════════════════════════════════════════════════════
