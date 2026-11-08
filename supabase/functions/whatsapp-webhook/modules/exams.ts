@@ -26,6 +26,8 @@ export interface ExamCtx extends LearningCtx {
   examDurationMinutes?: number;
   examStartTime?: string;
   attemptsCount?: number;
+  studentLevel?: string;
+  examFeeNaira?: number;
 }
 
 function getExamCtx(conv: Conversation): ExamCtx {
@@ -54,6 +56,23 @@ export async function startExamEntry(
   if (!studentId || !courseId) {
     await sendTextMessage(phone, "⚠️ Unable to load exam. Please enter your course code again.");
     await showCourseMenu(phone, conversationId, learningCtx);
+    return;
+  }
+
+  // Resolve the verified student's academic level before creating any payment.
+  const { data: student, error: studentError } = await supabase
+    .from("students")
+    .select("level")
+    .eq("id", studentId)
+    .maybeSingle();
+  if (studentError || !student?.level) {
+    await sendTextMessage(phone, "⚠️ We could not confirm your registered level. Please contact the Learning Centre administrator before paying.");
+    return;
+  }
+  const levelDigits = String(student.level).match(/\\d{3}/)?.[0];
+  const examFeeNaira = levelDigits === "400" ? 1000 : levelDigits === "300" ? 500 : 0;
+  if (!examFeeNaira) {
+    await sendTextMessage(phone, `❌ CBT payment is currently configured for 300 Level (₦500) and 400 Level (₦1,000). Your registered level is *${student.level}*. Please contact the administrator.`);
     return;
   }
 
@@ -100,6 +119,8 @@ export async function startExamEntry(
     ...learningCtx,
     questions,
     attemptsCount,
+    studentLevel: String(student.level),
+    examFeeNaira,
     examDurationMinutes: 30 // 30-minute exam timer
   };
 
@@ -110,7 +131,7 @@ export async function startExamEntry(
     const retakeWarning =
       `⚠️ *EXAM RETAKE WARNING (Attempt ${attemptsCount + 1} of 3)*\n\n` +
       `Retaking this exam will *CANCEL & OVERWRITE* your current score. Only your most recent score will stand.\n\n` +
-      `Each new attempt requires a new *₦1,000.00* access fee payment.\n\n` +
+      `Each new attempt requires a new *₦${examFeeNaira.toLocaleString("en-NG")}* access fee payment.\n\n` +
       `Are you sure you want to proceed and generate a new payment link?`;
 
     await sendButtonMessage(
@@ -153,7 +174,7 @@ async function handlePaywallGate(
 
   // If paymentsCount <= attemptsCount, a new payment is required for this attempt
   if (paymentsCount <= attemptsCount) {
-    const payment = await initializeExamPayment(studentId, courseId, courseCode, phone);
+    const examFeeNaira = ctx.examFeeNaira || (String(ctx.studentLevel || "").includes("400") ? 1000 : 500);\n    const payment = await initializeExamPayment(studentId, courseId, courseCode, phone, examFeeNaira);
 
     if (!payment) {
       await sendTextMessage(phone, "⚠️ Payment gateway is temporarily busy. Please try again shortly.");
@@ -172,7 +193,7 @@ async function handlePaywallGate(
     const payMessage =
       `💳 *CBT EXAM ACCESS FEE (Attempt ${attemptsCount + 1}/3)*\n\n` +
       `Course: *${courseCode} — ${ctx.courseName || ""}*\n` +
-      `Access Fee: *₦1,000.00*\n\n` +
+      `Level: *${ctx.studentLevel || "Unconfirmed"}*\\nAccess Fee: *₦${examFeeNaira.toLocaleString("en-NG")}.00*\n\n` +
       `👇 *Click the secure link below to make payment:* \n` +
       `${payment.paymentUrl}\n\n` +
       `_After completing payment, tap *Verify Payment* below to unlock your exam immediately:_`;
@@ -252,7 +273,7 @@ async function handlePaymentVerification(
     }
 
     await sendTextMessage(phone, "⏳ Verifying payment with Paystack, please wait...");
-    const verified = await verifyExamPayment(ref);
+    const verified = await verifyExamPayment(ref, ctx.examFeeNaira || 0);
 
     if (verified) {
       await sendTextMessage(phone, "🎉 *Payment Confirmed!* Access unlocked.");
@@ -271,7 +292,7 @@ async function handlePaymentVerification(
     return;
   }
 
-  await sendTextMessage(phone, "Please tap *Verify Payment* once your ₦1,000 checkout transaction is completed.");
+  await sendTextMessage(phone, "Please tap *Verify Payment* once your displayed CBT access-fee checkout is completed.");
 }
 
 // ═══════════════════════════════════════════════════════
