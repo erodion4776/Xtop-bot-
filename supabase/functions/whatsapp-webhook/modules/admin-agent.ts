@@ -532,7 +532,7 @@ async function showLearningLesson(phone: string, lessonId: string): Promise<void
 
 
 function pdfSafe(value: unknown): string {
-  return String(value ?? "—").replace(/[^\\x20-\\x7E]/g, "?").replace(/[\\r\\t]/g, " ").slice(0, 180);
+  return String(value ?? "—").replace(/[^\x20-\x7E]/g, "?").replace(/[\r\t]/g, " ").slice(0, 180);
 }
 
 async function sendResultPdf(phone: string, filename: string, title: string, blocks: string[][]): Promise<void> {
@@ -669,8 +669,7 @@ async function listStudentDepartments(phone: string): Promise<void> {
     "Choose Department", [{ title: "Departments", rows }],
     "Lizzy • Student Register", "Approved students only"
   );
-  await sendButtonMessage(phone, "Download departmental results:", [
-    makeButton("admin_roster_pdf_" + encodeURIComponent(departments[0]), "Download First Dept PDF"),
+  await sendButtonMessage(phone, "Student register:", [
     makeButton("admin_students_pending", "⏳ Pending Verification"),
     makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
   ]);
@@ -716,7 +715,10 @@ async function listDepartmentStudents(phone: string, departmentInput: string, pa
   if (safePage > 0) nav.push(makeButton(`admin_roster_page_${encodeURIComponent(department)}_${safePage - 1}`, "⬅ Previous"));
   if (totalStudents > from + pageStudents.length) nav.push(makeButton(`admin_roster_page_${encodeURIComponent(department)}_${safePage + 1}`, "Next ➡"));
   nav.push(makeButton("admin_student_records", "↩ Departments"));
-  await sendButtonMessage(phone, "Department navigation:", nav);
+  await sendButtonMessage(phone, "Department result sheet:", [
+    makeButton("admin_roster_pdf_" + encodeURIComponent(department), "Download Dept PDF"),
+    ...nav.slice(0, 2),
+  ]);
 }
 
 async function showStudentAcademicRecord(phone: string, studentIdInput: string, departmentInput: string, pageInput: string): Promise<void> {
