@@ -95,6 +95,7 @@ export async function showAdminAgentMenu(phone: string): Promise<void> {
         makeListRow("admin_status", "🟢 DB Connectivity", "Test connection to Supabase database"),
         makeListRow("admin_stats", "📊 Bot Statistics", "View messaging and contacts metrics"),
         makeListRow("admin_learning", "🎓 Learning Centre Progress", "Courses, lessons, students and publication status"),
+        makeListRow("admin_students_pending", "🎓 Student Verification", "Review new student registrations"),
         makeListRow("admin_github", "🚗 GitHub Actions API", "Verify Actions integration connectivity"),
         makeListRow("admin_deployments", "🚀 Recent Runs", "Inspect workflow execution logs"),
         makeListRow("admin_logs", "🔎 Workflow Failures", "Inspect recent failing job steps"),
@@ -524,6 +525,100 @@ async function showLearningLesson(phone: string, lessonId: string): Promise<void
   }
 }
 
+
+
+async function listPendingStudents(phone: string): Promise<void> {
+  const { data, error } = await supabase.from("students")
+    .select("id, name, matric_number, serial_number, department, level, phone, created_at")
+    .eq("status", "PENDING").order("created_at", { ascending: true }).limit(50);
+  if (error) {
+    safeErrorLog("listPendingStudents", error);
+    await sendTextMessage(phone, "⚠️ Could not load pending student registrations.");
+    return;
+  }
+  if (!data?.length) {
+    await sendTextMessage(phone, "✅ There are no students waiting for verification.");
+    return;
+  }
+  const rows = data.map((s: any) => makeListRow(
+    `admin_student_review_${s.id}`,
+    String(s.name || "Unnamed student").slice(0, 24),
+    `${s.matric_number || "No Mat No"} • S/N ${s.serial_number || "—"}`
+  ));
+  await sendListMessage(phone,
+    `🎓 *PENDING STUDENT VERIFICATION*\n\n${data.length} student(s) awaiting review. Select a student to inspect their details.`,
+    "Review Student", [{ title: "Pending Students", rows }],
+    "Lizzy • Student Verification", "Lecturer approval required"
+  );
+}
+
+async function reviewStudent(phone: string, studentIdInput: string): Promise<void> {
+  const id = sanitizeId(studentIdInput);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    await sendTextMessage(phone, "⚠️ Invalid student reference."); return;
+  }
+  const { data: s, error } = await supabase.from("students")
+    .select("id, name, matric_number, serial_number, department, level, phone, status")
+    .eq("id", id).maybeSingle();
+  if (error || !s) {
+    safeErrorLog("reviewStudent", error);
+    await sendTextMessage(phone, "⚠️ Student record not found."); return;
+  }
+  await sendTextMessage(phone,
+    "🎓 *STUDENT IDENTITY REVIEW*\n\n" +
+    `👤 Name: ${s.name || "—"}\n🎓 Matric No: ${s.matric_number || "—"}\n🔢 Class S/N: ${s.serial_number || "—"}\n🏫 Department: ${s.department || "—"}\n📚 Level: ${s.level || "—"}\n📱 WhatsApp: ${s.phone || "—"}\n\nStatus: *${s.status || "UNKNOWN"}*\n\nCompare these details with official class/student records before approval.`
+  );
+  if (String(s.status).toUpperCase() !== "PENDING") {
+    await sendTextMessage(phone, "This student is not currently awaiting approval."); return;
+  }
+  await sendButtonMessage(phone, "Choose verification decision:", [
+    makeButton(`admin_student_approve_${id}`, "✅ Approve Student"),
+    makeButton(`admin_student_reject_${id}`, "⛔ Reject Student"),
+    makeButton("admin_students_pending", "↩ Pending List"),
+  ]);
+}
+
+async function decideStudent(phone: string, studentIdInput: string, decision: "APPROVE" | "REJECT", confirm: boolean): Promise<void> {
+  const id = sanitizeId(studentIdInput);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    await sendTextMessage(phone, "⚠️ Invalid student reference."); return;
+  }
+  const { data: s, error } = await supabase.from("students")
+    .select("id, name, matric_number, serial_number, department, level, phone, status")
+    .eq("id", id).maybeSingle();
+  if (error || !s || String(s.status).toUpperCase() !== "PENDING") {
+    safeErrorLog("decideStudent.lookup", error);
+    await sendTextMessage(phone, "⚠️ Student is not awaiting approval. No change was made."); return;
+  }
+  if (!confirm) {
+    const approve = decision === "APPROVE";
+    await sendTextMessage(phone,
+      (approve ? "⚠️ *CONFIRM STUDENT APPROVAL*" : "⚠️ *CONFIRM STUDENT REJECTION*") +
+      `\n\nStudent: *${s.name}*\nMatric No: *${s.matric_number}*\nClass S/N: *${s.serial_number}*\nDepartment: *${s.department}*\nLevel: *${s.level}L*\n\n` +
+      (approve ? "Approval unlocks lectures and course materials." : "Rejection keeps this student locked out of lectures.")
+    );
+    await sendButtonMessage(phone, "Confirm verification decision:", [
+      makeButton(`admin_student_${decision.toLowerCase()}_confirm_${id}`, approve ? "✅ Confirm Approval" : "⛔ Confirm Reject"),
+      makeButton(`admin_student_review_${id}`, "↩ Back to Student"),
+    ]);
+    return;
+  }
+  const nextStatus = decision === "APPROVE" ? "ACTIVE" : "REJECTED";
+  const { error: updateError } = await supabase.from("students")
+    .update({ status: nextStatus, updated_at: new Date().toISOString() })
+    .eq("id", id).eq("status", "PENDING");
+  if (updateError) {
+    safeErrorLog("decideStudent.update", updateError);
+    await sendTextMessage(phone, "❌ Verification update failed. Student remains pending."); return;
+  }
+  await sendTextMessage(phone, decision === "APPROVE"
+    ? `✅ *STUDENT APPROVED*\n\n${s.name} (${s.matric_number}) may now enter lectures and course materials.`
+    : `⛔ *STUDENT REJECTED*\n\n${s.name} (${s.matric_number}) remains locked out. Ask the student to contact the administrator.`);
+  if (s.phone) await sendTextMessage(s.phone, decision === "APPROVE"
+    ? "✅ *Your student identity has been verified.* Return to the Engr. Ero Learning Centre and enter your course code."
+    : "⛔ *Your registration was not approved.* Please contact the Learning Centre administrator to correct your details.");
+  await listPendingStudents(phone);
+}
 
 /* =========================================================
    SECURE ADMIN LEAD ASSISTANT HELPERS
@@ -1417,6 +1512,25 @@ export async function handleAdminAgent(
   if (!isAdminPhone(phone)) {
     console.warn(`[AdminAgent] Unauthorized access attempt blocked from: ${phone}`);
     return;
+  }
+
+  if (command === "admin_students_pending" || command === "student verification") {
+    await listPendingStudents(phone); return;
+  }
+  if (command.startsWith("admin_student_review_")) {
+    await reviewStudent(phone, inputRaw.slice("admin_student_review_".length)); return;
+  }
+  if (command.startsWith("admin_student_approve_confirm_")) {
+    await decideStudent(phone, inputRaw.slice("admin_student_approve_confirm_".length), "APPROVE", true); return;
+  }
+  if (command.startsWith("admin_student_reject_confirm_")) {
+    await decideStudent(phone, inputRaw.slice("admin_student_reject_confirm_".length), "REJECT", true); return;
+  }
+  if (command.startsWith("admin_student_approve_")) {
+    await decideStudent(phone, inputRaw.slice("admin_student_approve_".length), "APPROVE", false); return;
+  }
+  if (command.startsWith("admin_student_reject_")) {
+    await decideStudent(phone, inputRaw.slice("admin_student_reject_".length), "REJECT", false); return;
   }
 
   if (["exit", "quit", "close", "admin_agent_exit"].includes(command)) {
