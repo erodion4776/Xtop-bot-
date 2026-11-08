@@ -25,7 +25,7 @@ export async function initializeExamPayment(
   phone: string
 ): Promise<{ paymentUrl: string; reference: string } | null> {
   const reference = `XTOP-CBT-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
-  const amountInKobo = 100000; // 1,000 NGN = 100,000 kobo
+  const amountInKobo = amountNaira * 100;
 
   try {
     const resp = await fetch(`${PAYSTACK_API_BASE}/transaction/initialize`, {
@@ -58,7 +58,7 @@ export async function initializeExamPayment(
       student_id: studentId,
       course_id: courseId,
       reference,
-      amount: 1000.00,
+      amount: amountNaira,
       status: "PENDING",
       payment_url: paymentUrl
     });
@@ -73,7 +73,7 @@ export async function initializeExamPayment(
 /**
  * Directly verifies a transaction with the Paystack API
  */
-export async function verifyExamPayment(reference: string): Promise<boolean> {
+export async function verifyExamPayment(reference: string, expectedAmountNaira: number): Promise<boolean> {
   try {
     const resp = await fetch(`${PAYSTACK_API_BASE}/transaction/verify/${reference}`, {
       method: "GET",
@@ -81,7 +81,7 @@ export async function verifyExamPayment(reference: string): Promise<boolean> {
     });
 
     const data = await resp.json();
-    if (data.status && data.data.status === "success") {
+    const expectedKobo = expectedAmountNaira * 100;\n    if (data.status && data.data.status === "success" && Number(data.data.amount) === expectedKobo) {
       // Mark transaction as SUCCESSFUL in database
       await supabase.from("payment_transactions")
         .update({ status: "SUCCESSFUL", updated_at: new Date().toISOString() })
