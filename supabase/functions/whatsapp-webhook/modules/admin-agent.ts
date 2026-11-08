@@ -527,17 +527,24 @@ async function showLearningLesson(phone: string, lessonId: string): Promise<void
 
 
 
-async function listPendingStudents(phone: string): Promise<void> {
+async function listPendingStudents(phone: string, page = 0): Promise<void> {
+  const safePage = Math.max(0, Math.floor(page));
+  const from = safePage * 10;
   const { data, error } = await supabase.from("students")
     .select("id, name, matric_number, serial_number, department, level, phone, created_at")
-    .eq("status", "PENDING").order("created_at", { ascending: true }).limit(50);
+    .eq("status", "PENDING").order("created_at", { ascending: true })
+    .range(from, from + 9);
   if (error) {
     safeErrorLog("listPendingStudents", error);
     await sendTextMessage(phone, "⚠️ Could not load pending student registrations.");
     return;
   }
-  if (!data?.length) {
+  if (!data?.length && safePage === 0) {
     await sendTextMessage(phone, "✅ There are no students waiting for verification.");
+    return;
+  }
+  if (!data?.length) {
+    await sendTextMessage(phone, "No more pending students. Return to the previous page or Lizzy menu.");
     return;
   }
   const rows = data.map((s: any) => makeListRow(
@@ -546,10 +553,15 @@ async function listPendingStudents(phone: string): Promise<void> {
     `${s.matric_number || "No Mat No"} • S/N ${s.serial_number || "—"}`
   ));
   await sendListMessage(phone,
-    `🎓 *PENDING STUDENT VERIFICATION*\n\n${data.length} student(s) awaiting review. Select a student to inspect their details.`,
+    `🎓 *PENDING STUDENT VERIFICATION*\n\nPage ${safePage + 1}. Select a student to inspect their details.`,
     "Review Student", [{ title: "Pending Students", rows }],
     "Lizzy • Student Verification", "Lecturer approval required"
   );
+  const nav = [];
+  if (safePage > 0) nav.push(makeButton(`admin_students_pending_page_${safePage - 1}`, "⬅ Previous"));
+  if (data.length === 10) nav.push(makeButton(`admin_students_pending_page_${safePage + 1}`, "Next ➡"));
+  nav.push(makeButton("admin_agent_menu", "🏠 Lizzy Menu"));
+  await sendButtonMessage(phone, "Student verification pages:", nav);
 }
 
 async function reviewStudent(phone: string, studentIdInput: string): Promise<void> {
@@ -1515,7 +1527,11 @@ export async function handleAdminAgent(
   }
 
   if (command === "admin_students_pending" || command === "student verification") {
-    await listPendingStudents(phone); return;
+    await listPendingStudents(phone, 0); return;
+  }
+  if (command.startsWith("admin_students_pending_page_")) {
+    const page = Number.parseInt(inputRaw.slice("admin_students_pending_page_".length), 10);
+    await listPendingStudents(phone, Number.isFinite(page) ? page : 0); return;
   }
   if (command.startsWith("admin_student_review_")) {
     await reviewStudent(phone, inputRaw.slice("admin_student_review_".length)); return;
