@@ -236,6 +236,7 @@ export interface Student {
   level: string | null;
   email: string | null;
   serial_number: string | null;
+  status?: string | null;
   created_at: string;
   updated_at: string | null;
 }
@@ -1029,7 +1030,7 @@ export async function getOrCreateStudent(
       name: defaultName,
       first_name: names[0] || "",
       last_name: names.slice(1).join(" ") || "",
-      status: "ACTIVE",
+      status: "PENDING",
     })
     .select("*")
     .single();
@@ -1085,6 +1086,7 @@ export async function updateStudentProfile(
     department?: string;
     level?: string;
     serial_number?: string;
+    status?: string;
   }
 ): Promise<Student | null> {
   const sb = getSupabaseClient();
@@ -1107,6 +1109,7 @@ export async function updateStudentProfile(
   if (fields.department) updatePayload.department = fields.department.trim();
   if (fields.level) updatePayload.level = fields.level.trim();
   if (fields.serial_number) updatePayload.serial_number = fields.serial_number.trim();
+  if (fields.status) updatePayload.status = fields.status;
 
   const { data, error } = await sb
     .from("students")
