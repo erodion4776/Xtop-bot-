@@ -29,7 +29,7 @@ jobs:
           node-version: 22
 
       - name: Install pinned Supabase CLI from npm
-        run: npm install --no-save --no-package-lock supabase@2.81.3
+        run: npm install --no-save --no-package-lock supabase@3.0.0
 
       - name: Link project
         run: npx --no-install supabase link --project-ref "$SUPABASE_PROJECT_ID"
