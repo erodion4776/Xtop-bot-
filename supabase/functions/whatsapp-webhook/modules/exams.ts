@@ -90,15 +90,37 @@ export async function startExamEntry(
     return;
   }
 
-  // 2. Fetch Completed Attempts Count
+  // 2. Fetch completed attempts and exclude every question used in prior attempts.
   const { data: attempts } = await supabase
     .from("exam_attempts")
-    .select("*")
+    .select("id, question_ids, answers_json, submitted_at")
     .eq("student_id", studentId)
     .eq("course_id", courseId)
     .not("submitted_at", "is", null);
 
   const attemptsCount = attempts?.length || 0;
+  const previouslyUsed = new Set<string>();
+  for (const prior of attempts || []) {
+    for (const id of (prior as any).question_ids || []) previouslyUsed.add(String(id));
+    const priorAnswers = (prior as any).answers_json;
+    if (Array.isArray(priorAnswers)) {
+      for (const answer of priorAnswers) {
+        if (answer?.question_id) previouslyUsed.add(String(answer.question_id));
+      }
+    }
+  }
+
+  const eligibleQuestions = (questions || []).filter((question: any) => !previouslyUsed.has(String(question.id)));
+  const shuffledPool = [...eligibleQuestions];
+  for (let i = shuffledPool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffledPool[i], shuffledPool[j]] = [shuffledPool[j], shuffledPool[i]];
+  }
+  if (shuffledPool.length < 50) {
+    await sendTextMessage(phone, `⚠️ Only ${shuffledPool.length} unused questions remain for this student. Please contact the lecturer to replenish the ELA401 question bank before starting another attempt.`);
+    return;
+  }
+  const selectedQuestions = shuffledPool.slice(0, 50).map((question: any) => shuffleExamOptions(question));
 
   // Rule: Strict 3 Attempt Maximum Limit
   if (attemptsCount >= 3) {
@@ -117,11 +139,11 @@ export async function startExamEntry(
 
   const examCtx: ExamCtx = {
     ...learningCtx,
-    questions,
+    questions: selectedQuestions,
     attemptsCount,
     studentLevel: String(student.level),
     examFeeNaira,
-    examDurationMinutes: 30 // 30-minute exam timer
+    examDurationMinutes: 60 // 60-minute exam timer
   };
 
   // 3. Handle Retake Warning (Attempt 2 or 3)
@@ -301,6 +323,38 @@ async function handlePaymentVerification(
 // 5. CBT EXAM ENGINE WITH TIMER VALIDATION
 // ═══════════════════════════════════════════════════════
 
+function shuffleExamOptions(question: any): any {
+  const options = [
+    { value: question.option_a, key: "A" },
+    { value: question.option_b, key: "B" },
+    { value: question.option_c, key: "C" },
+    { value: question.option_d, key: "D" },
+  ];
+  for (let i = options.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [options[i], options[j]] = [options[j], options[i]];
+  }
+  const correctIndex = options.findIndex(option => option.key === String(question.correct_answer).toUpperCase());
+  return {
+    ...question,
+    option_a: options[0].value,
+    option_b: options[1].value,
+    option_c: options[2].value,
+    option_d: options[3].value,
+    correct_answer: ["A", "B", "C", "D"][correctIndex],
+  };
+}
+
+async function sendExamQuestionPrompt(phone: string, question: any, index: number, total: number): Promise<void> {
+  await sendTextMessage(
+    phone,
+    `📝 *ELA401 CBT — Question ${index + 1} of ${total}*\n\n` +
+    `${question.question}\n\n` +
+    `A. ${question.option_a}\nB. ${question.option_b}\nC. ${question.option_c}\nD. ${question.option_d}\n\n` +
+    `Reply with A, B, C or D.\n_Time remaining is checked when you submit each answer._`
+  );
+}
+
 async function launchExam(
   phone: string, conversationId: string, ctx: ExamCtx
 ): Promise<void> {
@@ -315,7 +369,7 @@ async function launchExam(
     student_id: studentId,
     course_id: courseId,
     score: 0,
-    total_marks: questions.reduce((sum: number, question: any) => sum + Number(question.marks || 1), 0),
+    total_questions: questions.length,\n    question_ids: questions.map((question: any) => question.id),\n    total_marks: questions.reduce((sum: number, question: any) => sum + Number(question.marks || 1), 0),
     percentage: 0,
     pass_status: "PENDING",
     is_locked: false,
@@ -358,14 +412,14 @@ async function handleExamAnswer(
     return;
   }
 
-  // 1. ENFORCE TIMEOUT CHECKS (E.g. 30 Minutes)
+  // 1. ENFORCE THE 60-MINUTE EXAM TIME LIMIT
   if (ctx.examStartTime) {
     const startTimeMs = new Date(ctx.examStartTime).getTime();
     const nowMs = Date.now();
-    const limitMs = (ctx.examDurationMinutes || 30) * 60 * 1000;
+    const limitMs = (ctx.examDurationMinutes || 60) * 60 * 1000;
 
     if (nowMs > startTimeMs + limitMs) {
-      await sendTextMessage(phone, "⏳ *TIME EXPIRED!*\nThe 30-minute exam time limit has been exceeded. Grading what you have completed...");
+      await sendTextMessage(phone, "⏳ *TIME EXPIRED!*\nThe 60-minute exam time limit has been exceeded. Grading what you have completed...");
       await completeAndSubmitExam(phone, conv.id, ctx);
       return;
     }
