@@ -462,19 +462,15 @@ async function showPracticalLabMenu(phone: string, convId: string, ctx: Learning
   ctx.labRating = undefined;
   await saveCtx(convId, ctx, "PRACTICAL_LAB_MENU");
   await sendListMessage(phone,
-    "🧪 *ELA401 Practical Lab & Simulations*\n\nChoose a phone-based calculator. Complete the physical experiment from the matching practical guide when laboratory equipment is available.\n\n_Simulated results are for learning and are not calibration certificates._",
+    "🧪 *ELA401 Practical Lab & Simulations*\n\nChoose a precision time measurement experiment. Enter readings in the phone simulator and compare them with the physical laboratory procedure in the matching practical guide.\n\n_Simulated results are for learning and are not calibration certificates._",
     "Choose a simulation",
     [
-      { title: "Industrial Work Measurement", rows: [
-        makeListRow("lab_work_time", "1. Work Time Calculator", "Mean, rating, normal & standard time"),
-        makeListRow("lab_work_sample", "2. Work Sampling", "Calculate activity proportions"),
-      ]},
-      { title: "Precision Time Measurement", rows: [
-        makeListRow("lab_pendulum", "3. Pendulum Period", "Length to theoretical period"),
-        makeListRow("lab_quartz", "4. Quartz Clock Drift", "ppm to daily/weekly time error"),
-        makeListRow("lab_frequency", "5. Frequency Converter", "Hz to period and milliseconds"),
-        makeListRow("lab_calibration", "6. Timing Comparison", "Indication error and correction"),
-        makeListRow("lab_uncertainty", "7. Uncertainty Calculator", "Combine uncertainty components"),
+      { title: "Precision Time Measurement Experiments", rows: [
+        makeListRow("lab_pendulum", "1. Pendulum Experiment", "Repeated readings, period, frequency & error"),
+        makeListRow("lab_quartz", "2. Quartz Clock Drift", "Signed ppm, elapsed time & drift"),
+        makeListRow("lab_frequency", "3. Frequency & Period", "Cycle count, gate time & period"),
+        makeListRow("lab_calibration", "4. Instrument Calibration", "Reference readings, error & correction"),
+        makeListRow("lab_uncertainty", "5. Measurement Uncertainty", "Repeated readings & uncertainty budget"),
       ]},
       { title: "Navigation", rows: [
         makeListRow("lab_back", "Course Menu", "Return to ELA401 options")
@@ -491,13 +487,11 @@ async function processPracticalLabMenu(phone: string, text: string, conv: Conver
     await showCourseMenu(phone, conv.id, ctx);
     return;
   }
-  const selected = n === "lab_work_time" || num === 1 ? "work_time"
-    : n === "lab_work_sample" || num === 2 ? "work_sample"
-    : n === "lab_pendulum" || num === 3 ? "pendulum"
-    : n === "lab_quartz" || num === 4 ? "quartz"
-    : n === "lab_frequency" || num === 5 ? "frequency"
-    : n === "lab_calibration" || num === 6 ? "calibration"
-    : n === "lab_uncertainty" || num === 7 ? "uncertainty" : "";
+  const selected = n === "lab_pendulum" || num === 1 ? "pendulum"
+    : n === "lab_quartz" || num === 2 ? "quartz"
+    : n === "lab_frequency" || num === 3 ? "frequency"
+    : n === "lab_calibration" || num === 4 ? "calibration"
+    : n === "lab_uncertainty" || num === 5 ? "uncertainty" : "";
   if (!selected) {
     await sendTextMessage(phone, "Please choose one of the listed simulations, or select Course Menu.");
     return;
