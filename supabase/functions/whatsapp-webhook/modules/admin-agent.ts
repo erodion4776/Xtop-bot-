@@ -361,6 +361,107 @@ async function showLearningModule(phone: string, moduleId: string): Promise<void
   ]);
 }
 
+async function handleLearningDecision(
+  phone: string,
+  lessonIdInput: string,
+  decision: "APPROVE" | "REJECT",
+  confirm: boolean,
+): Promise<void> {
+  const lessonId = sanitizeId(lessonIdInput);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lessonId)) {
+    await sendTextMessage(phone, "⚠️ Invalid lesson reference. Reopen the lesson from the ELA401 module list.");
+    return;
+  }
+
+  const { data: lesson, error } = await supabase
+    .from("module_slides")
+    .select("id, module_id, title, status, is_draft")
+    .eq("id", lessonId)
+    .maybeSingle();
+
+  if (error || !lesson) {
+    safeErrorLog("handleLearningDecision.lesson", error);
+    await sendTextMessage(phone, "⚠️ Lesson not found. Nothing was changed.");
+    return;
+  }
+
+  const courseId = "37dee46f-f551-45d5-9ada-ed65946fe148";
+  const { data: module, error: moduleError } = await supabase
+    .from("course_modules")
+    .select("id, course_id")
+    .eq("id", lesson.module_id)
+    .maybeSingle();
+
+  if (moduleError || !module || module.course_id !== courseId) {
+    safeErrorLog("handleLearningDecision.course", moduleError);
+    await sendTextMessage(phone, "⛔ This action is restricted to ELA401 lessons. Nothing was changed.");
+    return;
+  }
+
+  if (!confirm) {
+    const isApprove = decision === "APPROVE";
+    await sendTextMessage(
+      phone,
+      (isApprove ? "⚠️ *CONFIRM LESSON APPROVAL*" : "⚠️ *CONFIRM LESSON REJECTION*") +
+      "\\n\\n" + `Lesson: *${lesson.title}*` +
+      (isApprove
+        ? "\\n\\nApproving will publish this individual lesson for enrolled students."
+        : "\\n\\nRejecting keeps this lesson hidden from students and marks it REJECTED.") +
+      "\\n\\nNo other lesson will be changed."
+    );
+    await sendButtonMessage(phone, "Please confirm this decision:", [
+      makeButton(`admin_learning_${decision.toLowerCase()}_confirm_${lessonId}`, isApprove ? "✅ Confirm Publish" : "⛔ Confirm Reject"),
+      makeButton(`admin_learning_lesson_${lessonId}`, "↩ Back to Lesson"),
+      makeButton("admin_learning", "📚 All Modules"),
+    ]);
+    return;
+  }
+
+  if (decision === "APPROVE") {
+    const { error: updateError } = await supabase.from("module_slides").update({
+      status: "ACTIVE",
+      is_draft: false,
+      published_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", lessonId).eq("module_id", lesson.module_id);
+
+    if (updateError) {
+      safeErrorLog("handleLearningDecision.approve", updateError);
+      await sendTextMessage(phone, "❌ Approval failed. The lesson remains unpublished. Please check Supabase logs.");
+      return;
+    }
+
+    await sendTextMessage(
+      phone,
+      `✅ *LESSON APPROVED AND PUBLISHED*\\n\\n${lesson.title}\\n\\nThis lesson is now marked ACTIVE and available to enrolled ELA401 students.`
+    );
+  } else {
+    const { error: updateError } = await supabase.from("module_slides").update({
+      status: "REJECTED",
+      is_draft: true,
+      published_at: null,
+      updated_at: new Date().toISOString(),
+    }).eq("id", lessonId).eq("module_id", lesson.module_id);
+
+    if (updateError) {
+      safeErrorLog("handleLearningDecision.reject", updateError);
+      await sendTextMessage(phone, "❌ Rejection update failed. No lesson status was changed.");
+      return;
+    }
+
+    await sendTextMessage(
+      phone,
+      `⛔ *LESSON REJECTED*\\n\\n${lesson.title}\\n\\nIt remains hidden from students. Revise the lesson before submitting it for approval again.`
+    );
+  }
+
+  await sendButtonMessage(phone, "Learning Centre:", [
+    makeButton(`admin_learning_module_${lesson.module_id}`, "↩ Module Lessons"),
+    makeButton("admin_learning", "📚 All Modules"),
+    makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+  ]);
+}
+
 async function showLearningLesson(phone: string, lessonId: string): Promise<void> {
   const { data: lesson, error } = await supabase.from("module_slides")
     .select("id, module_id, title, content, content_sections, objectives, estimated_minutes, status, is_draft")
@@ -408,11 +509,19 @@ async function showLearningLesson(phone: string, lessonId: string): Promise<void
     : mainContent;
 
   await sendTextMessage(phone, header + body);
-  await sendButtonMessage(phone, "Lesson navigation:", [
-    makeButton(`admin_learning_module_${lesson.module_id}`, "↩ Module Lessons"),
-    makeButton("admin_learning", "📚 All Modules"),
-    makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
-  ]);
+  if (lesson.is_draft || String(lesson.status || "").toUpperCase() !== "ACTIVE") {
+    await sendButtonMessage(phone, "Lecturer decision — choose one action:", [
+      makeButton(`admin_learning_approve_${lesson.id}`, "✅ Approve"),
+      makeButton(`admin_learning_reject_${lesson.id}`, "⛔ Reject"),
+      makeButton(`admin_learning_module_${lesson.module_id}`, "↩ Module Lessons"),
+    ]);
+  } else {
+    await sendButtonMessage(phone, "This lesson is already published.", [
+      makeButton(`admin_learning_module_${lesson.module_id}`, "↩ Module Lessons"),
+      makeButton("admin_learning", "📚 All Modules"),
+      makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+    ]);
+  }
 }
 
 
@@ -1335,6 +1444,26 @@ export async function handleAdminAgent(
   if (command.startsWith("admin_learning_module_")) {
     const moduleId = inputRaw.slice("admin_learning_module_".length).trim();
     await showLearningModule(phone, moduleId);
+    return;
+  }
+
+  if (command.startsWith("admin_learning_approve_confirm_")) {
+    await handleLearningDecision(phone, inputRaw.slice("admin_learning_approve_confirm_".length), "APPROVE", true);
+    return;
+  }
+
+  if (command.startsWith("admin_learning_reject_confirm_")) {
+    await handleLearningDecision(phone, inputRaw.slice("admin_learning_reject_confirm_".length), "REJECT", true);
+    return;
+  }
+
+  if (command.startsWith("admin_learning_approve_")) {
+    await handleLearningDecision(phone, inputRaw.slice("admin_learning_approve_".length), "APPROVE", false);
+    return;
+  }
+
+  if (command.startsWith("admin_learning_reject_")) {
+    await handleLearningDecision(phone, inputRaw.slice("admin_learning_reject_".length), "REJECT", false);
     return;
   }
 
