@@ -110,17 +110,42 @@ export async function startExamEntry(
     }
   }
 
+  // Use up to five questions calculated from this student's own submitted practical readings.
+  const { data: practicalSubmissions, error: practicalError } = await supabase
+    .from("ela401_experiment_submissions")
+    .select("id, experiment_code, raw_data, result_data, submitted_at")
+    .eq("student_id", studentId)
+    .eq("course_id", courseId)
+    .eq("status", "SUBMITTED")
+    .order("submitted_at", { ascending: false })
+    .limit(20);
+  if (practicalError) console.error("[ELA401_CBT_PRACTICAL_FETCH]", practicalError.message);
+
+  const practicalQuestions = await buildStudentPracticalQuestions(practicalSubmissions || []);
+  const unusedPractical = practicalQuestions.filter(question => !previouslyUsed.has(String(question.id)));
+  for (let i = unusedPractical.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [unusedPractical[i], unusedPractical[j]] = [unusedPractical[j], unusedPractical[i]];
+  }
+  const selectedPractical = unusedPractical.slice(0, 5);
+
   const eligibleQuestions = (questions || []).filter((question: any) => !previouslyUsed.has(String(question.id)));
   const shuffledPool = [...eligibleQuestions];
   for (let i = shuffledPool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [shuffledPool[i], shuffledPool[j]] = [shuffledPool[j], shuffledPool[i]];
   }
-  if (shuffledPool.length < 50) {
-    await sendTextMessage(phone, `⚠️ Only ${shuffledPool.length} unused questions remain for this student. Please contact the lecturer to replenish the ELA401 question bank before starting another attempt.`);
+  const bankNeeded = 50 - selectedPractical.length;
+  if (shuffledPool.length < bankNeeded) {
+    await sendTextMessage(phone, `⚠️ Only ${shuffledPool.length} unused question-bank items remain. Please contact the lecturer before starting another attempt.`);
     return;
   }
-  const selectedQuestions = shuffledPool.slice(0, 50).map((question: any) => shuffleExamOptions(question));
+  const selectedQuestions = [...selectedPractical, ...shuffledPool.slice(0, bankNeeded)]
+    .map((question: any) => shuffleExamOptions(question));
+  for (let i = selectedQuestions.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [selectedQuestions[i], selectedQuestions[j]] = [selectedQuestions[j], selectedQuestions[i]];
+  }
 
   // Rule: Strict 3 Attempt Maximum Limit
   if (attemptsCount >= 3) {
@@ -322,6 +347,94 @@ async function handlePaymentVerification(
 // ═══════════════════════════════════════════════════════
 // 5. CBT EXAM ENGINE WITH TIMER VALIDATION
 // ═══════════════════════════════════════════════════════
+
+const PRACTICAL_MODULES: Record<string, string> = {
+  work_time: "c4ac4177-04c6-4129-b32f-3e844c05ff35",
+  work_sample: "d487b0a8-99e2-4694-9085-0d1e286219fb",
+  pendulum: "b7a8f733-ee22-4152-9fa8-718dc47920a8",
+  quartz: "d22fc595-a9f1-42b9-b11d-77ac1967c5b2",
+  frequency: "d22fc595-a9f1-42b9-b11d-77ac1967c5b2",
+  calibration: "d75041bb-c6cd-4232-9ea1-39c67734d759",
+  uncertainty: "70f94739-baf0-4e0e-9a9f-a71d80b513d8",
+};
+
+async function stablePracticalQuestionId(seed: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(seed));
+  const bytes = new Uint8Array(digest).slice(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+}
+
+function makePracticalQuestion(id: string, moduleId: string, prompt: string, answer: number, unit: string, explanation: string): any {
+  const rounded = Number(answer.toFixed(3));
+  const delta = Math.max(Math.abs(rounded) * 0.08, 0.01);
+  const correctIndex = Math.floor(Math.random() * 4);
+  const choices = [rounded, rounded + delta, rounded - delta, rounded + 2 * delta].map(v => Number(v.toFixed(3)));
+  const correctValue = choices.shift()!;
+  choices.splice(correctIndex, 0, correctValue);
+  return {
+    id, module_id: moduleId, question: prompt,
+    option_a: choices[0].toFixed(3) + " " + unit,
+    option_b: choices[1].toFixed(3) + " " + unit,
+    option_c: choices[2].toFixed(3) + " " + unit,
+    option_d: choices[3].toFixed(3) + " " + unit,
+    correct_answer: ["A", "B", "C", "D"][correctIndex],
+    explanation, marks: 1, status: "ACTIVE", personalized: true,
+  };
+}
+
+async function buildStudentPracticalQuestions(submissions: any[]): Promise<any[]> {
+  const generated: any[] = [];
+  for (const submission of submissions || []) {
+    const raw = submission.raw_data || {};
+    const result = submission.result_data || {};
+    const values = Array.isArray(raw.entered_values) ? raw.entered_values.map(Number) : [];
+    const code = String(submission.experiment_code || "");
+    let prompt = "", unit = "s", explanation = "";
+    let answer = NaN;
+
+    if (code === "work_time" && Number.isFinite(Number(result.average_observed_time_s)) && Number.isFinite(Number(result.rating_factor))) {
+      prompt = `Using your submitted average observed time of ${Number(result.average_observed_time_s).toFixed(3)} s and rating factor of ${Number(result.rating_factor).toFixed(3)}, calculate normal time.`;
+      answer = Number(result.average_observed_time_s) * Number(result.rating_factor);
+      explanation = "Normal time = average observed time × rating factor.";
+    } else if (code === "work_time" && Number.isFinite(Number(result.normal_time_s)) && Number.isFinite(Number(result.allowance_fraction))) {
+      prompt = `Your practical produced normal time ${Number(result.normal_time_s).toFixed(3)} s and allowance ${(Number(result.allowance_fraction)*100).toFixed(2)}% of standard time. Calculate standard time.`;
+      answer = Number(result.normal_time_s) / (1 - Number(result.allowance_fraction));
+      explanation = "Standard time = normal time ÷ (1 − allowance fraction).";
+    } else if (code === "work_sample" && values.length >= 2 && values[1] > 0) {
+      prompt = `Your work-sampling practical recorded ${values[0]} activity observations out of ${values[1]}. Calculate the activity percentage.`;
+      answer = values[0] / values[1] * 100; unit = "%";
+      explanation = "Activity percentage = activity observations ÷ total observations × 100.";
+    } else if (code === "pendulum" && values[0] > 0) {
+      prompt = `Using your submitted pendulum length of ${values[0].toFixed(3)} m and g = 9.80665 m/s², calculate theoretical period.`;
+      answer = 2 * Math.PI * Math.sqrt(values[0] / 9.80665);
+      explanation = "For a simple pendulum, T = 2π√(L/g).";
+    } else if (code === "quartz" && Number.isFinite(values[0])) {
+      prompt = `Your quartz practical used a frequency offset of ${values[0]} ppm. Calculate clock error in seconds per day.`;
+      answer = values[0] * 1e-6 * 86400; unit = "s/day";
+      explanation = "Daily error = ppm × 10⁻⁶ × 86,400 seconds.";
+    } else if (code === "frequency" && values[0] > 0) {
+      prompt = `Your frequency practical used ${values[0]} Hz. Calculate its period.`;
+      answer = 1 / values[0];
+      explanation = "Period and frequency are reciprocals: T = 1/f.";
+    } else if (code === "calibration" && values.length >= 2) {
+      prompt = `Your instrument indicated ${values[0]} s against a reference of ${values[1]} s. Calculate indication error.`;
+      answer = values[0] - values[1];
+      explanation = "Indication error = indication − reference.";
+    } else if (code === "uncertainty" && values.length >= 2) {
+      prompt = `Using your submitted uncertainty components (${values.join(", ")}), calculate combined standard uncertainty.`;
+      answer = Math.sqrt(values.reduce((sum, value) => sum + value * value, 0));
+      explanation = "Combined standard uncertainty = square root of the sum of squared components.";
+    }
+
+    if (!prompt || !Number.isFinite(answer)) continue;
+    const id = await stablePracticalQuestionId(`${submission.id}:${code}:ela401-practical-v1`);
+    generated.push(makePracticalQuestion(id, PRACTICAL_MODULES[code] || PRACTICAL_MODULES.work_time, prompt, answer, unit, explanation));
+  }
+  return generated;
+}
 
 function shuffleExamOptions(question: any): any {
   const options = [
