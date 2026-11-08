@@ -658,13 +658,18 @@ async function deliverLesson(
   const sections = await fetchLessonSections(currentLesson.id);
   const mediaList = await fetchLessonMedia(currentLesson.id);
 
-  let message =
-    `🎓 *${ctx.courseCode} — LECTURE HALL*\n` +
-    `📖 *Lesson ${activeOrder}: ${currentLesson.title}*\n` +
-    `⏱️ _Duration: ${currentLesson.duration || "15 mins"} | Lesson ${activeOrder} of ${allLessons.length}_\n\n` +
-    `━━━━━━━━━━━━━━━━\n\n` +
-    `${currentLesson.content || "_Lecture notes in progress._"}\n\n` +
-    `━━━━━━━━━━━━━━━━`;
+  const slideCount = sections.length;
+  const objectives = currentLesson.objectives
+    ? `\n\n🎯 *Learning outcomes*\n${currentLesson.objectives}`
+    : "";
+  const message =
+    `🎓 *${ctx.courseCode} — WHATSAPP LECTURE ROOM*\n` +
+    `📘 *${currentLesson.title}*\n` +
+    `📚 Lesson ${activeOrder} of ${allLessons.length}\n` +
+    `⏱️ Estimated duration: ${currentLesson.duration || "15 mins"}\n` +
+    (slideCount > 0 ? `🖥️ Teaching slides: ${slideCount}\n` : "") +
+    objectives +
+    `\n\nThis lesson is presented one teaching slide at a time. Read each slide carefully, study its diagram and worked examples, then continue to the next slide.`;
 
   await sendTextMessage(phone, message);
 
@@ -684,14 +689,14 @@ async function deliverLesson(
 
   const buttons = [];
   if (sections.length > 0) {
-    buttons.push(makeButton("lsn_section_next", "📖 Read Sections ➡️"));
+    buttons.push(makeButton("lsn_section_next", "▶️ Start Slide 1"));
   } else {
     buttons.push(makeButton("lsn_practice_start", "✍️ Practice Check"));
   }
   if (!isFirst) buttons.push(makeButton("lsn_prev", "⬅️ Prev Lesson"));
   buttons.push(makeButton("lsn_menu", "📋 Course Menu"));
 
-  await sendButtonMessage(phone, "Select your next action:", buttons, `${ctx.courseCode} Classroom`, `Lesson ${activeOrder}/${allLessons.length}`);
+  await sendButtonMessage(phone, "Your lecture slides are ready. Start the presentation below.", buttons, `${ctx.courseCode} Classroom`, `Lesson ${activeOrder}/${allLessons.length}`);
 }
 
 // ═══════════════════════════════════════════════════════
