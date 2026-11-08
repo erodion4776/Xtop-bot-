@@ -88,20 +88,6 @@ export async function showAdminAgentMenu(phone: string): Promise<void> {
         makeListRow("admin_leads", "💼 List Leads", "Qualifying enquiries (>= ₦100k)"),
         makeListRow("admin_pending", "⏳ Pending Approvals", "Leads awaiting admin approval"),
         makeListRow("admin_approved", "✅ Approved Archives", "Explicitly approved leads list"),
-        makeListRow("admin_quotes", "📋 Quotations", "Manage, prepare, and track quotes"),
-      ],
-    },
-    {
-      title: "⚙️ System Diagnostics",
-      rows: [
-        makeListRow("admin_status", "🟢 DB Connectivity", "Test connection to Supabase database"),
-        makeListRow("admin_stats", "📊 Bot Statistics", "View messaging and contacts metrics"),
-        makeListRow("admin_learning", "🎓 Learning Centre Progress", "Courses, lessons, students and publication status"),
-        makeListRow("admin_students_pending", "🎓 Student Verification", "Review new student registrations"),
-        makeListRow("admin_student_records", "📚 Student Records & Results", "By department • S/N • matric no • attendance • CBT score"),
-        makeListRow("admin_github", "🚗 GitHub Actions API", "Verify Actions integration connectivity"),
-        makeListRow("admin_deployments", "🚀 Recent Runs", "Inspect workflow execution logs"),
-        makeListRow("admin_logs", "🔎 Workflow Failures", "Inspect recent failing job steps"),
       ],
     },
     {
@@ -112,9 +98,13 @@ export async function showAdminAgentMenu(phone: string): Promise<void> {
       ],
     },
     {
-      title: "🔒 Security Actions",
+      title: "⚙️ System & Learning",
       rows: [
-        makeListRow("admin_agent_exit", "🔒 Close Lizzy", "Close private agent session"),
+        makeListRow("admin_status", "🟢 DB Connectivity", "Test connection to Supabase database"),
+        makeListRow("admin_stats", "📊 Bot Statistics", "View messaging and contacts metrics"),
+        makeListRow("admin_learning", "🎓 Learning Centre Progress", "Courses, lessons, students and publication status"),
+        makeListRow("admin_students_pending", "🎓 Student Verification", "Review new student registrations"),
+        makeListRow("admin_student_records", "📚 Student Records", "Department • S/N • matric no • results"),
       ],
     },
   ];
