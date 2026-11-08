@@ -194,7 +194,7 @@ async function handlePaywallGate(
     const payMessage =
       `💳 *CBT EXAM ACCESS FEE (Attempt ${attemptsCount + 1}/3)*\n\n` +
       `Course: *${courseCode} — ${ctx.courseName || ""}*\n` +
-      `Level: *${ctx.studentLevel || "Unconfirmed"}*\\nAccess Fee: *₦${examFeeNaira.toLocaleString("en-NG")}.00*\n\n` +
+      `Level: *${ctx.studentLevel || "Unconfirmed"}*\nAccess Fee: *₦${examFeeNaira.toLocaleString("en-NG")}.00*\n\n` +
       `👇 *Click the secure link below to make payment:* \n` +
       `${payment.paymentUrl}\n\n` +
       `_After completing payment, tap *Verify Payment* below to unlock your exam immediately:_`;
