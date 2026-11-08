@@ -15,15 +15,18 @@ function getHeaders(): Record<string, string> {
   };
 }
 
-/**
- * Initializes a 1,000 Naira checkout session with Paystack
- */
+/** Initializes a level-specific CBT checkout session with Paystack. */
 export async function initializeExamPayment(
   studentId: string,
   courseId: string,
   courseCode: string,
-  phone: string
+  phone: string,
+  amountNaira: number
 ): Promise<{ paymentUrl: string; reference: string } | null> {
+  if (![500, 1000].includes(amountNaira)) {
+    throw new Error("Unsupported CBT fee amount");
+  }
+
   const reference = `XTOP-CBT-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
   const amountInKobo = amountNaira * 100;
 
@@ -40,7 +43,8 @@ export async function initializeExamPayment(
           student_id: studentId,
           course_id: courseId,
           course_code: courseCode,
-          phone
+          phone,
+          exam_fee_naira: amountNaira
         }
       }),
     });
@@ -52,9 +56,7 @@ export async function initializeExamPayment(
     }
 
     const paymentUrl = data.data.authorization_url;
-
-    // Log the transaction in the database as PENDING
-    await supabase.from("payment_transactions").insert({
+    const { error: insertError } = await supabase.from("payment_transactions").insert({
       student_id: studentId,
       course_id: courseId,
       reference,
@@ -63,6 +65,11 @@ export async function initializeExamPayment(
       payment_url: paymentUrl
     });
 
+    if (insertError) {
+      safeErrorLog("PaystackInit:TransactionLogFailed", insertError);
+      return null;
+    }
+
     return { paymentUrl, reference };
   } catch (err) {
     safeErrorLog("initializeExamPayment", err);
@@ -70,10 +77,13 @@ export async function initializeExamPayment(
   }
 }
 
-/**
- * Directly verifies a transaction with the Paystack API
- */
-export async function verifyExamPayment(reference: string, expectedAmountNaira: number): Promise<boolean> {
+/** Verifies both Paystack success and the exact expected CBT fee. */
+export async function verifyExamPayment(
+  reference: string,
+  expectedAmountNaira: number
+): Promise<boolean> {
+  if (![500, 1000].includes(expectedAmountNaira)) return false;
+
   try {
     const resp = await fetch(`${PAYSTACK_API_BASE}/transaction/verify/${reference}`, {
       method: "GET",
@@ -81,14 +91,31 @@ export async function verifyExamPayment(reference: string, expectedAmountNaira: 
     });
 
     const data = await resp.json();
-    const expectedKobo = expectedAmountNaira * 100;\n    if (data.status && data.data.status === "success" && Number(data.data.amount) === expectedKobo) {
-      // Mark transaction as SUCCESSFUL in database
-      await supabase.from("payment_transactions")
+    const expectedKobo = expectedAmountNaira * 100;
+
+    if (
+      data.status &&
+      data.data.status === "success" &&
+      Number(data.data.amount) === expectedKobo &&
+      data.data.reference === reference
+    ) {
+      const { error } = await supabase.from("payment_transactions")
         .update({ status: "SUCCESSFUL", updated_at: new Date().toISOString() })
-        .eq("reference", reference);
+        .eq("reference", reference)
+        .eq("amount", expectedAmountNaira)
+        .eq("status", "PENDING")
+        .select("id")
+        .maybeSingle();
+
+      if (error) {
+        safeErrorLog("PaystackVerify:TransactionUpdateFailed", error);
+        return false;
+      }
 
       return true;
     }
+
+    safeErrorLog("PaystackVerify:AmountMismatch", new Error("Payment unsuccessful or amount/reference mismatch"));
     return false;
   } catch (err) {
     safeErrorLog("verifyExamPayment", err);
@@ -96,9 +123,7 @@ export async function verifyExamPayment(reference: string, expectedAmountNaira: 
   }
 }
 
-/**
- * Checks if a student has an existing successful payment for this course CBT
- */
+/** Checks whether a student has a successful CBT payment for this course. */
 export async function hasPaidForExam(studentId: string, courseId: string): Promise<boolean> {
   const { data } = await supabase.from("payment_transactions")
     .select("id")
