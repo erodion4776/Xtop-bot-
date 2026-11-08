@@ -546,7 +546,64 @@ async function processPracticalLabInput(phone: string, text: string, conv: Conve
   }
   const onePositive = values.length === 1 && values[0] > 0;
   const finish = async (message: string) => {
-    await sendTextMessage(phone, message + "\n\nChoose another simulation from the menu below, or select *Course Menu* to return.");
+    // Preserve the student's submitted readings so the lecturer can review the
+    // experiment and the practical-based CBT can draw on the student's own data.
+    if (ctx.studentId && ctx.courseId && ctx.labMode) {
+      const experimentNames: Record<string, string> = {
+        work_time: "Industrial Work Measurement",
+        work_sample: "Work Sampling",
+        pendulum: "Pendulum Period",
+        quartz: "Quartz Clock Drift",
+        frequency: "Frequency and Period",
+        calibration: "Timing Instrument Comparison",
+        uncertainty: "Measurement Uncertainty",
+      };
+      const rawData = {
+        entered_values: values,
+        observed_cycle_times: ctx.labObservations || [],
+        average_observed_time: ctx.labAverage ?? null,
+        performance_rating_percent: ctx.labRating ?? null,
+        allowance_input_percent: ctx.labMode === "work_time" ? values[0] : null,
+        entry_method: "WhatsApp student-submitted readings",
+      };
+      const resultData: Record<string, unknown> = { result_text: message };
+      if (ctx.labMode === "work_time" && ctx.labAverage !== undefined) {
+        const ratingFactor = (ctx.labRating || 100) / 100;
+        const normalTime = ctx.labAverage * ratingFactor;
+        const allowanceFraction = values[0] / 100;
+        resultData.average_observed_time_s = ctx.labAverage;
+        resultData.rating_factor = ratingFactor;
+        resultData.normal_time_s = normalTime;
+        resultData.allowance_fraction = allowanceFraction;
+        resultData.standard_time_s = normalTime / (1 - allowanceFraction);
+      } else if (ctx.labMode === "work_sample") {
+        resultData.activity_percentage = values[0] / values[1] * 100;
+      } else if (ctx.labMode === "pendulum") {
+        resultData.period_s = 2 * Math.PI * Math.sqrt(values[0] / 9.80665);
+      } else if (ctx.labMode === "quartz") {
+        resultData.daily_error_s = values[0] * 1e-6 * 86400;
+      } else if (ctx.labMode === "frequency") {
+        resultData.period_s = 1 / values[0];
+      } else if (ctx.labMode === "calibration") {
+        resultData.indication_error = values[0] - values[1];
+        resultData.correction = values[1] - values[0];
+      } else if (ctx.labMode === "uncertainty") {
+        resultData.combined_standard_uncertainty = Math.sqrt(values.reduce((sum, v) => sum + v * v, 0));
+      }
+      const { error: saveError } = await supabase.from("ela401_experiment_submissions").insert({
+        student_id: ctx.studentId,
+        course_id: ctx.courseId,
+        experiment_code: ctx.labMode,
+        experiment_name: experimentNames[ctx.labMode] || ctx.labMode,
+        data_source: "STUDENT_REPORTED",
+        raw_data: rawData,
+        result_data: resultData,
+        result_text: message,
+        status: "SUBMITTED",
+      });
+      if (saveError) console.error("[ELA401_LAB_SAVE]", saveError.message);
+    }
+    await sendTextMessage(phone, message + "\n\n✅ Your experiment readings have been submitted for lecturer review.\n\nChoose another experiment from the menu below, or select *Course Menu* to return.");
     ctx.labMode = undefined;
     ctx.labStage = undefined;
     await saveCtx(conv.id, ctx, "PRACTICAL_LAB_MENU");
