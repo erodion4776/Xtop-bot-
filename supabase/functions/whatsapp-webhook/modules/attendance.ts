@@ -75,6 +75,9 @@ export async function handleRegistration(
     case "WAITING_MATRIC_NUMBER":
       return await processMatricInput(phone, text, contact, conv, ctx);
 
+    case "WAITING_SERIAL_NUMBER":
+      return await processSerialInput(phone, text, contact, conv, ctx);
+
     case "WAITING_DEPARTMENT":
       return await processDeptInput(phone, text, contact, conv, ctx);
 
@@ -242,12 +245,42 @@ async function processMatricInput(
   }
 
   ctx.regMatric = matric.toUpperCase();
+  ctx.step = "WAITING_SERIAL_NUMBER";
+  await updateConversation(conv.id, {
+    current_state: "WAITING_SERIAL_NUMBER",
+    context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
+  });
+
+  await sendTextMessage(phone, "🔢 *Please enter your class S/N (Serial Number):*");
+  return false;
+}
+
+async function processSerialInput(
+  phone: string, text: string, _contact: Contact, conv: Conversation, ctx: RegCtx
+): Promise<boolean> {
+  if (isBack(text)) {
+    ctx.step = "WAITING_MATRIC_NUMBER";
+    ctx.regSerial = undefined;
+    await updateConversation(conv.id, {
+      current_state: "WAITING_MATRIC_NUMBER",
+      context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
+    });
+    await sendTextMessage(phone, "🎓 *Please enter your Matriculation Number:*");
+    return false;
+  }
+
+  const serial = text.trim();
+  if (!serial || serial.length > 20) {
+    await sendTextMessage(phone, "⚠️ Please enter a valid class S/N (maximum 20 characters).");
+    return false;
+  }
+
+  ctx.regSerial = serial;
   ctx.step = "WAITING_DEPARTMENT";
   await updateConversation(conv.id, {
     current_state: "WAITING_DEPARTMENT",
     context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
   });
-
   await sendTextMessage(phone, "🏫 *Please enter your Department:*");
   return false;
 }
@@ -260,13 +293,13 @@ async function processDeptInput(
   phone: string, text: string, _contact: Contact, conv: Conversation, ctx: RegCtx
 ): Promise<boolean> {
   if (isBack(text)) {
-    ctx.step = "WAITING_MATRIC_NUMBER";
+    ctx.step = "WAITING_SERIAL_NUMBER";
     ctx.regDept = undefined;
     await updateConversation(conv.id, {
-      current_state: "WAITING_MATRIC_NUMBER",
+      current_state: "WAITING_SERIAL_NUMBER",
       context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
     });
-    await sendTextMessage(phone, "🎓 *Please enter your Matriculation Number:*");
+    await sendTextMessage(phone, "🔢 *Please enter your class S/N (Serial Number):*");
     return false;
   }
 
@@ -337,6 +370,7 @@ async function processLevelInput(
         name: ctx.regName || undefined,
         matric_number: ctx.regMatric || undefined,
         department: ctx.regDept || undefined,
+        serial_number: ctx.regSerial || undefined,
         level: level,
       });
 
@@ -358,7 +392,7 @@ async function processLevelInput(
         ctx.regMatric || "",
         ctx.regDept || "",
         level,
-        ""
+        ctx.regSerial || ""
       );
 
       if (!student) {
@@ -395,6 +429,7 @@ async function processLevelInput(
     `✅ *Student registration completed.*\n\n` +
     `👤 *Name:* ${student.name}\n` +
     `🎓 *Matric No:* ${student.matric_number}\n` +
+    `🔢 *S/N:* ${student.serial_number || ctx.regSerial || ""}\n` +
     `🏫 *Department:* ${student.department}\n` +
     `📚 *Level:* ${student.level}L\n\n` +
     `${attendanceLine}`
