@@ -165,12 +165,13 @@ async function handlePaywallGate(
   // Count successful payment transactions
   const { data: payments } = await supabase
     .from("payment_transactions")
-    .select("id")
+    .select("id, amount")
     .eq("student_id", studentId)
     .eq("course_id", courseId)
     .eq("status", "SUCCESSFUL");
 
-  const paymentsCount = payments?.length || 0;
+  const examFeeNaira = ctx.examFeeNaira || 0;
+  const paymentsCount = (payments || []).filter((payment: any) => Number(payment.amount) === examFeeNaira).length;
 
   // If paymentsCount <= attemptsCount, a new payment is required for this attempt
   if (paymentsCount <= attemptsCount) {
