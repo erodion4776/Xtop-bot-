@@ -987,6 +987,7 @@ export function isStudentProfileComplete(student: Student): boolean {
   return !!(
     student.name &&
     student.matric_number &&
+    student.serial_number &&
     student.department &&
     student.level
   );
