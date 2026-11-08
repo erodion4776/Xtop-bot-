@@ -96,6 +96,7 @@ export async function showAdminAgentMenu(phone: string): Promise<void> {
         makeListRow("admin_stats", "📊 Bot Statistics", "View messaging and contacts metrics"),
         makeListRow("admin_learning", "🎓 Learning Centre Progress", "Courses, lessons, students and publication status"),
         makeListRow("admin_students_pending", "🎓 Student Verification", "Review new student registrations"),
+        makeListRow("admin_student_records", "📚 Student Records & Results", "By department • S/N • matric no • attendance • CBT score"),
         makeListRow("admin_github", "🚗 GitHub Actions API", "Verify Actions integration connectivity"),
         makeListRow("admin_deployments", "🚀 Recent Runs", "Inspect workflow execution logs"),
         makeListRow("admin_logs", "🔎 Workflow Failures", "Inspect recent failing job steps"),
@@ -526,6 +527,145 @@ async function showLearningLesson(phone: string, lessonId: string): Promise<void
 }
 
 
+
+async function listStudentDepartments(phone: string): Promise<void> {
+  const { data, error } = await supabase.from("students")
+    .select("department")
+    .eq("status", "ACTIVE")
+    .order("department", { ascending: true });
+  if (error) {
+    safeErrorLog("listStudentDepartments", error);
+    await sendTextMessage(phone, "⚠️ Could not load student departments.");
+    return;
+  }
+  const departments = [...new Set((data || []).map((s: any) => String(s.department || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  if (!departments.length) {
+    await sendTextMessage(phone, "No approved student records are available yet.");
+    return;
+  }
+  const rows = departments.slice(0, 10).map((department, index) =>
+    makeListRow(`admin_roster_department_${encodeURIComponent(department)}`, department.slice(0, 24), "Open department student register")
+  );
+  await sendListMessage(phone,
+    "📚 *STUDENT RECORDS & CLASS REGISTER*\n\nStudents are grouped by department. Open a department to view class S/N, matriculation number, attendance dates and CBT scores (0–100).",
+    "Choose Department", [{ title: "Departments", rows }],
+    "Lizzy • Student Register", "Approved students only"
+  );
+  await sendButtonMessage(phone, "Student register:", [
+    makeButton("admin_students_pending", "⏳ Pending Verification"),
+    makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+  ]);
+}
+
+async function listDepartmentStudents(phone: string, departmentInput: string, page = 0): Promise<void> {
+  let department = "";
+  try { department = decodeURIComponent(departmentInput); } catch (_) { department = departmentInput; }
+  if (!department || department.length > 120) {
+    await sendTextMessage(phone, "⚠️ Invalid department selection. Please reopen Student Records.");
+    return;
+  }
+  const safePage = Math.max(0, Math.floor(page));
+  const from = safePage * 10;
+  const { data, error, count } = await supabase.from("students")
+    .select("id, name, matric_number, serial_number, department, level", { count: "exact" })
+    .eq("status", "ACTIVE").eq("department", department)
+    .order("serial_number", { ascending: true })
+    .order("matric_number", { ascending: true })
+    .range(from, from + 9);
+  if (error) {
+    safeErrorLog("listDepartmentStudents", error);
+    await sendTextMessage(phone, "⚠️ Could not load this department's student register.");
+    return;
+  }
+  if (!data?.length) {
+    await sendTextMessage(phone, "No approved students found in this department.");
+    return;
+  }
+  const rows = data.map((s: any) => makeListRow(
+    `admin_roster_student_${s.id}_${encodeURIComponent(department)}_${safePage}`,
+    `S/N ${s.serial_number || "—"} • ${String(s.name || "Student").slice(0, 13)}`,
+    `Mat: ${s.matric_number || "—"} • ${s.level || "—"}L`
+  ));
+  await sendListMessage(phone,
+    `🏫 *${department.toUpperCase()}*\nApproved students: ${count ?? data.length}\nPage ${safePage + 1}\n\nSorted by class S/N, then matriculation number. Select a student for attendance dates and CBT results.`,
+    "Student Register", [{ title: "Students • S/N order", rows }],
+    "Lizzy • Department Register", "Student academic records"
+  );
+  const nav = [];
+  if (safePage > 0) nav.push(makeButton(`admin_roster_page_${encodeURIComponent(department)}_${safePage - 1}`, "⬅ Previous"));
+  if ((count ?? 0) > from + data.length) nav.push(makeButton(`admin_roster_page_${encodeURIComponent(department)}_${safePage + 1}`, "Next ➡"));
+  nav.push(makeButton("admin_student_records", "↩ Departments"));
+  await sendButtonMessage(phone, "Department navigation:", nav);
+}
+
+async function showStudentAcademicRecord(phone: string, studentIdInput: string, departmentInput: string, pageInput: string): Promise<void> {
+  const studentId = sanitizeId(studentIdInput);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(studentId)) {
+    await sendTextMessage(phone, "⚠️ Invalid student record reference.");
+    return;
+  }
+  let department = "";
+  try { department = decodeURIComponent(departmentInput); } catch (_) { department = departmentInput; }
+  const page = Math.max(0, Number.parseInt(pageInput, 10) || 0);
+  const { data: student, error } = await supabase.from("students")
+    .select("id, name, matric_number, serial_number, department, level, phone, status")
+    .eq("id", studentId).eq("status", "ACTIVE").maybeSingle();
+  if (error || !student) {
+    safeErrorLog("showStudentAcademicRecord.student", error);
+    await sendTextMessage(phone, "⚠️ Approved student record not found.");
+    return;
+  }
+  const courseId = "37dee46f-f551-45d5-9ada-ed65946fe148";
+  const [attendanceResult, attemptsResult] = await Promise.all([
+    supabase.from("attendance")
+      .select("attendance_date, session_date, session_label, status")
+      .eq("student_id", studentId).eq("course_id", courseId)
+      .order("session_date", { ascending: false }).limit(30),
+    supabase.from("exam_attempts")
+      .select("score, total_marks, percentage, pass_status, submitted_at")
+      .eq("student_id", studentId).eq("course_id", courseId)
+      .not("submitted_at", "is", null)
+      .order("submitted_at", { ascending: false }).limit(5),
+  ]);
+  if (attendanceResult.error || attemptsResult.error) {
+    safeErrorLog("showStudentAcademicRecord.related", attendanceResult.error || attemptsResult.error);
+    await sendTextMessage(phone, "⚠️ Student identity loaded, but attendance or CBT history could not be retrieved. Please retry.");
+    return;
+  }
+  const attendance = attendanceResult.data || [];
+  const attempts = attemptsResult.data || [];
+  const attendanceLines = attendance.length
+    ? attendance.map((a: any) => {
+        const day = a.session_date || a.attendance_date || "Date not recorded";
+        return `• ${day}${a.session_label ? ` — ${a.session_label}` : ""} — ${String(a.status || "RECORDED").toUpperCase()}`;
+      })
+    : ["• No class attendance dates recorded."];
+  const scoreLines = attempts.length
+    ? attempts.map((a: any, i: number) => {
+        const raw = a.percentage !== null && a.percentage !== undefined
+          ? Number(a.percentage)
+          : (Number(a.total_marks) > 0 ? (Number(a.score) / Number(a.total_marks)) * 100 : 0);
+        const score = Math.max(0, Math.min(100, Math.round(raw * 100) / 100));
+        return `• ${i === 0 ? "LATEST" : `Attempt ${i + 1}`}: *${score.toFixed(1)}/100*${a.pass_status ? ` — ${a.pass_status}` : ""} (${new Date(a.submitted_at).toLocaleDateString("en-GB")})`;
+      })
+    : ["• No completed CBT score recorded yet."];
+  await sendTextMessage(phone,
+    "🎓 *STUDENT ACADEMIC RECORD*\n\n" +
+    `👤 Name: *${student.name || "—"}*\n` +
+    `🏫 Department: *${student.department || "—"}*\n` +
+    `🔢 Class S/N: *${student.serial_number || "—"}*\n` +
+    `🪪 Matric No: *${student.matric_number || "—"}*\n` +
+    `📚 Level: *${student.level || "—"}L*\n\n` +
+    `📅 *CLASS ATTENDANCE DATES (${attendance.length})*\n${attendanceLines.join("\n")}\n\n` +
+    `📝 *CBT SCORES — 0 TO 100*\n${scoreLines.join("\n")}\n\n` +
+    "_Attendance is shown from recorded class sessions. CBT scores are normalized to a 0–100 scale._"
+  );
+  await sendButtonMessage(phone, "Student record navigation:", [
+    makeButton(`admin_roster_page_${encodeURIComponent(department || student.department || "")}_${page}`, "↩ Department Register"),
+    makeButton("admin_student_records", "🏫 Departments"),
+    makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+  ]);
+}
 
 async function listPendingStudents(phone: string, page = 0): Promise<void> {
   const safePage = Math.max(0, Math.floor(page));
@@ -1524,6 +1664,28 @@ export async function handleAdminAgent(
   if (!isAdminPhone(phone)) {
     console.warn(`[AdminAgent] Unauthorized access attempt blocked from: ${phone}`);
     return;
+  }
+
+  if (command === "admin_student_records" || command === "student records" || command === "class register") {
+    await listStudentDepartments(phone); return;
+  }
+  if (command.startsWith("admin_roster_department_")) {
+    await listDepartmentStudents(phone, inputRaw.slice("admin_roster_department_".length), 0); return;
+  }
+  if (command.startsWith("admin_roster_page_")) {
+    const payload = inputRaw.slice("admin_roster_page_".length);
+    const splitAt = payload.lastIndexOf("_");
+    const departmentPart = payload.slice(0, splitAt);
+    const page = Number.parseInt(payload.slice(splitAt + 1), 10);
+    await listDepartmentStudents(phone, departmentPart, Number.isFinite(page) ? page : 0); return;
+  }
+  if (command.startsWith("admin_roster_student_")) {
+    const payload = inputRaw.slice("admin_roster_student_".length);
+    const parts = payload.split("_");
+    const page = parts.pop() || "0";
+    const department = parts.pop() || "";
+    const studentId = parts.join("_");
+    await showStudentAcademicRecord(phone, studentId, department, page); return;
   }
 
   if (command === "admin_students_pending" || command === "student verification") {
