@@ -23,46 +23,51 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v3
+      - name: Setup Node.js for Supabase CLI
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pinned Supabase CLI from npm
+        run: npm install --no-save --no-package-lock supabase@2.81.3
 
       - name: Link project
-        run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+        run: npx --no-install supabase link --project-ref "$SUPABASE_PROJECT_ID"
 
       - name: Deploy WhatsApp webhook
         run: |
-          supabase functions deploy whatsapp-webhook \
+          npx --no-install supabase functions deploy whatsapp-webhook \
             --project-ref "$SUPABASE_PROJECT_ID" \
             --no-verify-jwt
 
       - name: Deploy wallet API
         run: |
           if [ -d "supabase/functions/wallet-api" ]; then
-            supabase functions deploy wallet-api \
+            npx --no-install supabase functions deploy wallet-api \
               --project-ref "$SUPABASE_PROJECT_ID" \
               --no-verify-jwt
           fi
 
       - name: Deploy order API
         run: |
-          supabase functions deploy order-api \
+          npx --no-install supabase functions deploy order-api \
             --project-ref "$SUPABASE_PROJECT_ID" \
             --no-verify-jwt
 
       - name: Deploy merchant Paystack API
         run: |
-          supabase functions deploy merchant-paystack \
+          npx --no-install supabase functions deploy merchant-paystack \
             --project-ref "$SUPABASE_PROJECT_ID" \
             --no-verify-jwt
 
       - name: Deploy merchant registration
         run: |
-          supabase functions deploy merchant-register \
+          npx --no-install supabase functions deploy merchant-register \
             --project-ref "$SUPABASE_PROJECT_ID"
 
       - name: Deploy Sabi dashboard API
         run: |
-          supabase functions deploy xtop-dashboard \
+          npx --no-install supabase functions deploy xtop-dashboard \
             --project-ref "$SUPABASE_PROJECT_ID"
 
       - name: Deployment Summary
