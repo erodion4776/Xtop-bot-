@@ -175,7 +175,8 @@ async function handlePaywallGate(
 
   // If paymentsCount <= attemptsCount, a new payment is required for this attempt
   if (paymentsCount <= attemptsCount) {
-    const examFeeNaira = ctx.examFeeNaira || (String(ctx.studentLevel || "").includes("400") ? 1000 : 500);\n    const payment = await initializeExamPayment(studentId, courseId, courseCode, phone, examFeeNaira);
+    const examFeeNaira = ctx.examFeeNaira || (String(ctx.studentLevel || "").includes("400") ? 1000 : 500);
+    const payment = await initializeExamPayment(studentId, courseId, courseCode, phone, examFeeNaira);
 
     if (!payment) {
       await sendTextMessage(phone, "⚠️ Payment gateway is temporarily busy. Please try again shortly.");
