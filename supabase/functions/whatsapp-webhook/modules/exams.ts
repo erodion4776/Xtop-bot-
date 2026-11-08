@@ -387,30 +387,19 @@ async function buildStudentPracticalQuestions(submissions: any[]): Promise<any[]
   const generated: any[] = [];
   for (const submission of submissions || []) {
     const raw = submission.raw_data || {};
-    const result = submission.result_data || {};
     const values = Array.isArray(raw.entered_values) ? raw.entered_values.map(Number) : [];
     const code = String(submission.experiment_code || "");
     let prompt = "", unit = "s", explanation = "";
     let answer = NaN;
 
     if (code === "pendulum" && values[0] > 0) {
-      prompt = `Using your submitted average observed time of ${Number(result.average_observed_time_s).toFixed(3)} s and rating factor of ${Number(result.rating_factor).toFixed(3)}, calculate normal time.`;
-      answer = Number(result.average_observed_time_s) * Number(result.rating_factor);
-      explanation = "Normal time = average observed time × rating factor.";
       prompt = `Using your submitted pendulum length of ${values[0].toFixed(3)} m and g = 9.80665 m/s², calculate theoretical period.`;
       answer = 2 * Math.PI * Math.sqrt(values[0] / 9.80665);
       explanation = "For a simple pendulum, T = 2π√(L/g).";
     } else if (code === "quartz" && Number.isFinite(values[0])) {
-      prompt = `Your practical produced normal time ${Number(result.normal_time_s).toFixed(3)} s and allowance ${(Number(result.allowance_fraction)*100).toFixed(2)}% of standard time. Calculate standard time.`;
-      answer = Number(result.normal_time_s) / (1 - Number(result.allowance_fraction));
-      explanation = "Standard time = normal time ÷ (1 − allowance fraction).";
       prompt = `Your quartz practical used a frequency offset of ${values[0]} ppm. Calculate clock error in seconds per day.`;
       answer = values[0] * 1e-6 * 86400; unit = "s/day";
       explanation = "Daily error = ppm × 10⁻⁶ × 86,400 seconds.";
-    } else if (code === "frequency" && values[0] > 0) {
-      prompt = `Your work-sampling practical recorded ${values[0]} activity observations out of ${values[1]}. Calculate the activity percentage.`;
-      answer = values[0] / values[1] * 100; unit = "%";
-      explanation = "Activity percentage = activity observations ÷ total observations × 100.";
     } else if (code === "frequency" && values[0] > 0) {
       prompt = `Your frequency practical used ${values[0]} Hz. Calculate its period.`;
       answer = 1 / values[0];
@@ -425,8 +414,8 @@ async function buildStudentPracticalQuestions(submissions: any[]): Promise<any[]
       explanation = "Combined standard uncertainty = square root of the sum of squared components.";
     }
 
-    if (!prompt || !Number.isFinite(answer)) continue;
-    const id = await stablePracticalQuestionId(`${submission.id}:${code}:ela401-practical-v1`);
+    if (!prompt || !Number.isFinite(answer) || !PRACTICAL_MODULES[code]) continue;
+    const id = await stablePracticalQuestionId(`${submission.id}:${code}:ela401-precision-time-v2`);
     generated.push(makePracticalQuestion(id, PRACTICAL_MODULES[code], prompt, answer, unit, explanation));
   }
   return generated;
