@@ -32,43 +32,50 @@ jobs:
         run: npm install --no-save --no-package-lock supabase@3.0.0
 
       - name: Link project
-        run: npx --no-install supabase link --project-ref "$SUPABASE_PROJECT_ID"
+        run: npx --no-install supabase link --project-ref "$SUPABASE_PROJECT_ID" \
+            --yes
 
       - name: Deploy WhatsApp webhook
         run: |
           npx --no-install supabase functions deploy whatsapp-webhook \
             --project-ref "$SUPABASE_PROJECT_ID" \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --yes
 
       - name: Deploy wallet API
         run: |
           if [ -d "supabase/functions/wallet-api" ]; then
             npx --no-install supabase functions deploy wallet-api \
               --project-ref "$SUPABASE_PROJECT_ID" \
-              --no-verify-jwt
+              --no-verify-jwt \
+            --yes
           fi
 
       - name: Deploy order API
         run: |
           npx --no-install supabase functions deploy order-api \
             --project-ref "$SUPABASE_PROJECT_ID" \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --yes
 
       - name: Deploy merchant Paystack API
         run: |
           npx --no-install supabase functions deploy merchant-paystack \
             --project-ref "$SUPABASE_PROJECT_ID" \
-            --no-verify-jwt
+            --no-verify-jwt \
+            --yes
 
       - name: Deploy merchant registration
         run: |
           npx --no-install supabase functions deploy merchant-register \
-            --project-ref "$SUPABASE_PROJECT_ID"
+            --project-ref "$SUPABASE_PROJECT_ID" \
+            --yes
 
       - name: Deploy Sabi dashboard API
         run: |
           npx --no-install supabase functions deploy xtop-dashboard \
-            --project-ref "$SUPABASE_PROJECT_ID"
+            --project-ref "$SUPABASE_PROJECT_ID" \
+            --yes
 
       - name: Deployment Summary
         run: |
