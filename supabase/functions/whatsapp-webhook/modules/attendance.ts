@@ -75,9 +75,6 @@ export async function handleRegistration(
     case "WAITING_MATRIC_NUMBER":
       return await processMatricInput(phone, text, contact, conv, ctx);
 
-    case "WAITING_SERIAL_NUMBER":
-      return await processSerialInput(phone, text, contact, conv, ctx);
-
     case "WAITING_DEPARTMENT":
       return await processDeptInput(phone, text, contact, conv, ctx);
 
@@ -245,51 +242,13 @@ async function processMatricInput(
   }
 
   ctx.regMatric = matric.toUpperCase();
-  ctx.step = "WAITING_SERIAL_NUMBER";
-  await updateConversation(conv.id, {
-    current_state: "WAITING_SERIAL_NUMBER",
-    context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
-  });
-
-  await sendTextMessage(phone, `🔢 *Please enter your class Serial Number (e.g. 14, 05, 42):*`);
-  return false;
-}
-
-// ═══════════════════════════════════════════════════════
-// NEW REGISTRATION STEP: SERIAL NUMBER
-// ═══════════════════════════════════════════════════════
-
-async function processSerialInput(
-  phone: string, text: string, _contact: Contact, conv: Conversation, ctx: RegCtx
-): Promise<boolean> {
-  if (isBack(text)) {
-    ctx.step = "WAITING_MATRIC_NUMBER";
-    ctx.regSerial = undefined;
-    await updateConversation(conv.id, {
-      current_state: "WAITING_MATRIC_NUMBER",
-      context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
-    });
-    await sendTextMessage(phone, "🎓 *Please enter your Matriculation Number:*");
-    return false;
-  }
-
-  const serial = text.trim();
-  if (serial.length === 0) {
-    await sendTextMessage(
-      phone,
-      "⚠️ Serial number cannot be empty.\n\n🔢 *Please enter your class Serial Number:*"
-    );
-    return false;
-  }
-
-  ctx.regSerial = serial;
   ctx.step = "WAITING_DEPARTMENT";
   await updateConversation(conv.id, {
     current_state: "WAITING_DEPARTMENT",
     context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
   });
 
-  await sendTextMessage(phone, `🏫 *Please enter your Department (e.g. Automobile Workshop):*`);
+  await sendTextMessage(phone, "🏫 *Please enter your Department:*");
   return false;
 }
 
@@ -301,13 +260,13 @@ async function processDeptInput(
   phone: string, text: string, _contact: Contact, conv: Conversation, ctx: RegCtx
 ): Promise<boolean> {
   if (isBack(text)) {
-    ctx.step = "WAITING_SERIAL_NUMBER";
+    ctx.step = "WAITING_MATRIC_NUMBER";
     ctx.regDept = undefined;
     await updateConversation(conv.id, {
-      current_state: "WAITING_SERIAL_NUMBER",
+      current_state: "WAITING_MATRIC_NUMBER",
       context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
     });
-    await sendTextMessage(phone, "🔢 *Please enter your class Serial Number:*");
+    await sendTextMessage(phone, "🎓 *Please enter your Matriculation Number:*");
     return false;
   }
 
@@ -357,35 +316,6 @@ async function processLevelInput(
     return false;
   }
 
-  // ── STRICT DUPLICATE SERIAL NUMBER VALIDATION GATING ──
-  try {
-    const { data: duplicateCheck } = await supabase
-      .from("students")
-      .select("phone, name")
-      .eq("serial_number", ctx.regSerial?.trim())
-      .eq("department", ctx.regDept?.trim())
-      .eq("level", level)
-      .maybeSingle();
-
-    if (duplicateCheck && duplicateCheck.phone !== phone) {
-      // Revert step back to WAITING_SERIAL_NUMBER
-      ctx.step = "WAITING_SERIAL_NUMBER";
-      ctx.regSerial = undefined;
-      await updateConversation(conv.id, {
-        current_state: "WAITING_SERIAL_NUMBER",
-        context_json: { ...ctx, learningUnlocked: true } as unknown as Record<string, unknown>,
-      });
-
-      const conflictMsg =
-        `❌ *REGISTRATION FAILED*\n\n` +
-        `Serial Number *${ctx.regSerial || ""}* is already assigned to another student in the *${ctx.regDept}* department (${level}L).\n\n` +
-        `🔢 *Please enter a different class Serial Number:*`;
-      
-      await sendTextMessage(phone, conflictMsg);
-      return false;
-    }
-  } catch (_) { /* Continue safely on connection loss */ }
-
   let student: Student | null = null;
   try {
     student = await getStudentByPhone(phone);
@@ -408,7 +338,6 @@ async function processLevelInput(
         matric_number: ctx.regMatric || undefined,
         department: ctx.regDept || undefined,
         level: level,
-        serial_number: ctx.regSerial || undefined
       });
 
       if (!updated) {
@@ -429,7 +358,7 @@ async function processLevelInput(
         ctx.regMatric || "",
         ctx.regDept || "",
         level,
-        ctx.regSerial || ""
+        ""
       );
 
       if (!student) {
@@ -465,7 +394,6 @@ async function processLevelInput(
     phone,
     `✅ *Student registration completed.*\n\n` +
     `👤 *Name:* ${student.name}\n` +
-    `🔢 *Serial No:* ${student.serial_number}\n` +
     `🎓 *Matric No:* ${student.matric_number}\n` +
     `🏫 *Department:* ${student.department}\n` +
     `📚 *Level:* ${student.level}L\n\n` +
