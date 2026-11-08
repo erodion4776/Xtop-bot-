@@ -3,7 +3,7 @@
 
 import {
   Contact, Conversation, updateConversation,
-  getCourseByCode, getOrCreateStudent, getStudentCourseAccess,
+  getCourseByCode, getOrCreateStudent, getStudentByPhone, isStudentProfileComplete, getStudentCourseAccess,
   markLessonComplete, getStudentExamAttempts,
   getSupabaseClient,
 } from "../database.ts";
@@ -191,9 +191,22 @@ export async function handleLearning(
     return;
   }
 
-  // 3. Registration flow
-  if (["ENTRY", "WAITING_STUDENT_NAME", "WAITING_MATRIC_NUMBER", "WAITING_DEPARTMENT", "WAITING_LEVEL"].includes(state)) {
+  // 3. Collect identity details, then require Lizzy's lecturer verification.
+  if (["ENTRY", "WAITING_STUDENT_NAME", "WAITING_MATRIC_NUMBER", "WAITING_SERIAL_NUMBER", "WAITING_DEPARTMENT", "WAITING_LEVEL"].includes(state)) {
     await handleRegistration(phone, text, contact, conv);
+    return;
+  }
+
+  const verifiedStudent = await getStudentByPhone(phone);
+  if (!verifiedStudent || !isStudentProfileComplete(verifiedStudent)) {
+    await handleRegistration(phone, text, contact, { ...conv, current_state: "ENTRY" });
+    return;
+  }
+  const verificationStatus = String(verifiedStudent.status || "ACTIVE").toUpperCase();
+  if (verificationStatus !== "ACTIVE") {
+    await sendTextMessage(phone, verificationStatus === "PENDING"
+      ? "⏳ Your registration is awaiting Lizzy's approval. Lectures and course materials remain locked until verification is complete."
+      : "❌ Your student verification was not approved. Please contact the Learning Centre administrator.");
     return;
   }
 
