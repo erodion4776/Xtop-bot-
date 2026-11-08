@@ -108,7 +108,17 @@ async function checkStudentAndRoute(
     return false;
   }
 
-  // RETURNING STUDENT — profile is complete
+  const verificationStatus = String(student?.status || "ACTIVE").toUpperCase();
+  if (student && verificationStatus === "PENDING") {
+    await sendTextMessage(phone, "⏳ *Registration submitted for verification.*\n\nLizzy is waiting for the lecturer/admin to verify your name, matric number, class S/N and department. Lectures remain locked until approval.");
+    return false;
+  }
+  if (student && verificationStatus === "REJECTED") {
+    await sendTextMessage(phone, "❌ *Student verification was not approved.*\n\nPlease contact the Learning Centre administrator to correct your registration details.");
+    return false;
+  }
+
+  // Returning students with approved/legacy ACTIVE status may continue.
   if (student && isStudentProfileComplete(student)) {
     return await handleReturningStudent(phone, student, conv);
   }
@@ -372,6 +382,7 @@ async function processLevelInput(
         department: ctx.regDept || undefined,
         serial_number: ctx.regSerial || undefined,
         level: level,
+        status: "PENDING",
       });
 
       if (!updated) {
@@ -405,6 +416,14 @@ async function processLevelInput(
       return false;
     }
   }
+
+  await sendTextMessage(
+    phone,
+    "📝 *REGISTRATION SUBMITTED FOR VERIFICATION*\n\n" +
+    `👤 Name: ${student.name}\n🎓 Matric No: ${student.matric_number}\n🔢 Class S/N: ${student.serial_number || ctx.regSerial || ""}\n🏫 Department: ${student.department}\n📚 Level: ${student.level}L\n\n` +
+    "🔐 Lizzy will ask the lecturer/admin to verify these details. You cannot enter lectures or course materials until your registration is approved."
+  );
+  return false;
 
   // ── RECORD ATTENDANCE ──
   let attendanceSuccess = false;
