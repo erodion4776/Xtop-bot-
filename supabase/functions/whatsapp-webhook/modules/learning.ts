@@ -252,6 +252,9 @@ export async function handleLearning(
     case "LESSON_COMPLETE":
       await processLessonCompleteAction(phone, text, conv, ctx);
       break;
+    case "COURSE_FINAL_READY":
+      await processCourseFinalAction(phone, text, conv, ctx);
+      break;
     default:
       if (ctx.courseId) {
         await showCourseMenu(phone, conv.id, ctx);
@@ -831,8 +834,22 @@ async function completeAndAdvanceLesson(
   const total = allLessons.length;
 
   if (currentOrder >= total) {
-    await sendTextMessage(phone, `🎉 *Congratulations!* You have completed all *${total}* lessons in *${ctx.courseCode}*. You are now ready to take the Final Exam.`);
-    await showCourseMenu(phone, convId, ctx);
+    ctx.step = "COURSE_FINAL_READY";
+    await saveCtx(convId, ctx, "COURSE_FINAL_READY");
+    await sendButtonMessage(
+      phone,
+      `🎉 *Course Topics Completed!*
+
+You have completed all *${total}* published topics in *${ctx.courseCode} — ${ctx.courseName}*.
+
+You can now proceed to the course CBT examination, or return to the course menu.`,
+      [
+        makeButton("lsn_final_exam", "📝 Start CBT Exam"),
+        makeButton("lsn_menu", "📋 Course Menu")
+      ],
+      "Course Completed",
+      "Final assessment"
+    );
     return;
   }
 
@@ -842,7 +859,7 @@ async function completeAndAdvanceLesson(
 
   await sendButtonMessage(phone,
     `✅ *Lesson ${currentOrder} Complete!*\n\nReady to start Lesson ${nextOrder}?`,
-    [makeButton("lsn_next_go", `Lesson ${nextOrder} ➡️`), makeButton("lsn_menu", "📋 Course Menu")],
+    [makeButton("lsn_next_go", `Next Topic ${nextOrder} ➡️`), makeButton("lsn_menu", "📋 Course Menu")],
     `${ctx.courseCode} Progress`, `${currentOrder}/${total} completed`
   );
 }
@@ -857,6 +874,30 @@ async function processLessonCompleteAction(
     return;
   }
   await showCourseMenu(phone, conv.id, ctx);
+}
+
+async function processCourseFinalAction(
+  phone: string, text: string, conv: Conversation, ctx: LearningCtx
+): Promise<void> {
+  const n = normalise(text);
+  if (n === "lsn_final_exam" || n.includes("cbt") || n.includes("final exam") || n.includes("start exam")) {
+    await startExamEntry(phone, conv.id, ctx);
+    return;
+  }
+  if (n === "lsn_menu" || n.includes("course menu") || n === "menu" || n === "back") {
+    await showCourseMenu(phone, conv.id, ctx);
+    return;
+  }
+  await sendButtonMessage(
+    phone,
+    "All course topics are complete. Choose the CBT examination or return to the course menu.",
+    [
+      makeButton("lsn_final_exam", "📝 Start CBT Exam"),
+      makeButton("lsn_menu", "📋 Course Menu")
+    ],
+    "Course Completed",
+    "Final assessment"
+  );
 }
 
 // ═══════════════════════════════════════════════════════
