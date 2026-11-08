@@ -200,13 +200,9 @@ async function getBotStats(): Promise<string> {
 
 async function getLearningCentreProgress(): Promise<string> {
   const courseId = "37dee46f-f551-45d5-9ada-ed65946fe148";
-  const [courseResult, moduleResult, lessonResult, studentResult, enrollmentResult] = await Promise.all([
+  const [courseResult, moduleResult, studentResult, enrollmentResult] = await Promise.all([
     supabase.from("courses").select("id, course_code, course_name, status").eq("id", courseId).maybeSingle(),
-    supabase.from("course_modules").select("id", { count: "exact", head: true }).eq("course_id", courseId),
-    supabase.from("module_slides").select("id, is_draft, status", { count: "exact" }).in(
-      "module_id",
-      (await supabase.from("course_modules").select("id").eq("course_id", courseId)).data?.map((m: any) => m.id) || [],
-    ),
+    supabase.from("course_modules").select("id, title, module_order").eq("course_id", courseId).order("module_order", { ascending: true }),
     supabase.from("students").select("id", { count: "exact", head: true }),
     supabase.from("student_courses").select("id", { count: "exact", head: true }).eq("course_id", courseId),
   ]);
@@ -214,14 +210,23 @@ async function getLearningCentreProgress(): Promise<string> {
   const course = courseResult.data;
   if (courseResult.error || !course) {
     safeErrorLog("getLearningCentreProgress.course", courseResult.error);
-    return "⚠️ *LEARNING CENTRE STATUS UNAVAILABLE*\\n\\nCould not retrieve ELA401 course information. Check the course database query.";
+    return "⚠️ *LEARNING CENTRE STATUS UNAVAILABLE*\n\nCould not retrieve ELA401 course information. Check the course database query.";
   }
+
+  const modules = moduleResult.data || [];
+  const moduleIds = modules.map((module: any) => module.id);
+  const lessonResult = moduleIds.length
+    ? await supabase.from("module_slides")
+        .select("id, is_draft, status", { count: "exact" })
+        .in("module_id", moduleIds)
+    : { data: [], count: 0, error: null };
 
   const lessons = lessonResult.data || [];
   const published = lessons.filter((lesson: any) =>
-    lesson.is_draft === false && ["ACTIVE", "PUBLISHED", "OPEN"].includes(String(lesson.status || "").toUpperCase())
+    lesson.is_draft === false &&
+    ["ACTIVE", "PUBLISHED", "OPEN"].includes(String(lesson.status || "").toUpperCase())
   ).length;
-  const drafts = lessons.length - published;
+  const drafts = (lessonResult.count ?? lessons.length) - published;
   const failures = [
     moduleResult.error ? "Modules" : "",
     lessonResult.error ? "Lessons" : "",
@@ -232,20 +237,184 @@ async function getLearningCentreProgress(): Promise<string> {
   return [
     "🎓 *ENGR. ERO LEARNING CENTRE*",
     "",
-    `Course: *${course.course_code} — ${course.course_name}*`,
-    `Course status: ${course.status || "Not reported"}`,
-    `Modules: ${moduleResult.count ?? "Unavailable"}`,
-    `Lessons total: ${lessonResult.count ?? lessons.length}`,
-    `Published lessons: ${published}`,
-    `Draft / not published: ${drafts}`,
-    `Registered students (all courses): ${studentResult.count ?? "Unavailable"}`,
-    `ELA401 enrolments: ${enrollmentResult.count ?? "Unavailable"}`,
+    \`Course: *\${course.course_code} — \${course.course_name}*\`,
+    \`Course status: \${course.status || "Not reported"}\`,
+    \`Modules: \${moduleResult.error ? "Unavailable" : modules.length}\`,
+    \`Lessons total: \${lessonResult.count ?? lessons.length}\`,
+    \`Published lessons: \${published}\`,
+    \`Draft / not published: \${drafts}\`,
+    \`Registered students (all courses): \${studentResult.count ?? "Unavailable"}\`,
+    \`ELA401 enrolments: \${enrollmentResult.count ?? "Unavailable"}\`,
     "",
-    failures.length ? `Some figures unavailable: ${failures.join(", ")}` : "Database checks completed successfully.",
+    failures.length ? \`Some figures unavailable: \${failures.join(", ")}\` : "Database checks completed successfully.",
     "",
-    "Note: Draft lessons are not yet available to students.",
-  ].join("\\n");
+    "All lessons remain drafts until lecturer approval.",
+  ].join("\n");
 }
+
+async function listLearningModules(phone: string, page = 0): Promise<void> {
+  const courseId = "37dee46f-f551-45d5-9ada-ed65946fe148";
+  const { data, error } = await supabase.from("course_modules")
+    .select("id, title, module_order")
+    .eq("course_id", courseId)
+    .order("module_order", { ascending: true });
+
+  if (error || !data) {
+    safeErrorLog("listLearningModules", error);
+    await sendTextMessage(phone, "⚠️ I could not load the ELA401 module list. Please try again.");
+    return;
+  }
+
+  if (!data.length) {
+    await sendTextMessage(phone, "No ELA401 modules were found.");
+    return;
+  }
+
+  const pageSize = 6;
+  const pageCount = Math.ceil(data.length / pageSize);
+  const safePage = Math.max(0, Math.min(page, pageCount - 1));
+  const visible = data.slice(safePage * pageSize, (safePage + 1) * pageSize);
+  const rows = visible.map((module: any) =>
+    makeListRow(
+      \`admin_learning_module_\${module.id}\`,
+      \`Module \${module.module_order}: \${String(module.title || "Untitled").slice(0, 22)}\`,
+      "Open lessons • Draft review"
+    )
+  );
+
+  if (safePage > 0) {
+    rows.push(makeListRow(\`admin_learning_page_\${safePage - 1}\`, "⬅ Previous modules", "Go to previous page"));
+  }
+  if (safePage < pageCount - 1) {
+    rows.push(makeListRow(\`admin_learning_page_\${safePage + 1}\`, "Next modules ➡", "View remaining modules"));
+  }
+
+  await sendListMessage(
+    phone,
+    \`ELA401 — Time Measurement\n12-module course outline\nPage \${safePage + 1} of \${pageCount}\n\nChoose a module to inspect its lessons. Draft status is preserved.\`,
+    "Choose Module",
+    [{ title: "ELA401 Modules", rows }],
+    "Learning Centre",
+    "Lecturer review required"
+  );
+}
+
+async function showLearningModule(phone: string, moduleId: string): Promise<void> {
+  const { data: module, error } = await supabase.from("course_modules")
+    .select("id, title, description, objectives, module_order")
+    .eq("id", moduleId)
+    .maybeSingle();
+
+  if (error || !module) {
+    safeErrorLog("showLearningModule.module", error);
+    await sendTextMessage(phone, "⚠️ Module not found. Return to the module list and try again.");
+    return;
+  }
+
+  const { data: lessons, error: lessonError } = await supabase.from("module_slides")
+    .select("id, title, lesson_number, status, is_draft, estimated_minutes, slide_order, order_index")
+    .eq("module_id", moduleId)
+    .order("order_index", { ascending: true })
+    .order("slide_order", { ascending: true });
+
+  if (lessonError) {
+    safeErrorLog("showLearningModule.lessons", lessonError);
+    await sendTextMessage(phone, "⚠️ I could not load this module's lessons.");
+    return;
+  }
+
+  const rows = (lessons || []).slice(0, 8).map((lesson: any, index: number) =>
+    makeListRow(
+      \`admin_learning_lesson_\${lesson.id}\`,
+      String(lesson.title || \`Lesson \${index + 1}\`).slice(0, 24),
+      \`\${lesson.is_draft ? "DRAFT" : lesson.status || "REVIEW"} • \${lesson.estimated_minutes || "—"} min\`
+    )
+  );
+
+  const body = [
+    \`🎓 *MODULE \${module.module_order}: \${module.title}*\`,
+    "",
+    module.description || "",
+    module.objectives ? \`Objectives: \${module.objectives}\` : "",
+    "",
+    \`Lessons in module: \${(lessons || []).length}\`,
+    "Select a lesson to read the teaching material and practical instructions.",
+    "",
+    "🔒 Draft material — not visible to students yet.",
+  ].filter(Boolean).join("\n");
+
+  if (!rows.length) {
+    await sendTextMessage(phone, body + "\n\nNo lessons are attached to this module yet.");
+  } else {
+    await sendListMessage(
+      phone,
+      body,
+      "Open Lesson",
+      [{ title: "Module Lessons", rows }],
+      "ELA401 Lesson Browser",
+      "Draft • Lecturer review"
+    );
+  }
+  await sendButtonMessage(phone, "Module navigation:", [
+    makeButton("admin_learning", "📚 All Modules"),
+    makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+  ]);
+}
+
+async function showLearningLesson(phone: string, lessonId: string): Promise<void> {
+  const { data: lesson, error } = await supabase.from("module_slides")
+    .select("id, module_id, title, content, content_sections, objectives, estimated_minutes, status, is_draft")
+    .eq("id", lessonId)
+    .maybeSingle();
+
+  if (error || !lesson) {
+    safeErrorLog("showLearningLesson", error);
+    await sendTextMessage(phone, "⚠️ Lesson not found. Please reopen it from its module.");
+    return;
+  }
+
+  const sectionLines: string[] = [];
+  if (Array.isArray(lesson.content_sections)) {
+    for (const section of lesson.content_sections) {
+      if (Array.isArray(section)) {
+        const heading = String(section[0] || "").trim();
+        const body = String(section[1] || "").trim();
+        if (heading) sectionLines.push(\`* \${heading}*\`);
+        if (body) sectionLines.push(body);
+        sectionLines.push("");
+      } else if (section && typeof section === "object") {
+        const heading = String(section.title || section.heading || "").trim();
+        const body = String(section.content || section.body || "").trim();
+        if (heading) sectionLines.push(\`* \${heading}*\`);
+        if (body) sectionLines.push(body);
+        sectionLines.push("");
+      }
+    }
+  }
+
+  const mainContent = sectionLines.join("\n").trim() || String(lesson.content || "Lesson content is not available yet.").trim();
+  const header = [
+    "🎓 *ELA401 — LESSON PREVIEW*",
+    \`* \${lesson.title || "Untitled lesson"}*\`,
+    \`Status: \${lesson.is_draft ? "DRAFT — NOT PUBLISHED" : lesson.status || "REVIEW"}\`,
+    \`Estimated study time: \${lesson.estimated_minutes || "Not specified"} minutes\`,
+    "",
+    "⚠️ This material is for lecturer review and is not released to students.",
+    "",
+  ].join("\n");
+  const maxBody = 3300;
+  const body = mainContent.length > maxBody
+    ? mainContent.slice(0, maxBody) + "\n\n[Preview shortened. Full lesson remains in the course database.]"
+    : mainContent;
+
+  await sendTextMessage(phone, header + body);
+  await sendButtonMessage(phone, "Lesson navigation:", [
+    makeButton(\`admin_learning_module_\${lesson.module_id}\`, "↩ Module Lessons"),
+    makeButton("admin_learning", "📚 All Modules"),
+    makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+  ]);
+}
+
 
 /* =========================================================
    SECURE ADMIN LEAD ASSISTANT HELPERS
@@ -1157,13 +1326,28 @@ export async function handleAdminAgent(
     return;
   }
 
+  if (command.startsWith("admin_learning_page_")) {
+    const page = Number.parseInt(command.slice("admin_learning_page_".length), 10);
+    await listLearningModules(phone, Number.isFinite(page) ? page : 0);
+    return;
+  }
+
+  if (command.startsWith("admin_learning_module_")) {
+    const moduleId = inputRaw.slice("admin_learning_module_".length).trim();
+    await showLearningModule(phone, moduleId);
+    return;
+  }
+
+  if (command.startsWith("admin_learning_lesson_")) {
+    const lessonId = inputRaw.slice("admin_learning_lesson_".length).trim();
+    await showLearningLesson(phone, lessonId);
+    return;
+  }
+
   if (["admin_learning", "learning", "learning progress", "course progress", "ela401"].includes(command)) {
     await sendTextMessage(phone, "Checking Engr. Ero Learning Centre records...");
     await sendTextMessage(phone, await getLearningCentreProgress());
-    await sendButtonMessage(phone, "Learning Centre navigation:", [
-      makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
-      makeButton("admin_stats", "📊 Bot Statistics"),
-    ]);
+    await listLearningModules(phone, 0);
     return;
   }
 
