@@ -200,20 +200,30 @@ async function getBotStats(): Promise<string> {
    ========================================================= */
 
 async function getSabiPlatformOverview(): Promise<string> {
+  // Exclude the internal XTOP system tenant from merchant counts.
+  const merchantBase = () => supabase.from("tenants").select("id", { count: "exact", head: true }).eq("is_system", false);
   const checks = await Promise.all([
-    supabase.from("tenants").select("id", { count: "exact", head: true }).eq("is_active", true),
+    merchantBase().eq("is_active", true),
+    merchantBase().eq("is_active", false),
     supabase.from("products").select("id", { count: "exact", head: true }),
     supabase.from("tenant_orders").select("id", { count: "exact", head: true }),
+    supabase.from("tenant_orders").select("id", { count: "exact", head: true }).eq("payment_status", "PAID"),
     supabase.from("tenant_whatsapp_accounts").select("id", { count: "exact", head: true }).eq("is_active", true),
     supabase.from("tenant_order_payment_intents").select("id", { count: "exact", head: true }),
+    merchantBase().in("paystack_subaccount_status", ["PENDING", "PENDING_VERIFICATION"]),
+    merchantBase().eq("paystack_subaccount_status", "VERIFIED"),
   ]);
 
   const labels = [
     "Active merchant businesses",
+    "Inactive merchant businesses",
     "Products across Sabi",
     "Orders recorded",
+    "Orders marked paid",
     "Active merchant WhatsApp connections",
     "Payment intents recorded",
+    "Merchants awaiting Paystack verification",
+    "Merchants with verified Paystack payouts",
   ];
   const lines = checks.map((result, index) => {
     if (result.error) {
@@ -237,6 +247,7 @@ async function listSabiMerchants(phone: string): Promise<void> {
   const { data, error } = await supabase
     .from("tenants")
     .select("id,name,business_name,is_active,paystack_subaccount_status,created_at")
+    .eq("is_system", false)
     .order("created_at", { ascending: false })
     .limit(20);
 
@@ -252,7 +263,7 @@ async function listSabiMerchants(phone: string): Promise<void> {
   }
 
   const lines = data.map((tenant: any, index: number) => {
-    const business = String(tenant.business_name || tenant.name || "Unnamed business").replace(/[\r\n]/g, " ").slice(0, 70);
+    const business = String(tenant.business_name || tenant.name || "Unnamed business").replace(/[\\r\\n]/g, " ").slice(0, 70);
     const active = tenant.is_active === true ? "ACTIVE" : "INACTIVE";
     const payout = String(tenant.paystack_subaccount_status || "NOT CONFIGURED").replace(/_/g, " ");
     return (index + 1) + ". *" + business + "*\n   Business: " + active + " • Paystack: " + payout;
@@ -263,7 +274,8 @@ async function listSabiMerchants(phone: string): Promise<void> {
     "",
     ...lines,
     "",
-    "Showing latest " + data.length + " business records (maximum 20).",
+    "Showing latest " + data.length + " merchant businesses (maximum 20).",
+    "Internal XTOP system tenant is excluded.",
     "Sensitive owner, customer, bank-account and access-token details are not displayed.",
   ].join("\n"));
 }
