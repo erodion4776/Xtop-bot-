@@ -315,7 +315,7 @@ async function launchExam(
     student_id: studentId,
     course_id: courseId,
     score: 0,
-    total_marks: questions.length,
+    total_marks: questions.reduce((sum: number, question: any) => sum + Number(question.marks || 1), 0),
     percentage: 0,
     pass_status: "PENDING",
     is_locked: false,
@@ -412,7 +412,8 @@ async function completeAndSubmitExam(
 ): Promise<void> {
   const score = ctx.examScore || 0;
   const totalQuestions = ctx.questions?.length || 1;
-  const percentage = Math.round((score / totalQuestions) * 100);
+  const totalMarks = (ctx.questions || []).reduce((sum: number, question: any) => sum + Number(question.marks || 1), 0) || totalQuestions;
+  const percentage = Math.max(0, Math.min(100, Math.round((score / totalMarks) * 100)));
   const passed = percentage >= 50;
   const attemptsCount = ctx.attemptsCount || 0;
 
