@@ -94,6 +94,7 @@ export async function showAdminAgentMenu(phone: string): Promise<void> {
       rows: [
         makeListRow("admin_status", "🟢 DB Connectivity", "Test connection to Supabase database"),
         makeListRow("admin_stats", "📊 Bot Statistics", "View messaging and contacts metrics"),
+        makeListRow("admin_learning", "🎓 Learning Centre Progress", "Courses, lessons, students and publication status"),
         makeListRow("admin_github", "🚗 GitHub Actions API", "Verify Actions integration connectivity"),
         makeListRow("admin_deployments", "🚀 Recent Runs", "Inspect workflow execution logs"),
         makeListRow("admin_logs", "🔎 Workflow Failures", "Inspect recent failing job steps"),
@@ -191,6 +192,59 @@ async function getBotStats(): Promise<string> {
     "",
     "These are database counts, not a financial report.",
   ].join("\n");
+}
+
+/* =========================================================
+   LEARNING CENTRE PROGRESS
+   ========================================================= */
+
+async function getLearningCentreProgress(): Promise<string> {
+  const courseId = "37dee46f-f551-45d5-9ada-ed65946fe148";
+  const [courseResult, moduleResult, lessonResult, studentResult, enrollmentResult] = await Promise.all([
+    supabase.from("courses").select("id, course_code, course_name, status").eq("id", courseId).maybeSingle(),
+    supabase.from("course_modules").select("id", { count: "exact", head: true }).eq("course_id", courseId),
+    supabase.from("module_slides").select("id, is_draft, status", { count: "exact" }).in(
+      "module_id",
+      (await supabase.from("course_modules").select("id").eq("course_id", courseId)).data?.map((m: any) => m.id) || [],
+    ),
+    supabase.from("students").select("id", { count: "exact", head: true }),
+    supabase.from("student_courses").select("id", { count: "exact", head: true }).eq("course_id", courseId),
+  ]);
+
+  const course = courseResult.data;
+  if (courseResult.error || !course) {
+    safeErrorLog("getLearningCentreProgress.course", courseResult.error);
+    return "⚠️ *LEARNING CENTRE STATUS UNAVAILABLE*\\n\\nCould not retrieve ELA401 course information. Check the course database query.";
+  }
+
+  const lessons = lessonResult.data || [];
+  const published = lessons.filter((lesson: any) =>
+    lesson.is_draft === false && ["ACTIVE", "PUBLISHED", "OPEN"].includes(String(lesson.status || "").toUpperCase())
+  ).length;
+  const drafts = lessons.length - published;
+  const failures = [
+    moduleResult.error ? "Modules" : "",
+    lessonResult.error ? "Lessons" : "",
+    studentResult.error ? "Students" : "",
+    enrollmentResult.error ? "Enrollments" : "",
+  ].filter(Boolean);
+
+  return [
+    "🎓 *ENGR. ERO LEARNING CENTRE*",
+    "",
+    `Course: *${course.course_code} — ${course.course_name}*`,
+    `Course status: ${course.status || "Not reported"}`,
+    `Modules: ${moduleResult.count ?? "Unavailable"}`,
+    `Lessons total: ${lessonResult.count ?? lessons.length}`,
+    `Published lessons: ${published}`,
+    `Draft / not published: ${drafts}`,
+    `Registered students (all courses): ${studentResult.count ?? "Unavailable"}`,
+    `ELA401 enrolments: ${enrollmentResult.count ?? "Unavailable"}`,
+    "",
+    failures.length ? `Some figures unavailable: ${failures.join(", ")}` : "Database checks completed successfully.",
+    "",
+    "Note: Draft lessons are not yet available to students.",
+  ].join("\\n");
 }
 
 /* =========================================================
@@ -1100,6 +1154,16 @@ export async function handleAdminAgent(
 
   if (["menu", "help", "admin_agent_open", "admin_agent_menu", "0"].includes(command)) {
     await showAdminAgentMenu(phone);
+    return;
+  }
+
+  if (["admin_learning", "learning", "learning progress", "course progress", "ela401"].includes(command)) {
+    await sendTextMessage(phone, "Checking Engr. Ero Learning Centre records...");
+    await sendTextMessage(phone, await getLearningCentreProgress());
+    await sendButtonMessage(phone, "Learning Centre navigation:", [
+      makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+      makeButton("admin_stats", "📊 Bot Statistics"),
+    ]);
     return;
   }
 
