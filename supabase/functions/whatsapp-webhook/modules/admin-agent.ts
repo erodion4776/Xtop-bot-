@@ -24,6 +24,8 @@ import {
 
 import { callAI } from "../ai.ts";
 import { formatNaira } from "./pricing.ts";
+import { sendDocumentMessage } from "../whatsapp.ts";
+import { PDFDocument, StandardFonts } from "npm:pdf-lib@1.17.1";
 
 const supabase = getSupabaseClient();
 
@@ -528,6 +530,122 @@ async function showLearningLesson(phone: string, lessonId: string): Promise<void
 
 
 
+
+function pdfSafe(value: unknown): string {
+  return String(value ?? "—").replace(/[^\\x20-\\x7E]/g, "?").replace(/[\\r\\t]/g, " ").slice(0, 180);
+}
+
+async function sendResultPdf(phone: string, filename: string, title: string, blocks: string[][]): Promise<void> {
+  try {
+    const pdf = await PDFDocument.create();
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+    let page = pdf.addPage([595.28, 841.89]);
+    let y = 790;
+    const margin = 48;
+    const addPage = () => { page = pdf.addPage([595.28, 841.89]); y = 790; };
+    const write = (line: string, isBold = false, size = 10) => {
+      const safe = pdfSafe(line);
+      const maxChars = size >= 14 ? 65 : 92;
+      const chunks: string[] = [];
+      for (let i = 0; i < safe.length; i += maxChars) chunks.push(safe.slice(i, i + maxChars));
+      for (const chunk of (chunks.length ? chunks : [""])) {
+        if (y < 58) addPage();
+        page.drawText(chunk, { x: margin, y, size, font: isBold ? bold : font });
+        y -= size + 6;
+      }
+    };
+    write("ENGR. ERO LEARNING CENTRE", true, 16);
+    write("ELA401 - TIME MEASUREMENT", true, 12);
+    write(title, true, 13);
+    write("Official academic record | Generated: " + new Date().toLocaleDateString("en-GB"));
+    write("--------------------------------------------------------------------------");
+    for (const block of blocks) {
+      for (const line of block) write(line, line.startsWith("STUDENT:") || line.startsWith("ATTENDANCE") || line.startsWith("CBT") || line.startsWith("RESULT"));
+      write(" ");
+    }
+    write("--------------------------------------------------------------------------");
+    write("Lecturer: Engr. Ero Osarodion Odion");
+    write("Signature: __________________________________  Date: __________________");
+    write("Note: This report contains only attendance and CBT records stored in the academic database.");
+    const bytes = await pdf.save();
+    const path = "ela401/" + crypto.randomUUID() + "-" + filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const { error: uploadError } = await supabase.storage.from("student-result-sheets").upload(path, bytes, {
+      contentType: "application/pdf", upsert: false, cacheControl: "3600",
+    });
+    if (uploadError) throw uploadError;
+    const { data: signed, error: signError } = await supabase.storage.from("student-result-sheets").createSignedUrl(path, 86400, { download: filename });
+    if (signError || !signed?.signedUrl) throw signError || new Error("Could not create a download link.");
+    await sendDocumentMessage(phone, signed.signedUrl, filename, "Your ELA401 result sheet is ready. Download and print it for submission.");
+  } catch (error) {
+    safeErrorLog("sendResultPdf", error);
+    await sendTextMessage(phone, "Could not generate the PDF result sheet. Please retry; no academic records were changed.");
+  }
+}
+
+async function getStudentResultBlock(student: any): Promise<string[]> {
+  const courseId = "37dee46f-f551-45d5-9ada-ed65946fe148";
+  const [attendanceResult, attemptsResult] = await Promise.all([
+    supabase.from("attendance").select("attendance_date, session_date, session_label, status")
+      .eq("student_id", student.id).eq("course_id", courseId).order("session_date", { ascending: true }).limit(500),
+    supabase.from("exam_attempts").select("score, total_marks, percentage, pass_status, submitted_at")
+      .eq("student_id", student.id).eq("course_id", courseId).not("submitted_at", "is", null)
+      .order("submitted_at", { ascending: true }).limit(100),
+  ]);
+  if (attendanceResult.error || attemptsResult.error) throw attendanceResult.error || attemptsResult.error;
+  const attendance = attendanceResult.data || [];
+  const attempts = attemptsResult.data || [];
+  const lines = [
+    "STUDENT: " + pdfSafe(student.name),
+    "Department: " + pdfSafe(student.department) + " | Level: " + pdfSafe(student.level) + "L",
+    "Class S/N: " + pdfSafe(student.serial_number) + " | Matric No: " + pdfSafe(student.matric_number),
+    "ATTENDANCE (" + attendance.length + " recorded sessions)",
+    ...(attendance.length ? attendance.map((a: any) => "  " + pdfSafe(a.session_date || a.attendance_date || "Date not recorded") + " | " + pdfSafe(a.session_label || "Class") + " | " + pdfSafe(a.status || "RECORDED")) : ["  No attendance dates recorded."]),
+    "CBT RESULTS (score normalized to 0-100)",
+    ...(attempts.length ? attempts.map((a: any, i: number) => {
+      const pct = a.percentage !== null && a.percentage !== undefined ? Number(a.percentage) :
+        (Number(a.total_marks) > 0 ? Number(a.score) / Number(a.total_marks) * 100 : 0);
+      const score = Math.max(0, Math.min(100, pct));
+      return "  Attempt " + (i + 1) + ": " + score.toFixed(1) + "/100 | " + pdfSafe(a.pass_status || "NOT GRADED") +
+        " | " + (a.submitted_at ? new Date(a.submitted_at).toLocaleDateString("en-GB") : "Date not recorded");
+    }) : ["  No completed CBT score recorded."]),
+    "RESULT SUMMARY: " + attempts.length + " completed CBT attempt(s); " + attendance.length + " attendance record(s).",
+  ];
+  return lines;
+}
+
+async function downloadIndividualResult(phone: string, studentId: string): Promise<void> {
+  const { data: student, error } = await supabase.from("students")
+    .select("id, name, matric_number, serial_number, department, level, status")
+    .eq("id", studentId).eq("status", "ACTIVE").maybeSingle();
+  if (error || !student) {
+    safeErrorLog("downloadIndividualResult.student", error);
+    await sendTextMessage(phone, "Approved student record not found. No PDF was generated.");
+    return;
+  }
+  const block = await getStudentResultBlock(student);
+  const filename = "ELA401-" + pdfSafe(student.matric_number).replace(/[^a-zA-Z0-9_-]/g, "_") + "-Result.pdf";
+  await sendResultPdf(phone, filename, "INDIVIDUAL STUDENT RESULT SHEET", [block]);
+}
+
+async function downloadDepartmentResults(phone: string, departmentInput: string): Promise<void> {
+  let department = "";
+  try { department = decodeURIComponent(departmentInput); } catch (_) { department = departmentInput; }
+  const { data: students, error } = await supabase.from("students")
+    .select("id, name, matric_number, serial_number, department, level")
+    .eq("status", "ACTIVE").eq("department", department)
+    .order("serial_number", { ascending: true }).order("matric_number", { ascending: true }).limit(200);
+  if (error || !students?.length) {
+    safeErrorLog("downloadDepartmentResults", error);
+    await sendTextMessage(phone, "No approved students were found for this departmental result sheet.");
+    return;
+  }
+  const blocks: string[][] = [];
+  for (const student of students) blocks.push(await getStudentResultBlock(student));
+  const filename = "ELA401-" + department.replace(/[^a-zA-Z0-9_-]/g, "_") + "-Department-Results.pdf";
+  await sendResultPdf(phone, filename, "CONSOLIDATED DEPARTMENTAL RESULT SHEET - " + department, blocks);
+}
+
 async function listStudentDepartments(phone: string): Promise<void> {
   const { data, error } = await supabase.from("students")
     .select("department")
@@ -551,7 +669,8 @@ async function listStudentDepartments(phone: string): Promise<void> {
     "Choose Department", [{ title: "Departments", rows }],
     "Lizzy • Student Register", "Approved students only"
   );
-  await sendButtonMessage(phone, "Student register:", [
+  await sendButtonMessage(phone, "Download departmental results:", [
+    makeButton("admin_roster_pdf_" + encodeURIComponent(departments[0]), "Download First Dept PDF"),
     makeButton("admin_students_pending", "⏳ Pending Verification"),
     makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
   ]);
@@ -662,7 +781,8 @@ async function showStudentAcademicRecord(phone: string, studentIdInput: string, 
     `📝 *CBT SCORES — 0 TO 100*\n${scoreLines.join("\n")}\n\n` +
     "_Attendance is shown from recorded class sessions. CBT scores are normalized to a 0–100 scale._"
   );
-  await sendButtonMessage(phone, "Student record navigation:", [
+  await sendButtonMessage(phone, "Download or navigate:", [
+    makeButton(`admin_roster_pdf_student_${student.id}`, "Download Student PDF"),
     makeButton(`admin_roster_page_${encodeURIComponent(department || student.department || "")}_${page}`, "↩ Department Register"),
     makeButton("admin_student_records", "🏫 Departments"),
     makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
@@ -1666,6 +1786,13 @@ export async function handleAdminAgent(
   if (!isAdminPhone(phone)) {
     console.warn(`[AdminAgent] Unauthorized access attempt blocked from: ${phone}`);
     return;
+  }
+
+  if (command.startsWith("admin_roster_pdf_student_")) {
+    await downloadIndividualResult(phone, inputRaw.slice("admin_roster_pdf_student_".length)); return;
+  }
+  if (command.startsWith("admin_roster_pdf_")) {
+    await downloadDepartmentResults(phone, inputRaw.slice("admin_roster_pdf_".length)); return;
   }
 
   if (command === "admin_student_records" || command === "student records" || command === "class register") {
