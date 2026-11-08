@@ -349,11 +349,9 @@ async function handlePaymentVerification(
 // ═══════════════════════════════════════════════════════
 
 const PRACTICAL_MODULES: Record<string, string> = {
-  work_time: "c4ac4177-04c6-4129-b32f-3e844c05ff35",
-  work_sample: "d487b0a8-99e2-4694-9085-0d1e286219fb",
   pendulum: "b7a8f733-ee22-4152-9fa8-718dc47920a8",
   quartz: "d22fc595-a9f1-42b9-b11d-77ac1967c5b2",
-  frequency: "d22fc595-a9f1-42b9-b11d-77ac1967c5b2",
+  frequency: "504468b5-936e-4ccc-a958-624a71cf9d94",
   calibration: "d75041bb-c6cd-4232-9ea1-39c67734d759",
   uncertainty: "70f94739-baf0-4e0e-9a9f-a71d80b513d8",
 };
@@ -395,26 +393,24 @@ async function buildStudentPracticalQuestions(submissions: any[]): Promise<any[]
     let prompt = "", unit = "s", explanation = "";
     let answer = NaN;
 
-    if (code === "work_time" && Number.isFinite(Number(result.average_observed_time_s)) && Number.isFinite(Number(result.rating_factor))) {
+    if (code === "pendulum" && values[0] > 0) {
       prompt = `Using your submitted average observed time of ${Number(result.average_observed_time_s).toFixed(3)} s and rating factor of ${Number(result.rating_factor).toFixed(3)}, calculate normal time.`;
       answer = Number(result.average_observed_time_s) * Number(result.rating_factor);
       explanation = "Normal time = average observed time × rating factor.";
-    } else if (code === "work_time" && Number.isFinite(Number(result.normal_time_s)) && Number.isFinite(Number(result.allowance_fraction))) {
-      prompt = `Your practical produced normal time ${Number(result.normal_time_s).toFixed(3)} s and allowance ${(Number(result.allowance_fraction)*100).toFixed(2)}% of standard time. Calculate standard time.`;
-      answer = Number(result.normal_time_s) / (1 - Number(result.allowance_fraction));
-      explanation = "Standard time = normal time ÷ (1 − allowance fraction).";
-    } else if (code === "work_sample" && values.length >= 2 && values[1] > 0) {
-      prompt = `Your work-sampling practical recorded ${values[0]} activity observations out of ${values[1]}. Calculate the activity percentage.`;
-      answer = values[0] / values[1] * 100; unit = "%";
-      explanation = "Activity percentage = activity observations ÷ total observations × 100.";
-    } else if (code === "pendulum" && values[0] > 0) {
       prompt = `Using your submitted pendulum length of ${values[0].toFixed(3)} m and g = 9.80665 m/s², calculate theoretical period.`;
       answer = 2 * Math.PI * Math.sqrt(values[0] / 9.80665);
       explanation = "For a simple pendulum, T = 2π√(L/g).";
     } else if (code === "quartz" && Number.isFinite(values[0])) {
+      prompt = `Your practical produced normal time ${Number(result.normal_time_s).toFixed(3)} s and allowance ${(Number(result.allowance_fraction)*100).toFixed(2)}% of standard time. Calculate standard time.`;
+      answer = Number(result.normal_time_s) / (1 - Number(result.allowance_fraction));
+      explanation = "Standard time = normal time ÷ (1 − allowance fraction).";
       prompt = `Your quartz practical used a frequency offset of ${values[0]} ppm. Calculate clock error in seconds per day.`;
       answer = values[0] * 1e-6 * 86400; unit = "s/day";
       explanation = "Daily error = ppm × 10⁻⁶ × 86,400 seconds.";
+    } else if (code === "frequency" && values[0] > 0) {
+      prompt = `Your work-sampling practical recorded ${values[0]} activity observations out of ${values[1]}. Calculate the activity percentage.`;
+      answer = values[0] / values[1] * 100; unit = "%";
+      explanation = "Activity percentage = activity observations ÷ total observations × 100.";
     } else if (code === "frequency" && values[0] > 0) {
       prompt = `Your frequency practical used ${values[0]} Hz. Calculate its period.`;
       answer = 1 / values[0];
@@ -431,7 +427,7 @@ async function buildStudentPracticalQuestions(submissions: any[]): Promise<any[]
 
     if (!prompt || !Number.isFinite(answer)) continue;
     const id = await stablePracticalQuestionId(`${submission.id}:${code}:ela401-practical-v1`);
-    generated.push(makePracticalQuestion(id, PRACTICAL_MODULES[code] || PRACTICAL_MODULES.work_time, prompt, answer, unit, explanation));
+    generated.push(makePracticalQuestion(id, PRACTICAL_MODULES[code], prompt, answer, unit, explanation));
   }
   return generated;
 }
