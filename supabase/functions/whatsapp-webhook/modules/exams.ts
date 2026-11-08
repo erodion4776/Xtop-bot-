@@ -69,7 +69,7 @@ export async function startExamEntry(
     await sendTextMessage(phone, "⚠️ We could not confirm your registered level. Please contact the Learning Centre administrator before paying.");
     return;
   }
-  const levelDigits = String(student.level).match(/\\d{3}/)?.[0];
+  const levelDigits = String(student.level).match(/\d{3}/)?.[0];
   const examFeeNaira = levelDigits === "400" ? 1000 : levelDigits === "300" ? 500 : 0;
   if (!examFeeNaira) {
     await sendTextMessage(phone, `❌ CBT payment is currently configured for 300 Level (₦500) and 400 Level (₦1,000). Your registered level is *${student.level}*. Please contact the administrator.`);
