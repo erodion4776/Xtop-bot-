@@ -524,9 +524,13 @@ function parseLabNumbers(value: string): number[] {
 
 async function processPracticalLabInput(phone: string, text: string, conv: Conversation, ctx: LearningCtx): Promise<void> {
   const values = parseLabNumbers(text);
+  if (values.length === 0 || values.some(v => !Number.isFinite(v))) {
+    await sendTextMessage(phone, "⚠️ Please enter numeric values only, using commas between multiple values.");
+    return;
+  }
   const onePositive = values.length === 1 && values[0] > 0;
   const finish = async (message: string) => {
-    await sendTextMessage(phone, message + "\n\nType *1* to run another simulation or *Course Menu* to return.");
+    await sendTextMessage(phone, message + "\n\nChoose another simulation from the menu below, or select *Course Menu* to return.");
     ctx.labMode = undefined;
     ctx.labStage = undefined;
     await saveCtx(conv.id, ctx, "PRACTICAL_LAB_MENU");
