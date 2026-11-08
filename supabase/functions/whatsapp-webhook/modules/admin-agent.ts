@@ -403,11 +403,11 @@ async function handleLearningDecision(
     await sendTextMessage(
       phone,
       (isApprove ? "⚠️ *CONFIRM LESSON APPROVAL*" : "⚠️ *CONFIRM LESSON REJECTION*") +
-      "\\n\\n" + `Lesson: *${lesson.title}*` +
+      "\n\n" + `Lesson: *${lesson.title}*` +
       (isApprove
-        ? "\\n\\nApproving will publish this individual lesson for enrolled students."
-        : "\\n\\nRejecting keeps this lesson hidden from students and marks it REJECTED.") +
-      "\\n\\nNo other lesson will be changed."
+        ? "\n\nApproving will publish this individual lesson for enrolled students."
+        : "\n\nRejecting keeps this lesson hidden from students and marks it REJECTED.") +
+      "\n\nNo other lesson will be changed."
     );
     await sendButtonMessage(phone, "Please confirm this decision:", [
       makeButton(`admin_learning_${decision.toLowerCase()}_confirm_${lessonId}`, isApprove ? "✅ Confirm Publish" : "⛔ Confirm Reject"),
@@ -433,7 +433,7 @@ async function handleLearningDecision(
 
     await sendTextMessage(
       phone,
-      `✅ *LESSON APPROVED AND PUBLISHED*\\n\\n${lesson.title}\\n\\nThis lesson is now marked ACTIVE and available to enrolled ELA401 students.`
+      `✅ *LESSON APPROVED AND PUBLISHED*\n\n${lesson.title}\n\nThis lesson is now marked ACTIVE and available to enrolled ELA401 students.`
     );
   } else {
     const { error: updateError } = await supabase.from("module_slides").update({
@@ -451,7 +451,7 @@ async function handleLearningDecision(
 
     await sendTextMessage(
       phone,
-      `⛔ *LESSON REJECTED*\\n\\n${lesson.title}\\n\\nIt remains hidden from students. Revise the lesson before submitting it for approval again.`
+      `⛔ *LESSON REJECTED*\n\n${lesson.title}\n\nIt remains hidden from students. Revise the lesson before submitting it for approval again.`
     );
   }
 
