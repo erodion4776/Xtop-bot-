@@ -99,7 +99,7 @@ export async function verifyExamPayment(
       Number(data.data.amount) === expectedKobo &&
       data.data.reference === reference
     ) {
-      const { error } = await supabase.from("payment_transactions")
+      const { data: updatedPayment, error } = await supabase.from("payment_transactions")
         .update({ status: "SUCCESSFUL", updated_at: new Date().toISOString() })
         .eq("reference", reference)
         .eq("amount", expectedAmountNaira)
@@ -107,8 +107,8 @@ export async function verifyExamPayment(
         .select("id")
         .maybeSingle();
 
-      if (error) {
-        safeErrorLog("PaystackVerify:TransactionUpdateFailed", error);
+      if (error || !updatedPayment) {
+        safeErrorLog("PaystackVerify:TransactionUpdateFailed", error || new Error("No matching pending CBT payment record found"));
         return false;
       }
 
