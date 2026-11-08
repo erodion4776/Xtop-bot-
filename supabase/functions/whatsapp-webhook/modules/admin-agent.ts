@@ -105,6 +105,13 @@ export async function showAdminAgentMenu(phone: string): Promise<void> {
       ],
     },
     {
+      title: "🛍️ Sabi by XTOP Platform",
+      rows: [
+        makeListRow("admin_sabi_overview", "📊 Sabi Platform Overview", "Merchants, products, orders and WhatsApp"),
+        makeListRow("admin_sabi_merchants", "🏪 Merchant Directory", "Business names and payout verification status"),
+      ],
+    },
+    {
       title: "🔒 Security Actions",
       rows: [
         makeListRow("admin_agent_exit", "🔒 Close Lizzy", "Close private agent session"),
@@ -196,6 +203,79 @@ async function getBotStats(): Promise<string> {
     "",
     "These are database counts, not a financial report.",
   ].join("\n");
+}
+
+/* =========================================================
+   SABI BY XTOP — SUPER ADMIN READ-ONLY VISIBILITY
+   ========================================================= */
+
+async function getSabiPlatformOverview(): Promise<string> {
+  const checks = await Promise.all([
+    supabase.from("tenants").select("id", { count: "exact", head: true }).eq("is_active", true),
+    supabase.from("products").select("id", { count: "exact", head: true }),
+    supabase.from("tenant_orders").select("id", { count: "exact", head: true }),
+    supabase.from("tenant_whatsapp_accounts").select("id", { count: "exact", head: true }).eq("is_active", true),
+    supabase.from("tenant_order_payment_intents").select("id", { count: "exact", head: true }),
+  ]);
+
+  const labels = [
+    "Active merchant businesses",
+    "Products across Sabi",
+    "Orders recorded",
+    "Active merchant WhatsApp connections",
+    "Payment intents recorded",
+  ];
+  const lines = checks.map((result, index) => {
+    if (result.error) {
+      console.error("[Lizzy][Sabi] Overview query failed:", labels[index], result.error.message);
+      return labels[index] + ": unavailable (query failed)";
+    }
+    return labels[index] + ": " + (result.count ?? 0);
+  });
+
+  return [
+    "🛍️ *SABI BY XTOP — PLATFORM OVERVIEW*",
+    "",
+    ...lines,
+    "",
+    "🔐 Read-only platform report. No merchant or customer records were changed.",
+    "Checked: " + new Date().toISOString(),
+  ].join("\n");
+}
+
+async function listSabiMerchants(phone: string): Promise<void> {
+  const { data, error } = await supabase
+    .from("tenants")
+    .select("id,name,business_name,is_active,paystack_subaccount_status,created_at")
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (error) {
+    console.error("[Lizzy][Sabi] Merchant directory query failed:", error.message);
+    await sendTextMessage(phone, "⚠️ I could not read the Sabi merchant directory. No data was changed.");
+    return;
+  }
+
+  if (!data?.length) {
+    await sendTextMessage(phone, "🏪 *SABI MERCHANT DIRECTORY*\n\nNo merchant businesses were returned.");
+    return;
+  }
+
+  const lines = data.map((tenant: any, index: number) => {
+    const business = String(tenant.business_name || tenant.name || "Unnamed business").replace(/[\r\n]/g, " ").slice(0, 70);
+    const active = tenant.is_active === true ? "ACTIVE" : "INACTIVE";
+    const payout = String(tenant.paystack_subaccount_status || "NOT CONFIGURED").replace(/_/g, " ");
+    return (index + 1) + ". *" + business + "*\n   Business: " + active + " • Paystack: " + payout;
+  });
+
+  await sendTextMessage(phone, [
+    "🏪 *SABI MERCHANT DIRECTORY*",
+    "",
+    ...lines,
+    "",
+    "Showing latest " + data.length + " business records (maximum 20).",
+    "Sensitive owner, customer, bank-account and access-token details are not displayed.",
+  ].join("\n"));
 }
 
 /* =========================================================
@@ -1856,6 +1936,25 @@ export async function handleAdminAgent(
 
   if (["menu", "help", "admin_agent_open", "admin_agent_menu", "0"].includes(command)) {
     await showAdminAgentMenu(phone);
+    return;
+  }
+
+  if (["admin_sabi_overview", "sabi", "sabi overview", "platform overview"].includes(command)) {
+    await sendTextMessage(phone, "Reading Sabi by XTOP platform metrics...");
+    await sendTextMessage(phone, await getSabiPlatformOverview());
+    await sendButtonMessage(phone, "Sabi platform:", [
+      makeButton("admin_sabi_merchants", "🏪 Merchants"),
+      makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+    ]);
+    return;
+  }
+
+  if (["admin_sabi_merchants", "sabi merchants", "merchant directory"].includes(command)) {
+    await listSabiMerchants(phone);
+    await sendButtonMessage(phone, "Sabi platform:", [
+      makeButton("admin_sabi_overview", "📊 Overview"),
+      makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+    ]);
     return;
   }
 
