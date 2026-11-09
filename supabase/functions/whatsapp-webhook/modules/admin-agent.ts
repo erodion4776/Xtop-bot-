@@ -102,6 +102,7 @@ export async function showAdminAgentMenu(phone: string, page = 0): Promise<void>
         makeListRow("admin_sabi_orders_payments", "💳 Orders & Payments Monitor", "Order totals, pending payments and Paystack fee records"),
         makeListRow("admin_sabi_payout_reconciliation", "🏦 Payout Verification & Reconciliation", "Merchant Paystack status and recorded settlement fees"),
         makeListRow("admin_sabi_live_payout_help", "🔍 Live Paystack Check", "Check one merchant directly with Paystack"),
+        makeListRow("admin_sabi_audit_log", "🧾 Admin Activity Log", "Review merchant suspension and reactivation history"),
       ],
     },
   ];
@@ -216,6 +217,90 @@ async function getBotStats(): Promise<string> {
 /* =========================================================
    SABI BY XTOP — SUPER ADMIN READ-ONLY VISIBILITY
    ========================================================= */
+
+
+async function showSabiAdminActivityLog(phone: string, isSystem: boolean, page = 0): Promise<void> {
+  if (!hasSuperAdminAccess(phone, isSystem)) return;
+
+  const pageSize = 8;
+  const safePage = Math.max(0, Math.min(24, Math.floor(Number(page) || 0)));
+  const from = safePage * pageSize;
+  const { data: records, error, count } = await supabase
+    .from("audit_logs")
+    .select("action,entity,entity_id,metadata,created_at", { count: "exact" })
+    .eq("entity", "tenants")
+    .in("action", ["SUSPEND", "REACTIVATE"])
+    .order("created_at", { ascending: false })
+    .range(from, from + pageSize - 1);
+
+  if (error) {
+    console.error("[Lizzy][Sabi] Admin activity log query failed:", error.message);
+    await sendTextMessage(phone, "⚠️ The Admin Activity Log could not be loaded. No records were changed.");
+    return;
+  }
+
+  const rows = records || [];
+  const tenantIds = [...new Set(rows.map((row: any) => String(row.entity_id || "")).filter((id: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+  ))];
+  let tenantNames = new Map<string, string>();
+  if (tenantIds.length) {
+    const { data: tenants, error: tenantError } = await supabase
+      .from("tenants")
+      .select("id,name,business_name")
+      .in("id", tenantIds);
+    if (tenantError) {
+      console.error("[Lizzy][Sabi] Activity log merchant names unavailable:", tenantError.message);
+    } else {
+      tenantNames = new Map((tenants || []).map((tenant: any) => [
+        String(tenant.id),
+        String(tenant.business_name || tenant.name || "Merchant"),
+      ]));
+    }
+  }
+
+  const lines = rows.map((record: any, index: number) => {
+    const metadata = record.metadata && typeof record.metadata === "object" ? record.metadata : {};
+    const action = String(record.action || "UNKNOWN").toUpperCase();
+    const business = tenantNames.get(String(record.entity_id)) || "Merchant record";
+    const previous = typeof metadata.previous_is_active === "boolean"
+      ? (metadata.previous_is_active ? "ACTIVE" : "INACTIVE")
+      : "Not recorded";
+    const next = typeof metadata.new_is_active === "boolean"
+      ? (metadata.new_is_active ? "ACTIVE" : "INACTIVE")
+      : (action === "SUSPEND" ? "SUSPENDED" : "ACTIVE");
+    const date = record.created_at
+      ? new Date(record.created_at).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Lagos" })
+      : "Date not recorded";
+    return [
+      "*" + (from + index + 1) + ". " + (action === "SUSPEND" ? "MERCHANT SUSPENDED" : "MERCHANT REACTIVATED") + "*",
+      "Business: " + business.replace(/[\\r\\n]/g, " ").slice(0, 65),
+      "Status: " + previous + " → " + next,
+      "Time: " + date,
+    ].join("\\n");
+  });
+
+  const total = count ?? rows.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const message = [
+    "🧾 *SABI ADMIN ACTIVITY LOG*",
+    "",
+    "Merchant suspension and reactivation actions recorded by Lizzy.",
+    "Total matching records: " + total,
+    "Page " + (safePage + 1) + " of " + pageCount,
+    "",
+    ...(lines.length ? lines : ["No merchant suspension/reactivation audit records have been recorded yet."]),
+    "",
+    "Read-only history. No merchant or audit records were changed.",
+  ].join("\\n");
+  await sendTextMessage(phone, message);
+
+  const buttons = [];
+  if (safePage > 0) buttons.push(makeButton("admin_sabi_audit_page_" + (safePage - 1), "⬅ Previous"));
+  if (from + rows.length < total) buttons.push(makeButton("admin_sabi_audit_page_" + (safePage + 1), "Next ➡"));
+  buttons.push(makeButton("admin_agent_menu", "🏠 Lizzy Menu"));
+  await sendButtonMessage(phone, "Admin Activity Log navigation:", buttons.slice(0, 3));
+}
 
 async function getSabiPlatformOverview(phone: string, isSystem: boolean): Promise<string> {
   if (!hasSuperAdminAccess(phone, isSystem)) return "";
@@ -2615,6 +2700,17 @@ export async function handleAdminAgent(
 
   if (command === "admin_sabi_payout_reconciliation" || command === "sabi payouts" || command === "payout reconciliation") {
     await showSabiPayoutReconciliation(phone, isSystem);
+    return;
+  }
+
+  if (command === "admin_sabi_audit_log" || command === "admin activity log" || command === "audit log") {
+    await showSabiAdminActivityLog(phone, isSystem, 0);
+    return;
+  }
+
+  if (command.startsWith("admin_sabi_audit_page_")) {
+    const page = Number.parseInt(inputRaw.slice("admin_sabi_audit_page_".length), 10);
+    await showSabiAdminActivityLog(phone, isSystem, Number.isFinite(page) ? page : 0);
     return;
   }
 
