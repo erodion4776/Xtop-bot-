@@ -351,7 +351,7 @@ async function showSabiOrdersAndPayments(phone: string): Promise<void> {
     "Amounts shown are recorded order / fee values, not bank settlement confirmation.",
     "🔐 Read-only report. Customer names, phone numbers, email addresses and payment references are hidden.",
     "Checked: " + new Date().toISOString(),
-  ].join("\\n"));
+  ].join("\n"));
 }
 
 async function listSabiMerchants(phone: string): Promise<void> {
