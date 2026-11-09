@@ -113,7 +113,7 @@ export async function showAdminAgentMenu(phone: string, page = 0): Promise<void>
       rows: [
         makeListRow("admin_sabi_payout_reconciliation", "🏦 Payout Verification & Reconciliation", "Merchant Paystack status and recorded settlement fees"),
         makeListRow("admin_sabi_live_payout_help", "🔍 Live Paystack Check", "Check one merchant directly with Paystack"),
-        makeListRow("admin_sabi_audit_log", "🧾 Admin Activity Log", "Review merchant suspension and reactivation history"),
+        makeListRow("admin_sabi_audit_log", "🧾 Admin Activity Log", "Review merchant and platform-wide changes"),
       ],
     },
     {
@@ -246,8 +246,12 @@ async function showSabiAdminActivityLog(phone: string, isSystem: boolean, page =
   const { data: records, error, count } = await supabase
     .from("audit_logs")
     .select("action,entity,entity_id,metadata,created_at", { count: "exact" })
-    .eq("entity", "tenants")
-    .in("action", ["SUSPEND", "REACTIVATE"])
+    .in("action", [
+      "SABI_MERCHANT_SUSPENDED",
+      "SABI_MERCHANT_REACTIVATED",
+      "SABI_GLOBAL_HANDOFF_CHANGED",
+      "SABI_CUSTOMER_TAKEOVER_CHANGED",
+    ])
     .order("created_at", { ascending: false })
     .range(from, from + pageSize - 1);
 
@@ -280,18 +284,37 @@ async function showSabiAdminActivityLog(phone: string, isSystem: boolean, page =
   const lines = rows.map((record: any, index: number) => {
     const metadata = record.metadata && typeof record.metadata === "object" ? record.metadata : {};
     const action = String(record.action || "UNKNOWN").toUpperCase();
+    const date = record.created_at
+      ? new Date(record.created_at).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Lagos" })
+      : "Date not recorded";
+
+    if (action === "SABI_GLOBAL_HANDOFF_CHANGED") {
+      return [
+        "*" + (from + index + 1) + ". GLOBAL SABI HANDOFF CHANGED*",
+        "New state: " + (metadata.enabled === true ? "ENABLED" : "DISABLED"),
+        "Time: " + date,
+      ].join("\n");
+    }
+
+    if (action === "SABI_CUSTOMER_TAKEOVER_CHANGED") {
+      return [
+        "*" + (from + index + 1) + ". CUSTOMER CONVERSATION TAKEOVER CHANGED*",
+        "New state: " + (metadata.enabled === true ? "ENABLED" : "DISABLED"),
+        "Customer details: hidden for privacy",
+        "Time: " + date,
+      ].join("\n");
+    }
+
     const business = tenantNames.get(String(record.entity_id)) || "Merchant record";
     const previous = typeof metadata.previous_is_active === "boolean"
       ? (metadata.previous_is_active ? "ACTIVE" : "INACTIVE")
       : "Not recorded";
     const next = typeof metadata.new_is_active === "boolean"
       ? (metadata.new_is_active ? "ACTIVE" : "INACTIVE")
-      : (action === "SUSPEND" ? "SUSPENDED" : "ACTIVE");
-    const date = record.created_at
-      ? new Date(record.created_at).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Lagos" })
-      : "Date not recorded";
+      : (action === "SABI_MERCHANT_SUSPENDED" ? "SUSPENDED" : "ACTIVE");
+    const title = action === "SABI_MERCHANT_SUSPENDED" ? "MERCHANT SUSPENDED" : "MERCHANT REACTIVATED";
     return [
-      "*" + (from + index + 1) + ". " + (action === "SUSPEND" ? "MERCHANT SUSPENDED" : "MERCHANT REACTIVATED") + "*",
+      "*" + (from + index + 1) + ". " + title + "*",
       "Business: " + business.replace(/[\\r\\n]/g, " ").slice(0, 65),
       "Status: " + previous + " → " + next,
       "Time: " + date,
@@ -303,11 +326,11 @@ async function showSabiAdminActivityLog(phone: string, isSystem: boolean, page =
   const message = [
     "🧾 *SABI ADMIN ACTIVITY LOG*",
     "",
-    "Merchant suspension and reactivation actions recorded by Lizzy.",
+    "Merchant status, global handoff and customer takeover changes recorded by Lizzy.",
     "Total matching records: " + total,
     "Page " + (safePage + 1) + " of " + pageCount,
     "",
-    ...(lines.length ? lines : ["No merchant suspension/reactivation audit records have been recorded yet."]),
+    ...(lines.length ? lines : ["No matching Super Admin activity has been recorded yet."]),
     "",
     "Read-only history. No merchant or audit records were changed.",
   ].join("\n");
