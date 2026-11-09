@@ -6,6 +6,7 @@
 
 import {
   getSupabaseClient,
+  SYSTEM_TENANT_ID,
   updateConversation,
   updateLead,
   updateQuotation,
@@ -96,6 +97,7 @@ export async function showAdminAgentMenu(phone: string): Promise<void> {
         makeListRow("admin_sabi_overview", "📊 Sabi Platform Overview", "Merchants, products, orders and WhatsApp"),
         makeListRow("admin_sabi_merchants", "🏪 Merchant Directory", "Business names and payout verification status"),
         makeListRow("admin_sabi_merchant_help", "🔎 Merchant Profile Lookup", "Inspect a merchant by business name or UUID"),
+        makeListRow("admin_sabi_status_help", "🛡️ Merchant Status Controls", "Suspend or reactivate with confirmation"),
       ],
     },
     {
@@ -353,6 +355,259 @@ async function showSabiMerchantDetails(phone: string, search: string): Promise<v
     "🔐 Read-only profile. No owner contact, bank details, customer details or access tokens are exposed."
   ].join("\n"));
 }
+
+
+/* =========================================================
+   SABI MERCHANT STATUS CONTROLS — CONFIRMED + AUDITED
+   ========================================================= */
+
+function hasSuperAdminAccess(phone: string, isSystem: boolean): boolean {
+  return isSystem === true && isAdminPhone(phone);
+}
+
+async function readAdminConversationContext(conversationId: string): Promise<Record<string, any> | null> {
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("context_json")
+    .eq("id", conversationId)
+    .eq("tenant_id", SYSTEM_TENANT_ID)
+    .maybeSingle();
+
+  if (error || !data) {
+    console.error("[Lizzy][Sabi] Could not read admin confirmation state:", error?.message);
+    return null;
+  }
+  return (data.context_json || {}) as Record<string, any>;
+}
+
+async function saveAdminConversationContext(
+  conversationId: string,
+  context: Record<string, any>,
+): Promise<boolean> {
+  const updated = await updateConversation(
+    conversationId,
+    { context_json: context },
+    SYSTEM_TENANT_ID,
+  );
+  return !!updated;
+}
+
+async function requestMerchantStatusChange(
+  phone: string,
+  isSystem: boolean,
+  conversationId: string,
+  merchantId: string,
+  targetActive: boolean,
+): Promise<void> {
+  if (!hasSuperAdminAccess(phone, isSystem)) {
+    console.warn("[Lizzy][Sabi] Unauthorized merchant status request blocked.");
+    return;
+  }
+
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidPattern.test(merchantId)) {
+    await sendTextMessage(phone, "Use the exact merchant UUID. Example:\\nsuspend merchant <UUID>");
+    return;
+  }
+
+  const { data: tenant, error } = await supabase
+    .from("tenants")
+    .select("id,name,business_name,is_active,is_system")
+    .eq("id", merchantId)
+    .eq("is_system", false)
+    .maybeSingle();
+
+  if (error || !tenant) {
+    await sendTextMessage(phone, "I couldn't find that merchant. The system tenant is protected and cannot be changed.");
+    return;
+  }
+
+  if (tenant.is_active === targetActive) {
+    await sendTextMessage(
+      phone,
+      String(tenant.business_name || tenant.name || "Merchant") +
+        (targetActive ? " is already ACTIVE." : " is already SUSPENDED.") +
+        "\\nNo change was made.",
+    );
+    return;
+  }
+
+  const context = await readAdminConversationContext(conversationId);
+  if (!context) {
+    await sendTextMessage(phone, "⚠️ I couldn't save the confirmation securely. No change was made.");
+    return;
+  }
+
+  const token = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+  const pending = {
+    token,
+    tenant_id: tenant.id,
+    target_active: targetActive,
+    expected_active: tenant.is_active === true,
+    expires_at: expiresAt,
+  };
+
+  if (!await saveAdminConversationContext(conversationId, {
+    ...context,
+    admin_agent_active: true,
+    sabi_pending_status_change: pending,
+  })) {
+    await sendTextMessage(phone, "⚠️ I couldn't save the confirmation. No change was made.");
+    return;
+  }
+
+  const business = String(tenant.business_name || tenant.name || "Unnamed business")
+    .replace(/[\\r\\n]/g, " ")
+    .slice(0, 80);
+  const action = targetActive ? "REACTIVATE" : "SUSPEND";
+  const consequence = targetActive
+    ? "restore merchant dashboard, WhatsApp storefront and merchant operations"
+    : "block merchant dashboard, WhatsApp storefront, wallet and Paystack merchant operations";
+
+  await sendTextMessage(phone, [
+    "⚠️ *CONFIRM MERCHANT " + action + "*",
+    "",
+    "Business: *" + business + "*",
+    "Merchant ID: " + tenant.id,
+    "Current status: " + (tenant.is_active ? "ACTIVE" : "INACTIVE"),
+    "New status: *" + (targetActive ? "ACTIVE" : "SUSPENDED") + "*",
+    "",
+    "This will " + consequence + ".",
+    "Merchant records and financial history will be preserved.",
+    "",
+    "This confirmation expires in 5 minutes.",
+    "Only confirm if this is the intended merchant.",
+  ].join("\\n"));
+
+  await sendButtonMessage(phone, "Do you want to continue?", [
+    makeButton("admin_sabi_status_confirm_" + token, targetActive ? "Confirm Reactivate" : "Confirm Suspend"),
+    makeButton("admin_sabi_status_cancel", "Cancel"),
+  ]);
+}
+
+async function confirmMerchantStatusChange(
+  phone: string,
+  isSystem: boolean,
+  conversationId: string,
+  token: string,
+): Promise<void> {
+  if (!hasSuperAdminAccess(phone, isSystem)) {
+    console.warn("[Lizzy][Sabi] Unauthorized merchant status confirmation blocked.");
+    return;
+  }
+
+  const context = await readAdminConversationContext(conversationId);
+  const pending = context?.sabi_pending_status_change;
+
+  if (!pending || pending.token !== token) {
+    await sendTextMessage(phone, "⚠️ This confirmation is invalid or has already been used. Start the request again.");
+    return;
+  }
+
+  if (!pending.expires_at || new Date(pending.expires_at).getTime() <= Date.now()) {
+    const { sabi_pending_status_change, ...rest } = context;
+    await saveAdminConversationContext(conversationId, rest);
+    await sendTextMessage(phone, "⌛ This confirmation has expired. Start the merchant status request again.");
+    return;
+  }
+
+  const tenantId = String(pending.tenant_id || "");
+  const targetActive = pending.target_active === true;
+  const expectedActive = pending.expected_active === true;
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  if (!uuidPattern.test(tenantId)) {
+    await sendTextMessage(phone, "⚠️ The saved merchant reference is invalid. No change was made.");
+    return;
+  }
+
+  const { data: tenant, error: readError } = await supabase
+    .from("tenants")
+    .select("id,name,business_name,is_active,is_system")
+    .eq("id", tenantId)
+    .eq("is_system", false)
+    .maybeSingle();
+
+  if (readError || !tenant || tenant.is_active !== expectedActive) {
+    await sendTextMessage(phone, "⚠️ Merchant status changed since the request was prepared, or the merchant no longer exists. No change was made. Start again.");
+    return;
+  }
+
+  const { data: changed, error: updateError } = await supabase
+    .from("tenants")
+    .update({ is_active: targetActive, updated_at: new Date().toISOString() })
+    .eq("id", tenantId)
+    .eq("is_system", false)
+    .eq("is_active", expectedActive)
+    .select("id,is_active")
+    .maybeSingle();
+
+  if (updateError || !changed) {
+    console.error("[Lizzy][Sabi] Merchant status update failed:", updateError?.message);
+    await sendTextMessage(phone, "⚠️ The merchant status could not be changed. No update was confirmed.");
+    return;
+  }
+
+  const action = targetActive ? "SABI_MERCHANT_REACTIVATED" : "SABI_MERCHANT_SUSPENDED";
+  const { error: auditError } = await supabase.from("audit_logs").insert({
+    admin_user: normalizePhone(phone),
+    action,
+    entity: "tenants",
+    entity_id: tenantId,
+    metadata: {
+      source: "LIZZY_WHATSAPP_SUPER_ADMIN",
+      previous_is_active: expectedActive,
+      new_is_active: targetActive,
+      confirmed_at: new Date().toISOString(),
+    },
+  });
+
+  if (auditError) {
+    console.error("[Lizzy][Sabi] Audit insert failed; attempting rollback:", auditError.message);
+    const { error: rollbackError } = await supabase
+      .from("tenants")
+      .update({ is_active: expectedActive, updated_at: new Date().toISOString() })
+      .eq("id", tenantId)
+      .eq("is_system", false)
+      .eq("is_active", targetActive);
+    if (rollbackError) {
+      console.error("[Lizzy][Sabi] CRITICAL: status rollback failed:", rollbackError.message);
+      await sendTextMessage(phone, "🚨 The status changed but audit logging failed, and automatic rollback also failed. Please inspect this merchant immediately.");
+    } else {
+      await sendTextMessage(phone, "⚠️ Audit logging failed. The status change was rolled back; the merchant's previous status has been restored.");
+    }
+    return;
+  }
+
+  const { sabi_pending_status_change, ...rest } = context;
+  await saveAdminConversationContext(conversationId, rest);
+
+  await sendTextMessage(phone, [
+    "✅ *MERCHANT STATUS UPDATED*",
+    "",
+    "Business: " + String(tenant.business_name || tenant.name || "Merchant").slice(0, 80),
+    "New status: *" + (targetActive ? "ACTIVE" : "SUSPENDED") + "*",
+    "Audit record: saved",
+    "",
+    "Merchant products, orders, wallet and financial history were not deleted or modified.",
+  ].join("\\n"));
+}
+
+async function cancelMerchantStatusChange(
+  phone: string,
+  isSystem: boolean,
+  conversationId: string,
+): Promise<void> {
+  if (!hasSuperAdminAccess(phone, isSystem)) return;
+  const context = await readAdminConversationContext(conversationId);
+  if (context) {
+    const { sabi_pending_status_change, ...rest } = context;
+    await saveAdminConversationContext(conversationId, rest);
+  }
+  await sendTextMessage(phone, "Merchant status request cancelled. No merchant data was changed.");
+}
+
 
 /* =========================================================
    LEARNING CENTRE PROGRESS
@@ -1936,12 +2191,13 @@ export async function handleAdminAgent(
   text: string,
   interactiveId: string,
   conversationId: string,
+  isSystem: boolean,
 ): Promise<void> {
   const inputRaw = (interactiveId || text).trim();
   const command = inputRaw.toLowerCase();
 
   // Guard: Validate requester is authorized admin
-  if (!isAdminPhone(phone)) {
+  if (!hasSuperAdminAccess(phone, isSystem)) {
     console.warn(`[AdminAgent] Unauthorized access attempt blocked from: ${phone}`);
     return;
   }
@@ -2031,6 +2287,49 @@ export async function handleAdminAgent(
       makeButton("admin_sabi_overview", "📊 Overview"),
       makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
     ]);
+    return;
+  }
+
+
+  if (command === "admin_sabi_status_help") {
+    await sendTextMessage(phone, [
+      "🛡️ *MERCHANT STATUS CONTROLS*",
+      "",
+      "Suspend: suspend merchant <UUID>",
+      "Reactivate: reactivate merchant <UUID>",
+      "",
+      "Lizzy will show the merchant and request confirmation. Confirmations expire after 5 minutes.",
+      "Every completed change is audited. Merchant records are preserved.",
+    ].join("\\n"));
+    return;
+  }
+
+  if (command.startsWith("admin_sabi_status_confirm_")) {
+    await confirmMerchantStatusChange(
+      phone, isSystem, conversationId,
+      inputRaw.slice("admin_sabi_status_confirm_".length),
+    );
+    return;
+  }
+
+  if (command === "admin_sabi_status_cancel") {
+    await cancelMerchantStatusChange(phone, isSystem, conversationId);
+    return;
+  }
+
+  if (command.startsWith("suspend merchant ")) {
+    await requestMerchantStatusChange(
+      phone, isSystem, conversationId,
+      inputRaw.slice("suspend merchant ".length).trim(), false,
+    );
+    return;
+  }
+
+  if (command.startsWith("reactivate merchant ")) {
+    await requestMerchantStatusChange(
+      phone, isSystem, conversationId,
+      inputRaw.slice("reactivate merchant ".length).trim(), true,
+    );
     return;
   }
 
