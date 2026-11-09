@@ -76,14 +76,17 @@ export function isAdminAgentTrigger(
  * Renders Lizzy's primary menu using WhatsApp native List selections.
  */
 export async function showAdminAgentMenu(phone: string, page = 0): Promise<void> {
+  // WhatsApp interactive lists allow at most 10 rows in total across all sections.
+  // Keep every page below that limit so navigation is always visible and usable.
+  const safePage = page === 1 ? 1 : 0;
   const body =
     "🔐 *XTOP PRIVATE ADMIN ASSISTANT (LIZZY)*\\n\\n" +
     "Welcome, Authorized Admin.\\n\\n" +
-    (page === 0
-      ? "Page 1 of 2 — Lead & Quote Desk and Sabi Platform. Select Next to open System & Learning."
-      : "Page 2 of 2 — System & Learning. The ENGR. ERO Learning Hub is available below.");
+    (safePage === 0
+      ? "Page 1 of 2 — Lead & Quote Desk and core Sabi tools. Select Next Menu for more Sabi tools and System & Learning."
+      : "Page 2 of 2 — More Sabi tools, System & Learning. Select Previous Menu to return.");
 
-  const leadAndSabiSections = [
+  const pageOneSections = [
     {
       title: "💼 Lead & Quote Desk",
       rows: [
@@ -100,39 +103,54 @@ export async function showAdminAgentMenu(phone: string, page = 0): Promise<void>
         makeListRow("admin_sabi_merchant_help", "🔎 Merchant Profile Lookup", "Inspect a merchant by business name or UUID"),
         makeListRow("admin_sabi_status_help", "🛡️ Merchant Status Controls", "Suspend or reactivate with confirmation"),
         makeListRow("admin_sabi_orders_payments", "💳 Orders & Payments Monitor", "Order totals, pending payments and Paystack fee records"),
+      ],
+    },
+  ];
+
+  const pageTwoSections = [
+    {
+      title: "🛍️ More Sabi by XTOP Tools",
+      rows: [
         makeListRow("admin_sabi_payout_reconciliation", "🏦 Payout Verification & Reconciliation", "Merchant Paystack status and recorded settlement fees"),
         makeListRow("admin_sabi_live_payout_help", "🔍 Live Paystack Check", "Check one merchant directly with Paystack"),
         makeListRow("admin_sabi_audit_log", "🧾 Admin Activity Log", "Review merchant suspension and reactivation history"),
       ],
     },
+    {
+      title: "⚙️ System & Learning",
+      rows: [
+        makeListRow("admin_status", "🟢 DB Connectivity", "Test connection to Supabase database"),
+        makeListRow("admin_stats", "📊 Bot Statistics", "View messaging and contacts metrics"),
+        makeListRow("admin_learning", "🎓 ENGR ERO Learning Hub", "Courses, lessons, students and publication status"),
+        makeListRow("admin_students_pending", "🎓 Student Verification", "Review new student registrations"),
+        makeListRow("admin_student_records", "📚 Student Records", "Department • S/N • matric no • results"),
+      ],
+    },
   ];
 
-  const learningSections = [{
-    title: "⚙️ System & Learning",
-    rows: [
-      makeListRow("admin_status", "🟢 DB Connectivity", "Test connection to Supabase database"),
-      makeListRow("admin_stats", "📊 Bot Statistics", "View messaging and contacts metrics"),
-      makeListRow("admin_learning", "🎓 ENGR ERO Learning Hub", "Courses, lessons, students and publication status"),
-      makeListRow("admin_students_pending", "🎓 Student Verification", "Review new student registrations"),
-      makeListRow("admin_student_records", "📚 Student Records", "Department • S/N • matric no • results"),
-    ],
-  }];
-
-  if (page === 0) {
-    leadAndSabiSections[1].rows.push(
-      makeListRow("admin_agent_menu_page_1", "➡️ Next Menu", "Open System & Learning options")
+  if (safePage === 0) {
+    pageOneSections[1].rows.push(
+      makeListRow("admin_agent_menu_page_1", "➡️ Next Menu", "Open more Sabi tools and System & Learning")
     );
   } else {
-    learningSections[0].rows.push(
-      makeListRow("admin_agent_menu_page_0", "⬅️ Previous Menu", "Return to Lead & Sabi options")
+    pageTwoSections[1].rows.push(
+      makeListRow("admin_agent_menu_page_0", "⬅️ Previous Menu", "Return to Lead & core Sabi tools")
     );
+  }
+
+  const sections = safePage === 0 ? pageOneSections : pageTwoSections;
+  const totalRows = sections.reduce((total, section) => total + section.rows.length, 0);
+  if (totalRows > 10) {
+    console.error("[Lizzy] Menu page exceeds WhatsApp's 10-row limit:", safePage, totalRows);
+    await sendTextMessage(phone, "⚠️ Lizzy menu configuration needs attention. No features were removed; please try again shortly.");
+    return;
   }
 
   await sendListMessage(
     phone,
     body,
-    page === 0 ? "Select Action" : "System & Learning",
-    page === 0 ? leadAndSabiSections : learningSections,
+    safePage === 0 ? "Select Action" : "More Admin Tools",
+    sections,
     "Lizzy Operations Suite",
     "Authorized Admin Only",
   );
