@@ -75,14 +75,15 @@ export function isAdminAgentTrigger(
 /**
  * Renders Lizzy's primary menu using WhatsApp native List selections.
  */
-export async function showAdminAgentMenu(phone: string): Promise<void> {
+export async function showAdminAgentMenu(phone: string, page = 0): Promise<void> {
   const body =
-    "🔐 *XTOP PRIVATE ADMIN ASSISTANT (LIZZY)*\n\n" +
-    "Welcome, Authorized Admin.\n\n" +
-    "Use the interactive menu below to assess high-value leads, approve client details, " +
-    "track quotations, check system health, or consult the AI advisory engine.";
+    "🔐 *XTOP PRIVATE ADMIN ASSISTANT (LIZZY)*\\n\\n" +
+    "Welcome, Authorized Admin.\\n\\n" +
+    (page === 0
+      ? "Page 1 of 2 — Lead & Quote Desk and Sabi Platform. Select Next to open System & Learning."
+      : "Page 2 of 2 — System & Learning. The ENGR. ERO Learning Hub is available below.");
 
-  const sections = [
+  const leadAndSabiSections = [
     {
       title: "💼 Lead & Quote Desk",
       rows: [
@@ -102,23 +103,34 @@ export async function showAdminAgentMenu(phone: string): Promise<void> {
         makeListRow("admin_sabi_payout_reconciliation", "🏦 Payout Verification & Reconciliation", "Merchant Paystack status and recorded settlement fees"),
       ],
     },
-    {
-      title: "⚙️ System & Learning",
-      rows: [
-        makeListRow("admin_status", "🟢 DB Connectivity", "Test connection to Supabase database"),
-        makeListRow("admin_stats", "📊 Bot Statistics", "View messaging and contacts metrics"),
-        makeListRow("admin_learning", "🎓 Learning Centre Progress", "Courses, lessons, students and publication status"),
-        makeListRow("admin_students_pending", "🎓 Student Verification", "Review new student registrations"),
-        makeListRow("admin_student_records", "📚 Student Records", "Department • S/N • matric no • results"),
-      ],
-    },
   ];
+
+  const learningSections = [{
+    title: "⚙️ System & Learning",
+    rows: [
+      makeListRow("admin_status", "🟢 DB Connectivity", "Test connection to Supabase database"),
+      makeListRow("admin_stats", "📊 Bot Statistics", "View messaging and contacts metrics"),
+      makeListRow("admin_learning", "🎓 ENGR ERO Learning Hub", "Courses, lessons, students and publication status"),
+      makeListRow("admin_students_pending", "🎓 Student Verification", "Review new student registrations"),
+      makeListRow("admin_student_records", "📚 Student Records", "Department • S/N • matric no • results"),
+    ],
+  }];
+
+  if (page === 0) {
+    leadAndSabiSections[1].rows.push(
+      makeListRow("admin_agent_menu_page_1", "➡️ Next Menu", "Open System & Learning options")
+    );
+  } else {
+    learningSections[0].rows.push(
+      makeListRow("admin_agent_menu_page_0", "⬅️ Previous Menu", "Return to Lead & Sabi options")
+    );
+  }
 
   await sendListMessage(
     phone,
     body,
-    "Select Action",
-    sections,
+    page === 0 ? "Select Action" : "System & Learning",
+    page === 0 ? leadAndSabiSections : learningSections,
     "Lizzy Operations Suite",
     "Authorized Admin Only",
   );
@@ -2477,8 +2489,13 @@ export async function handleAdminAgent(
     return;
   }
 
+  if (command === "admin_agent_menu_page_0" || command === "admin_agent_menu_page_1") {
+    await showAdminAgentMenu(phone, command.endsWith("_1") ? 1 : 0);
+    return;
+  }
+
   if (["menu", "help", "admin_agent_open", "admin_agent_menu", "0"].includes(command)) {
-    await showAdminAgentMenu(phone);
+    await showAdminAgentMenu(phone, 0);
     return;
   }
 
