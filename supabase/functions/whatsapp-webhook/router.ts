@@ -870,29 +870,52 @@ export async function routeMessage(
     // EXPLICIT ENGR ERO LEARNING ROUTE
     // ===================================================
 
+    const isLearningCourseAction =
+      interactiveId.startsWith("cm_");
+
     if (
       interactiveId === "engr_ero" ||
+      isLearningCourseAction ||
       isEngrEroRequest(text) ||
       isLearningKeyword(text)
     ) {
+      // Course-menu list replies must continue the existing course session.
+      // Do not reset a student to registration/ENTRY when they tap Lecture,
+      // Materials, Progress or Final CBT Exam.
+      const savedLearningContext = (
+        conversation.context_json || {}
+      ) as Record<string, any>;
+      const nextLearningState = isLearningCourseAction
+        ? (conversation.current_state === "SABI_GATEWAY"
+            ? (savedLearningContext.courseId ? "COURSE_MENU" : "ENTRY")
+            : (conversation.current_state || (savedLearningContext.courseId ? "COURSE_MENU" : "ENTRY")))
+        : "ENTRY";
+      const nextLearningContext = isLearningCourseAction
+        ? { ...savedLearningContext, learningUnlocked: true }
+        : { learningUnlocked: true, step: "ENTRY" };
+
       await updateConversation(
         conversation.id,
         {
           current_module: "LEARNING",
-          current_state: "ENTRY",
-          context_json: {
-            learningUnlocked: true,
-            step: "ENTRY",
-          },
+          current_state: nextLearningState,
+          context_json: nextLearningContext,
         },
         tenantId,
       );
+
+      const learningConversation = {
+        ...conversation,
+        current_module: "LEARNING",
+        current_state: nextLearningState,
+        context_json: nextLearningContext,
+      } as Conversation;
 
       await handleLearning(
         phone,
         text,
         contact,
-        conversation,
+        learningConversation,
       );
       return;
     }
