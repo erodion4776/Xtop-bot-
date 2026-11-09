@@ -2062,11 +2062,7 @@ async function applyELA301CourseAction(phone:string, action:string):Promise<void
     : action === "pause_questions" ? "ELA301 CBT and lesson-practice questions are now INACTIVE. Teaching lessons remain available."
     : action === "resume_course" ? "ELA301 course is ACTIVE again."
     : "ELA301 CBT and lesson-practice questions are ACTIVE again. Rejected CBT questions were not changed.";
-  await sendTextMessage(phone, "✅ *ELA301 CONTROL UPDATED*
-
-"+successLabel+"
-
-Updated records: "+JSON.stringify(counts));
+  await sendTextMessage(phone, "✅ *ELA301 CONTROL UPDATED*\\n\\n"+successLabel+"\\n\\nUpdated records: "+JSON.stringify(counts));
   await showELA301PublishControls(phone);
 }
 
