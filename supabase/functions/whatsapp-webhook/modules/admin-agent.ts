@@ -101,6 +101,7 @@ export async function showAdminAgentMenu(phone: string, page = 0): Promise<void>
         makeListRow("admin_sabi_status_help", "🛡️ Merchant Status Controls", "Suspend or reactivate with confirmation"),
         makeListRow("admin_sabi_orders_payments", "💳 Orders & Payments Monitor", "Order totals, pending payments and Paystack fee records"),
         makeListRow("admin_sabi_payout_reconciliation", "🏦 Payout Verification & Reconciliation", "Merchant Paystack status and recorded settlement fees"),
+        makeListRow("admin_sabi_live_payout_help", "🔍 Live Paystack Check", "Check one merchant directly with Paystack"),
       ],
     },
   ];
@@ -261,6 +262,74 @@ async function getSabiPlatformOverview(): Promise<string> {
 }
 
 
+
+async function checkLivePaystackSubaccount(phone: string, merchantId: string): Promise<void> {
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidPattern.test(merchantId)) {
+    await sendTextMessage(phone, "Use the exact merchant UUID.\\nExample: verify payout <merchant UUID>");
+    return;
+  }
+
+  const secret = Deno.env.get("PAYSTACK_SECRET_KEY");
+  if (!secret) {
+    await sendTextMessage(phone, "⚠️ Live Paystack verification is unavailable because the server-side Paystack key is not configured for this function. No changes were made.");
+    return;
+  }
+
+  const { data: merchant, error } = await supabase.from("tenants")
+    .select("id,business_name,name,paystack_subaccount_code")
+    .eq("id", merchantId)
+    .eq("is_system", false)
+    .maybeSingle();
+
+  if (error || !merchant) {
+    await sendTextMessage(phone, "⚠️ Merchant not found. No changes were made.");
+    return;
+  }
+  if (!merchant.paystack_subaccount_code) {
+    await sendTextMessage(phone, "This merchant has no registered Paystack subaccount. No live check was possible.");
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      "https://api.paystack.co/subaccount/" + encodeURIComponent(merchant.paystack_subaccount_code),
+      { method: "GET", headers: { Authorization: "Bearer " + secret, "Content-Type": "application/json" } },
+    );
+    const payload = await response.json();
+    if (!response.ok || payload?.status !== true || !payload?.data) {
+      console.error("[Lizzy][Paystack] Live subaccount lookup failed:", response.status);
+      await sendTextMessage(phone, "⚠️ Paystack could not confirm this subaccount right now. Try again later. No database changes were made.");
+      return;
+    }
+
+    const account = payload.data;
+    if (String(account.subaccount_code || "") !== String(merchant.paystack_subaccount_code)) {
+      console.error("[Lizzy][Paystack] Returned subaccount code did not match stored merchant code.");
+      await sendTextMessage(phone, "⚠️ Paystack returned a subaccount record that did not match this merchant. Verification was stopped.");
+      return;
+    }
+
+    const verified = account.is_verified === true;
+    const active = account.active === true;
+    const status = verified ? "VERIFIED" : account.active === false ? "INACTIVE" : "PENDING VERIFICATION";
+    await sendTextMessage(phone, [
+      "🔎 *LIVE PAYSTACK SUBACCOUNT CHECK*",
+      "",
+      "*Business:* " + String(merchant.business_name || merchant.name || "Merchant").replace(/[\\r\\n]/g, " ").slice(0, 70),
+      "*Paystack status:* " + status,
+      "*Verified by Paystack:* " + (verified ? "YES" : "NO"),
+      "*Subaccount active:* " + (active ? "YES" : account.active === false ? "NO" : "Not reported"),
+      "",
+      "Source: Paystack live subaccount API.",
+      "This was a read-only check. No payout, transfer, bank-detail change or database update was performed.",
+      "Checked: " + new Date().toISOString(),
+    ].join("\\n"));
+  } catch (error) {
+    console.error("[Lizzy][Paystack] Live verification request failed:", error instanceof Error ? error.message : "Unknown error");
+    await sendTextMessage(phone, "⚠️ The live Paystack check failed due to a network or service error. No changes were made.");
+  }
+}
 
 async function showSabiPayoutReconciliation(phone: string): Promise<void> {
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -2518,6 +2587,22 @@ export async function handleAdminAgent(
     return;
   }
 
+
+  if (command === "admin_sabi_live_payout_help") {
+    await sendTextMessage(phone, [
+      "🔍 *LIVE PAYSTACK SUBACCOUNT CHECK*",
+      "",
+      "Send: verify payout <merchant UUID>",
+      "",
+      "Lizzy will query Paystack directly and report the current verification state. This is read-only; it cannot initiate a transfer or change bank details.",
+    ].join("\\n"));
+    return;
+  }
+
+  if (command.startsWith("verify payout ")) {
+    await checkLivePaystackSubaccount(phone, inputRaw.slice("verify payout ".length).trim());
+    return;
+  }
 
   if (command === "admin_sabi_payout_reconciliation" || command === "sabi payouts" || command === "payout reconciliation") {
     await showSabiPayoutReconciliation(phone);
