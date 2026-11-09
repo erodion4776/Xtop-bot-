@@ -505,7 +505,7 @@ async function confirmMerchantStatusChange(
   const context = await readAdminConversationContext(conversationId);
   const pending = context?.sabi_pending_status_change;
 
-  if (!pending || pending.token !== token) {
+  if (!context || !pending || pending.token !== token) {
     await sendTextMessage(phone, "⚠️ This confirmation is invalid or has already been used. Start the request again.");
     return;
   }
