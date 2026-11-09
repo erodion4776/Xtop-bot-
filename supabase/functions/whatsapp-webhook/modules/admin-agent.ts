@@ -1394,7 +1394,7 @@ async function showLearningLesson(phone: string, lessonId: string): Promise<void
    remains DRAFT until the lecturer separately publishes it.
    ========================================================= */
 
-const ELA301_COURSE_ID = "05c112df-8fe8-47bd-8814-1d6f60f4314b";
+const ELA301_COURSE_ID = "05c112df-fe8e-47bd-8814-1d6f60f4314b";
 const ELA301_REVIEW_PAGE_SIZE = 6;
 
 async function listELA301QuestionQueue(phone: string, page = 0): Promise<void> {
