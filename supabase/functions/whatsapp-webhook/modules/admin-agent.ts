@@ -76,15 +76,23 @@ export function isAdminAgentTrigger(
  * Renders Lizzy's primary menu using WhatsApp native List selections.
  */
 export async function showAdminAgentMenu(phone: string, page = 0): Promise<void> {
-  // WhatsApp interactive lists allow at most 10 rows in total across all sections.
-  // Keep every page below that limit so navigation is always visible and usable.
-  const safePage = page === 1 ? 1 : 0;
+  // WhatsApp interactive lists allow at most 10 rows across all sections.
+  // Three pages keep every Sabi and Learning Centre action reachable.
+  const safePage = page === 2 ? 2 : page === 1 ? 1 : 0;
+  const pageLabels = [
+    "Page 1 of 3 — Lead & Quote Desk and core Sabi tools.",
+    "Page 2 of 3 — More Sabi tools and System & Learning.",
+    "Page 3 of 3 — ELA301 lecturer review tools.",
+  ];
   const body =
     "🔐 *XTOP PRIVATE ADMIN ASSISTANT (LIZZY)*\\n\\n" +
     "Welcome, Authorized Admin.\\n\\n" +
+    pageLabels[safePage] +
     (safePage === 0
-      ? "Page 1 of 2 — Lead & Quote Desk and core Sabi tools. Select Next Menu for more Sabi tools and System & Learning."
-      : "Page 2 of 2 — More Sabi tools, System & Learning. Select Previous Menu to return.");
+      ? " Select Next Menu to continue."
+      : safePage === 1
+        ? " Select Next Menu for ELA301 review or Previous Menu to return."
+        : " Select Previous Menu to return to System & Learning.");
 
   const pageOneSections = [
     {
@@ -124,8 +132,16 @@ export async function showAdminAgentMenu(phone: string, page = 0): Promise<void>
         makeListRow("admin_learning", "🎓 ENGR ERO Learning Hub", "Courses, lessons, students and publication status"),
         makeListRow("admin_students_pending", "🎓 Student Verification", "Review new student registrations"),
         makeListRow("admin_student_records", "📚 Student Records", "Department • S/N • matric no • results"),
-        makeListRow("admin_ela301_questions", "📝 ELA301 Question Review", "Review and approve 1,000 draft CBT questions"),
-        makeListRow("admin_ela301_lessons", "📖 ELA301 Lesson Review", "Review teaching modules and approve individual lessons"),
+      ],
+    },
+  ];
+
+  const pageThreeSections = [
+    {
+      title: "🎓 ELA301 Lecturer Review",
+      rows: [
+        makeListRow("admin_ela301_questions", "📝 ELA301 Question Review", "Review and approve CBT questions"),
+        makeListRow("admin_ela301_lessons", "📖 ELA301 Lesson Review", "Inspect and approve teaching lessons"),
       ],
     },
   ];
@@ -134,24 +150,29 @@ export async function showAdminAgentMenu(phone: string, page = 0): Promise<void>
     pageOneSections[1].rows.push(
       makeListRow("admin_agent_menu_page_1", "➡️ Next Menu", "Open more Sabi tools and System & Learning")
     );
-  } else {
+  } else if (safePage === 1) {
     pageTwoSections[1].rows.push(
-      makeListRow("admin_agent_menu_page_0", "⬅️ Previous Menu", "Return to Lead & core Sabi tools")
+      makeListRow("admin_agent_menu_page_0", "⬅️ Previous Menu", "Return to core Sabi tools"),
+      makeListRow("admin_agent_menu_page_2", "➡️ Next Menu", "Open ELA301 lecturer review tools")
+    );
+  } else {
+    pageThreeSections[0].rows.push(
+      makeListRow("admin_agent_menu_page_1", "⬅️ Previous Menu", "Return to System & Learning")
     );
   }
 
-  const sections = safePage === 0 ? pageOneSections : pageTwoSections;
+  const sections = safePage === 0 ? pageOneSections : safePage === 1 ? pageTwoSections : pageThreeSections;
   const totalRows = sections.reduce((total, section) => total + section.rows.length, 0);
   if (totalRows > 10) {
     console.error("[Lizzy] Menu page exceeds WhatsApp's 10-row limit:", safePage, totalRows);
-    await sendTextMessage(phone, "⚠️ Lizzy menu configuration needs attention. No features were removed; please try again shortly.");
+    await sendTextMessage(phone, "⚠️ Lizzy menu configuration needs attention. Please contact the system administrator.");
     return;
   }
 
   await sendListMessage(
     phone,
     body,
-    safePage === 0 ? "Select Action" : "More Admin Tools",
+    safePage === 0 ? "Select Action" : safePage === 1 ? "More Admin Tools" : "ELA301 Review",
     sections,
     "Lizzy Operations Suite",
     "Authorized Admin Only",
@@ -3209,8 +3230,9 @@ export async function handleAdminAgent(
     return;
   }
 
-  if (command === "admin_agent_menu_page_0" || command === "admin_agent_menu_page_1") {
-    await showAdminAgentMenu(phone, command.endsWith("_1") ? 1 : 0);
+  if (command === "admin_agent_menu_page_0" || command === "admin_agent_menu_page_1" || command === "admin_agent_menu_page_2") {
+    const page = Number.parseInt(command.slice("admin_agent_menu_page_".length), 10);
+    await showAdminAgentMenu(phone, Number.isFinite(page) ? page : 0);
     return;
   }
 
