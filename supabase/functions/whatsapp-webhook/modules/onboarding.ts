@@ -418,6 +418,8 @@ export async function handleOnboardingCallback(
     return jsonResponse({ error: "Method not allowed" }, 405);
   }
 
+  let claimedSessionId: string | null = null;
+
   try {
     const body = await req.json();
 
@@ -457,6 +459,37 @@ export async function handleOnboardingCallback(
       });
     }
 
+    if (session.status === "META_SIGNUP_STARTED") {
+      const lockAgeMs = Date.now() - new Date(session.updated_at).getTime();
+      if (!Number.isFinite(lockAgeMs) || lockAgeMs < 15 * 60 * 1000) {
+        return jsonResponse({
+          error: "This signup is already being processed. Please wait a few minutes before retrying.",
+        }, 409);
+      }
+
+      // Recover only an abandoned processing lock. The timestamp predicate
+      // prevents this request from resetting a lock that another request changed.
+      const { data: recovered, error: recoveryError } = await sb
+        .from("onboarding_sessions")
+        .update({ status: "PENDING" })
+        .eq("id", session.id)
+        .eq("status", "META_SIGNUP_STARTED")
+        .eq("updated_at", session.updated_at)
+        .select("id")
+        .maybeSingle();
+
+      if (recoveryError) {
+        safeErrorLog("onboarding.session.lock_recovery", recoveryError);
+        return jsonResponse({ error: "Could not recover the signup session safely." }, 500);
+      }
+      if (!recovered) {
+        return jsonResponse({
+          error: "This signup session is already being processed. Please retry shortly.",
+        }, 409);
+      }
+      session.status = "PENDING";
+    }
+
     if (session.status !== "PENDING") {
       return jsonResponse({
         error: "This signup session is no longer valid.",
@@ -471,8 +504,6 @@ export async function handleOnboardingCallback(
       return jsonResponse({ error: "Signup session has no tenant." }, 400);
     }
 
-    // The Sabi support number belongs to the system router and must never
-    // be registered as a merchant number.
     const systemPhoneNumberId = String(
       Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "",
     ).trim();
@@ -483,7 +514,6 @@ export async function handleOnboardingCallback(
       }, 409);
     }
 
-    // Ensure the selected WhatsApp number is not assigned to another tenant.
     const { data: existingAccount, error: existingError } = await sb
       .from("tenant_whatsapp_accounts")
       .select("tenant_id")
@@ -506,7 +536,26 @@ export async function handleOnboardingCallback(
       }, 409);
     }
 
-    // Exchange and validate Meta authorization details.
+    // Atomic compare-and-set: only one callback can claim a pending session.
+    const { data: claimed, error: claimError } = await sb
+      .from("onboarding_sessions")
+      .update({ status: "META_SIGNUP_STARTED" })
+      .eq("id", session.id)
+      .eq("status", "PENDING")
+      .select("id")
+      .maybeSingle();
+
+    if (claimError) {
+      safeErrorLog("onboarding.session.claim", claimError);
+      return jsonResponse({ error: "Could not safely start signup processing." }, 500);
+    }
+    if (!claimed) {
+      return jsonResponse({
+        error: "This signup session has already been used or is being processed.",
+      }, 409);
+    }
+    claimedSessionId = session.id;
+
     const metaAccount = await exchangeAuthCode(
       authCode,
       wabaId,
@@ -562,9 +611,7 @@ export async function handleOnboardingCallback(
       throw new Error("Could not save the WhatsApp account.");
     }
 
-    // Mark WhatsApp as connected, but do not activate a subscription
-    // or mark the merchant workspace as fully registered.
-    const { error: updateSessionError } = await sb
+    const { data: completedSession, error: updateSessionError } = await sb
       .from("onboarding_sessions")
       .update({
         status: "WHATSAPP_CONNECTED",
@@ -572,12 +619,19 @@ export async function handleOnboardingCallback(
         phone_number_id: metaAccount.phoneNumberId,
       })
       .eq("id", session.id)
-      .eq("status", "PENDING");
+      .eq("status", "META_SIGNUP_STARTED")
+      .select("id")
+      .maybeSingle();
 
     if (updateSessionError) {
       safeErrorLog("onboarding.session.complete", updateSessionError);
       throw new Error("WhatsApp connected, but the registration session could not be updated.");
     }
+    if (!completedSession) {
+      throw new Error("Signup session changed during processing. Please contact Sabi support before retrying.");
+    }
+
+    claimedSessionId = null;
 
     return jsonResponse({
       success: true,
@@ -589,6 +643,17 @@ export async function handleOnboardingCallback(
       dashboard_url: `${BASE_URL}/?session_token=${encodeURIComponent(sessionToken)}`,
     });
   } catch (error) {
+    if (claimedSessionId) {
+      const { error: releaseError } = await sb
+        .from("onboarding_sessions")
+        .update({ status: "PENDING" })
+        .eq("id", claimedSessionId)
+        .eq("status", "META_SIGNUP_STARTED");
+      if (releaseError) {
+        safeErrorLog("onboarding.session.lock_release", releaseError);
+      }
+    }
+
     safeErrorLog("handleOnboardingCallback", error);
 
     return jsonResponse({
