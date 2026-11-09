@@ -406,7 +406,7 @@ async function requestMerchantStatusChange(
 
   const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!uuidPattern.test(merchantId)) {
-    await sendTextMessage(phone, "Use the exact merchant UUID. Example:\\nsuspend merchant <UUID>");
+    await sendTextMessage(phone, "Use the exact merchant UUID. Example:\nsuspend merchant <UUID>");
     return;
   }
 
@@ -427,7 +427,7 @@ async function requestMerchantStatusChange(
       phone,
       String(tenant.business_name || tenant.name || "Merchant") +
         (targetActive ? " is already ACTIVE." : " is already SUSPENDED.") +
-        "\\nNo change was made.",
+        "\nNo change was made.",
     );
     return;
   }
@@ -458,7 +458,7 @@ async function requestMerchantStatusChange(
   }
 
   const business = String(tenant.business_name || tenant.name || "Unnamed business")
-    .replace(/[\\r\\n]/g, " ")
+    .replace(/[\r\n]/g, " ")
     .slice(0, 80);
   const action = targetActive ? "REACTIVATE" : "SUSPEND";
   const consequence = targetActive
@@ -478,7 +478,7 @@ async function requestMerchantStatusChange(
     "",
     "This confirmation expires in 5 minutes.",
     "Only confirm if this is the intended merchant.",
-  ].join("\\n"));
+  ].join("\n"));
 
   await sendButtonMessage(phone, "Do you want to continue?", [
     makeButton("admin_sabi_status_confirm_" + token, targetActive ? "Confirm Reactivate" : "Confirm Suspend"),
@@ -591,7 +591,7 @@ async function confirmMerchantStatusChange(
     "Audit record: saved",
     "",
     "Merchant products, orders, wallet and financial history were not deleted or modified.",
-  ].join("\\n"));
+  ].join("\n"));
 }
 
 async function cancelMerchantStatusChange(
@@ -2300,7 +2300,7 @@ export async function handleAdminAgent(
       "",
       "Lizzy will show the merchant and request confirmation. Confirmations expire after 5 minutes.",
       "Every completed change is audited. Merchant records are preserved.",
-    ].join("\\n"));
+    ].join("\n"));
     return;
   }
 
