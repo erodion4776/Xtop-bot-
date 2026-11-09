@@ -263,7 +263,11 @@ async function getSabiPlatformOverview(): Promise<string> {
 
 
 
-async function checkLivePaystackSubaccount(phone: string, merchantId: string): Promise<void> {
+async function checkLivePaystackSubaccount(phone: string, isSystem: boolean, merchantId: string): Promise<void> {
+  if (!hasSuperAdminAccess(phone, isSystem)) {
+    console.warn("[Lizzy][Sabi] Unauthorized live Paystack check blocked.");
+    return;
+  }
   const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!uuidPattern.test(merchantId)) {
     await sendTextMessage(phone, "Use the exact merchant UUID.\nExample: verify payout <merchant UUID>");
@@ -2600,7 +2604,7 @@ export async function handleAdminAgent(
   }
 
   if (command.startsWith("verify payout ")) {
-    await checkLivePaystackSubaccount(phone, inputRaw.slice("verify payout ".length).trim());
+    await checkLivePaystackSubaccount(phone, isSystem, inputRaw.slice("verify payout ".length).trim());
     return;
   }
 
