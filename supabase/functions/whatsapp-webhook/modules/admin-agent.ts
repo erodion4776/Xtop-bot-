@@ -306,14 +306,14 @@ async function showSabiMerchantDetails(phone: string, search: string): Promise<v
     return;
   }
   if (!data?.length) {
-    await sendTextMessage(phone, "No Sabi merchant matched: " + term + "\\n\\nTry another business name or merchant UUID.");
+    await sendTextMessage(phone, "No Sabi merchant matched: " + term + "\n\nTry another business name or merchant UUID.");
     return;
   }
   if (data.length > 1) {
     const matches = data.map((t: any, i: number) =>
-      (i + 1) + ". " + String(t.business_name || t.name || "Unnamed business").replace(/[\\r\\n]/g, " ").slice(0, 65) + "\\n   ID: " + t.id
+      (i + 1) + ". " + String(t.business_name || t.name || "Unnamed business").replace(/[\r\n]/g, " ").slice(0, 65) + "\n   ID: " + t.id
     );
-    await sendTextMessage(phone, "🔎 *MORE THAN ONE MERCHANT MATCHED*\\n\\n" + matches.join("\\n\\n") + "\\n\\nUse: merchant <exact UUID>");
+    await sendTextMessage(phone, "🔎 *MORE THAN ONE MERCHANT MATCHED*\n\n" + matches.join("\n\n") + "\n\nUse: merchant <exact UUID>");
     return;
   }
 
@@ -351,7 +351,7 @@ async function showSabiMerchantDetails(phone: string, search: string): Promise<v
     "Merchant ID: " + tenant.id,
     "",
     "🔐 Read-only profile. No owner contact, bank details, customer details or access tokens are exposed."
-  ].join("\\n"));
+  ].join("\n"));
 }
 
 /* =========================================================
