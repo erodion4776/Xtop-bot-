@@ -412,7 +412,7 @@ async function requestMerchantStatusChange(
 
   const { data: tenant, error } = await supabase
     .from("tenants")
-    .select("id,name,business_name,is_active,is_system")
+    .select("id,name,business_name,is_active,is_system,metadata")
     .eq("id", merchantId)
     .eq("is_system", false)
     .maybeSingle();
@@ -534,9 +534,20 @@ async function confirmMerchantStatusChange(
     return;
   }
 
+  const nextMetadata = { ...((tenant.metadata || {}) as Record<string, unknown>) };
+  if (targetActive) {
+    delete nextMetadata.sabi_admin_suspended;
+  } else {
+    nextMetadata.sabi_admin_suspended = true;
+  }
+
   const { data: changed, error: updateError } = await supabase
     .from("tenants")
-    .update({ is_active: targetActive, updated_at: new Date().toISOString() })
+    .update({
+      is_active: targetActive,
+      metadata: nextMetadata,
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", tenantId)
     .eq("is_system", false)
     .eq("is_active", expectedActive)
