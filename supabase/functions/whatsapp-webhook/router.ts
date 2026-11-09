@@ -1002,6 +1002,17 @@ export async function routeMessage(
       return;
     }
 
+    // Continue an active Engr Ero learning session.
+    if (currentModule === "LEARNING") {
+      await handleLearning(
+        phone,
+        text,
+        contact,
+        conversation,
+      );
+      return;
+    }
+
     // ===================================================
     // SABI + ENGR ERO ONLY
     // ===================================================
