@@ -124,6 +124,7 @@ export async function showAdminAgentMenu(phone: string, page = 0): Promise<void>
         makeListRow("admin_learning", "🎓 ENGR ERO Learning Hub", "Courses, lessons, students and publication status"),
         makeListRow("admin_students_pending", "🎓 Student Verification", "Review new student registrations"),
         makeListRow("admin_student_records", "📚 Student Records", "Department • S/N • matric no • results"),
+        makeListRow("admin_ela301_questions", "📝 ELA301 Question Review", "Review and approve 1,000 draft CBT questions"),
       ],
     },
   ];
@@ -1383,6 +1384,241 @@ async function showLearningLesson(phone: string, lessonId: string): Promise<void
   }
 }
 
+
+
+/* =========================================================
+   ELA301 — QUESTION BANK REVIEW (ADMIN-NUMBER ONLY)
+   This is separate from the existing ELA401 lesson workflow.
+   Each question is reviewed individually with a two-step decision.
+   Approved questions become ACTIVE, but the ELA301 course itself
+   remains DRAFT until the lecturer separately publishes it.
+   ========================================================= */
+
+const ELA301_COURSE_ID = "05c112df-8fe8-47bd-8814-1d6f60f4314b";
+const ELA301_REVIEW_PAGE_SIZE = 6;
+
+async function listELA301QuestionQueue(phone: string, page = 0): Promise<void> {
+  const { count, error: countError } = await supabase
+    .from("course_questions")
+    .select("id", { count: "exact", head: true })
+    .eq("course_id", ELA301_COURSE_ID)
+    .eq("status", "DRAFT");
+
+  if (countError) {
+    safeErrorLog("listELA301QuestionQueue.count", countError);
+    await sendTextMessage(phone, "⚠️ I could not count the ELA301 draft questions. No records were changed.");
+    return;
+  }
+
+  const total = count || 0;
+  const pageCount = Math.max(1, Math.ceil(total / ELA301_REVIEW_PAGE_SIZE));
+  const safePage = Math.max(0, Math.min(Math.floor(Number(page) || 0), pageCount - 1));
+  const from = safePage * ELA301_REVIEW_PAGE_SIZE;
+  const { data: questions, error } = await supabase
+    .from("course_questions")
+    .select("id, question, question_order, module_id, difficulty")
+    .eq("course_id", ELA301_COURSE_ID)
+    .eq("status", "DRAFT")
+    .order("question_order", { ascending: true })
+    .range(from, from + ELA301_REVIEW_PAGE_SIZE - 1);
+
+  if (error || !questions) {
+    safeErrorLog("listELA301QuestionQueue.questions", error);
+    await sendTextMessage(phone, "⚠️ The ELA301 question queue could not be loaded. No records were changed.");
+    return;
+  }
+
+  if (!questions.length) {
+    const [{ count: approved }, { count: rejected }] = await Promise.all([
+      supabase.from("course_questions").select("id", { count: "exact", head: true }).eq("course_id", ELA301_COURSE_ID).eq("status", "ACTIVE"),
+      supabase.from("course_questions").select("id", { count: "exact", head: true }).eq("course_id", ELA301_COURSE_ID).eq("status", "REJECTED"),
+    ]);
+    await sendTextMessage(phone, [
+      "🎓 *ELA301 QUESTION REVIEW*",
+      "",
+      "There are no draft questions waiting for review.",
+      "Approved: " + (approved ?? "Unavailable"),
+      "Rejected: " + (rejected ?? "Unavailable"),
+      "The ELA301 course remains DRAFT until separately authorized for publication.",
+    ].join("\n"));
+    await sendButtonMessage(phone, "Review navigation:", [
+      makeButton("admin_ela301_questions", "🔄 Refresh Queue"),
+      makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+    ]);
+    return;
+  }
+
+  const rows = questions.map((question: any) => makeListRow(
+    "admin_ela301_q_" + question.id,
+    "Q" + question.question_order + ": " + String(question.question || "Untitled question").slice(0, 22),
+    String(question.difficulty || "Unspecified") + " • Awaiting review"
+  ));
+  if (safePage > 0) rows.push(makeListRow("admin_ela301_q_page_" + (safePage - 1), "⬅ Previous questions", "Go to previous page"));
+  if (safePage < pageCount - 1) rows.push(makeListRow("admin_ela301_q_page_" + (safePage + 1), "Next questions ➡", "View next page"));
+
+  await sendListMessage(
+    phone,
+    [
+      "📝 *ELA301 — CBT QUESTION REVIEW*",
+      "",
+      "Draft questions awaiting Lizzy's review: " + total,
+      "Page " + (safePage + 1) + " of " + pageCount,
+      "",
+      "Open each question to inspect all four options, the keyed answer and explanation. Approve or reject one question at a time.",
+      "",
+      "🔒 ELA301 remains DRAFT. Approval here does not publish the course.",
+    ].join("\n"),
+    "Choose Question",
+    [{ title: "ELA301 Draft Questions", rows }],
+    "Learning Centre",
+    "Admin-number access only"
+  );
+}
+
+async function showELA301Question(phone: string, questionIdInput: string): Promise<void> {
+  const questionId = sanitizeId(questionIdInput);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(questionId)) {
+    await sendTextMessage(phone, "⚠️ Invalid question reference. Reopen the question from the ELA301 review queue.");
+    return;
+  }
+
+  const { data: question, error } = await supabase.from("course_questions")
+    .select("id, course_id, module_id, question, option_a, option_b, option_c, option_d, correct_answer, explanation, question_order, status, difficulty, marks")
+    .eq("id", questionId)
+    .eq("course_id", ELA301_COURSE_ID)
+    .maybeSingle();
+
+  if (error || !question) {
+    safeErrorLog("showELA301Question", error);
+    await sendTextMessage(phone, "⚠️ ELA301 question not found. Nothing was changed.");
+    return;
+  }
+
+  let moduleTitle = "General question bank";
+  if (question.module_id) {
+    const { data: module } = await supabase.from("course_modules")
+      .select("title").eq("id", question.module_id).eq("course_id", ELA301_COURSE_ID).maybeSingle();
+    if (module?.title) moduleTitle = String(module.title);
+  }
+
+  const status = String(question.status || "DRAFT").toUpperCase();
+  const body = [
+    "📝 *ELA301 — QUESTION " + question.question_order + "*",
+    "Module: " + moduleTitle,
+    "Status: " + status,
+    "Difficulty: " + (question.difficulty || "Not specified"),
+    "Marks: " + (question.marks ?? 1),
+    "",
+    "*" + String(question.question || "") + "*",
+    "",
+    "A) " + String(question.option_a || ""),
+    "B) " + String(question.option_b || ""),
+    "C) " + String(question.option_c || ""),
+    "D) " + String(question.option_d || ""),
+    "",
+    "🔑 *Proposed correct answer:* " + String(question.correct_answer || "Not set"),
+    "📖 *Explanation:* " + String(question.explanation || "No explanation supplied."),
+    "",
+    "Review the wording, technical accuracy, options, keyed answer and explanation before deciding.",
+  ].join("\n");
+
+  await sendTextMessage(phone, body.slice(0, 3800));
+  if (status === "DRAFT") {
+    await sendButtonMessage(phone, "Choose a decision for this question:", [
+      makeButton("admin_ela301_q_approve_" + question.id, "✅ Approve Question"),
+      makeButton("admin_ela301_q_reject_" + question.id, "⛔ Reject Question"),
+      makeButton("admin_ela301_q_page_0", "↩ Review Queue"),
+    ], "ELA301 Question Review");
+  } else {
+    await sendButtonMessage(phone, "This question has already been reviewed.", [
+      makeButton("admin_ela301_questions", "📝 Review Queue"),
+      makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+    ]);
+  }
+}
+
+async function decideELA301Question(
+  phone: string,
+  questionIdInput: string,
+  decision: "APPROVE" | "REJECT",
+  confirm: boolean,
+): Promise<void> {
+  const questionId = sanitizeId(questionIdInput);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(questionId)) {
+    await sendTextMessage(phone, "⚠️ Invalid question reference. No records were changed.");
+    return;
+  }
+
+  const { data: question, error } = await supabase.from("course_questions")
+    .select("id, question, question_order, status, correct_answer, option_a, option_b, option_c, option_d")
+    .eq("id", questionId)
+    .eq("course_id", ELA301_COURSE_ID)
+    .maybeSingle();
+
+  if (error || !question) {
+    safeErrorLog("decideELA301Question.lookup", error);
+    await sendTextMessage(phone, "⚠️ Question not found in ELA301. No records were changed.");
+    return;
+  }
+  if (String(question.status || "").toUpperCase() !== "DRAFT") {
+    await sendTextMessage(phone, "ℹ️ This question is no longer awaiting review. Its current status is " + question.status + ".");
+    await listELA301QuestionQueue(phone, 0);
+    return;
+  }
+
+  const optionsValid = [question.option_a, question.option_b, question.option_c, question.option_d]
+    .every((value: unknown) => typeof value === "string" && value.trim().length > 0);
+  const answerValid = ["A", "B", "C", "D"].includes(String(question.correct_answer || "").toUpperCase());
+  if (decision === "APPROVE" && (!optionsValid || !answerValid || !String(question.question || "").trim())) {
+    await sendTextMessage(phone, "⛔ This question is incomplete. It needs a question, four non-empty options and a valid A/B/C/D answer before it can be approved.");
+    return;
+  }
+
+  if (!confirm) {
+    await sendTextMessage(phone, [
+      decision === "APPROVE" ? "⚠️ *CONFIRM QUESTION APPROVAL*" : "⚠️ *CONFIRM QUESTION REJECTION*",
+      "",
+      "ELA301 Question: " + question.question_order,
+      String(question.question || "").slice(0, 700),
+      "",
+      decision === "APPROVE"
+        ? "Approving marks this question ACTIVE in the question bank. The course itself remains DRAFT."
+        : "Rejecting marks only this question REJECTED. It remains unavailable to students.",
+      "",
+      "No other question will be changed.",
+    ].join("\n"));
+    await sendButtonMessage(phone, "Please confirm this individual decision:", [
+      makeButton("admin_ela301_q_" + decision.toLowerCase() + "_confirm_" + questionId, decision === "APPROVE" ? "✅ Confirm Approval" : "⛔ Confirm Rejection"),
+      makeButton("admin_ela301_q_" + questionId, "↩ Back to Question"),
+      makeButton("admin_ela301_questions", "Cancel"),
+    ]);
+    return;
+  }
+
+  const nextStatus = decision === "APPROVE" ? "ACTIVE" : "REJECTED";
+  const { data: updated, error: updateError } = await supabase.from("course_questions")
+    .update({ status: nextStatus })
+    .eq("id", questionId)
+    .eq("course_id", ELA301_COURSE_ID)
+    .eq("status", "DRAFT")
+    .select("id")
+    .maybeSingle();
+
+  if (updateError || !updated) {
+    safeErrorLog("decideELA301Question.persist", updateError);
+    await sendTextMessage(phone, "❌ The decision could not be saved. The question remains unchanged; please refresh the queue.");
+    return;
+  }
+
+  await sendTextMessage(phone, decision === "APPROVE"
+    ? "✅ *ELA301 QUESTION APPROVED*\n\nQuestion " + question.question_order + " is now ACTIVE in the question bank. The ELA301 course remains DRAFT and is not open to students."
+    : "⛔ *ELA301 QUESTION REJECTED*\n\nQuestion " + question.question_order + " is marked REJECTED and remains unavailable to students.");
+
+  await sendButtonMessage(phone, "Continue ELA301 review:", [
+    makeButton("admin_ela301_questions", "📝 Next Draft Questions"),
+    makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+  ]);
+}
 
 
 
@@ -2832,6 +3068,36 @@ export async function handleAdminAgent(
 
   if (command.startsWith("merchant ")) {
     await showSabiMerchantDetails(phone, isSystem, inputRaw.slice(9));
+    return;
+  }
+
+  if (command === "admin_ela301_questions" || command === "ela301 questions" || command === "ela301 review") {
+    await listELA301QuestionQueue(phone, 0);
+    return;
+  }
+  if (command.startsWith("admin_ela301_q_page_")) {
+    const page = Number.parseInt(inputRaw.slice("admin_ela301_q_page_".length), 10);
+    await listELA301QuestionQueue(phone, Number.isFinite(page) ? page : 0);
+    return;
+  }
+  if (command.startsWith("admin_ela301_q_approve_confirm_")) {
+    await decideELA301Question(phone, inputRaw.slice("admin_ela301_q_approve_confirm_".length), "APPROVE", true);
+    return;
+  }
+  if (command.startsWith("admin_ela301_q_reject_confirm_")) {
+    await decideELA301Question(phone, inputRaw.slice("admin_ela301_q_reject_confirm_".length), "REJECT", true);
+    return;
+  }
+  if (command.startsWith("admin_ela301_q_approve_")) {
+    await decideELA301Question(phone, inputRaw.slice("admin_ela301_q_approve_".length), "APPROVE", false);
+    return;
+  }
+  if (command.startsWith("admin_ela301_q_reject_")) {
+    await decideELA301Question(phone, inputRaw.slice("admin_ela301_q_reject_".length), "REJECT", false);
+    return;
+  }
+  if (command.startsWith("admin_ela301_q_")) {
+    await showELA301Question(phone, inputRaw.slice("admin_ela301_q_".length));
     return;
   }
 
