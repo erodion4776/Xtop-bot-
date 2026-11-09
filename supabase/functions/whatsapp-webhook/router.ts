@@ -866,6 +866,22 @@ export async function routeMessage(
       return;
     }
 
+    // A practice answer is usually a single letter (A-D), so it cannot
+    // reliably trigger keyword-based course routing. Honour the persisted
+    // quiz state even if another menu has changed current_module.
+    if (conversation.current_state === "PRACTICE_QUESTION") {
+      await handleLearning(
+        phone,
+        text,
+        contact,
+        {
+          ...conversation,
+          current_module: "LEARNING",
+        } as Conversation,
+      );
+      return;
+    }
+
     // ===================================================
     // EXPLICIT ENGR ERO LEARNING ROUTE
     // ===================================================
