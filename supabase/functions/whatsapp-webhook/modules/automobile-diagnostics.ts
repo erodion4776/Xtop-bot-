@@ -1,210 +1,111 @@
-// supabase/functions/whatsapp-webhook/modules/automobile-diagnostics.ts
-// Guided, rule-based preliminary vehicle fault diagnosis for AET301 students.
-// This module does not replace a qualified technician's inspection.
-
+// ELA301 guided preliminary vehicle assessment.
+// Educational decision support only; never a substitute for inspection by a qualified technician.
 import { Conversation, updateConversation } from "../database.ts";
-import { sendTextMessage } from "../whatsapp.ts";
+import { sendButtonMessage, sendTextMessage, makeButton } from "../whatsapp.ts";
 
-type DiagnosisCategory =
-  | "overheating"
-  | "starting"
-  | "brakes"
-  | "smoke"
-  | "transmission"
-  | "steering"
-  | "charging"
-  | "performance"
-  | "air_conditioning"
-  | "oil_noise"
-  | "unknown";
+type Category = "overheating"|"starting"|"brakes"|"smoke"|"transmission"|"steering"|"charging"|"performance"|"air_conditioning"|"oil_noise"|"tyres"|"fuel_leak"|"unknown";
+const EXIT = new Set(["EXIT","QUIT","CANCEL","STOP","END","DONE","0"]);
+const MENU = new Set(["MENU","MAIN MENU","COURSE MENU","BACK"]);
+const RESTART = new Set(["NEW","START","RESTART","AGAIN","NEW DIAGNOSIS"]);
 
-function matchCategory(input: string): DiagnosisCategory {
-  const t = input.toLowerCase();
-  if (/overheat|overheating|temperature gauge|engine hot|runs hot|hot in traffic/.test(t)) return "overheating";
-  if (/won't start|wont start|not start|no start|crank|starter|clicking when i start|starting problem/.test(t)) return "starting";
-  if (/brake|braking|brake pedal|stopping distance|abs light/.test(t)) return "brakes";
-  if (/smoke|blue smoke|white smoke|black smoke|exhaust smoke/.test(t)) return "smoke";
-  if (/gearbox|transmission|gear shift|gear change|clutch|slipping gear|won't shift|wont shift/.test(t)) return "transmission";
-  if (/steering|pulls to one side|pulling to one side|vibrat|shak|suspension|wheel alignment|wobbl/.test(t)) return "steering";
-  if (/battery|alternator|charging|battery light|dim lights|electrical power/.test(t)) return "charging";
-  if (/low power|loss of power|poor acceleration|hesitat|misfire|stall|fuel consumption|using too much fuel/.test(t)) return "performance";
-  if (/air condition|air-conditioning|air conditioning|ac not|ac is not|not cooling|warm air|weak airflow|blower/.test(t)) return "air_conditioning";
-  if (/oil pressure|oil leak|engine knock|knocking|rattling|unusual engine noise/.test(t)) return "oil_noise";
-  return "unknown";
+function norm(s:string):string { return s.toLowerCase().replace(/[’']/g,"'").replace(/\s+/g," ").trim(); }
+function categoryOf(s:string):Category {
+ const t=norm(s);
+ if(/fuel leak|petrol leak|diesel leak|smell of fuel|fuel smell/.test(t)) return "fuel_leak";
+ if(/overheat|temperature gauge|engine hot|runs hot|hot in traffic|coolant temperature/.test(t)) return "overheating";
+ if(/brake|braking|stopping distance|abs light|brake fluid/.test(t)) return "brakes";
+ if(/smoke|blue smoke|white smoke|black smoke|exhaust smoke/.test(t)) return "smoke";
+ if(/won't start|wont start|not start|no start|crank|starter|clicking when i start|doesn't start|doesnt start/.test(t)) return "starting";
+ if(/gearbox|transmission|gear shift|gear change|clutch|slipping gear|won't shift|wont shift/.test(t)) return "transmission";
+ if(/steering|pulls to one side|pulling to one side|vibrat|shak|suspension|wheel alignment|wobbl|loose steering/.test(t)) return "steering";
+ if(/tyre|tire|puncture|flat tyre|flat tire|blowout|wheel bearing/.test(t)) return "tyres";
+ if(/battery|alternator|charging|battery light|dim lights|electrical power/.test(t)) return "charging";
+ if(/low power|loss of power|poor acceleration|hesitat|misfire|stall|fuel consumption|rough idle/.test(t)) return "performance";
+ if(/air condition|air-conditioning|air conditioning|ac not|not cooling|warm air|weak airflow|blower/.test(t)) return "air_conditioning";
+ if(/oil pressure|oil leak|engine knock|knocking|rattling|unusual engine noise|ticking noise/.test(t)) return "oil_noise";
+ return "unknown";
 }
-
-function followUp(category: DiagnosisCategory): string {
-  const questions: Record<DiagnosisCategory, string> = {
-    overheating: "Does the temperature rise mainly when the car is stationary/in traffic, while driving, or in both conditions? If safe to observe, does the radiator cooling fan switch on?",
-    starting: "When you turn the key or press START, what happens: (A) engine does not turn and you hear silence, (B) rapid clicking, (C) one click, or (D) engine turns/cranks but does not start?",
-    brakes: "What exactly do you notice: (A) soft or sinking pedal, (B) very hard pedal, (C) grinding/squealing, (D) vehicle pulls to one side, or (E) brake warning light?",
-    smoke: "What colour is the smoke: (A) blue, (B) persistent white, (C) black, or (D) only a little white vapour on a cold start?",
-    transmission: "Is it a manual or automatic transmission, and is the main symptom slipping, delayed engagement, difficult shifting, unusual noise, or fluid leakage?",
-    steering: "When does the vibration or pulling happen: at a particular road speed, during braking, while turning, or even when stationary?",
-    charging: "Does the battery warning light remain on while the engine is running, and does the vehicle start again after being switched off?",
-    performance: "Does the loss of power happen during acceleration, uphill driving, at idle, or all the time? Is the check-engine light on?",
-    air_conditioning: "Is the air coming out strongly but warm, or is the airflow itself weak? Does the problem change with engine speed?",
-    oil_noise: "Is an oil-pressure warning light on, and is the noise a deep knocking, light ticking, or rattling? If the oil-pressure warning is on or there is deep knocking, switch the engine off.",
-    unknown: "Please add the vehicle make, model, approximate year, engine type if known, the exact symptom, when it occurs, and any dashboard warning light.",
-  };
-  return questions[category];
+function label(c:Category):string {
+ const names:Record<Category,string>={overheating:"ENGINE COOLING",starting:"STARTING / ENGINE START",brakes:"BRAKING",smoke:"EXHAUST SMOKE",transmission:"TRANSMISSION / DRIVETRAIN",steering:"STEERING / SUSPENSION",charging:"BATTERY / CHARGING",performance:"ENGINE PERFORMANCE",air_conditioning:"AIR CONDITIONING",oil_noise:"ENGINE OIL / NOISE",tyres:"TYRES / WHEELS",fuel_leak:"FUEL SYSTEM LEAK",unknown:"GENERAL VEHICLE FAULT"};
+ return names[c];
 }
-
-function diagnosticReport(category: DiagnosisCategory, vehicleDescription: string, followUpAnswer: string): string {
-  const answer = followUpAnswer.toLowerCase();
-  const reports: Record<DiagnosisCategory, { causes: string; checks: string; safety: string }> = {
-    overheating: {
-      causes: "Possible areas include low coolant or a leak, a cooling fan or fan-control fault, a stuck thermostat, a restricted radiator, a weak water pump, a faulty temperature sensor, or (less commonly) an internal engine leak such as a head-gasket failure.",
-      checks: "With the engine completely cold, check the coolant reservoir level and look for visible leaks. Observe whether the fan operates when commanded; inspect the drive belt and radiator exterior; scan the engine coolant-temperature reading; and have the cooling system pressure-tested. If it overheats mainly in traffic, fan operation and airflow deserve early attention. If it overheats at road speed too, coolant circulation, radiator restriction and engine load also need investigation.",
-      safety: "Never remove a radiator cap or pressurised coolant cap while hot. If the gauge enters the red, a warning appears, steam is visible, or coolant is escaping, stop safely, switch off and arrange recovery."
-    },
-    starting: {
-      causes: answer.includes("d") || answer.includes("crank") || answer.includes("turns") ?
-        "Because the engine cranks but does not start, investigate fuel delivery, ignition/spark on petrol engines, injector operation, crankshaft-position sensing, immobiliser authorisation and engine compression." :
-        "If the engine does not crank, investigate battery state and terminals, earth connections, starter relay/fuse, starter solenoid/motor, ignition switch or start button, and the park/neutral or clutch safety switch. Rapid clicking often accompanies low battery voltage or poor connections; one click can also indicate a starter circuit or motor fault.",
-      checks: "Record battery voltage and terminal condition, confirm the correct gear/neutral or clutch-start condition, check relevant fuses and scan for diagnostic codes. For a crank/no-start condition, a technician should verify fuel pressure, spark/injector pulse and crankshaft/camshaft sensor signals before replacing parts.",
-      safety: "Do not keep cranking for long periods; allow the starter to cool. Keep sparks and flames away from fuel. Do not bridge starter terminals or bypass safety interlocks."
-    },
-    brakes: {
-      causes: "Possible causes include worn pads or shoes, damaged discs/drums, air or leakage in the hydraulic circuit, a failing master cylinder, seized caliper, contaminated friction surfaces, a brake booster fault or an ABS sensor/control issue.",
-      checks: "A qualified technician should inspect fluid level and leaks, pads/shoes, discs/drums, hoses, calipers, wheel cylinders and warning codes. A soft/sinking pedal requires immediate hydraulic-system investigation; a hard pedal may involve the brake-assist system.",
-      safety: "BRAKE SAFETY: Do not continue driving with a soft/sinking pedal, fluid leak, severe grinding, brake warning, or reduced stopping ability. Stop in a safe place and arrange towing or professional recovery."
-    },
-    smoke: {
-      causes: "Blue smoke can indicate engine oil entering combustion; persistent white smoke after warm-up can indicate coolant entering a cylinder, although condensation can be normal briefly on a cold start; black smoke often indicates excessive fuel or insufficient air. Turbocharger, injector, sensor, air-filter and engine-wear faults may be involved depending on engine type.",
-      checks: "Record when the smoke appears (cold start, idle, acceleration or deceleration), check oil and coolant levels only when safe, inspect for external leaks, scan for codes and assess fuel/air data. A compression or leak-down test may be needed. Smoke colour alone cannot confirm a failed component.",
-      safety: "If smoke is heavy, the engine is overheating, oil pressure is low, or there is a strong fuel/burning smell, stop safely and switch off. Do not open a hot cooling system."
-    },
-    transmission: {
-      causes: "On a manual vehicle, clutch wear, clutch hydraulic faults or linkage problems may cause slipping or difficult shifts. On an automatic, low/incorrect fluid, leaks, solenoids, sensors, control faults or internal wear may cause slipping or delayed engagement.",
-      checks: "Identify the exact transmission type and symptom. Inspect for leaks and warning messages; check fluid only using the manufacturer's specified temperature and procedure; scan the transmission control module where supported. Do not add universal fluid or attempt adjustment without the correct specification.",
-      safety: "Avoid driving if the transmission slips severely, loses drive, makes loud mechanical noises, overheats or leaks substantial fluid. Arrange professional inspection."
-    },
-    steering: {
-      causes: "Possible causes include incorrect tyre pressure, tyre damage, wheel imbalance, wheel-alignment error, worn steering or suspension joints, wheel-bearing faults, damaged wheels, brake drag or worn dampers. Vibration during braking may point toward brake-disc or suspension issues rather than wheel balance alone.",
-      checks: "Check tyre condition and pressures when cold; note the exact speed and condition where the symptom occurs; inspect wheels, fasteners, joints, bushes, bearings and dampers in an approved workshop; then measure alignment and wheel balance as appropriate.",
-      safety: "If steering becomes loose, a wheel wobbles, a tyre is damaged, or control is affected, stop safely and do not continue at road speed. Steering and suspension components are safety-critical."
-    },
-    charging: {
-      causes: "Possible causes include a weak or aged battery, loose/corroded terminals, poor earth connection, a slipping or damaged alternator belt, alternator/regulator failure, wiring/ground faults or excessive parasitic current when parked.",
-      checks: "Inspect terminals and belt with the engine off. Test battery condition and charging voltage with a suitable multimeter and compare readings with the vehicle manufacturer's specification. If charging output is correct but the battery drains while parked, perform a controlled parasitic-draw test.",
-      safety: "Do not disconnect the battery while the engine is running. Avoid shorting battery terminals; batteries can deliver very high current. Use eye protection and follow battery handling precautions."
-    },
-    performance: {
-      causes: "Possible causes include a restricted air filter, fuel-delivery or injector problem, ignition misfire, faulty airflow/pressure sensor, boost leak, exhaust restriction, poor fuel quality or low engine compression.",
-      checks: "Record whether the fault occurs at idle, under acceleration or under load. Scan diagnostic trouble codes and live data; inspect air-filter condition and intake hoses; then test fuel pressure, ignition and sensor readings according to the manufacturer's procedure. Avoid replacing sensors based only on a code description.",
-      safety: "If the engine misfires severely, stalls in traffic, overheats, or the check-engine light flashes, reduce load, stop safely and seek professional diagnosis."
-    },
-    air_conditioning: {
-      causes: answer.includes("weak") || answer.includes("airflow") ?
-        "Weak airflow is more consistent with a restricted cabin filter, blower motor/resistor or control fault, blocked evaporator, or air-door problem." :
-        "Strong but warm airflow may involve low refrigerant from a leak, compressor or clutch/control fault, condenser fan/airflow restriction, expansion device or temperature-control door.",
-      checks: "Check cabin-filter condition and blower settings. A qualified HVAC technician should measure system pressures and temperatures, inspect condenser-fan operation, leak-test the circuit and verify compressor control. Refrigerant type and charge mass must match the vehicle label.",
-      safety: "Do not vent refrigerant or open pressurised A/C lines. Refrigerant can cause cold burns and requires suitable recovery and charging equipment."
-    },
-    oil_noise: {
-      causes: "A leak may come from a gasket, seal, filter, sump or oil cooler. Ticking can have several causes including valve-train or injector noise; deep knocking may indicate serious bearing or internal engine damage. The oil-pressure warning may indicate low oil level, pump/pickup trouble or excessive internal clearance.",
-      checks: "Park safely on level ground and check the oil level using the manufacturer's procedure. Look for the source of any external leak without reaching near moving or hot parts. A technician should verify oil pressure with a suitable gauge and locate the noise before further running.",
-      safety: "If the oil-pressure warning is on, the engine is knocking deeply, or oil is leaking rapidly, switch off immediately and do not restart until inspected. Continuing to run can destroy the engine."
-    },
-    unknown: {
-      causes: "The symptom description is not yet specific enough to rank likely causes safely.",
-      checks: "Collect the vehicle make/model/year, engine and transmission type, mileage if known, exact symptom, when it happens, recent repairs, warning lights and any diagnostic trouble codes. Then test one system at a time rather than replacing parts by guesswork.",
-      safety: "If the complaint affects brakes, steering, tyres, fuel leakage, smoke/fire, severe overheating or oil pressure, stop using the vehicle and arrange professional inspection."
-    },
-  };
-  const r = reports[category];
-  return `🔧 *ENGR ERO — PRELIMINARY VEHICLE DIAGNOSIS*\n\n*Vehicle and complaint:*\n${vehicleDescription}\n\n*Additional observation:*\n${followUpAnswer}\n\n*Possible causes (not confirmed):*\n${r.causes}\n\n*Recommended diagnostic checks:*\n${r.checks}\n\n*Safety instruction:*\n${r.safety}\n\n_This is an educational, preliminary assessment—not a confirmed diagnosis or repair instruction. Confirm faults with the correct service information, tools and a qualified technician. Do not replace parts based only on this message._\n\nReply *MENU* to return to the AET301 course menu or start another diagnosis from the practical diagnosis option.`;
+function question(c:Category):string {
+ const q:Record<Category,string>={
+ overheating:"When does temperature rise? Reply *A* in traffic/idling, *B* at highway speed, *C* both, or *D* coolant disappears while temperature seems normal. Never open a hot coolant cap.",
+ starting:"When starting, what happens? *A* nothing, *B* rapid clicks, *C* one click, *D* engine cranks but will not run, or *E* starts then stops.",
+ brakes:"Which symptom? *A* soft/sinking pedal, *B* hard pedal, *C* grinding/squealing, *D* pulls sideways, *E* warning light, or *F* weak braking. Do not drive if braking is reduced.",
+ smoke:"Choose smoke: *A* blue, *B* persistent white after warm-up, *C* black, or *D* brief white vapour on cold start. Say whether it occurs at idle or acceleration.",
+ transmission:"Which symptom? *A* slipping, *B* delayed engagement, *C* difficult shifting, *D* noise, or *E* fluid leak. Is it manual or automatic?",
+ steering:"When does it happen? *A* certain speed, *B* only braking, *C* turning, *D* stationary, or *E* pulls constantly.",
+ charging:"What do you notice? *A* battery light stays on while running, *B* weak cranking, *C* dim lights, or *D* battery goes flat while parked.",
+ performance:"When is it worst? *A* idle, *B* acceleration, *C* uphill/under load, *D* all the time, or *E* stalls. Is the engine warning light on or flashing?",
+ air_conditioning:"Which describes it? *A* strong airflow but warm, *B* weak airflow, *C* cool at speed but warm in traffic, or *D* intermittent.",
+ oil_noise:"Which? *A* oil-pressure warning, *B* deep knocking, *C* light ticking, *D* rattling, or *E* visible oil leak. If A or B, switch off.",
+ tyres:"What is happening? *A* slow pressure loss, *B* puncture, *C* vibration at speed, *D* uneven wear, or *E* wheel wobble. Do not drive on a damaged/loose wheel.",
+ fuel_leak:"Where is the smell/leak? *A* engine area, *B* tank/rear, *C* under vehicle, or *D* after refuelling. If fuel is actively leaking, do not start the engine.",
+ unknown:"Which area is affected: engine, starting, brakes, steering, tyres, gearbox, electrical, cooling, A/C or fuel? Describe exactly what happens and when."
+ };
+ return q[c];
 }
-
-export async function startAutomobileDiagnosis(
-  phone: string,
-  conversationId: string,
-  context: Record<string, unknown>
-): Promise<void> {
-  await updateConversation(conversationId, {
-    current_module: "LEARNING",
-    current_state: "AUTOMOBILE_DIAGNOSIS_INPUT",
-    context_json: {
-      ...context,
-      automobileDiagnosisActive: true,
-      automobileDiagnosisStep: "symptom",
-    },
-  });
-  await sendTextMessage(phone,
-    "🚗 *AET301 — VEHICLE FAULT DIAGNOSIS*\n\n" +
-    "Describe the vehicle and the problem in your own words. Include the make, model, approximate year, engine/transmission if known, the symptom, when it happens and any dashboard warning light.\n\n" +
-    "Example: *2010 Toyota Corolla, petrol, automatic. Temperature rises in traffic but returns to normal on the highway. No warning light.*\n\n" +
-    "I will ask a follow-up question, explain possible causes and suggest safe diagnostic checks. I will not claim a fault is confirmed without test evidence.\n\n" +
-    "If the problem involves failed brakes, loose steering, a damaged tyre, fuel leak, fire, severe overheating or an oil-pressure warning, stop safely and do not continue driving."
-  );
+function urgency(c:Category,s:string):string {
+ const t=norm(s);
+ if(c==="fuel_leak") return "URGENT: If fuel is leaking or the smell is strong, switch off if safe, keep flames/sparks away, move people clear and arrange recovery. Do not start or drive.";
+ if(c==="brakes" && /soft pedal|sinking pedal|no brake|brakes failed|cannot stop|fluid leak/.test(t)) return "URGENT: Do not drive. Arrange recovery and immediate brake-system inspection.";
+ if(c==="overheating" && /red|steam|boiling|coolant pouring/.test(t)) return "URGENT: Stop safely and switch off. Never open a hot coolant cap. Arrange assistance.";
+ if(c==="oil_noise" && /oil pressure|oil light|deep knock|heavy knocking/.test(t)) return "URGENT: Switch off and do not restart until oil pressure has been checked.";
+ if(c==="tyres" && /blowout|wheel wobbl|tyre burst|tire burst/.test(t)) return "URGENT: Stop safely away from traffic. Do not continue on a damaged or loose wheel.";
+ if(c==="steering" && /steering failed|no steering|very loose steering|wheel wobbl/.test(t)) return "URGENT: Stop safely and arrange recovery. Do not continue if steering control is doubtful.";
+ return "No immediate emergency is established from the information supplied. This does not prove the vehicle is safe; stop if braking, steering, tyres, fuel containment or engine temperature becomes unsafe.";
 }
-
-export async function handleAutomobileDiagnosis(
-  phone: string,
-  text: string,
-  conv: Conversation
-): Promise<void> {
-  const context = (conv.context_json || {}) as Record<string, unknown>;
-  const state = String(conv.current_state || "");
-  const raw = text.trim();
-  if (!raw) {
-    await sendTextMessage(phone, "Please describe the vehicle and its symptoms, or reply *MENU* to return to the course.");
-    return;
-  }
-
-  if (state === "AUTOMOBILE_DIAGNOSIS_INPUT") {
-    const category = matchCategory(raw);
-    if (category === "unknown") {
-      await updateConversation(conv.id, {
-        current_module: "LEARNING",
-        current_state: "AUTOMOBILE_DIAGNOSIS_INPUT",
-        context_json: { ...context, automobileDiagnosisDescription: raw, automobileDiagnosisCategory: "unknown" },
-      });
-      await sendTextMessage(phone,
-        "I need a little more detail before narrowing this down. Please send the vehicle make/model/year, exact symptom, when it occurs (cold start, idle, acceleration, traffic or highway), and any warning light or OBD-II code.\n\nFor example: *Honda Accord 2008, engine cranks but will not start; check-engine light is on.*"
-      );
-      return;
-    }
-
-    await updateConversation(conv.id, {
-      current_module: "LEARNING",
-      current_state: "AUTOMOBILE_DIAGNOSIS_FOLLOWUP",
-      context_json: {
-        ...context,
-        automobileDiagnosisActive: true,
-        automobileDiagnosisDescription: raw,
-        automobileDiagnosisCategory: category,
-      },
-    });
-    await sendTextMessage(phone,
-      `I have identified the main system to investigate: *${category.replace(/_/g, " ").toUpperCase()}*. This is not yet a confirmed fault.\n\n*${followUp(category)}*\n\nReply with what you observe. If you do not know, say *NOT SURE*.`
-    );
-    return;
-  }
-
-  if (state === "AUTOMOBILE_DIAGNOSIS_FOLLOWUP") {
-    const category = String(context.automobileDiagnosisCategory || "unknown") as DiagnosisCategory;
-    const description = String(context.automobileDiagnosisDescription || "Vehicle symptom not recorded");
-    const report = diagnosticReport(category, description, raw);
-    await updateConversation(conv.id, {
-      current_module: "LEARNING",
-      current_state: "COURSE_MENU",
-      context_json: {
-        ...context,
-        automobileDiagnosisActive: false,
-        automobileDiagnosisLastCategory: category,
-        automobileDiagnosisLastCompletedAt: new Date().toISOString(),
-      },
-    });
-    await sendTextMessage(phone, report);
-    return;
-  }
-
-  await updateConversation(conv.id, {
-    current_module: "LEARNING",
-    current_state: "AUTOMOBILE_DIAGNOSIS_INPUT",
-    context_json: { ...context, automobileDiagnosisActive: true },
-  });
-  await sendTextMessage(phone, "Please describe the vehicle and the problem again. Include the make, model, year and exact symptom.");
+function assessment(c:Category,vehicle:string,answer:string):string {
+ const t=norm(answer);
+ const data:Record<Category,{causes:string;owner:string;tech:string}>={
+ overheating:{causes:"Possible causes: low coolant/leak, cooling fan or control fault, thermostat, radiator restriction, water pump, belt or temperature sensor. Traffic-only overheating makes fan/airflow a priority; overheating at speed also raises concern about coolant circulation or radiator capacity.",owner:"When fully cold, inspect reservoir level and visible leaks. Note fan behaviour without touching moving parts. Never open a hot pressure cap.",tech:"Pressure-test the circuit; verify fan command, thermostat, coolant circulation, radiator temperature distribution and scan-tool coolant temperature. Test for combustion gases if indicated."},
+ starting:{causes:/crank|turns over|cranks|d/.test(t)?"Crank/no-start causes include fuel pressure, injector control, ignition/spark on petrol engines, crank/cam sensors, immobiliser, compression or timing.":"No-crank causes include weak battery, poor terminals/earth, starter relay/fuse, starter motor, ignition switch or clutch/park-neutral interlock. Rapid clicking often accompanies low voltage.",owner:"Check for unusually dim lamps and visible battery-terminal corrosion with engine off. Confirm Park/Neutral or clutch-start condition. Never bridge starter terminals.",tech:"Load-test battery; voltage-drop test power/earth circuits; check starter current. For crank/no-start, verify fuel pressure, spark/injector pulse, scan data, compression and timing."},
+ brakes:{causes:"Possible causes: worn pads/shoes, damaged discs/drums, air or leakage in hydraulics, master-cylinder fault, seized caliper, contaminated friction material, brake-assist fault or ABS issue.",owner:"Do not road-test with reduced braking, sinking pedal, fluid leak, severe grinding or brake warning. Note warning lights and visible fluid from a safe position.",tech:"Inspect the complete hydraulic circuit, pads/shoes, discs/drums, calipers, hoses, booster and ABS data. Measure against manufacturer limits."},
+ smoke:{causes:"Blue smoke may indicate oil burning; persistent white smoke after warm-up may indicate coolant entry (brief cold-start vapour can be normal); black smoke often indicates excess fuel or insufficient air. Turbo, injector, sensor, air-filter or EGR faults may contribute.",owner:"Record colour and when it appears: cold start, idle, acceleration or overrun. Check oil/coolant only when safe and cold. Avoid inhaling exhaust.",tech:"Check codes/live fuel-air data, intake/turbo plumbing, injector operation and EGR/DPF where fitted. Compression, leak-down or coolant tests may be needed. Colour alone is not proof."},
+ transmission:{causes:"Manual faults may involve clutch wear, hydraulics or linkage. Automatic faults may involve specified-fluid level/condition, leaks, solenoids, sensors, control strategy or internal wear.",owner:"Note whether cold/hot and which gear is affected. Look for warning messages or fluid spots without going underneath. Do not add unspecified fluid.",tech:"Identify transmission code/fluid specification; scan control data; inspect leaks and mounts; perform specified pressure and functional tests."},
+ steering:{causes:"Possible causes: tyre pressure/damage, wheel imbalance, alignment error, worn steering/suspension joints, wheel bearing, damaged wheel, brake drag or dampers. Vibration during braking may involve brakes rather than balance.",owner:"Check visible tyre/wheel condition and cold pressures. Note speed and conditions. Do not drive if steering is loose or a wheel wobbles.",tech:"Inspect linkage, joints, bushes, bearings, dampers and fasteners; measure wheel balance/run-out and alignment after correcting worn parts."},
+ charging:{causes:"Possible causes: weak battery, corroded terminals, poor earth, alternator/regulator fault, damaged belt, wiring fault or excessive parked-current draw.",owner:"With engine off, inspect battery case, terminals and belt visually. Never disconnect the battery while engine runs or short its terminals.",tech:"Battery health/load test, charging test under load, voltage-drop tests and controlled parasitic-current test against vehicle specifications."},
+ performance:{causes:"Possible causes: restricted air filter, fuel-pressure/injector fault, ignition misfire, airflow/pressure sensor, intake/boost leak, exhaust restriction, poor fuel or low compression.",owner:"Record idle/acceleration/load conditions and warning lamps. Avoid hard acceleration. A flashing engine warning or severe misfire needs prompt attention.",tech:"Scan codes/freeze-frame/live data; inspect intake/filter/hoses; test fuel pressure, ignition, injectors, boost and compression logically. A code does not automatically identify a failed part."},
+ air_conditioning:{causes:/weak|airflow/.test(t)?"Weak airflow often points to a blocked cabin filter, blower motor/resistor/control fault, evaporator restriction or air-door issue.":"Strong but warm air may involve refrigerant loss/leak, compressor control, condenser fan/airflow, expansion device or blend door.",owner:"Check blower speed, vent selection and cabin-filter history. Do not open refrigerant lines or release refrigerant.",tech:"Measure vent temperature and system pressures; inspect condenser fan, compressor command and leaks. Recover and recharge by specified refrigerant type/mass."},
+ oil_noise:{causes:"Oil leak sources include gasket, seal, filter, sump or oil cooler. Ticking/rattling has several causes; deep knocking can indicate serious bearing damage. Oil-pressure warning may indicate low level, pump/pickup trouble or excessive clearance.",owner:"Park level and check oil by maker procedure. If oil-pressure warning or deep knocking occurs, switch off and do not restart.",tech:"Verify oil pressure with a mechanical gauge, locate leaks and identify noise before further running."},
+ tyres:{causes:"Pressure loss may be puncture, valve or bead leak; vibration may be imbalance, tyre damage or wheel run-out; uneven wear may result from pressure, alignment, suspension or loading.",owner:"Inspect tread/sidewalls for cuts, bulges and exposed cords; check cold pressure. Do not drive on a bulging or structurally damaged tyre.",tech:"Leak-test tyre/valve/bead; inspect rim and fasteners; measure balance/run-out; check alignment and suspension after tyre defects are corrected."},
+ fuel_leak:{causes:"Possible sources: fuel hose/pipe joints, injector seals, fuel rail, tank, pump seal, filler neck or damaged line. Location and timing after refuelling help narrow inspection.",owner:"If leaking or strong smell, keep ignition sources away, move people clear and arrange recovery. Do not start or drive.",tech:"Inspect low/high-pressure fuel circuits using specified depressurisation and leak-test procedures. Never use a flame to find leaks."},
+ unknown:{causes:"There is not enough information to rank causes responsibly. A symptom-led inspection is safer than guessing or replacing parts.",owner:"Record exact behaviour, conditions, warning lights, recent repairs, smell, noise, heat or leakage. Stop if safety-critical control is affected.",tech:"Confirm complaint, inspect visually, scan where appropriate and run system-specific tests. Verify faults before recommending repair."}
+ };
+ const d=data[c];
+ return ["🧰 *ELA301 — PRELIMINARY VEHICLE ASSESSMENT*","", "*Vehicle / complaint:* "+vehicle,"*Follow-up:* "+answer,"*System:* "+label(c),"","*1. Possible causes — not confirmed*",d.causes,"","*2. Safe checks for the owner*",d.owner,"","*3. Tests for a qualified technician*",d.tech,"","*4. Urgency*",urgency(c,vehicle+" "+answer),"","This is an educational preliminary assessment, not a confirmed diagnosis. Do not replace parts based only on this message.","","Reply *NEW* for another vehicle, *MENU* for course menu, or *EXIT* to leave diagnosis."].join("\n");
+}
+async function clear(conversationId:string,ctx:Record<string,unknown>,state="COURSE_MENU"):Promise<void>{
+ const next={...ctx,automobileDiagnosisActive:false,automobileDiagnosisStep:null};
+ delete next.automobileDiagnosisDescription; delete next.automobileDiagnosisCategory;
+ await updateConversation(conversationId,{current_module:"LEARNING",current_state:state,context_json:next});
+}
+export async function startAutomobileDiagnosis(phone:string,conversationId:string,context:Record<string,unknown>):Promise<void>{
+ await updateConversation(conversationId,{current_module:"LEARNING",current_state:"AUTOMOBILE_DIAGNOSIS_INPUT",context_json:{...context,automobileDiagnosisActive:true,automobileDiagnosisStep:"symptom"}});
+ await sendButtonMessage(phone,"🚗 *ELA301 — VEHICLE FAULT ASSESSMENT*\n\nTell me the vehicle make, model, year (if known), engine/transmission type and exact problem. Include when it happens and any dashboard warning.\n\n*Example:* 2010 Toyota Corolla, petrol automatic. Temperature rises in traffic but returns to normal on the highway.\n\nI will identify the system, ask a focused question, separate possible causes from confirmed faults and provide safe owner checks plus technician tests.\n\n*Commands at any time:* EXIT = leave · MENU = course menu · NEW = restart.\n\n*Safety:* If brakes/steering fail, a tyre is damaged, fuel is leaking, the engine overheats severely or oil-pressure warning appears, stop safely and seek professional help.",[makeButton("auto_new","🔄 Start Diagnosis"),makeButton("auto_exit","✖️ Exit Diagnosis"),makeButton("auto_menu","📋 Course Menu")],"Vehicle Assessment","ELA301 Practical");
+}
+export async function handleAutomobileDiagnosis(phone:string,text:string,conv:Conversation):Promise<void>{
+ const ctx=(conv.context_json||{}) as Record<string,unknown>;
+ const raw=text.trim(); const cmd=raw.toUpperCase().replace(/[.!]/g,"").trim();
+ if(cmd==="auto_exit"||EXIT.has(cmd)){await clear(conv.id,ctx);await sendButtonMessage(phone,"You have exited vehicle diagnosis. Your course progress is unchanged.",[makeButton("cm_auto_diag","🚗 Vehicle Diagnosis"),makeButton("cm_menu","📋 Course Menu")],"Diagnosis Closed");return;}
+ if(cmd==="auto_menu"||MENU.has(cmd)){await clear(conv.id,ctx);await sendTextMessage(phone,"Vehicle diagnosis closed. Reply *MENU* to display your course options.");return;}
+ if(cmd==="auto_new"||RESTART.has(cmd)){await startAutomobileDiagnosis(phone,conv.id,ctx);return;}
+ if(!raw){await sendTextMessage(phone,"Enter the vehicle details and symptom, or reply *EXIT*, *MENU* or *NEW*.");return;}
+ if(conv.current_state==="AUTOMOBILE_DIAGNOSIS_INPUT"){
+  const c=categoryOf(raw);
+  if(c==="unknown"){await updateConversation(conv.id,{current_module:"LEARNING",current_state:"AUTOMOBILE_DIAGNOSIS_INPUT",context_json:{...ctx,automobileDiagnosisActive:true,automobileDiagnosisDescription:raw,automobileDiagnosisCategory:"unknown"}});await sendTextMessage(phone,"I could not confidently identify the system. Add the exact symptom and choose the closest area: *engine / starting / brakes / steering / tyres / gearbox / electrical / cooling / A/C / fuel leak*. Include when it happens and any warning light. Commands: *EXIT*, *MENU*, *NEW*.");return;}
+  await updateConversation(conv.id,{current_module:"LEARNING",current_state:"AUTOMOBILE_DIAGNOSIS_FOLLOWUP",context_json:{...ctx,automobileDiagnosisActive:true,automobileDiagnosisDescription:raw,automobileDiagnosisCategory:c,automobileDiagnosisStep:"followup"}});
+  await sendButtonMessage(phone,"🔎 *System identified:* "+label(c)+"\n\nThis is a symptom category, not a confirmed fault.\n\n"+question(c)+"\n\nReply with the letter and any extra detail. If unsure, reply *NOT SURE*.",[makeButton("auto_not_sure","Not sure"),makeButton("auto_new","Start over"),makeButton("auto_exit","Exit")],"Focused Follow-up");return;
+ }
+ if(conv.current_state==="AUTOMOBILE_DIAGNOSIS_FOLLOWUP"){
+  const c=String(ctx.automobileDiagnosisCategory||"unknown") as Category;
+  const vehicle=String(ctx.automobileDiagnosisDescription||"Vehicle symptom not recorded");
+  const msg=assessment(c,vehicle,raw);
+  await clear(conv.id,ctx);
+  await sendTextMessage(phone,msg);
+  await sendButtonMessage(phone,"What would you like to do next?",[makeButton("auto_new","🔄 New Diagnosis"),makeButton("cm_menu","📋 Course Menu")],"Assessment Complete");return;
+ }
+ await startAutomobileDiagnosis(phone,conv.id,ctx);
 }
