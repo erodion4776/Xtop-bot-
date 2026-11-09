@@ -282,7 +282,7 @@ async function showLearningCentreGateway(
   await sendTextMessage(phone,
     `🎓 *Engr. Ero Learning Centre*\n\n` +
     `Please enter your *Course Code* to enter the classroom.\n\n` +
-    `_Examples:_ *ELA301*, *ELA302*, *ELA401*, or *AET301*\n\n` +
+    `_Examples:_ *ELA301*, *ELA302*, *ELA401*, or *ELA301*\n\n` +
     `_Type *Exit Learning Centre* to return to Xtop Retail._`
   );
 }
@@ -296,7 +296,7 @@ export async function promptCourseCode(phone: string, conversationId: string): P
   await sendTextMessage(phone,
     `🎓 *Engr. Ero Learning Centre*\n\n` +
     `Please enter your *Course Code* to continue.\n\n` +
-    `_Examples:_ *ELA301*, *ELA302*, *ELA401*, or *AET301*`
+    `_Examples:_ *ELA301*, *ELA302*, *ELA401*, or *ELA301*`
   );
 }
 
@@ -395,7 +395,7 @@ export async function showCourseMenu(
         makeListRow("cm_materials", "2️⃣ Course Materials", "Handouts, diagrams & PDFs"),
         makeListRow("cm_progress", "3️⃣ My Progress", "Lesson completion status"),
         ...(ctx.courseCode === "ELA401" ? [makeListRow("cm_lab", "🧪 Practical Lab & Simulations", "12 physical guides + phone calculators")] : []),
-        ...(ctx.courseCode === "AET301" ? [makeListRow("cm_auto_diag", "🚗 Vehicle Fault Diagnosis", "Guided vehicle troubleshooting")] : []),
+        ...(ctx.courseCode === "ELA301" ? [makeListRow("cm_auto_diag", "🚗 Vehicle Fault Diagnosis", "Guided vehicle troubleshooting")] : []),
       ]},
       { title: "Assessments & Exit", rows: [
         makeListRow("cm_test", "4️⃣ Final CBT Exam", "Take course test"),
@@ -425,7 +425,7 @@ async function processCourseMenuSelection(
     return;
   }
   if (n === "cm_auto_diag" || n.includes("vehicle fault diagnosis") || n.includes("automobile diagnosis")) {
-    if (ctx.courseCode !== "AET301") { await showCourseMenu(phone, conv.id, ctx); return; }
+    if (ctx.courseCode !== "ELA301") { await showCourseMenu(phone, conv.id, ctx); return; }
     await startAutomobileDiagnosis(phone, conv.id, ctx as unknown as Record<string, unknown>);
     return;
   }
