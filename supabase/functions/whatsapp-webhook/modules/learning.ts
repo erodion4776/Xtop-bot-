@@ -862,9 +862,23 @@ async function processPracticeAnswer(
     return;
   }
 
-  const rawLetter = text.trim().toUpperCase().replace(/[^A-D]/g, "");
-  const ans = rawLetter.length > 0 ? rawLetter.charAt(0) : text.trim().toUpperCase().charAt(0);
-  const isCorrect = ans === activeQ.correct_answer.trim().toUpperCase();
+  // Accept a clear A-D answer only. Do not guess from arbitrary text,
+  // because words such as "car" or "diesel" can contain answer letters.
+  const answerText = String(text || "").trim().toUpperCase();
+  const answerMatch = answerText.match(/^(?:(?:OPTION|ANSWER)\\s*[:.-]?\\s*)?([A-D])(?:[)..!\\s]*)$/);
+  const ans = answerMatch?.[1] || "";
+
+  if (!ans) {
+    await sendTextMessage(
+      phone,
+      "⚠️ I couldn't read that answer. Please reply with only *A*, *B*, *C*, or *D*.\n\n" +
+      "Your current question is still open."
+    );
+    await sendPracticeQuestionPrompt(phone, activeQ, qIdx, questions.length);
+    return;
+  }
+
+  const isCorrect = ans === String(activeQ.correct_answer || "").trim().toUpperCase();
 
   if (isCorrect) {
     ctx.practiceScore = (ctx.practiceScore || 0) + 1;
