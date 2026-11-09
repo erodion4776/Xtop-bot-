@@ -125,6 +125,7 @@ export async function showAdminAgentMenu(phone: string, page = 0): Promise<void>
         makeListRow("admin_students_pending", "🎓 Student Verification", "Review new student registrations"),
         makeListRow("admin_student_records", "📚 Student Records", "Department • S/N • matric no • results"),
         makeListRow("admin_ela301_questions", "📝 ELA301 Question Review", "Review and approve 1,000 draft CBT questions"),
+        makeListRow("admin_ela301_lessons", "📖 ELA301 Lesson Review", "Review teaching modules and approve individual lessons"),
       ],
     },
   ];
@@ -1396,6 +1397,268 @@ async function showLearningLesson(phone: string, lessonId: string): Promise<void
 
 const ELA301_COURSE_ID = "05c112df-fe8e-47bd-8814-1d6f60f4314b";
 const ELA301_REVIEW_PAGE_SIZE = 6;
+
+/* =========================================================
+   ELA301 — LESSON REVIEW (ADMIN-NUMBER ONLY)
+   Kept separate from the existing ELA401 review workflow.
+   Individual lesson approval never publishes the whole course.
+   ========================================================= */
+
+async function listELA301LessonModules(phone: string, page = 0): Promise<void> {
+  const { data, error } = await supabase.from("course_modules")
+    .select("id, title, module_order")
+    .eq("course_id", ELA301_COURSE_ID)
+    .order("module_order", { ascending: true });
+
+  if (error || !data) {
+    safeErrorLog("listELA301LessonModules", error);
+    await sendTextMessage(phone, "⚠️ I could not load ELA301 modules. Please try again.");
+    return;
+  }
+  if (!data.length) {
+    await sendTextMessage(phone, "No ELA301 modules were found.");
+    return;
+  }
+
+  const pageSize = 6;
+  const pageCount = Math.ceil(data.length / pageSize);
+  const safePage = Math.max(0, Math.min(page, pageCount - 1));
+  const visible = data.slice(safePage * pageSize, (safePage + 1) * pageSize);
+  const rows = visible.map((module: any) => makeListRow(
+    `admin_ela301_lesson_module_${module.id}`,
+    `Module ${module.module_order}: ${String(module.title || "Untitled").slice(0, 22)}`,
+    "Open lessons • Review status"
+  ));
+  if (safePage > 0) rows.push(makeListRow(`admin_ela301_lesson_page_${safePage - 1}`, "⬅ Previous modules", "Go to previous page"));
+  if (safePage < pageCount - 1) rows.push(makeListRow(`admin_ela301_lesson_page_${safePage + 1}`, "Next modules ➡", "View remaining modules"));
+
+  await sendListMessage(
+    phone,
+    `🎓 ELA301 — Automobile Engineering\n16-module teaching course\nPage ${safePage + 1} of ${pageCount}\n\nChoose a module to inspect its lessons. Approving a lesson does not publish the course.`,
+    "Choose Module",
+    [{ title: "ELA301 Modules", rows }],
+    "ELA301 Lesson Review",
+    "Admin-number access only"
+  );
+  await sendButtonMessage(phone, "Lesson review navigation:", [
+    makeButton("admin_ela301_questions", "📝 CBT Questions"),
+    makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+  ]);
+}
+
+async function showELA301LessonModule(phone: string, moduleIdInput: string): Promise<void> {
+  const moduleId = sanitizeId(moduleIdInput);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(moduleId)) {
+    await sendTextMessage(phone, "⚠️ Invalid module reference. Reopen the ELA301 module list.");
+    return;
+  }
+  const { data: module, error } = await supabase.from("course_modules")
+    .select("id, course_id, title, description, objectives, module_order")
+    .eq("id", moduleId)
+    .eq("course_id", ELA301_COURSE_ID)
+    .maybeSingle();
+  if (error || !module) {
+    safeErrorLog("showELA301LessonModule", error);
+    await sendTextMessage(phone, "⚠️ ELA301 module not found. Nothing was changed.");
+    return;
+  }
+
+  const { data: lessons, error: lessonError } = await supabase.from("module_slides")
+    .select("id, title, lesson_number, status, is_draft, estimated_minutes, order_index, slide_order")
+    .eq("module_id", moduleId)
+    .order("order_index", { ascending: true })
+    .order("slide_order", { ascending: true });
+  if (lessonError) {
+    safeErrorLog("showELA301LessonModule.lessons", lessonError);
+    await sendTextMessage(phone, "⚠️ I could not load this module's lessons.");
+    return;
+  }
+
+  const rows = (lessons || []).map((lesson: any, index: number) => makeListRow(
+    `admin_ela301_lesson_item_${lesson.id}`,
+    String(lesson.title || `Lesson ${lesson.lesson_number || index + 1}`).slice(0, 24),
+    `${lesson.is_draft ? "DRAFT" : lesson.status || "REVIEW"} • ${lesson.estimated_minutes || "—"} min`
+  ));
+  const body = [
+    `🎓 *ELA301 — MODULE ${module.module_order}: ${module.title}*`,
+    "",
+    module.description || "",
+    module.objectives ? `Objectives: ${module.objectives}` : "",
+    "",
+    `Lessons in module: ${(lessons || []).length}`,
+    "Select a lesson to inspect the lecture and practical teaching material.",
+    "",
+    "🔒 Lesson approval is separate from publishing the ELA301 course.",
+  ].filter(Boolean).join("\n");
+
+  if (!rows.length) {
+    await sendTextMessage(phone, body + "\n\nNo lessons are attached to this module yet.");
+  } else {
+    await sendListMessage(phone, body, "Open Lesson", [{ title: "ELA301 Lessons", rows }], "Lesson Preview", "Draft • Lecturer review");
+  }
+  await sendButtonMessage(phone, "Module navigation:", [
+    makeButton("admin_ela301_lessons", "📚 All ELA301 Modules"),
+    makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+  ]);
+}
+
+async function showELA301Lesson(phone: string, lessonIdInput: string): Promise<void> {
+  const lessonId = sanitizeId(lessonIdInput);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lessonId)) {
+    await sendTextMessage(phone, "⚠️ Invalid lesson reference. Reopen the lesson from ELA301 modules.");
+    return;
+  }
+  const { data: lesson, error } = await supabase.from("module_slides")
+    .select("id, module_id, title, content, content_sections, objectives, estimated_minutes, status, is_draft")
+    .eq("id", lessonId)
+    .maybeSingle();
+  if (error || !lesson) {
+    safeErrorLog("showELA301Lesson", error);
+    await sendTextMessage(phone, "⚠️ Lesson not found. Nothing was changed.");
+    return;
+  }
+  const { data: module, error: moduleError } = await supabase.from("course_modules")
+    .select("id, course_id, module_order, title")
+    .eq("id", lesson.module_id)
+    .eq("course_id", ELA301_COURSE_ID)
+    .maybeSingle();
+  if (moduleError || !module) {
+    safeErrorLog("showELA301Lesson.course", moduleError);
+    await sendTextMessage(phone, "⛔ This lesson is not part of ELA301. Nothing was changed.");
+    return;
+  }
+
+  const sectionLines: string[] = [];
+  if (Array.isArray(lesson.content_sections)) {
+    for (const section of lesson.content_sections) {
+      if (Array.isArray(section)) {
+        const heading = String(section[0] || "").trim();
+        const body = String(section[1] || "").trim();
+        if (heading) sectionLines.push(`* ${heading}*`);
+        if (body) sectionLines.push(body);
+        sectionLines.push("");
+      } else if (section && typeof section === "object") {
+        const heading = String(section.title || section.heading || "").trim();
+        const body = String(section.content || section.body || "").trim();
+        if (heading) sectionLines.push(`* ${heading}*`);
+        if (body) sectionLines.push(body);
+        sectionLines.push("");
+      }
+    }
+  }
+  const mainContent = sectionLines.join("\n").trim() || String(lesson.content || "Lesson content is not available yet.").trim();
+  const header = [
+    "🎓 *ELA301 — AUTOMOBILE ENGINEERING*",
+    `Module ${module.module_order}: ${module.title}`,
+    `* ${lesson.title || "Untitled lesson"}*`,
+    `Status: ${lesson.is_draft ? "DRAFT — NOT PUBLISHED" : lesson.status || "REVIEW"}`,
+    `Estimated study time: ${lesson.estimated_minutes || "Not specified"} minutes`,
+    "",
+    "This preview is for lecturer review.",
+    "",
+  ].join("\n");
+  const maxBody = 3000;
+  const body = mainContent.length > maxBody
+    ? mainContent.slice(0, maxBody) + "\n\n[Preview shortened. Full lesson remains in the course database.]"
+    : mainContent;
+  await sendTextMessage(phone, header + body);
+
+  if (lesson.is_draft || String(lesson.status || "").toUpperCase() !== "ACTIVE") {
+    await sendButtonMessage(phone, "ELA301 lecturer decision:", [
+      makeButton(`admin_ela301_lesson_approve_${lesson.id}`, "✅ Approve lesson"),
+      makeButton(`admin_ela301_lesson_reject_${lesson.id}`, "⛔ Reject lesson"),
+      makeButton(`admin_ela301_lesson_module_${module.id}`, "↩ Module lessons"),
+    ]);
+  } else {
+    await sendButtonMessage(phone, "This lesson is already approved.", [
+      makeButton(`admin_ela301_lesson_module_${module.id}`, "↩ Module lessons"),
+      makeButton("admin_ela301_lessons", "📚 All ELA301 Modules"),
+      makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+    ]);
+  }
+}
+
+async function decideELA301Lesson(
+  phone: string,
+  lessonIdInput: string,
+  decision: "APPROVE" | "REJECT",
+  confirm: boolean,
+): Promise<void> {
+  const lessonId = sanitizeId(lessonIdInput);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lessonId)) {
+    await sendTextMessage(phone, "⚠️ Invalid lesson reference. Reopen the lesson from ELA301 modules.");
+    return;
+  }
+  const { data: lesson, error } = await supabase.from("module_slides")
+    .select("id, module_id, title, status, is_draft")
+    .eq("id", lessonId)
+    .maybeSingle();
+  if (error || !lesson) {
+    safeErrorLog("decideELA301Lesson.lesson", error);
+    await sendTextMessage(phone, "⚠️ Lesson not found. Nothing was changed.");
+    return;
+  }
+  const { data: module, error: moduleError } = await supabase.from("course_modules")
+    .select("id, course_id, title")
+    .eq("id", lesson.module_id)
+    .eq("course_id", ELA301_COURSE_ID)
+    .maybeSingle();
+  if (moduleError || !module) {
+    safeErrorLog("decideELA301Lesson.course", moduleError);
+    await sendTextMessage(phone, "⛔ This action is restricted to ELA301 lessons. Nothing was changed.");
+    return;
+  }
+  if (!lesson.is_draft || String(lesson.status || "").toUpperCase() !== "DRAFT") {
+    await sendTextMessage(phone, "ℹ️ This lesson is no longer awaiting review. No status was changed.");
+    return;
+  }
+
+  if (!confirm) {
+    const approving = decision === "APPROVE";
+    await sendTextMessage(
+      phone,
+      (approving ? "⚠️ *CONFIRM ELA301 LESSON APPROVAL*" : "⚠️ *CONFIRM ELA301 LESSON REJECTION*") +
+      `\n\nModule: *${module.title}*\nLesson: *${lesson.title}*` +
+      (approving
+        ? "\n\nThis approves this individual lesson. The ELA301 course will remain DRAFT until you separately authorize course publication."
+        : "\n\nThis marks only this lesson REJECTED and keeps it hidden from students.") +
+      "\n\nNo other lesson or course will be changed."
+    );
+    await sendButtonMessage(phone, "Please confirm this decision:", [
+      makeButton(`admin_ela301_lesson_${decision.toLowerCase()}_confirm_${lessonId}`, approving ? "✅ Confirm approval" : "⛔ Confirm rejection"),
+      makeButton(`admin_ela301_lesson_item_${lessonId}`, "↩ Back to lesson"),
+      makeButton("admin_ela301_lessons", "📚 All ELA301 Modules"),
+    ]);
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const update = decision === "APPROVE"
+    ? { status: "ACTIVE", is_draft: false, published_at: now, updated_at: now }
+    : { status: "REJECTED", is_draft: true, published_at: null, updated_at: now };
+  const { error: updateError } = await supabase.from("module_slides").update(update)
+    .eq("id", lessonId)
+    .eq("module_id", lesson.module_id)
+    .eq("status", "DRAFT")
+    .eq("is_draft", true);
+  if (updateError) {
+    safeErrorLog("decideELA301Lesson.update", updateError);
+    await sendTextMessage(phone, "❌ The lesson decision could not be saved. It remains unchanged.");
+    return;
+  }
+  await sendTextMessage(
+    phone,
+    decision === "APPROVE"
+      ? `✅ *ELA301 LESSON APPROVED*\n\n${lesson.title}\n\nThis lesson is ACTIVE. The ELA301 course itself remains DRAFT, so students still cannot access the course.`
+      : `⛔ *ELA301 LESSON REJECTED*\n\n${lesson.title}\n\nIt remains hidden from students. Revise it before submitting it for approval again.`
+  );
+  await sendButtonMessage(phone, "ELA301 Lesson Review:", [
+    makeButton(`admin_ela301_lesson_module_${module.id}`, "↩ Module lessons"),
+    makeButton("admin_ela301_lessons", "📚 All ELA301 Modules"),
+    makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+  ]);
+}
+
 
 async function listELA301QuestionQueue(phone: string, page = 0): Promise<void> {
   const { count, error: countError } = await supabase
@@ -3068,6 +3331,40 @@ export async function handleAdminAgent(
 
   if (command.startsWith("merchant ")) {
     await showSabiMerchantDetails(phone, isSystem, inputRaw.slice(9));
+    return;
+  }
+
+  if (command === "admin_ela301_lessons" || command === "ela301 lessons" || command === "ela301 lesson review") {
+    await listELA301LessonModules(phone, 0);
+    return;
+  }
+  if (command.startsWith("admin_ela301_lesson_page_")) {
+    const page = Number.parseInt(inputRaw.slice("admin_ela301_lesson_page_".length), 10);
+    await listELA301LessonModules(phone, Number.isFinite(page) ? page : 0);
+    return;
+  }
+  if (command.startsWith("admin_ela301_lesson_approve_confirm_")) {
+    await decideELA301Lesson(phone, inputRaw.slice("admin_ela301_lesson_approve_confirm_".length), "APPROVE", true);
+    return;
+  }
+  if (command.startsWith("admin_ela301_lesson_reject_confirm_")) {
+    await decideELA301Lesson(phone, inputRaw.slice("admin_ela301_lesson_reject_confirm_".length), "REJECT", true);
+    return;
+  }
+  if (command.startsWith("admin_ela301_lesson_approve_")) {
+    await decideELA301Lesson(phone, inputRaw.slice("admin_ela301_lesson_approve_".length), "APPROVE", false);
+    return;
+  }
+  if (command.startsWith("admin_ela301_lesson_reject_")) {
+    await decideELA301Lesson(phone, inputRaw.slice("admin_ela301_lesson_reject_".length), "REJECT", false);
+    return;
+  }
+  if (command.startsWith("admin_ela301_lesson_module_")) {
+    await showELA301LessonModule(phone, inputRaw.slice("admin_ela301_lesson_module_".length));
+    return;
+  }
+  if (command.startsWith("admin_ela301_lesson_item_")) {
+    await showELA301Lesson(phone, inputRaw.slice("admin_ela301_lesson_item_".length));
     return;
   }
 
