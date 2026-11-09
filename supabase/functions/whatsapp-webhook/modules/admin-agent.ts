@@ -285,7 +285,7 @@ async function showSabiPayoutReconciliation(phone: string): Promise<void> {
       ? new Date(merchant.paystack_subaccount_verified_at).toLocaleDateString("en-NG")
       : "Not verified";
     return [
-      (index + 1) + ". *" + String(merchant.business_name || merchant.name || "Unnamed business").replace(/[\\r\\n]/g, " ").slice(0, 55) + "*",
+      (index + 1) + ". *" + String(merchant.business_name || merchant.name || "Unnamed business").replace(/[\r\n]/g, " ").slice(0, 55) + "*",
       "Business: " + (merchant.is_active ? "ACTIVE" : "INACTIVE"),
       "Paystack: " + status,
       "Subaccount code: " + (configured ? "Registered" : "Not registered"),
