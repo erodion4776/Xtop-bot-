@@ -660,10 +660,10 @@ async function listSabiMerchants(phone: string, isSystem: boolean, page = 0): Pr
   }
 
   const lines = merchants.map((tenant: any, index: number) => {
-    const business = String(tenant.business_name || tenant.name || "Unnamed business").replace(/[\\r\\n]/g, " ").slice(0, 70);
+    const business = String(tenant.business_name || tenant.name || "Unnamed business").replace(/[\r\n]/g, " ").slice(0, 70);
     const active = tenant.is_active === true ? "ACTIVE" : "INACTIVE";
     const payout = String(tenant.paystack_subaccount_status || "NOT CONFIGURED").replace(/_/g, " ");
-    return (from + index + 1) + ". *" + business + "*\\n   Business: " + active + " • Paystack: " + payout;
+    return (from + index + 1) + ". *" + business + "*\n   Business: " + active + " • Paystack: " + payout;
   });
 
   await sendTextMessage(phone, [
@@ -675,7 +675,7 @@ async function listSabiMerchants(phone: string, isSystem: boolean, page = 0): Pr
     "Page " + (safePage + 1) + " of " + pageCount + ". Showing " + merchants.length + " per page.",
     "Internal XTOP system tenant is excluded.",
     "Sensitive owner, customer, bank-account and access-token details are not displayed.",
-  ].join("\\n"));
+  ].join("\n"));
 
   const buttons = [];
   if (safePage > 0) buttons.push(makeButton("admin_sabi_merchants_page_" + (safePage - 1), "⬅ Previous"));
