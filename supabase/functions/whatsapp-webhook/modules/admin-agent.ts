@@ -1945,8 +1945,8 @@ async function showELA301PublishControls(phone: string): Promise<void> {
     "CBT questions: " + questions.length + " (Active: " + countStatus(questions,"ACTIVE") + ", Draft: " + countStatus(questions,"DRAFT") + ", Inactive: " + countStatus(questions,"INACTIVE") + ")",
     "Lesson practice questions: " + practices.length,
     "",
-    "Publish All activates the course, teaching lessons, modules and eligible CBT questions. Rejected questions are never published.",
-    "Pause Course blocks access to the whole course. Pause Questions disables the CBT question bank without pausing lessons.",
+    "Publish All activates the course, teaching lessons, modules, CBT questions and lesson-practice questions. Rejected CBT questions are never published.",
+    "Pause Course blocks access to the whole course. Pause Questions disables both CBT and lesson-practice questions without pausing teaching lessons.",
     "",
     "⚠️ Every action requires a second confirmation. This screen does not change anything.",
   ].join("\n"));
@@ -2011,18 +2011,22 @@ async function applyELA301CourseAction(phone:string, action:string):Promise<void
       await sendTextMessage(phone, "⛔ Publication stopped. The CBT question validation could not be completed or incomplete questions were found. Review the question bank first. No course publication was attempted.");
       return;
     }
-    const [lessonUpdate, moduleUpdate, questionUpdate] = await Promise.all([
+    const [lessonUpdate, moduleUpdate, questionUpdate, practiceUpdate] = await Promise.all([
       moduleIds.length ? supabase.from("module_slides").update({status:"ACTIVE",is_draft:false,published_at:now,updated_at:now})
         .in("module_id",moduleIds).in("status",["DRAFT","INACTIVE"]).select("id") : Promise.resolve({data:[],error:null}),
       moduleIds.length ? supabase.from("course_modules").update({status:"ACTIVE",updated_at:now})
         .eq("course_id",ELA301_COURSE_ID).in("status",["DRAFT","INACTIVE"]).select("id") : Promise.resolve({data:[],error:null}),
       supabase.from("course_questions").update({status:"ACTIVE"}).eq("course_id",ELA301_COURSE_ID)
         .in("status",["DRAFT","INACTIVE"]).select("id"),
+      moduleIds.length ? supabase.from("lesson_practice_questions").update({status:"ACTIVE"})
+        .in("lesson_id", (await supabase.from("module_slides").select("id").in("module_id",moduleIds)).data?.map((s:any)=>s.id) || [])
+        .in("status",["DRAFT","INACTIVE"]).select("id") : Promise.resolve({data:[],error:null}),
     ]);
     if (lessonUpdate.error) errors.push("lessons: "+lessonUpdate.error.message);
     if (moduleUpdate.error) errors.push("modules: "+moduleUpdate.error.message);
     if (questionUpdate.error) errors.push("CBT questions: "+questionUpdate.error.message);
-    counts = {lessons:lessonUpdate.data?.length||0,modules:moduleUpdate.data?.length||0,questions:questionUpdate.data?.length||0};
+    if (practiceUpdate.error) errors.push("lesson practice questions: "+practiceUpdate.error.message);
+    counts = {lessons:lessonUpdate.data?.length||0,modules:moduleUpdate.data?.length||0,cbtQuestions:questionUpdate.data?.length||0,practiceQuestions:practiceUpdate.data?.length||0};
     if (!errors.length) {
       const courseUpdate = await supabase.from("courses").update({status:"ACTIVE",updated_at:now}).eq("id",ELA301_COURSE_ID).select("id").maybeSingle();
       if (courseUpdate.error || !courseUpdate.data) errors.push("course status: "+(courseUpdate.error?.message||"No course row updated"));
@@ -2036,9 +2040,16 @@ async function applyELA301CourseAction(phone:string, action:string):Promise<void
   } else {
     const status = action === "pause_questions" ? "INACTIVE" : "ACTIVE";
     const from = action === "pause_questions" ? ["ACTIVE"] : ["INACTIVE"];
-    const result = await supabase.from("course_questions").update({status}).eq("course_id",ELA301_COURSE_ID).in("status",from).select("id");
-    if (result.error) errors.push(result.error.message);
-    else counts.questions = result.data?.length || 0;
+    const [result, practiceLessons] = await Promise.all([
+      supabase.from("course_questions").update({status}).eq("course_id",ELA301_COURSE_ID).in("status",from).select("id"),
+      supabase.from("module_slides").select("id").in("module_id",moduleIds),
+    ]);
+    if (result.error) errors.push("CBT questions: "+result.error.message);
+    else counts.cbtQuestions = result.data?.length || 0;
+    const practice = await supabase.from("lesson_practice_questions").update({status})
+      .in("lesson_id",(practiceLessons.data||[]).map((s:any)=>s.id)).in("status",from).select("id");
+    if (practice.error) errors.push("lesson practice questions: "+practice.error.message);
+    else counts.practiceQuestions = practice.data?.length || 0;
   }
 
   if (errors.length) {
@@ -2054,9 +2065,9 @@ Please reopen Course Controls and check the current status before retrying.");
   }
   const successLabel = action === "publish" ? "ELA301 course content and eligible CBT questions are now ACTIVE."
     : action === "pause_course" ? "ELA301 course is now INACTIVE. Its data remains intact."
-    : action === "pause_questions" ? "ELA301 CBT questions are now INACTIVE. Lessons remain available."
+    : action === "pause_questions" ? "ELA301 CBT and lesson-practice questions are now INACTIVE. Teaching lessons remain available."
     : action === "resume_course" ? "ELA301 course is ACTIVE again."
-    : "ELA301 CBT questions are ACTIVE again. Rejected questions were not changed.";
+    : "ELA301 CBT and lesson-practice questions are ACTIVE again. Rejected CBT questions were not changed.";
   await sendTextMessage(phone, "✅ *ELA301 CONTROL UPDATED*
 
 "+successLabel+"
