@@ -807,6 +807,7 @@ export async function routeMessage(
         text,
         interactiveId,
         conversation.id,
+        account.isSystem,
       );
       return;
     }
