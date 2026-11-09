@@ -217,7 +217,8 @@ async function getBotStats(): Promise<string> {
    SABI BY XTOP — SUPER ADMIN READ-ONLY VISIBILITY
    ========================================================= */
 
-async function getSabiPlatformOverview(): Promise<string> {
+async function getSabiPlatformOverview(phone: string, isSystem: boolean): Promise<string> {
+  if (!hasSuperAdminAccess(phone, isSystem)) return "";
   // Exclude the internal XTOP system tenant from merchant counts.
   const merchantBase = () => supabase.from("tenants").select("id", { count: "exact", head: true }).eq("is_system", false);
   const checks = await Promise.all([
@@ -335,7 +336,8 @@ async function checkLivePaystackSubaccount(phone: string, isSystem: boolean, mer
   }
 }
 
-async function showSabiPayoutReconciliation(phone: string): Promise<void> {
+async function showSabiPayoutReconciliation(phone: string, isSystem: boolean): Promise<void> {
+  if (!hasSuperAdminAccess(phone, isSystem)) return;
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
   const [merchants, charges] = await Promise.all([
@@ -416,7 +418,8 @@ async function showSabiPayoutReconciliation(phone: string): Promise<void> {
   ].join("\n"));
 }
 
-async function showSabiOrdersAndPayments(phone: string): Promise<void> {
+async function showSabiOrdersAndPayments(phone: string, isSystem: boolean): Promise<void> {
+  if (!hasSuperAdminAccess(phone, isSystem)) return;
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
   const [
@@ -522,7 +525,8 @@ async function showSabiOrdersAndPayments(phone: string): Promise<void> {
   ].join("\n"));
 }
 
-async function listSabiMerchants(phone: string): Promise<void> {
+async function listSabiMerchants(phone: string, isSystem: boolean): Promise<void> {
+  if (!hasSuperAdminAccess(phone, isSystem)) return;
   const { data, error } = await supabase
     .from("tenants")
     .select("id,name,business_name,is_active,paystack_subaccount_status,created_at")
@@ -560,7 +564,8 @@ async function listSabiMerchants(phone: string): Promise<void> {
 }
 
 
-async function showSabiMerchantDetails(phone: string, search: string): Promise<void> {
+async function showSabiMerchantDetails(phone: string, isSystem: boolean, search: string): Promise<void> {
+  if (!hasSuperAdminAccess(phone, isSystem)) return;
   const term = search.trim().slice(0, 100);
   if (!term) {
     await sendTextMessage(phone, "Type a merchant name or UUID. Example: merchant XTOP Retail");
@@ -2574,7 +2579,7 @@ export async function handleAdminAgent(
 
   if (["admin_sabi_overview", "sabi", "sabi overview", "platform overview"].includes(command)) {
     await sendTextMessage(phone, "Reading Sabi by XTOP platform metrics...");
-    await sendTextMessage(phone, await getSabiPlatformOverview());
+    await sendTextMessage(phone, await getSabiPlatformOverview(phone, isSystem));
     await sendButtonMessage(phone, "Sabi platform:", [
       makeButton("admin_sabi_merchants", "🏪 Merchants"),
       makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
@@ -2583,7 +2588,7 @@ export async function handleAdminAgent(
   }
 
   if (["admin_sabi_merchants", "sabi merchants", "merchant directory"].includes(command)) {
-    await listSabiMerchants(phone);
+    await listSabiMerchants(phone, isSystem);
     await sendButtonMessage(phone, "Sabi platform:", [
       makeButton("admin_sabi_overview", "📊 Overview"),
       makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
@@ -2609,12 +2614,12 @@ export async function handleAdminAgent(
   }
 
   if (command === "admin_sabi_payout_reconciliation" || command === "sabi payouts" || command === "payout reconciliation") {
-    await showSabiPayoutReconciliation(phone);
+    await showSabiPayoutReconciliation(phone, isSystem);
     return;
   }
 
   if (command === "admin_sabi_orders_payments" || command === "sabi payments" || command === "sabi orders") {
-    await showSabiOrdersAndPayments(phone);
+    await showSabiOrdersAndPayments(phone, isSystem);
     return;
   }
 
@@ -2666,7 +2671,7 @@ export async function handleAdminAgent(
   }
 
   if (command.startsWith("merchant ")) {
-    await showSabiMerchantDetails(phone, inputRaw.slice(9));
+    await showSabiMerchantDetails(phone, isSystem, inputRaw.slice(9));
     return;
   }
 
