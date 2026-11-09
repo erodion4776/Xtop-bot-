@@ -865,7 +865,7 @@ async function processPracticeAnswer(
   // Accept a clear A-D answer only. Do not guess from arbitrary text,
   // because words such as "car" or "diesel" can contain answer letters.
   const answerText = String(text || "").trim().toUpperCase();
-  const answerMatch = answerText.match(/^(?:(?:OPTION|ANSWER)\\s*[:.-]?\\s*)?([A-D])(?:[)..!\\s]*)$/);
+  const answerMatch = answerText.match(/^(?:(?:OPTION|ANSWER)\s*[:.-]?\s*)?([A-D])(?:[)..!\s]*)$/);
   const ans = answerMatch?.[1] || "";
 
   if (!ans) {
