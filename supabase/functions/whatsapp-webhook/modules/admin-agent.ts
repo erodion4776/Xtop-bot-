@@ -422,6 +422,11 @@ async function requestMerchantStatusChange(
     return;
   }
 
+  if (targetActive && tenant.metadata?.sabi_admin_suspended !== true) {
+    await sendTextMessage(phone, "This merchant is not marked as Super Admin-suspended. Reactivation is only available for merchants previously suspended through Lizzy.");
+    return;
+  }
+
   if (tenant.is_active === targetActive) {
     await sendTextMessage(
       phone,
@@ -578,7 +583,11 @@ async function confirmMerchantStatusChange(
     console.error("[Lizzy][Sabi] Audit insert failed; attempting rollback:", auditError.message);
     const { error: rollbackError } = await supabase
       .from("tenants")
-      .update({ is_active: expectedActive, updated_at: new Date().toISOString() })
+      .update({
+        is_active: expectedActive,
+        metadata: (tenant.metadata || {}) as Record<string, unknown>,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", tenantId)
       .eq("is_system", false)
       .eq("is_active", targetActive);
