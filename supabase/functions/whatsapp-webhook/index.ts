@@ -29,13 +29,13 @@ function normalizePhone(raw: string): string {
 async function authorizeSuperAdminApi(
   req: Request,
   client: ReturnType<typeof createClient>,
-): Promise<{ authorized: boolean; status: number }> {
+): Promise<{ authorized: boolean; status: number; userId: string | null }> {
   const authorization = req.headers.get("Authorization") || "";
   const match = authorization.match(/^Bearer\s+(.+)$/i);
-  if (!match) return { authorized: false, status: 401 };
+  if (!match) return { authorized: false, status: 401, userId: null };
 
   const { data: { user }, error } = await client.auth.getUser(match[1]);
-  if (error || !user) return { authorized: false, status: 401 };
+  if (error || !user) return { authorized: false, status: 401, userId: null };
 
   const allowedIds = (Deno.env.get("SUPER_ADMIN_USER_IDS") || "")
     .split(",")
@@ -43,10 +43,10 @@ async function authorizeSuperAdminApi(
     .filter(Boolean);
 
   if (!allowedIds.includes(user.id)) {
-    return { authorized: false, status: 403 };
+    return { authorized: false, status: 403, userId: user.id };
   }
 
-  return { authorized: true, status: 200 };
+  return { authorized: true, status: 200, userId: user.id };
 }
 
 Deno.serve(async (req: Request) => {
@@ -106,12 +106,26 @@ Deno.serve(async (req: Request) => {
     try {
       const body = await req.json();
       const enabled = !!body.enabled;
-      await sb.from("system_settings").upsert({
+      const { error: settingError } = await sb.from("system_settings").upsert({
         key: "sabi_global_handoff",
         value: { enabled },
         updated_at: new Date().toISOString(),
       });
-      return jsonResponse({ success: true, enabled });
+      if (settingError) throw settingError;
+
+      const auth = await authorizeSuperAdminApi(req, sb);
+      const { error: auditError } = await sb.from("audit_logs").insert({
+        admin_user: auth.userId,
+        action: "SABI_GLOBAL_HANDOFF_CHANGED",
+        entity: "system_settings",
+        entity_id: "sabi_global_handoff",
+        metadata: { source: "LEGACY_SUPER_ADMIN_API", enabled, changed_at: new Date().toISOString() },
+      });
+      if (auditError) {
+        console.error("[Admin API] Global handoff changed but audit insert failed:", auditError.message);
+        return jsonResponse({ success: true, enabled, audit_logged: false, warning: "Activity log could not be saved" }, 200);
+      }
+      return jsonResponse({ success: true, enabled, audit_logged: true });
     } catch (e: any) {
       return jsonResponse({ error: e.message }, 400);
     }
@@ -133,20 +147,46 @@ Deno.serve(async (req: Request) => {
         targetContactId = c?.id || "";
       }
 
-      if (targetContactId) {
-        await sb.from("contacts").update({ agent_mode: enabled }).eq("id", targetContactId);
-
-        const { data: conv } = await sb.from("conversations").select("id, context_json").eq("contact_id", targetContactId).maybeSingle();
-        if (conv) {
-          const updatedCtx = { ...(conv.context_json || {}), agent_takeover: enabled, agent_mode: enabled };
-          await sb.from("conversations").update({
-            context_json: updatedCtx,
-            updated_at: new Date().toISOString(),
-          }).eq("id", conv.id);
-        }
+      if (!targetContactId) {
+        return jsonResponse({ error: "Customer contact not found" }, 404);
       }
 
-      return jsonResponse({ success: true, agent_takeover: enabled, contact_id: targetContactId });
+      const { data: updatedContact, error: contactError } = await sb.from("contacts")
+        .update({ agent_mode: enabled })
+        .eq("id", targetContactId)
+        .select("id")
+        .maybeSingle();
+      if (contactError) throw contactError;
+      if (!updatedContact) return jsonResponse({ error: "Customer contact not found" }, 404);
+
+      const { data: conv, error: conversationReadError } = await sb.from("conversations")
+        .select("id, context_json")
+        .eq("contact_id", targetContactId)
+        .maybeSingle();
+      if (conversationReadError) throw conversationReadError;
+      if (conv) {
+        const updatedCtx = { ...(conv.context_json || {}), agent_takeover: enabled, agent_mode: enabled };
+        const { error: conversationUpdateError } = await sb.from("conversations").update({
+          context_json: updatedCtx,
+          updated_at: new Date().toISOString(),
+        }).eq("id", conv.id);
+        if (conversationUpdateError) throw conversationUpdateError;
+      }
+
+      const auth = await authorizeSuperAdminApi(req, sb);
+      const { error: auditError } = await sb.from("audit_logs").insert({
+        admin_user: auth.userId,
+        action: "SABI_CUSTOMER_TAKEOVER_CHANGED",
+        entity: "contacts",
+        entity_id: targetContactId,
+        metadata: { source: "LEGACY_SUPER_ADMIN_API", enabled, changed_at: new Date().toISOString() },
+      });
+      if (auditError) {
+        console.error("[Admin API] Customer takeover changed but audit insert failed:", auditError.message);
+        return jsonResponse({ success: true, agent_takeover: enabled, contact_id: targetContactId, audit_logged: false, warning: "Activity log could not be saved" }, 200);
+      }
+
+      return jsonResponse({ success: true, agent_takeover: enabled, contact_id: targetContactId, audit_logged: true });
     } catch (e: any) {
       return jsonResponse({ error: e.message }, 500);
     }
