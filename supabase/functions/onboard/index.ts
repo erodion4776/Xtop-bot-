@@ -125,6 +125,10 @@ async function serveOnboardingPage(sessionToken: string, currentUrl: URL): Promi
     return htmlResponse(getExpiredPage());
   }
 
+  if ((session as any).tenants?.metadata?.sabi_admin_suspended === true) {
+    return htmlResponse("<!doctype html><html><body style='font-family:Arial;padding:32px'><h2>Merchant account suspended</h2><p>This merchant account is temporarily suspended. Please contact Sabi support.</p></body></html>", 403);
+  }
+
   if (session.status === "TRIAL_ACTIVATED") {
     return htmlResponse(getSuccessPage(session));
   }
@@ -194,6 +198,22 @@ async function handleCallback(req: Request): Promise<Response> {
     if (!session) return jsonResponse({ error: "Invalid session" }, 404);
     if (new Date(session.expires_at) < new Date()) return jsonResponse({ error: "Session expired" }, 410);
     if (session.status === "TRIAL_ACTIVATED") return jsonResponse({ error: "Already completed" }, 409);
+
+    // A Super Admin suspension must not be bypassed by completing an old signup link.
+    if (session.tenant_id) {
+      const { data: tenantStatus, error: tenantStatusError } = await sb
+        .from("tenants")
+        .select("is_system,metadata")
+        .eq("id", session.tenant_id)
+        .maybeSingle();
+
+      if (tenantStatusError || !tenantStatus) {
+        return jsonResponse({ error: "Merchant account could not be verified." }, 403);
+      }
+      if (tenantStatus.is_system === true || tenantStatus.metadata?.sabi_admin_suspended === true) {
+        return jsonResponse({ error: "This merchant account is suspended. Contact Sabi support." }, 403);
+      }
+    }
 
     // Exchange auth code
     const result = await exchangeMetaAuthCode(auth_code);
