@@ -59,20 +59,22 @@ export async function startExamEntry(
     return;
   }
 
-  // Resolve the verified student's academic level before creating any payment.
-  const { data: student, error: studentError } = await supabase
-    .from("students")
+  // The fee and displayed level must come from the course being examined,
+  // not the student's personal level (a 400-level student may take a 300-level course).
+  const { data: course, error: courseError } = await supabase
+    .from("courses")
     .select("level")
-    .eq("id", studentId)
+    .eq("id", courseId)
     .maybeSingle();
-  if (studentError || !student?.level) {
-    await sendTextMessage(phone, "⚠️ We could not confirm your registered level. Please contact the Learning Centre administrator before paying.");
+  if (courseError || !course?.level) {
+    await sendTextMessage(phone, "⚠️ We could not confirm this course's academic level. Please contact the Learning Centre administrator before paying.");
     return;
   }
-  const levelDigits = String(student.level).match(/\d{3}/)?.[0];
+  const courseLevel = String(course.level);
+  const levelDigits = courseLevel.match(/\d{3}/)?.[0];
   const examFeeNaira = levelDigits === "400" ? 1000 : levelDigits === "300" ? 500 : 0;
   if (!examFeeNaira) {
-    await sendTextMessage(phone, `❌ CBT payment is currently configured for 300 Level (₦500) and 400 Level (₦1,000). Your registered level is *${student.level}*. Please contact the administrator.`);
+    await sendTextMessage(phone, `❌ CBT payment is currently configured for 300 Level (₦500) and 400 Level (₦1,000). This course is recorded as *${courseLevel}*. Please contact the administrator.`);
     return;
   }
 
@@ -166,7 +168,7 @@ export async function startExamEntry(
     ...learningCtx,
     questions: selectedQuestions,
     attemptsCount,
-    studentLevel: String(student.level),
+    studentLevel: courseLevel,
     examFeeNaira,
     examDurationMinutes: 60 // 60-minute exam timer
   };
