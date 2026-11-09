@@ -2053,13 +2053,7 @@ async function applyELA301CourseAction(phone:string, action:string):Promise<void
   }
 
   if (errors.length) {
-    await sendTextMessage(phone, "⚠️ *ELA301 CONTROL PARTIALLY COMPLETED*
-
-Some updates may have succeeded, but the operation reported an error:
-"+errors.join("
-")+"
-
-Please reopen Course Controls and check the current status before retrying.");
+    await sendTextMessage(phone, "⚠️ *ELA301 CONTROL PARTIALLY COMPLETED*\\n\\nSome updates may have succeeded, but the operation reported an error:\\n"+errors.join("\\n")+"\\n\\nPlease reopen Course Controls and check the current status before retrying.");
     await showELA301PublishControls(phone);
     return;
   }
