@@ -628,14 +628,18 @@ async function showSabiOrdersAndPayments(phone: string, isSystem: boolean): Prom
   ].join("\n"));
 }
 
-async function listSabiMerchants(phone: string, isSystem: boolean): Promise<void> {
+async function listSabiMerchants(phone: string, isSystem: boolean, page = 0): Promise<void> {
   if (!hasSuperAdminAccess(phone, isSystem)) return;
-  const { data, error } = await supabase
+
+  const pageSize = 8;
+  const safePage = Math.max(0, Math.min(124, Math.floor(Number(page) || 0)));
+  const from = safePage * pageSize;
+  const { data, error, count } = await supabase
     .from("tenants")
-    .select("id,name,business_name,is_active,paystack_subaccount_status,created_at")
+    .select("id,name,business_name,is_active,paystack_subaccount_status,created_at", { count: "exact" })
     .eq("is_system", false)
     .order("created_at", { ascending: false })
-    .limit(20);
+    .range(from, from + pageSize - 1);
 
   if (error) {
     console.error("[Lizzy][Sabi] Merchant directory query failed:", error.message);
@@ -643,16 +647,23 @@ async function listSabiMerchants(phone: string, isSystem: boolean): Promise<void
     return;
   }
 
-  if (!data?.length) {
-    await sendTextMessage(phone, "🏪 *SABI MERCHANT DIRECTORY*\n\nNo merchant businesses were returned.");
+  const merchants = data || [];
+  const total = count ?? merchants.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  if (!merchants.length && safePage > 0) {
+    await sendTextMessage(phone, "There are no more merchants on that page.");
+    await sendButtonMessage(phone, "Merchant Directory:", [
+      makeButton("admin_sabi_merchants_page_" + Math.max(0, safePage - 1), "⬅ Previous"),
+      makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+    ]);
     return;
   }
 
-  const lines = data.map((tenant: any, index: number) => {
+  const lines = merchants.map((tenant: any, index: number) => {
     const business = String(tenant.business_name || tenant.name || "Unnamed business").replace(/[\\r\\n]/g, " ").slice(0, 70);
     const active = tenant.is_active === true ? "ACTIVE" : "INACTIVE";
     const payout = String(tenant.paystack_subaccount_status || "NOT CONFIGURED").replace(/_/g, " ");
-    return (index + 1) + ". *" + business + "*\n   Business: " + active + " • Paystack: " + payout;
+    return (from + index + 1) + ". *" + business + "*\\n   Business: " + active + " • Paystack: " + payout;
   });
 
   await sendTextMessage(phone, [
@@ -660,12 +671,18 @@ async function listSabiMerchants(phone: string, isSystem: boolean): Promise<void
     "",
     ...lines,
     "",
-    "Showing latest " + data.length + " merchant businesses (maximum 20).",
+    "Total merchant businesses: " + total,
+    "Page " + (safePage + 1) + " of " + pageCount + ". Showing " + merchants.length + " per page.",
     "Internal XTOP system tenant is excluded.",
     "Sensitive owner, customer, bank-account and access-token details are not displayed.",
-  ].join("\n"));
-}
+  ].join("\\n"));
 
+  const buttons = [];
+  if (safePage > 0) buttons.push(makeButton("admin_sabi_merchants_page_" + (safePage - 1), "⬅ Previous"));
+  if (from + merchants.length < total) buttons.push(makeButton("admin_sabi_merchants_page_" + (safePage + 1), "Next ➡"));
+  buttons.push(makeButton("admin_agent_menu", "🏠 Lizzy Menu"));
+  await sendButtonMessage(phone, "Merchant Directory navigation:", buttons.slice(0, 3));
+}
 
 async function showSabiMerchantDetails(phone: string, isSystem: boolean, search: string): Promise<void> {
   if (!hasSuperAdminAccess(phone, isSystem)) return;
@@ -2687,6 +2704,12 @@ export async function handleAdminAgent(
       makeButton("admin_sabi_merchants", "🏪 Merchants"),
       makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
     ]);
+    return;
+  }
+
+  if (command.startsWith("admin_sabi_merchants_page_")) {
+    const page = Number.parseInt(inputRaw.slice("admin_sabi_merchants_page_".length), 10);
+    await listSabiMerchants(phone, isSystem, Number.isFinite(page) ? page : 0);
     return;
   }
 
