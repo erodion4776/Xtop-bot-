@@ -3140,6 +3140,11 @@ You can advise on TypeScript, Deno, Supabase, WhatsApp API, GitHub, debugging, a
   try {
     const answer = await callAI(systemPrompt, question, [], { temperature: 0.2, maxTokens: 500 });
     await sendTextMessage(phone, `🤖 *LIZZY — ADMIN ADVISER*\n\n${answer}`);
+    await sendButtonMessage(phone, "What would you like to do next?", [
+      makeButton("admin_agent_menu", "📋 Open Lizzy Menu"),
+      makeButton("admin_agent_advice", "💬 Ask Another Question"),
+      makeButton("admin_agent_exit", "🔒 Exit Lizzy"),
+    ]);
   } catch (error) {
     console.error("[AdminAgent] AI error:", error);
     await sendTextMessage(phone, "I couldn't complete that advice request. Please try again later.");
