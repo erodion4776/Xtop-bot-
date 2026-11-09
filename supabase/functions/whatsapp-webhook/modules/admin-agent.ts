@@ -295,7 +295,7 @@ async function showSabiAdminActivityLog(phone: string, isSystem: boolean, page =
       "Business: " + business.replace(/[\\r\\n]/g, " ").slice(0, 65),
       "Status: " + previous + " → " + next,
       "Time: " + date,
-    ].join("\\n");
+    ].join("\n");
   });
 
   const total = count ?? rows.length;
@@ -310,7 +310,7 @@ async function showSabiAdminActivityLog(phone: string, isSystem: boolean, page =
     ...(lines.length ? lines : ["No merchant suspension/reactivation audit records have been recorded yet."]),
     "",
     "Read-only history. No merchant or audit records were changed.",
-  ].join("\\n");
+  ].join("\n");
   await sendTextMessage(phone, message);
 
   const buttons = [];
