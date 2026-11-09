@@ -266,7 +266,7 @@ async function getSabiPlatformOverview(): Promise<string> {
 async function checkLivePaystackSubaccount(phone: string, merchantId: string): Promise<void> {
   const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!uuidPattern.test(merchantId)) {
-    await sendTextMessage(phone, "Use the exact merchant UUID.\\nExample: verify payout <merchant UUID>");
+    await sendTextMessage(phone, "Use the exact merchant UUID.\nExample: verify payout <merchant UUID>");
     return;
   }
 
@@ -316,7 +316,7 @@ async function checkLivePaystackSubaccount(phone: string, merchantId: string): P
     await sendTextMessage(phone, [
       "🔎 *LIVE PAYSTACK SUBACCOUNT CHECK*",
       "",
-      "*Business:* " + String(merchant.business_name || merchant.name || "Merchant").replace(/[\\r\\n]/g, " ").slice(0, 70),
+      "*Business:* " + String(merchant.business_name || merchant.name || "Merchant").replace(/[\r\n]/g, " ").slice(0, 70),
       "*Paystack status:* " + status,
       "*Verified by Paystack:* " + (verified ? "YES" : "NO"),
       "*Subaccount active:* " + (active ? "YES" : account.active === false ? "NO" : "Not reported"),
@@ -324,7 +324,7 @@ async function checkLivePaystackSubaccount(phone: string, merchantId: string): P
       "Source: Paystack live subaccount API.",
       "This was a read-only check. No payout, transfer, bank-detail change or database update was performed.",
       "Checked: " + new Date().toISOString(),
-    ].join("\\n"));
+    ].join("\n"));
   } catch (error) {
     console.error("[Lizzy][Paystack] Live verification request failed:", error instanceof Error ? error.message : "Unknown error");
     await sendTextMessage(phone, "⚠️ The live Paystack check failed due to a network or service error. No changes were made.");
@@ -2595,7 +2595,7 @@ export async function handleAdminAgent(
       "Send: verify payout <merchant UUID>",
       "",
       "Lizzy will query Paystack directly and report the current verification state. This is read-only; it cannot initiate a transfer or change bank details.",
-    ].join("\\n"));
+    ].join("\n"));
     return;
   }
 
