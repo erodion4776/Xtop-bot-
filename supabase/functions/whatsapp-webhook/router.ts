@@ -35,7 +35,6 @@ import {
   safeErrorLog,
 } from "./utils.ts";
 
-import { showMainMenu } from "./modules/main-menu.ts";
 import { showSabiWelcomeMenu } from "./modules/sabi-menu.ts";
 
 import {
@@ -593,18 +592,6 @@ function isSabiDemoRequest(text: string): boolean {
   ].includes(value);
 }
 
-function isMyBusinessRequest(text: string): boolean {
-  const value = text.trim().toLowerCase();
-
-  return [
-    "my business",
-    "xtop retail",
-    "xtop retail technologies",
-    "business menu",
-    "xtop business",
-  ].includes(value);
-}
-
 function isEngrEroRequest(text: string): boolean {
   const value = text.trim().toLowerCase();
 
@@ -880,21 +867,6 @@ export async function routeMessage(
     }
 
     // ===================================================
-    // EXPLICIT XTOP BUSINESS ROUTE
-    // ===================================================
-
-    if (
-      interactiveId === "my_business" ||
-      isMyBusinessRequest(text)
-    ) {
-      await showMainMenu(
-        phone,
-        conversation.id,
-      );
-      return;
-    }
-
-    // ===================================================
     // EXPLICIT ENGR ERO LEARNING ROUTE
     // ===================================================
 
@@ -1029,6 +1001,18 @@ export async function routeMessage(
       );
       return;
     }
+
+    // ===================================================
+    // SABI + ENGR ERO ONLY
+    // ===================================================
+    // Engr Ero is routed explicitly above. Sabi registration, support,
+    // shop demo and gateway actions are also handled above. Do not expose
+    // the retired XTOP Retail services, products, demos or sales bot here.
+    await showSabiWelcomeMenu(
+      phone,
+      conversation.id,
+    );
+    return;
 
     // ===================================================
     // LEGACY ONBOARDING STATE
