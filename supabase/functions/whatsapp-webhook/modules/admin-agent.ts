@@ -95,6 +95,7 @@ export async function showAdminAgentMenu(phone: string): Promise<void> {
       rows: [
         makeListRow("admin_sabi_overview", "📊 Sabi Platform Overview", "Merchants, products, orders and WhatsApp"),
         makeListRow("admin_sabi_merchants", "🏪 Merchant Directory", "Business names and payout verification status"),
+        makeListRow("admin_sabi_merchant_help", "🔎 Merchant Profile Lookup", "Inspect a merchant by business name or UUID"),
       ],
     },
     {
@@ -278,6 +279,79 @@ async function listSabiMerchants(phone: string): Promise<void> {
     "Internal XTOP system tenant is excluded.",
     "Sensitive owner, customer, bank-account and access-token details are not displayed.",
   ].join("\n"));
+}
+
+
+async function showSabiMerchantDetails(phone: string, search: string): Promise<void> {
+  const term = search.trim().slice(0, 100);
+  if (!term) {
+    await sendTextMessage(phone, "Type a merchant name or UUID. Example: merchant XTOP Retail");
+    return;
+  }
+
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const safeTerm = term.replace(/[%_,]/g, " ");
+  let query = supabase
+    .from("tenants")
+    .select("id,name,business_name,industry,is_active,created_at,shipping_enabled,pod_enabled,paystack_subaccount_status,paystack_subaccount_verified_at")
+    .eq("is_system", false);
+  query = uuidPattern.test(term)
+    ? query.eq("id", term)
+    : query.or("business_name.ilike.%" + safeTerm + "%,name.ilike.%" + safeTerm + "%");
+
+  const { data, error } = await query.limit(6);
+  if (error) {
+    console.error("[Lizzy][Sabi] Merchant lookup failed:", error.message);
+    await sendTextMessage(phone, "⚠️ Merchant lookup failed. No records were changed.");
+    return;
+  }
+  if (!data?.length) {
+    await sendTextMessage(phone, "No Sabi merchant matched: " + term + "\\n\\nTry another business name or merchant UUID.");
+    return;
+  }
+  if (data.length > 1) {
+    const matches = data.map((t: any, i: number) =>
+      (i + 1) + ". " + String(t.business_name || t.name || "Unnamed business").replace(/[\\r\\n]/g, " ").slice(0, 65) + "\\n   ID: " + t.id
+    );
+    await sendTextMessage(phone, "🔎 *MORE THAN ONE MERCHANT MATCHED*\\n\\n" + matches.join("\\n\\n") + "\\n\\nUse: merchant <exact UUID>");
+    return;
+  }
+
+  const tenant: any = data[0];
+  const [products, orders, paidOrders, whatsapp] = await Promise.all([
+    supabase.from("products").select("id", { count: "exact", head: true }).eq("tenant_id", tenant.id),
+    supabase.from("tenant_orders").select("id", { count: "exact", head: true }).eq("tenant_id", tenant.id),
+    supabase.from("tenant_orders").select("id", { count: "exact", head: true }).eq("tenant_id", tenant.id).eq("payment_status", "PAID"),
+    supabase.from("tenant_whatsapp_accounts").select("id", { count: "exact", head: true }).eq("tenant_id", tenant.id).eq("is_active", true),
+  ]);
+  const countLine = (label: string, result: any) =>
+    label + ": " + (result.error ? "unavailable" : (result.count ?? 0));
+  const payout = String(tenant.paystack_subaccount_status || "NOT CONFIGURED").replace(/_/g, " ");
+
+  await sendTextMessage(phone, [
+    "🏪 *SABI MERCHANT PROFILE*",
+    "",
+    "*Business:* " + String(tenant.business_name || tenant.name || "Unnamed business").slice(0, 100),
+    "*Industry:* " + String(tenant.industry || "Not specified").slice(0, 70),
+    "*Business status:* " + (tenant.is_active ? "ACTIVE" : "INACTIVE"),
+    "*Joined:* " + (tenant.created_at ? new Date(tenant.created_at).toLocaleDateString("en-NG") : "Unknown"),
+    "",
+    "*Platform activity*",
+    countLine("Products", products),
+    countLine("Orders", orders),
+    countLine("Paid orders", paidOrders),
+    countLine("Active WhatsApp connections", whatsapp),
+    "",
+    "*Merchant settings*",
+    "Shipping: " + (tenant.shipping_enabled ? "Enabled" : "Disabled"),
+    "Pay on delivery: " + (tenant.pod_enabled ? "Enabled" : "Disabled"),
+    "Paystack payout: " + payout,
+    "Payout verified: " + (tenant.paystack_subaccount_verified_at ? new Date(tenant.paystack_subaccount_verified_at).toLocaleDateString("en-NG") : "Not verified"),
+    "",
+    "Merchant ID: " + tenant.id,
+    "",
+    "🔐 Read-only profile. No owner contact, bank details, customer details or access tokens are exposed."
+  ].join("\\n"));
 }
 
 /* =========================================================
@@ -1957,6 +2031,16 @@ export async function handleAdminAgent(
       makeButton("admin_sabi_overview", "📊 Overview"),
       makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
     ]);
+    return;
+  }
+
+  if (command === "admin_sabi_merchant_help") {
+    await sendTextMessage(phone, "🔎 *MERCHANT PROFILE LOOKUP*\\n\\nSend: merchant Business Name\\nOr: merchant <merchant UUID>\\n\\nExample: merchant XTOP Retail");
+    return;
+  }
+
+  if (command.startsWith("merchant ")) {
+    await showSabiMerchantDetails(phone, inputRaw.slice(9));
     return;
   }
 
