@@ -98,6 +98,7 @@ export async function showAdminAgentMenu(phone: string): Promise<void> {
         makeListRow("admin_sabi_merchants", "🏪 Merchant Directory", "Business names and payout verification status"),
         makeListRow("admin_sabi_merchant_help", "🔎 Merchant Profile Lookup", "Inspect a merchant by business name or UUID"),
         makeListRow("admin_sabi_status_help", "🛡️ Merchant Status Controls", "Suspend or reactivate with confirmation"),
+        makeListRow("admin_sabi_orders_payments", "💳 Orders & Payments Monitor", "Order totals, pending payments and Paystack fee records"),
       ],
     },
     {
@@ -244,6 +245,113 @@ async function getSabiPlatformOverview(): Promise<string> {
     "🔐 Read-only platform report. No merchant or customer records were changed.",
     "Checked: " + new Date().toISOString(),
   ].join("\n");
+}
+
+
+async function showSabiOrdersAndPayments(phone: string): Promise<void> {
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [
+    totalOrders,
+    paidOrders,
+    unpaidOrders,
+    pendingIntents,
+    failedIntents,
+    recentOrders,
+    recentIntents,
+    recentCharges,
+  ] = await Promise.all([
+    supabase.from("tenant_orders").select("id", { count: "exact", head: true }),
+    supabase.from("tenant_orders").select("id", { count: "exact", head: true }).eq("payment_status", "PAID"),
+    supabase.from("tenant_orders").select("id", { count: "exact", head: true }).neq("payment_status", "PAID"),
+    supabase.from("tenant_order_payment_intents").select("id", { count: "exact", head: true }).eq("status", "PENDING"),
+    supabase.from("tenant_order_payment_intents").select("id", { count: "exact", head: true }).in("status", ["FAILED", "ABANDONED"]),
+    supabase.from("tenant_orders")
+      .select("order_number,payment_status,status,subtotal,delivery_fee,total,created_at,sales_fee_amount,sales_fee_status,payment_method")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(8),
+    supabase.from("tenant_order_payment_intents")
+      .select("payment_type,expected_amount,status,paystack_status,created_at")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(8),
+    supabase.from("sabi_order_paystack_charges")
+      .select("payment_type,merchant_commission_amount,customer_service_fee,xtop_transaction_charge,settlement_status,created_at")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(8),
+  ]);
+
+  const checks = [
+    ["Orders recorded", totalOrders],
+    ["Paid orders", paidOrders],
+    ["Unpaid / other payment status", unpaidOrders],
+    ["Pending payment intents", pendingIntents],
+    ["Failed / abandoned payment intents", failedIntents],
+  ];
+  const lines = checks.map(([label, result]: any) => {
+    if (result.error) {
+      console.error("[Lizzy][Sabi] Order/payment count failed:", label, result.error.message);
+      return label + ": unavailable";
+    }
+    return label + ": " + (result.count ?? 0);
+  });
+
+  const naira = (value: unknown) => {
+    const amount = Number(value);
+    return Number.isFinite(amount)
+      ? "₦" + amount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : "Not recorded";
+  };
+
+  const orderLines = recentOrders.error
+    ? ["Recent orders: unavailable"]
+    : (recentOrders.data || []).map((order: any, i: number) =>
+        (i + 1) + ". " + String(order.order_number || "Order").slice(0, 35) +
+        " • " + String(order.payment_status || "UNKNOWN") +
+        " • " + naira(order.total) +
+        " • " + (order.created_at ? new Date(order.created_at).toLocaleDateString("en-NG") : "Date unknown")
+      );
+
+  const intentLines = recentIntents.error
+    ? ["Payment intents: unavailable"]
+    : (recentIntents.data || []).map((intent: any, i: number) =>
+        (i + 1) + ". " + String(intent.payment_type || "PAYMENT") +
+        " • " + String(intent.status || "UNKNOWN") +
+        " • Paystack: " + String(intent.paystack_status || "Not reported") +
+        " • " + naira(intent.expected_amount)
+      );
+
+  const chargeLines = recentCharges.error
+    ? ["Paystack fee records: unavailable"]
+    : (recentCharges.data || []).map((charge: any, i: number) =>
+        (i + 1) + ". " + String(charge.payment_type || "PAYMENT") +
+        " • Settlement: " + String(charge.settlement_status || "Not recorded") +
+        " • Sabi commission: " + naira(charge.merchant_commission_amount) +
+        " • XTOP charge: " + naira(charge.xtop_transaction_charge)
+      );
+
+  await sendTextMessage(phone, [
+    "💳 *SABI ORDERS & PAYMENT MONITOR*",
+    "",
+    "*Platform totals*",
+    ...lines,
+    "",
+    "*Recent orders — last 30 days*",
+    ...(orderLines.length ? orderLines : ["No recent orders."]),
+    "",
+    "*Recent payment intents — last 30 days*",
+    ...(intentLines.length ? intentLines : ["No recent payment intents."]),
+    "",
+    "*Paystack commission / settlement records — last 30 days*",
+    ...(chargeLines.length ? chargeLines : ["No Paystack charge records found."]),
+    "",
+    "Report window: last 30 days for recent activity; counts cover all recorded history.",
+    "Amounts shown are recorded order / fee values, not bank settlement confirmation.",
+    "🔐 Read-only report. Customer names, phone numbers, email addresses and payment references are hidden.",
+    "Checked: " + new Date().toISOString(),
+  ].join("\\n"));
 }
 
 async function listSabiMerchants(phone: string): Promise<void> {
@@ -2310,6 +2418,11 @@ export async function handleAdminAgent(
     return;
   }
 
+
+  if (command === "admin_sabi_orders_payments" || command === "sabi payments" || command === "sabi orders") {
+    await showSabiOrdersAndPayments(phone);
+    return;
+  }
 
   if (command === "admin_sabi_status_help") {
     await sendTextMessage(phone, [
