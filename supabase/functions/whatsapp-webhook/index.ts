@@ -31,7 +31,7 @@ async function authorizeSuperAdminApi(
   client: ReturnType<typeof createClient>,
 ): Promise<{ authorized: boolean; status: number }> {
   const authorization = req.headers.get("Authorization") || "";
-  const match = authorization.match(/^Bearer\\s+(.+)$/i);
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
   if (!match) return { authorized: false, status: 401 };
 
   const { data: { user }, error } = await client.auth.getUser(match[1]);
