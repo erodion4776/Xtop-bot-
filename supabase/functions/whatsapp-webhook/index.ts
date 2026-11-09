@@ -21,6 +21,34 @@ function normalizePhone(raw: string): string {
   return clean;
 }
 
+/**
+ * The Meta webhook must remain publicly callable, but legacy admin API
+ * actions on this same function must require a valid Supabase session and
+ * an explicitly allowlisted Super Admin user ID.
+ */
+async function authorizeSuperAdminApi(
+  req: Request,
+  client: ReturnType<typeof createClient>,
+): Promise<{ authorized: boolean; status: number }> {
+  const authorization = req.headers.get("Authorization") || "";
+  const match = authorization.match(/^Bearer\\s+(.+)$/i);
+  if (!match) return { authorized: false, status: 401 };
+
+  const { data: { user }, error } = await client.auth.getUser(match[1]);
+  if (error || !user) return { authorized: false, status: 401 };
+
+  const allowedIds = (Deno.env.get("SUPER_ADMIN_USER_IDS") || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  if (!allowedIds.includes(user.id)) {
+    return { authorized: false, status: 403 };
+  }
+
+  return { authorized: true, status: 200 };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -46,6 +74,27 @@ Deno.serve(async (req: Request) => {
   // ══════════════════════════════════════════════════════
   // 2. ADMIN API ROUTES
   // ══════════════════════════════════════════════════════
+
+  // These legacy admin endpoints share the public Meta webhook URL.
+  // Keep Meta webhook delivery and the signed onboarding callback public,
+  // but never expose service-role admin operations without Super Admin auth.
+  const protectedAdminActions = new Set([
+    "get-handoff",
+    "toggle-handoff",
+    "toggle-takeover",
+    "send-message",
+    "chat",
+    "stats",
+  ]);
+  if (protectedAdminActions.has(action || "")) {
+    const auth = await authorizeSuperAdminApi(req, sb);
+    if (!auth.authorized) {
+      return jsonResponse(
+        { error: auth.status === 401 ? "Authentication required" : "Forbidden" },
+        auth.status,
+      );
+    }
+  }
 
   // ── A. GET / SET GLOBAL SABI HANDOFF ──
   if (action === "get-handoff" && req.method === "GET") {
