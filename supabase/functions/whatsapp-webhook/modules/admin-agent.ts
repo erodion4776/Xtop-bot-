@@ -99,6 +99,7 @@ export async function showAdminAgentMenu(phone: string): Promise<void> {
         makeListRow("admin_sabi_merchant_help", "🔎 Merchant Profile Lookup", "Inspect a merchant by business name or UUID"),
         makeListRow("admin_sabi_status_help", "🛡️ Merchant Status Controls", "Suspend or reactivate with confirmation"),
         makeListRow("admin_sabi_orders_payments", "💳 Orders & Payments Monitor", "Order totals, pending payments and Paystack fee records"),
+        makeListRow("admin_sabi_payout_reconciliation", "🏦 Payout Verification & Reconciliation", "Merchant Paystack status and recorded settlement fees"),
       ],
     },
     {
@@ -247,6 +248,88 @@ async function getSabiPlatformOverview(): Promise<string> {
   ].join("\n");
 }
 
+
+
+async function showSabiPayoutReconciliation(phone: string): Promise<void> {
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [merchants, charges] = await Promise.all([
+    supabase.from("tenants")
+      .select("id,business_name,name,is_active,paystack_subaccount_code,paystack_subaccount_status,paystack_subaccount_verified_at")
+      .eq("is_system", false)
+      .order("created_at", { ascending: false })
+      .limit(30),
+    supabase.from("sabi_order_paystack_charges")
+      .select("payment_type,merchant_commission_amount,customer_service_fee,xtop_transaction_charge,settlement_status,currency,created_at")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(15),
+  ]);
+
+  if (merchants.error) {
+    console.error("[Lizzy][Sabi] Payout directory failed:", merchants.error.message);
+    await sendTextMessage(phone, "⚠️ I could not read merchant payout verification records. No data was changed.");
+    return;
+  }
+
+  const naira = (value: unknown, currency = "NGN") => {
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return "Not recorded";
+    return currency + " " + amount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const rows = (merchants.data || []).map((merchant: any, index: number) => {
+    const status = String(merchant.paystack_subaccount_status || "NOT_CONFIGURED").replace(/_/g, " ");
+    const configured = !!merchant.paystack_subaccount_code;
+    const verifiedAt = merchant.paystack_subaccount_verified_at
+      ? new Date(merchant.paystack_subaccount_verified_at).toLocaleDateString("en-NG")
+      : "Not verified";
+    return [
+      (index + 1) + ". *" + String(merchant.business_name || merchant.name || "Unnamed business").replace(/[\\r\\n]/g, " ").slice(0, 55) + "*",
+      "Business: " + (merchant.is_active ? "ACTIVE" : "INACTIVE"),
+      "Paystack: " + status,
+      "Subaccount code: " + (configured ? "Registered" : "Not registered"),
+      "Verified date: " + verifiedAt,
+    ].join("\n");
+  });
+
+  const chargeRows = charges.error
+    ? ["Settlement records: unavailable"]
+    : (charges.data || []).map((charge: any, index: number) =>
+        (index + 1) + ". " + String(charge.payment_type || "PAYMENT") +
+        " • " + String(charge.settlement_status || "STATUS NOT RECORDED") +
+        " • Sabi commission: " + naira(charge.merchant_commission_amount, charge.currency || "NGN") +
+        " • XTOP charge: " + naira(charge.xtop_transaction_charge, charge.currency || "NGN")
+      );
+
+  const statuses = (merchants.data || []).reduce((acc: Record<string, number>, merchant: any) => {
+    const key = String(merchant.paystack_subaccount_status || "NOT_CONFIGURED");
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  const statusSummary = Object.entries(statuses).map(([key, value]) =>
+    key.replace(/_/g, " ") + ": " + value
+  );
+
+  await sendTextMessage(phone, [
+    "🏦 *SABI PAYOUT VERIFICATION & RECONCILIATION*",
+    "",
+    "*Merchant payout status counts*",
+    ...(statusSummary.length ? statusSummary : ["No merchant records found."]),
+    "",
+    "*Merchant payout verification*",
+    ...(rows.length ? rows : ["No merchants found."]),
+    "",
+    "*Paystack commission / settlement records — last 30 days*",
+    ...(chargeRows.length ? chargeRows : ["No charge records found."]),
+    "",
+    "Important: a registered subaccount is not proof of a successful bank settlement.",
+    "This report reads stored verification and settlement records only; it does not contact Paystack or trigger a transfer.",
+    "Bank account numbers, customer details and payment references are not displayed.",
+    "Checked: " + new Date().toISOString(),
+  ].join("\n"));
+}
 
 async function showSabiOrdersAndPayments(phone: string): Promise<void> {
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -2418,6 +2501,11 @@ export async function handleAdminAgent(
     return;
   }
 
+
+  if (command === "admin_sabi_payout_reconciliation" || command === "sabi payouts" || command === "payout reconciliation") {
+    await showSabiPayoutReconciliation(phone);
+    return;
+  }
 
   if (command === "admin_sabi_orders_payments" || command === "sabi payments" || command === "sabi orders") {
     await showSabiOrdersAndPayments(phone);
