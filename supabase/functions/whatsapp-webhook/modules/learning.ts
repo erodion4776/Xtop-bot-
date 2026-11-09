@@ -14,6 +14,7 @@ import {
 import { normalise, isExit } from "../utils.ts";
 import { showMainMenu } from "./main-menu.ts";
 import { startExamEntry } from "./exams.ts";
+import { startAutomobileDiagnosis, handleAutomobileDiagnosis } from "./automobile-diagnostics.ts";
 import { handleRegistration } from "./attendance.ts";
 
 const supabase = getSupabaseClient();
@@ -236,6 +237,10 @@ export async function handleLearning(
     case "COURSE_MENU":
       await processCourseMenuSelection(phone, text, conv, ctx);
       break;
+    case "AUTOMOBILE_DIAGNOSIS_INPUT":
+    case "AUTOMOBILE_DIAGNOSIS_FOLLOWUP":
+      await handleAutomobileDiagnosis(phone, text, conv);
+      break;
     case "PRACTICAL_LAB_MENU":
       await processPracticalLabMenu(phone, text, conv, ctx);
       break;
@@ -277,7 +282,7 @@ async function showLearningCentreGateway(
   await sendTextMessage(phone,
     `🎓 *Engr. Ero Learning Centre*\n\n` +
     `Please enter your *Course Code* to enter the classroom.\n\n` +
-    `_Examples:_ *ELA301*, *ELA302*, or *ELA401*\n\n` +
+    `_Examples:_ *ELA301*, *ELA302*, *ELA401*, or *AET301*\n\n` +
     `_Type *Exit Learning Centre* to return to Xtop Retail._`
   );
 }
@@ -291,7 +296,7 @@ export async function promptCourseCode(phone: string, conversationId: string): P
   await sendTextMessage(phone,
     `🎓 *Engr. Ero Learning Centre*\n\n` +
     `Please enter your *Course Code* to continue.\n\n` +
-    `_Examples:_ *ELA301*, *ELA302*, or *ELA401*`
+    `_Examples:_ *ELA301*, *ELA302*, *ELA401*, or *AET301*`
   );
 }
 
@@ -390,6 +395,7 @@ export async function showCourseMenu(
         makeListRow("cm_materials", "2️⃣ Course Materials", "Handouts, diagrams & PDFs"),
         makeListRow("cm_progress", "3️⃣ My Progress", "Lesson completion status"),
         ...(ctx.courseCode === "ELA401" ? [makeListRow("cm_lab", "🧪 Practical Lab & Simulations", "12 physical guides + phone calculators")] : []),
+        ...(ctx.courseCode === "AET301" ? [makeListRow("cm_auto_diag", "🚗 Vehicle Fault Diagnosis", "Guided vehicle troubleshooting")] : []),
       ]},
       { title: "Assessments & Exit", rows: [
         makeListRow("cm_test", "4️⃣ Final CBT Exam", "Take course test"),
@@ -416,6 +422,11 @@ async function processCourseMenuSelection(
   if (n === "cm_lab" || n.includes("practical lab")) {
     if (ctx.courseCode !== "ELA401") { await sendTextMessage(phone, "The practical simulation tools are currently configured for ELA401."); await showCourseMenu(phone, conv.id, ctx); return; }
     await showPracticalLabMenu(phone, conv.id, ctx);
+    return;
+  }
+  if (n === "cm_auto_diag" || n.includes("vehicle fault diagnosis") || n.includes("automobile diagnosis")) {
+    if (ctx.courseCode !== "AET301") { await showCourseMenu(phone, conv.id, ctx); return; }
+    await startAutomobileDiagnosis(phone, conv.id, ctx as unknown as Record<string, unknown>);
     return;
   }
   if (n === "cm_materials" || num === 2 || n.includes("materials")) {
