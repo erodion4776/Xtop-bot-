@@ -82,7 +82,7 @@ export async function showAdminAgentMenu(phone: string, page = 0): Promise<void>
   const pageLabels = [
     "Page 1 of 3 — Lead & Quote Desk and core Sabi tools.",
     "Page 2 of 3 — More Sabi tools and System & Learning.",
-    "Page 3 of 3 — ELA301 lecturer review tools.",
+    "Page 3 of 3 — Student Records and ELA301 lecturer review tools.",
   ];
   const body =
     "🔐 *XTOP PRIVATE ADMIN ASSISTANT (LIZZY)*\\n\\n" +
@@ -132,7 +132,6 @@ export async function showAdminAgentMenu(phone: string, page = 0): Promise<void>
         makeListRow("admin_learning", "🎓 ENGR ERO Learning Hub", "Courses, lessons, students and publication status"),
         makeListRow("admin_students_pending", "🎓 Student Verification", "Review new student registrations"),
         makeListRow("admin_students_verified", "✅ Verified Students", "View students whose identity has been approved"),
-        makeListRow("admin_student_records", "📚 Student Records", "Department • S/N • matric no • results"),
       ],
     },
   ];
@@ -144,6 +143,13 @@ export async function showAdminAgentMenu(phone: string, page = 0): Promise<void>
         makeListRow("admin_ela301_questions", "📝 ELA301 Question Review", "Review and approve CBT questions"),
         makeListRow("admin_ela301_lessons", "📖 ELA301 Lesson Review", "Inspect and approve teaching lessons"),
         makeListRow("admin_ela301_controls", "🚦 ELA301 Publish & Pause", "Publish the course or pause course/questions"),
+        makeListRow("admin_agent_menu_page_1", "⬅️ Previous Menu", "Return to System & Learning"),
+      ],
+    },
+    {
+      title: "📚 Student Records",
+      rows: [
+        makeListRow("admin_student_records", "📚 Student Records", "Department • S/N • matric no • results"),
       ],
     },
   ];
@@ -155,11 +161,7 @@ export async function showAdminAgentMenu(phone: string, page = 0): Promise<void>
   } else if (safePage === 1) {
     pageTwoSections[1].rows.push(
       makeListRow("admin_agent_menu_page_0", "⬅️ Previous Menu", "Return to core Sabi tools"),
-      makeListRow("admin_agent_menu_page_2", "➡️ Next Menu", "Open ELA301 lecturer review tools")
-    );
-  } else {
-    pageThreeSections[0].rows.push(
-      makeListRow("admin_agent_menu_page_1", "⬅️ Previous Menu", "Return to System & Learning")
+      makeListRow("admin_agent_menu_page_2", "➡️ Next Menu", "Open Student Records and ELA301 review tools")
     );
   }
 
@@ -174,7 +176,7 @@ export async function showAdminAgentMenu(phone: string, page = 0): Promise<void>
   await sendListMessage(
     phone,
     body,
-    safePage === 0 ? "Select Action" : safePage === 1 ? "More Admin Tools" : "ELA301 Review",
+    safePage === 0 ? "Select Action" : safePage === 1 ? "More Admin Tools" : "Student & ELA301",
     sections,
     "Lizzy Operations Suite",
     "Authorized Admin Only",
