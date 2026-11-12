@@ -17,3 +17,22 @@
 @media(max-width:650px){.lp-nav{height:70px;padding:0 16px}.lp-nav nav{display:none}.lp-brand{font-size:19px}.lp-brand img{width:38px;height:38px}.lp-nav-cta{font-size:10px;padding:11px 12px}.lp-hero{padding:46px 19px 58px;grid-template-columns:1fr;gap:5px}.lp-hero h1{font-size:43px;letter-spacing:-1.8px}.lp-hero-lead{font-size:14px;margin:17px 0 22px}.lp-hero-actions{display:grid;grid-template-columns:1fr}.lp-button{width:100%;font-size:12px}.lp-reassurance{gap:10px}.lp-reassurance span{font-size:9px}.lp-hero-art{min-height:390px;margin-top:8px}.lp-glow{width:320px;height:320px}.lp-chat-card{width:min(320px,88%)}.lp-order-float{right:-1px;top:35px}.lp-social-float{left:-3px;bottom:65px}.lp-hero-note{right:0;bottom:8px;font-size:9px}.lp-truth-strip{padding:22px 19px;display:block}.lp-truth-strip p{font-size:13px}.lp-truth-strip span{display:block;text-align:left;margin-top:8px;line-height:1.6}.lp-section{padding:66px 19px}.lp-section-heading{margin-bottom:29px}.lp-section-heading h2,.lp-demo-copy h2,.lp-africa-inner h2,.lp-final-cta h2{font-size:32px}.lp-section-heading>p{font-size:13px}.lp-pain-grid,.lp-feature-grid,.lp-steps-grid{grid-template-columns:1fr}.lp-pain-grid article,.lp-feature-card{padding:21px}.lp-demo-section{padding:65px 19px;grid-template-columns:1fr;gap:27px}.lp-video-frame,.lp-video-frame iframe,.lp-video-frame video{min-height:245px}.lp-video-placeholder{min-height:245px}.lp-video-screen{min-height:165px}.lp-africa-section{padding:65px 19px}.lp-africa-inner{grid-template-columns:1fr;gap:8px}.lp-africa-inner h2{font-size:32px}.lp-review-honesty{padding:21px;gap:10px}.lp-review-mark{font-size:54px}.lp-faq-list summary{font-size:12px}.lp-final-cta{padding:65px 19px}.lp-footer{padding:28px 19px;grid-template-columns:1fr;gap:13px}.lp-footer div{flex-wrap:wrap}.lp-footer>small{grid-column:auto}}
 
 .lp-free-start{display:flex;flex-direction:column;gap:6px;max-width:570px;margin:0 0 19px;padding:15px 17px;border:1px solid #cfe5bd;border-left:5px solid #5d9845;border-radius:12px;background:#f4faef}.lp-free-start strong{font-size:12px;letter-spacing:1px;color:#245d37}.lp-free-start span{font-size:13px;line-height:1.55;color:#48614f}
+
+/* Direct WhatsApp demo and merchant registration actions */
+.lp-nav-actions{display:flex;align-items:center;gap:9px}
+.lp-nav-demo{display:inline-flex;align-items:center;gap:7px;padding:11px 13px;border:1px solid #dce9dd;border-radius:9px;color:#176b4b!important;font-size:12px;font-weight:800}
+.lp-nav-login{font-size:11px;font-weight:750;color:#53665b!important;padding:9px 5px}
+.lp-button-whatsapp{background:#e8f5e9;border:1px solid #cfe6d2;color:#176b4b!important}
+.lp-button-whatsapp svg,.lp-nav-demo svg{color:#1b8e52}
+.lp-final-actions{display:flex;justify-content:center;align-items:center;gap:12px;flex-wrap:wrap}
+.lp-button-final-demo{background:#fff;color:#176b4b!important}
+.lp-final-login{width:100%;display:block;margin-top:8px;color:#c7d9cc!important;font-size:11px;text-decoration:underline!important}
+@media(max-width:650px){
+ .lp-nav{gap:8px}
+ .lp-nav-actions{gap:5px}
+ .lp-nav-demo{padding:10px 9px;font-size:10px}
+ .lp-nav-cta{font-size:9px;padding:10px 9px}
+ .lp-nav-login{display:none}
+ .lp-final-actions{display:grid;grid-template-columns:1fr;width:100%;max-width:420px;margin:0 auto}
+ .lp-final-actions .lp-button{width:100%}
+}
