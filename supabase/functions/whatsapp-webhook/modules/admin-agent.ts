@@ -131,6 +131,7 @@ export async function showAdminAgentMenu(phone: string, page = 0): Promise<void>
         makeListRow("admin_stats", "📊 Bot Statistics", "View messaging and contacts metrics"),
         makeListRow("admin_learning", "🎓 ENGR ERO Learning Hub", "Courses, lessons, students and publication status"),
         makeListRow("admin_students_pending", "🎓 Student Verification", "Review new student registrations"),
+        makeListRow("admin_students_verified", "✅ Verified Students", "View students whose identity has been approved"),
         makeListRow("admin_student_records", "📚 Student Records", "Department • S/N • matric no • results"),
       ],
     },
@@ -2359,8 +2360,56 @@ async function listPendingStudents(phone: string, page = 0): Promise<void> {
   const nav = [];
   if (safePage > 0) nav.push(makeButton(`admin_students_pending_page_${safePage - 1}`, "⬅ Previous"));
   if (data.length === 10) nav.push(makeButton(`admin_students_pending_page_${safePage + 1}`, "Next ➡"));
+  nav.push(makeButton("admin_students_verified", "✅ Verified Students"));
   nav.push(makeButton("admin_agent_menu", "🏠 Lizzy Menu"));
   await sendButtonMessage(phone, "Student verification pages:", nav);
+}
+
+async function listVerifiedStudents(phone: string, page = 0): Promise<void> {
+  const safePage = Math.max(0, Math.floor(page));
+  const from = safePage * 10;
+  const { data, error } = await supabase.from("students")
+    .select("id, name, matric_number, serial_number, department, level, updated_at")
+    .ilike("status", "active")
+    .order("updated_at", { ascending: false, nullsFirst: false })
+    .range(from, from + 9);
+  if (error) {
+    safeErrorLog("listVerifiedStudents", error);
+    await sendTextMessage(phone, "⚠️ Could not load verified student records. No student data was changed.");
+    return;
+  }
+  if (!data?.length && safePage === 0) {
+    await sendTextMessage(phone, "ℹ️ No verified students were found in the students register. This list only includes records with status ACTIVE.");
+    await sendButtonMessage(phone, "Student verification:", [
+      makeButton("admin_students_pending", "⏳ Pending Verification"),
+      makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+    ]);
+    return;
+  }
+  if (!data?.length) {
+    await sendTextMessage(phone, "No more verified students on this page.");
+    await sendButtonMessage(phone, "Verified student navigation:", [
+      makeButton(`admin_students_verified_page_${safePage - 1}`, "⬅ Previous"),
+      makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+    ]);
+    return;
+  }
+  const rows = data.map((s: any) => makeListRow(
+    `admin_roster_student_${s.id}_${encodeURIComponent(s.department || "")}_0`,
+    String(s.name || "Unnamed student").slice(0, 24),
+    `${s.matric_number || "No Mat No"} • ${s.department || "No department"} • S/N ${s.serial_number || "—"}`
+  ));
+  await sendListMessage(phone,
+    `✅ *VERIFIED STUDENTS*\n\nPage ${safePage + 1}. These students have status ACTIVE and have been approved for access to the Learning Centre.`,
+    "Verified Students", [{ title: "Approved Students", rows }],
+    "Lizzy • Verified Student Register", "Approved identity records"
+  );
+  const nav = [];
+  if (safePage > 0) nav.push(makeButton(`admin_students_verified_page_${safePage - 1}`, "⬅ Previous"));
+  if (data.length === 10) nav.push(makeButton(`admin_students_verified_page_${safePage + 1}`, "Next ➡"));
+  nav.push(makeButton("admin_students_pending", "⏳ Pending Verification"));
+  nav.push(makeButton("admin_agent_menu", "🏠 Lizzy Menu"));
+  await sendButtonMessage(phone, "Verified student pages:", nav);
 }
 
 async function reviewStudent(phone: string, studentIdInput: string): Promise<void> {
@@ -3367,6 +3416,13 @@ export async function handleAdminAgent(
   if (command.startsWith("admin_students_pending_page_")) {
     const page = Number.parseInt(inputRaw.slice("admin_students_pending_page_".length), 10);
     await listPendingStudents(phone, Number.isFinite(page) ? page : 0); return;
+  }
+  if (command === "admin_students_verified" || command === "verified students") {
+    await listVerifiedStudents(phone, 0); return;
+  }
+  if (command.startsWith("admin_students_verified_page_")) {
+    const page = Number.parseInt(inputRaw.slice("admin_students_verified_page_".length), 10);
+    await listVerifiedStudents(phone, Number.isFinite(page) ? page : 0); return;
   }
   if (command.startsWith("admin_student_review_")) {
     await reviewStudent(phone, inputRaw.slice("admin_student_review_".length)); return;
