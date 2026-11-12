@@ -987,10 +987,31 @@ export async function routeMessage(
       return;
     }
 
-    if (interactiveId === "sabi_about") {
+    if (
+      interactiveId === "sabi_about" ||
+      lowerText === "learn about sabi" ||
+      lowerText === "about sabi" ||
+      lowerText === "what is sabi" ||
+      lowerText === "tell me about sabi"
+    ) {
       await sendTextMessage(
         phone,
-        "ℹ️ *About Sabi by XTOP*\n\nSabi helps businesses serve customers directly on WhatsApp.\n\nWith Sabi, a business can present its products, receive customer enquiries and orders, and manage its shop through a merchant dashboard.\n\nSabi is designed to make shopping and business communication simple and convenient.",
+        "ℹ️ *GET TO KNOW SABI BY XTOP*\\n\\nSabi is a WhatsApp-powered commerce assistant that helps businesses display products, guide customers through shopping, receive orders and organise everyday sales activities. It connects the convenience of WhatsApp with a merchant dashboard for managing your shop.\\n\\nIt is designed for fashion and beauty stores, food vendors, phone and electronics sellers, supermarkets, distributors, home businesses and other growing retail businesses.",
+      );
+
+      await sendTextMessage(
+        phone,
+        "🛍️ *WHAT YOUR CUSTOMERS CAN DO*\\n\\n• Chat with your business on WhatsApp.\\n• Browse product categories and available items.\\n• View product information, pictures and prices.\\n• Add items to a shopping cart and review an order.\\n• Provide their contact and delivery details.\\n• Pay online where payment is available, or choose pay-on-delivery when your business has enabled it.\\n• Receive order updates and ask for human assistance when needed.\\n\\nYour customers do not need to download a separate shopping app to use the WhatsApp shopping conversation.",
+      );
+
+      await sendTextMessage(
+        phone,
+        "🏪 *WHAT SABI HELPS YOUR BUSINESS MANAGE*\\n\\n• Present your products in an organised WhatsApp shopping experience.\\n• Add and update product names, prices, descriptions, categories and pictures.\\n• Receive customer orders with the details needed to process them.\\n• Review and manage orders from your merchant dashboard.\\n• Configure delivery options, delivery fees and pay-on-delivery where supported.\\n• Set up payment collection and eligible merchant payouts through the payment provider.\\n• Share products and help customers discover what you sell.\\n\\nSabi helps reduce repetitive replies and scattered order details. You remain in control of your products, prices, fulfilment and customer relationships.",
+      );
+
+      await sendTextMessage(
+        phone,
+        "💳 *COST, PAYMENTS & YOUR NUMBER*\\n\\n• There is no monthly Sabi subscription and no paid Sabi trial.\\n• Payment-provider or WhatsApp/Meta charges may apply separately under their own terms.\\n• Sabi applies a transaction-based service commission to eligible Paystack payments; delivery fees are excluded from the sales-commission calculation.\\n• Sabi automation is intended for a dedicated business WhatsApp number, so your personal WhatsApp can remain separate.\\n\\n🚀 *HOW TO GET STARTED*\\n1. Choose *Register My Business* below.\\n2. Follow the WhatsApp registration instructions.\\n3. Connect your dedicated business number through Meta's secure WhatsApp connection process.\\n4. Complete your merchant dashboard account setup.\\n5. Add your products, configure your delivery and payment settings, then invite customers to shop.\\n\\nYou can try the sample shop first. The demo lets you experience the customer shopping journey; demo checkout is a simulation and does not collect a real payment.",
       );
 
       await showSabiWelcomeMenu(
