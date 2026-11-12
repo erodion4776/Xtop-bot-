@@ -19,8 +19,8 @@ import "./Landing.css";
 
 const LOGO_URL =
   "https://i.ibb.co/N2b6rJnY/Untitled-design-20261030-044935-0000.png";
-// Place the homepage demo video at public/videos/sabi-demo.mp4.
-const DEMO_VIDEO_URL = "/videos/sabi-demo.mp4";
+// Place the homepage demo video at public/videos/sabi-homepage-demo-web.mp4.
+const DEMO_VIDEO_URL = "/videos/sabi-homepage-demo-web.mp4";
 
 function getVideoEmbed(url: string) {
   try {
