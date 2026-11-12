@@ -224,7 +224,7 @@ export default function Landing() {
         <div className="lp-section-heading lp-center">
           <span className="lp-eyebrow">GETTING STARTED</span>
           <h2>Start free. Connect your number. Start selling.</h2>
-          <p>No monthly Sabi subscription and no paid trial. Connect your dedicated business WhatsApp number, add your products and let customers start shopping with you.</p>
+          <p>No monthly subscription and no paid trial. Connect your dedicated business WhatsApp number, add your products and let customers start shopping with you.</p>
         </div>
         <div className="lp-steps-grid">
           {steps.map(([number, title, body]) => (
