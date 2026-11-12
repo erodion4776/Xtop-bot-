@@ -2184,7 +2184,7 @@ async function downloadDepartmentResults(phone: string, departmentInput: string)
 async function listStudentDepartments(phone: string): Promise<void> {
   const { data, error } = await supabase.from("students")
     .select("department")
-    .eq("status", "ACTIVE")
+    .ilike("status", "active")
     .order("department", { ascending: true });
   if (error) {
     safeErrorLog("listStudentDepartments", error);
@@ -2221,7 +2221,7 @@ async function listDepartmentStudents(phone: string, departmentInput: string, pa
   const from = safePage * 10;
   const { data, error, count } = await supabase.from("students")
     .select("id, name, matric_number, serial_number, department, level", { count: "exact" })
-    .eq("status", "ACTIVE").eq("department", department)
+    .ilike("status", "active").eq("department", department)
     .order("serial_number", { ascending: true })
     .order("matric_number", { ascending: true });
   if (error) {
@@ -2267,7 +2267,7 @@ async function showStudentAcademicRecord(phone: string, studentIdInput: string, 
   const page = Math.max(0, Number.parseInt(pageInput, 10) || 0);
   const { data: student, error } = await supabase.from("students")
     .select("id, name, matric_number, serial_number, department, level, phone, status")
-    .eq("id", studentId).eq("status", "ACTIVE").maybeSingle();
+    .eq("id", studentId).ilike("status", "active").maybeSingle();
   if (error || !student) {
     safeErrorLog("showStudentAcademicRecord.student", error);
     await sendTextMessage(phone, "⚠️ Approved student record not found.");
@@ -2331,7 +2331,7 @@ async function listPendingStudents(phone: string, page = 0): Promise<void> {
   const from = safePage * 10;
   const { data, error } = await supabase.from("students")
     .select("id, name, matric_number, serial_number, department, level, phone, created_at")
-    .eq("status", "PENDING").order("created_at", { ascending: true })
+    .ilike("status", "pending").order("created_at", { ascending: true })
     .range(from, from + 9);
   if (error) {
     safeErrorLog("listPendingStudents", error);
