@@ -538,10 +538,15 @@ You may be able to register a new number during Meta's setup.
 Your personal WhatsApp is optional. It will not be connected to Sabi's automation. You can continue using it separately.
 </div>
 
+<div class="info">
+<strong>Important: Your Meta WhatsApp charges belong to your business</strong><br>
+Connect a WhatsApp Business Account (WABA) that belongs to your own business portfolio. Any Meta/WhatsApp messaging charges, including charges that may apply after free allowances or for paid message templates, are your business's responsibility and are billed by Meta under your account's billing arrangement. Add or maintain your own payment method in WhatsApp Manager when Meta requires it. Sabi does not pay or reimburse these Meta charges. Sabi's own transaction-based service commission is separate.
+</div>
+
 <label class="ack">
 <input type="checkbox" id="acknowledge">
 <span>
-I understand that I should use a dedicated business number and that connecting it to Sabi may affect normal WhatsApp mobile-app use, depending on Meta's setup and migration options.
+I confirm that I am connecting my business's own WhatsApp Business Account and understand that my business is responsible for Meta/WhatsApp messaging charges and must manage its own Meta billing method. I also understand that connecting this dedicated number may affect normal WhatsApp mobile-app use, depending on Meta's setup and migration options.
 </span>
 </label>
 
@@ -1007,7 +1012,8 @@ async function tryFinish(){
      session_token:SESSION_TOKEN,
      auth_code:authCode,
      waba_id:signupInfo.waba_id,
-     phone_number_id:signupInfo.phone_number_id
+     phone_number_id:signupInfo.phone_number_id,
+     billing_costs_acknowledged:acknowledgement.checked
     }),
     signal:controller.signal
    });
