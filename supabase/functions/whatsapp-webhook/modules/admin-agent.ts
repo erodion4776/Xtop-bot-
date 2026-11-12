@@ -2433,11 +2433,21 @@ async function reviewStudent(phone: string, studentIdInput: string): Promise<voi
   if (String(s.status).toUpperCase() !== "PENDING") {
     await sendTextMessage(phone, "This student is not currently awaiting approval."); return;
   }
-  await sendButtonMessage(phone, "Choose verification decision:", [
+  const reviewButtonsSent = await sendButtonMessage(phone, "Choose verification decision:", [
     makeButton(`admin_student_approve_${id}`, "✅ Approve Student"),
     makeButton(`admin_student_reject_${id}`, "⛔ Reject Student"),
     makeButton("admin_students_pending", "↩ Pending List"),
   ]);
+  if (!reviewButtonsSent) {
+    console.error("[Lizzy][StudentVerification] Review buttons failed; sending text-command fallback.");
+    await sendTextMessage(phone,
+      "⚠️ The interactive decision buttons could not be delivered. You can still continue by replying with one exact command:\\n\\n" +
+      "APPROVE STUDENT " + id + "\\n" +
+      "REJECT STUDENT " + id + "\\n" +
+      "PENDING STUDENTS\\n\\n" +
+      "No student status has been changed."
+    );
+  }
 }
 
 async function decideStudent(phone: string, studentIdInput: string, decision: "APPROVE" | "REJECT", confirm: boolean): Promise<void> {
@@ -2459,10 +2469,18 @@ async function decideStudent(phone: string, studentIdInput: string, decision: "A
       `\n\nStudent: *${s.name}*\nMatric No: *${s.matric_number}*\nClass S/N: *${s.serial_number}*\nDepartment: *${s.department}*\nLevel: *${s.level}L*\n\n` +
       (approve ? "Approval unlocks lectures and course materials." : "Rejection keeps this student locked out of lectures.")
     );
-    await sendButtonMessage(phone, "Confirm verification decision:", [
+    const confirmationButtonsSent = await sendButtonMessage(phone, "Confirm verification decision:", [
       makeButton(`admin_student_${decision.toLowerCase()}_confirm_${id}`, approve ? "✅ Confirm Approval" : "⛔ Confirm Reject"),
       makeButton(`admin_student_review_${id}`, "↩ Back to Student"),
     ]);
+    if (!confirmationButtonsSent) {
+      console.error("[Lizzy][StudentVerification] Confirmation buttons failed; sending text-command fallback.");
+      await sendTextMessage(phone,
+        "⚠️ Confirmation buttons could not be delivered. To complete the decision, reply with:\\n" +
+        (approve ? "CONFIRM APPROVE STUDENT " : "CONFIRM REJECT STUDENT ") + id + "\\n\\n" +
+        "No student status has been changed yet."
+      );
+    }
     return;
   }
   const nextStatus = decision === "APPROVE" ? "ACTIVE" : "REJECTED";
