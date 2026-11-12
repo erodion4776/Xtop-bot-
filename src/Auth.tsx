@@ -20,6 +20,9 @@ export default function Auth({ onAuthenticated }: AuthProps) {
     window.location.search
   ).get("session_token")?.trim() || "";
 
+  const whatsappRegistrationUrl =
+    "https://wa.me/2348024988555?text=REGISTER%20MY%20BUSINESS";
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setMessage("");
@@ -146,10 +149,13 @@ export default function Auth({ onAuthenticated }: AuthProps) {
           <button
             type="button"
             className={mode === "signup" ? "selected" : ""}
-            disabled={!sessionToken}
             onClick={() => {
-              setMode("signup");
               setMessage("");
+              if (!sessionToken) {
+                window.location.href = whatsappRegistrationUrl;
+                return;
+              }
+              setMode("signup");
             }}
           >
             Create account
@@ -160,10 +166,17 @@ export default function Auth({ onAuthenticated }: AuthProps) {
           <div className="auth-notice">
             <strong>New to Sabi?</strong>
             <p>
-              To register your business, start from Sabi on WhatsApp.
-              Connect your dedicated business WhatsApp number first.
-              You can log in here if you already have an account.
+              New merchants must register through Sabi on WhatsApp and connect
+              their business WhatsApp number before creating a dashboard account.
+              Tap Create account above to start registration.
             </p>
+            <a
+              className="auth-submit"
+              href={whatsappRegistrationUrl}
+              style={{ display: "block", textAlign: "center", textDecoration: "none", marginTop: "12px" }}
+            >
+              Start Registration on WhatsApp
+            </a>
           </div>
         )}
 
