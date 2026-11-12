@@ -3391,12 +3391,12 @@ async function showSabiSupportInbox(phone: string, isSystem: boolean): Promise<v
 
   const { data: conversations, error } = await supabase
     .from("conversations")
-    .select("id,contact_id,context_json,updated_at")
+    .select("id,contact_id,updated_at")
     .eq("tenant_id", SYSTEM_TENANT_ID)
     .eq("current_module", "SABI_GATEWAY")
     .eq("current_state", "SUPPORT")
     .order("updated_at", { ascending: false })
-    .limit(20);
+    .limit(10);
 
   if (error) {
     console.error("[Lizzy][Sabi Support] Inbox query failed:", error.message);
@@ -3424,34 +3424,105 @@ async function showSabiSupportInbox(phone: string, isSystem: boolean): Promise<v
   }
 
   const byId = new Map((contacts || []).map((contact: any) => [String(contact.id), contact]));
-  const lines = rows.map((row: any, index: number) => {
-    const contact = byId.get(String(row.contact_id || "")) as any;
-    const customerPhone = String(contact?.phone || "Unknown number");
-    const customerName = String(contact?.name || "Customer").replace(/[\r\n]/g, " ").slice(0, 50);
-    const updated = row.updated_at
-      ? new Date(row.updated_at).toLocaleString("en-NG", { timeZone: "Africa/Lagos", dateStyle: "medium", timeStyle: "short" })
-      : "Time unavailable";
-    return [
-      "*" + (index + 1) + ". " + customerName + "*",
-      "WhatsApp: " + customerPhone,
-      "Last activity: " + updated,
-    ].join("\n");
+  const sections = [{
+    title: "Customers waiting for support",
+    rows: rows.map((row: any) => {
+      const contact = byId.get(String(row.contact_id || "")) as any;
+      const name = String(contact?.name || contact?.phone || "Customer").replace(/[\r\n]/g, " ").slice(0, 24);
+      return makeListRow("admin_sabi_chat_" + String(row.contact_id), "Chat: " + name.slice(0, 17), String(contact?.phone || "Open conversation"));
+    }),
+  }];
+
+  await sendListMessage(
+    phone,
+    "💬 *SABI CUSTOMER SUPPORT INBOX*\n\nSelect a customer to open their chat history. You can then reply directly without typing their number.",
+    "Open Customer Chat",
+    sections,
+    "Sabi Support Inbox",
+    "Select a customer",
+  );
+}
+
+async function showSabiSupportChat(phone: string, isSystem: boolean, contactId: string): Promise<void> {
+  if (!hasSuperAdminAccess(phone, isSystem)) return;
+  const { data: contact, error: contactError } = await supabase
+    .from("contacts")
+    .select("id,phone,name")
+    .eq("tenant_id", SYSTEM_TENANT_ID)
+    .eq("id", contactId)
+    .maybeSingle();
+
+  if (contactError || !contact) {
+    await sendTextMessage(phone, "⚠️ I could not find that customer. Please reopen the Support Inbox.");
+    return;
+  }
+
+  const { data: messages, error } = await supabase
+    .from("messages")
+    .select("direction,message_type,body,content,text,message_text,created_at")
+    .eq("tenant_id", SYSTEM_TENANT_ID)
+    .eq("contact_id", contactId)
+    .order("created_at", { ascending: false })
+    .limit(15);
+
+  if (error) {
+    console.error("[Lizzy][Sabi Support] Chat history query failed:", error.message);
+    await sendTextMessage(phone, "⚠️ I could not load this customer's chat history.");
+    return;
+  }
+
+  const history = (messages || []).reverse().map((message: any) => {
+    const body = String(message.body || message.content || message.text || message.message_text || "").trim();
+    const direction = String(message.direction || "").toUpperCase() === "OUTBOUND" ? "SABI / SUPPORT" : "CUSTOMER";
+    const time = message.created_at
+      ? new Date(message.created_at).toLocaleString("en-NG", { timeZone: "Africa/Lagos", dateStyle: "short", timeStyle: "short" })
+      : "";
+    return direction + (time ? " • " + time : "") + "\n" + (body || "[" + String(message.message_type || "message") + " received]") ;
   });
 
+  const name = String(contact.name || "Customer");
+  const phoneNumber = String(contact.phone || "");
   await sendTextMessage(phone, [
-    "💬 *SABI CUSTOMER SUPPORT INBOX*",
+    "💬 *CUSTOMER CHAT*",
     "",
-    "These customers are waiting for a human response.",
+    "*" + name.replace(/[\r\n]/g, " ").slice(0, 70) + "*",
+    phoneNumber,
     "",
-    ...lines,
+    "*Recent conversation (up to 15 messages):*",
     "",
-    "*Reply to a customer:*",
-    "reply <customer-number> <your message>",
-    "",
-    "Example: reply 2348012345678 Hello, how can we help you?",
-    "",
-    "The reply is sent to the customer from the Sabi WhatsApp number.",
-  ].join("\n"));
+    ...(history.length ? history : ["No saved messages were found for this customer."]),
+  ].join("\n").slice(0, 3800));
+
+  await sendButtonMessage(phone, "What would you like to do with this customer?", [
+    makeButton("admin_sabi_reply_" + contactId, "✍️ Reply to Client"),
+    makeButton("admin_sabi_support", "⬅ Support Inbox"),
+    makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+  ]);
+}
+
+async function startSabiSupportReply(phone: string, isSystem: boolean, conversationId: string, contactId: string): Promise<void> {
+  if (!hasSuperAdminAccess(phone, isSystem)) return;
+  const { data: contact } = await supabase
+    .from("contacts")
+    .select("id,phone,name")
+    .eq("tenant_id", SYSTEM_TENANT_ID)
+    .eq("id", contactId)
+    .maybeSingle();
+  if (!contact) {
+    await sendTextMessage(phone, "⚠️ Customer not found. Please reopen the Support Inbox.");
+    return;
+  }
+  await updateConversation(conversationId, {
+    current_module: "ADMIN_AGENT",
+    current_state: "SABI_SUPPORT_REPLY",
+    context_json: {
+      admin_agent_active: true,
+      sabi_support_chat_contact_id: contact.id,
+      sabi_support_chat_phone: contact.phone,
+      sabi_support_chat_name: contact.name || "Customer",
+    },
+  }, SYSTEM_TENANT_ID);
+  await sendTextMessage(phone, "✍️ *Replying to " + String(contact.name || "Customer") + "* (" + String(contact.phone) + ")\n\nType your message now. It will be sent to this customer from the Sabi WhatsApp number.\n\nSend *BACK TO INBOX* to stop replying.");
 }
 
 async function replyToSabiSupportCustomer(
@@ -3543,6 +3614,51 @@ export async function handleAdminAgent(
   // Guard: Validate requester is authorized admin
   if (!hasSuperAdminAccess(phone, isSystem)) {
     console.warn(`[AdminAgent] Unauthorized access attempt blocked from: ${phone}`);
+    return;
+  }
+
+  const { data: adminConversation } = await supabase
+    .from("conversations")
+    .select("context_json,current_state")
+    .eq("tenant_id", SYSTEM_TENANT_ID)
+    .eq("id", conversationId)
+    .maybeSingle();
+  const adminContext = (adminConversation?.context_json || {}) as Record<string, any>;
+
+  if (command.startsWith("admin_sabi_chat_")) {
+    await showSabiSupportChat(phone, isSystem, inputRaw.slice("admin_sabi_chat_".length));
+    return;
+  }
+  if (command.startsWith("admin_sabi_reply_")) {
+    await startSabiSupportReply(phone, isSystem, conversationId, inputRaw.slice("admin_sabi_reply_".length));
+    return;
+  }
+  if (command === "back to inbox" || command === "admin_sabi_chat_back") {
+    await updateConversation(conversationId, {
+      current_module: "ADMIN_AGENT",
+      current_state: "ACTIVE",
+      context_json: { admin_agent_active: true },
+    }, SYSTEM_TENANT_ID);
+    await showSabiSupportInbox(phone, isSystem);
+    return;
+  }
+
+  const selectedSupportContactId = String(adminContext.sabi_support_chat_contact_id || "");
+  const isSupportReplyMode = adminConversation?.current_state === "SABI_SUPPORT_REPLY" && !!selectedSupportContactId;
+  if (isSupportReplyMode && !command.startsWith("admin_") && command !== "menu" && command !== "help" && command !== "exit") {
+    const replyText = text.trim();
+    if (!replyText) {
+      await sendTextMessage(phone, "Please type the message you want to send, or send BACK TO INBOX.");
+      return;
+    }
+    const customerPhone = String(adminContext.sabi_support_chat_phone || "");
+    const sent = await sendTextMessage(customerPhone, "💬 *Sabi Support Team*\n\n" + replyText);
+    if (!sent) {
+      await sendTextMessage(phone, "⚠️ WhatsApp could not deliver the reply. Your chat is still open; please try again.");
+      return;
+    }
+    await storeMessage(selectedSupportContactId, "OUTBOUND", "text", "Sabi Support Team: " + replyText, sent, SYSTEM_TENANT_ID);
+    await sendTextMessage(phone, "✅ Message sent to " + String(adminContext.sabi_support_chat_name || "the customer") + ". Type another reply or send BACK TO INBOX.");
     return;
   }
 
