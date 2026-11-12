@@ -1065,7 +1065,7 @@ export async function createStudentProfile(
       department: department.trim(),
       level: level.trim(),
       serial_number: serialNumber.trim(),
-      status: "ACTIVE",
+      status: "PENDING",
     })
     .select("*")
     .single();
