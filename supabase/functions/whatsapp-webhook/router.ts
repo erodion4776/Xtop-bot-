@@ -120,6 +120,39 @@ import {
 
 const supabase = getSupabaseClient();
 
+async function notifySabiSupportAdmin(
+  customerPhone: string,
+  customerName: string,
+  message: string,
+): Promise<boolean> {
+  const configuredAdmin = String(Deno.env.get("XTOP_ADMIN_PHONE") || "").replace(/\D/g, "");
+  if (!configuredAdmin) {
+    console.error("[Sabi Support] XTOP_ADMIN_PHONE is not configured; handoff notification not sent.");
+    return false;
+  }
+
+  const safeName = String(customerName || "WhatsApp customer").replace(/[\r\n]/g, " ").slice(0, 70);
+  const safeMessage = String(message || "(Customer opened a support request)").slice(0, 2500);
+  const sent = await sendTextMessage(
+    configuredAdmin,
+    [
+      "🔔 *NEW SABI CUSTOMER SUPPORT REQUEST*",
+      "",
+      "Customer: " + safeName,
+      "WhatsApp: " + customerPhone,
+      "",
+      "Message:",
+      safeMessage,
+      "",
+      "To reply, send this to the Sabi number:",
+      "reply " + customerPhone + " <your message>",
+      "",
+      "Open Lizzy → Customer Support Inbox to review active handoffs.",
+    ].join("\n"),
+  );
+  return !!sent;
+}
+
 // =====================================================
 // TENANT RESOLUTION
 // =====================================================
@@ -788,7 +821,25 @@ export async function routeMessage(
       return;
     }
 
-    if (authorisedAdmin && adminAgentActive) {
+    const isSupportAdminCommand =
+      text.trim().toLowerCase() === "support inbox" ||
+      text.trim().toLowerCase() === "sabi support" ||
+      interactiveId === "admin_sabi_support" ||
+      /^reply\s+/i.test(text.trim());
+
+    if (authorisedAdmin && (adminAgentActive || isSupportAdminCommand)) {
+      if (!adminAgentActive) {
+        await updateConversation(
+          conversation.id,
+          {
+            current_module: "ADMIN_AGENT",
+            current_state: "ACTIVE",
+            context_json: { admin_agent_active: true },
+          },
+          tenantId,
+        );
+      }
+
       await handleAdminAgent(
         phone,
         text,
@@ -1022,7 +1073,7 @@ export async function routeMessage(
     }
 
     if (interactiveId === "sabi_support") {
-      await updateConversation(
+      const saved = await updateConversation(
         conversation.id,
         {
           current_module: "SABI_GATEWAY",
@@ -1030,34 +1081,65 @@ export async function routeMessage(
           context_json: {
             sabi_gateway: true,
             sabi_support_waiting: true,
+            sabi_support_opened_at: new Date().toISOString(),
           },
         },
         tenantId,
       );
 
+      if (!saved) {
+        await sendTextMessage(phone, "⚠️ Sabi Support could not open this request. Please try again in a moment.");
+        return;
+      }
+
+      const notified = await notifySabiSupportAdmin(
+        phone,
+        contact.name || incoming.profileName || "WhatsApp customer",
+        "Customer tapped *Talk to Support* and is waiting to speak with a human.",
+      );
+
       await sendTextMessage(
         phone,
-        "💬 *Sabi Support*\n\nPlease describe the issue or question you need help with. Our team will follow up.",
+        notified
+          ? "💬 *You're connected to Sabi Support*\n\nA support request has been sent to our team. Please type your question or describe the issue here. A human support agent will reply in this WhatsApp chat.\n\nYou can send more than one message. Type *END SUPPORT* whenever you want to return to the Sabi menu."
+          : "💬 *Sabi Support Request Saved*\n\nYour request is saved, but our support notification could not be delivered. Please try again shortly or contact us again from the Sabi menu. We are sorry for the inconvenience.",
       );
       return;
     }
 
     // ===================================================
-    // SABI SUPPORT MESSAGE
+    // SABI SUPPORT MESSAGE — FORWARD TO SUPER ADMIN
     // ===================================================
 
     if (
       currentModule === "SABI_GATEWAY" &&
       conversation.current_state === "SUPPORT"
     ) {
-      await sendTextMessage(
+      if (text.trim().toLowerCase() === "end support") {
+        await updateConversation(
+          conversation.id,
+          {
+            current_module: "SABI_GATEWAY",
+            current_state: "MENU",
+            context_json: { sabi_gateway: true },
+          },
+          tenantId,
+        );
+        await showSabiWelcomeMenu(phone, conversation.id);
+        return;
+      }
+
+      const notified = await notifySabiSupportAdmin(
         phone,
-        "Thank you for contacting Sabi Support. Your message has been received in this conversation.\n\nType *Hi* to return to the Sabi welcome menu.",
+        contact.name || incoming.profileName || "WhatsApp customer",
+        text || "Customer sent a support message without text content.",
       );
 
-      await showSabiWelcomeMenu(
+      await sendTextMessage(
         phone,
-        conversation.id,
+        notified
+          ? "✅ Your message has been forwarded to the Sabi support team. You can continue sending messages here; a human agent will respond in this chat."
+          : "⚠️ Your message is saved, but we could not notify the support team just now. Please try again later.",
       );
       return;
     }
