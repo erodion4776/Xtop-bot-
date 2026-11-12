@@ -249,6 +249,13 @@ export async function sendTextMessage(
   body: string,
   credentials?: WhatsAppCredentials,
 ): Promise<string | null> {
+  // Normalise escaped line-break sequences before sending to WhatsApp.
+  // This protects messages assembled by older modules or copied templates.
+  const formattedBody = body
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\n");
+
   return sendToWhatsApp(
     {
       messaging_product: "whatsapp",
@@ -257,7 +264,7 @@ export async function sendTextMessage(
       type: "text",
       text: {
         preview_url: false,
-        body,
+        body: formattedBody,
       },
     },
     credentials,
