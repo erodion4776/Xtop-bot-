@@ -3400,6 +3400,17 @@ export async function handleAdminAgent(
     return;
   }
 
+  // Plain-text fallback commands keep verification usable if WhatsApp buttons fail.
+  let match = command.match(/^approve student ([0-9a-f-]{36})$/i);
+  if (match) { await decideStudent(phone, match[1], "APPROVE", false); return; }
+  match = command.match(/^reject student ([0-9a-f-]{36})$/i);
+  if (match) { await decideStudent(phone, match[1], "REJECT", false); return; }
+  match = command.match(/^confirm approve student ([0-9a-f-]{36})$/i);
+  if (match) { await decideStudent(phone, match[1], "APPROVE", true); return; }
+  match = command.match(/^confirm reject student ([0-9a-f-]{36})$/i);
+  if (match) { await decideStudent(phone, match[1], "REJECT", true); return; }
+  if (command === "pending students") { await listPendingStudents(phone, 0); return; }
+
   if (command.startsWith("admin_roster_pdf_student_")) {
     await downloadIndividualResult(phone, inputRaw.slice("admin_roster_pdf_student_".length)); return;
   }
