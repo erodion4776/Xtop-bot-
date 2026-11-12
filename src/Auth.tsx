@@ -171,9 +171,8 @@ export default function Auth({ onAuthenticated }: AuthProps) {
               Tap Create account above to start registration.
             </p>
             <a
-              className="auth-submit"
+              className="auth-whatsapp-link"
               href={whatsappRegistrationUrl}
-              style={{ display: "block", textAlign: "center", textDecoration: "none", marginTop: "12px" }}
             >
               Start Registration on WhatsApp
             </a>
