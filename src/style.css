@@ -2183,3 +2183,40 @@ button {
 .sales-column small{font-size:9px;color:#839088;white-space:nowrap}
 @media(max-width:900px){.analytics-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.inbox-layout{grid-template-columns:minmax(230px,290px) minmax(0,1fr)}}
 @media(max-width:680px){.inbox-layout{grid-template-columns:1fr;min-height:0}.inbox-list-panel{padding:14px}.conversation-list{max-height:260px}.chat-panel{min-height:540px;padding:14px}.chat-messages{max-height:360px}.analytics-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.sales-panel{padding:14px}.sales-chart{gap:3px}.sales-column{min-width:18px}.sales-column small{font-size:8px}}
+
+
+/* AUTH PAGE — WHATSAPP REGISTRATION LINK */
+.auth-card .auth-whatsapp-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  margin-top: 12px;
+  padding: 12px 16px;
+  border: 1px solid #1d5138;
+  border-radius: 10px;
+  background: #fff;
+  color: #1d5138;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  text-decoration: none;
+  transition: background .2s ease, color .2s ease;
+}
+
+.auth-card .auth-whatsapp-link:hover {
+  background: #edf6ef;
+  color: #163f2b;
+}
+
+@media (max-width: 420px) {
+  .auth-card {
+    padding: 22px 16px;
+  }
+
+  .auth-card .auth-whatsapp-link {
+    font-size: 13px;
+  }
+}
