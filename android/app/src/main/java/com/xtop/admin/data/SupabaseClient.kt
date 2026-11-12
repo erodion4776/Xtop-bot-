@@ -5,6 +5,8 @@ import android.content.SharedPreferences
 import android.util.Log
 import io.github.jan.supabase.SupabaseClient as JanSupabaseClient
 import io.github.jan.supabase.createSupabaseClient
+import io.github.jan.supabase.gotrue.GoTrue
+import io.github.jan.supabase.gotrue.gotrue
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.storage.Storage
@@ -74,6 +76,7 @@ object SupabaseClient {
                         supabaseKey = key
                     ) {
                         defaultSerializer = KotlinXSerializer(customJson)
+                        install(GoTrue)
                         install(Postgrest)
                         install(Storage)
                     }
