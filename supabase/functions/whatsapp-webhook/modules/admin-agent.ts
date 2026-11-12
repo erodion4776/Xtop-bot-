@@ -3756,6 +3756,11 @@ export async function handleAdminAgent(
   }
 
   if (command === "admin_sabi_support" || command === "support inbox" || command === "sabi support") {
+    await updateConversation(conversationId, {
+      current_module: "ADMIN_AGENT",
+      current_state: "ACTIVE",
+      context_json: { admin_agent_active: true },
+    }, SYSTEM_TENANT_ID);
     await showSabiSupportInbox(phone, isSystem);
     return;
   }
