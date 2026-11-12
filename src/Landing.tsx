@@ -21,6 +21,9 @@ const LOGO_URL =
   "https://i.ibb.co/N2b6rJnY/Untitled-design-20261030-044935-0000.png";
 // Place the homepage demo video at public/videos/sabi-homepage-demo-web.mp4.
 const DEMO_VIDEO_URL = "/videos/sabi-homepage-demo-web.mp4";
+const SABI_WHATSAPP_NUMBER = "2348024988555";
+const WHATSAPP_DEMO_URL = `https://wa.me/${SABI_WHATSAPP_NUMBER}?text=DEMO`;
+const WHATSAPP_REGISTER_URL = `https://wa.me/${SABI_WHATSAPP_NUMBER}?text=REGISTER%20MY%20BUSINESS`;
 
 function getVideoEmbed(url: string) {
   try {
@@ -110,7 +113,7 @@ export default function Landing() {
           <a href="#demo">See the demo</a>
           <a href="#faq">FAQs</a>
         </nav>
-        <a className="lp-nav-cta" href="/app">Merchant login <ArrowRight size={16} /></a>
+        <div className="lp-nav-actions"><a className="lp-nav-demo" href={WHATSAPP_DEMO_URL} target="_blank" rel="noreferrer"><MessageCircle size={15} /> Try Sabi</a><a className="lp-nav-cta" href={WHATSAPP_REGISTER_URL} target="_blank" rel="noreferrer">Register your business <ArrowRight size={16} /></a><a className="lp-nav-login" href="/app">Login</a></div>
       </header>
 
       <section className="lp-hero">
@@ -124,8 +127,9 @@ export default function Landing() {
             bring those moving parts into one simple WhatsApp-powered shop.
           </p>
           <div className="lp-hero-actions">
-            <a className="lp-button lp-button-primary" href="/app">Access merchant dashboard <ArrowRight size={18} /></a>
-            <a className="lp-button lp-button-ghost" href="#demo"><Play size={16} /> See how Sabi works</a>
+            <a className="lp-button lp-button-primary" href={WHATSAPP_REGISTER_URL} target="_blank" rel="noreferrer">Register your business <ArrowRight size={18} /></a>
+            <a className="lp-button lp-button-whatsapp" href={WHATSAPP_DEMO_URL} target="_blank" rel="noreferrer"><MessageCircle size={17} /> Try Sabi on WhatsApp</a>
+            <a className="lp-button lp-button-ghost" href="#demo"><Play size={16} /> Watch the demo video</a>
           </div>
           <div className="lp-reassurance">
             <span><CheckCircle2 size={16} /> Free to get started</span>
@@ -264,7 +268,7 @@ export default function Landing() {
         <span className="lp-eyebrow">FREE TO GET STARTED · NO MONTHLY SUBSCRIPTION</span>
         <h2>Connect your business number. Put your products on WhatsApp. Start selling.</h2>
         <p>Start with Sabi at no monthly subscription cost. Connect your dedicated WhatsApp number, add your products and give customers a simple way to browse and order. You run your business — Sabi helps organise the conversations.</p>
-        <a className="lp-button lp-button-light" href="/app">Go to Sabi merchant dashboard <ArrowRight size={18} /></a>
+        <div className="lp-final-actions"><a className="lp-button lp-button-light" href={WHATSAPP_REGISTER_URL} target="_blank" rel="noreferrer">Register your business <ArrowRight size={18} /></a><a className="lp-button lp-button-final-demo" href={WHATSAPP_DEMO_URL} target="_blank" rel="noreferrer"><MessageCircle size={17} /> Try Sabi on WhatsApp</a><a className="lp-final-login" href="/app">Already registered? Merchant login</a></div>
         <small>Sabi by XTOP · A product of XTOP Retail Technologies</small>
       </section>
 
