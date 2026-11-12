@@ -96,7 +96,6 @@ fun AdminLoginScreen(navController: NavController) {
                                 this.password = password
                             }
                             password = ""
-                            verifyAdminAndContinue()
                         } catch (e: Exception) {
                             message = "Sign-in failed. Check your email, password and internet connection."
                         } finally {
