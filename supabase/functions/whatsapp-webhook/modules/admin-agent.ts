@@ -132,7 +132,6 @@ export async function showAdminAgentMenu(phone: string, page = 0): Promise<void>
         makeListRow("admin_status", "🟢 DB Connectivity", "Test connection to Supabase database"),
         makeListRow("admin_stats", "📊 Bot Statistics", "View messaging and contacts metrics"),
         makeListRow("admin_learning", "🎓 ENGR ERO Learning Hub", "Courses, lessons, students and publication status"),
-        makeListRow("admin_engr_support", "💬 ENGR ERO Support Inbox", "Student chats and business-client conversations"),
         makeListRow("admin_students_pending", "🎓 Student Verification", "Review new student registrations"),
         makeListRow("admin_students_verified", "✅ Verified Students", "View students whose identity has been approved"),
       ],
@@ -153,6 +152,7 @@ export async function showAdminAgentMenu(phone: string, page = 0): Promise<void>
       title: "📚 Student Records",
       rows: [
         makeListRow("admin_student_records", "📚 Student Records", "Department • S/N • matric no • results"),
+        makeListRow("admin_engr_support", "💬 ENGR ERO Support Inbox", "Student chats and business-client conversations"),
       ],
     },
   ];
