@@ -427,10 +427,17 @@ export async function handleOnboardingCallback(
     const authCode = String(body.auth_code || "").trim();
     const wabaId = String(body.waba_id || "").trim();
     const phoneNumberId = String(body.phone_number_id || "").trim();
+    const billingCostsAcknowledged = body.billing_costs_acknowledged === true;
 
     if (!sessionToken || !authCode || !wabaId || !phoneNumberId) {
       return jsonResponse({
         error: "Missing session_token, auth_code, waba_id or phone_number_id.",
+      }, 400);
+    }
+
+    if (!billingCostsAcknowledged) {
+      return jsonResponse({
+        error: "Please confirm that your business is responsible for its own Meta WhatsApp messaging charges before connecting.",
       }, 400);
     }
 
@@ -629,6 +636,37 @@ export async function handleOnboardingCallback(
     }
     if (!completedSession) {
       throw new Error("Signup session changed during processing. Please contact Sabi support before retrying.");
+    }
+
+    // Record the merchant's explicit responsibility for their own Meta billing.
+    // This is a self-attestation; Meta account ownership and billing setup must
+    // still be completed and maintained in the merchant's own Meta Business Portfolio.
+    const { data: tenantBilling, error: tenantBillingReadError } = await sb
+      .from("tenants")
+      .select("metadata")
+      .eq("id", session.tenant_id)
+      .maybeSingle();
+
+    if (tenantBillingReadError || !tenantBilling) {
+      safeErrorLog("onboarding.billing_acknowledgement.read", tenantBillingReadError);
+      throw new Error("WhatsApp connected, but the merchant billing acknowledgement could not be recorded.");
+    }
+
+    const { error: tenantBillingUpdateError } = await sb
+      .from("tenants")
+      .update({
+        metadata: {
+          ...(tenantBilling.metadata || {}),
+          meta_messaging_costs_paid_by: "MERCHANT",
+          meta_billing_owner_confirmed: true,
+          meta_billing_acknowledged_at: new Date().toISOString(),
+        },
+      })
+      .eq("id", session.tenant_id);
+
+    if (tenantBillingUpdateError) {
+      safeErrorLog("onboarding.billing_acknowledgement.write", tenantBillingUpdateError);
+      throw new Error("WhatsApp connected, but the merchant billing acknowledgement could not be saved.");
     }
 
     claimedSessionId = null;
