@@ -132,6 +132,7 @@ export async function showAdminAgentMenu(phone: string, page = 0): Promise<void>
         makeListRow("admin_status", "🟢 DB Connectivity", "Test connection to Supabase database"),
         makeListRow("admin_stats", "📊 Bot Statistics", "View messaging and contacts metrics"),
         makeListRow("admin_learning", "🎓 ENGR ERO Learning Hub", "Courses, lessons, students and publication status"),
+        makeListRow("admin_engr_support", "💬 ENGR ERO Support Inbox", "Student chats and business-client conversations"),
         makeListRow("admin_students_pending", "🎓 Student Verification", "Review new student registrations"),
         makeListRow("admin_students_verified", "✅ Verified Students", "View students whose identity has been approved"),
       ],
@@ -3597,6 +3598,169 @@ async function replyToSabiSupportCustomer(
   await sendTextMessage(adminPhone, "✅ Your reply has been sent to " + String(contact.name || "the customer") + " (" + customerPhone + ").");
 }
 
+
+
+// =========================================================
+// ENGR ERO SUPPORT — STUDENTS AND BUSINESS CLIENTS
+// =========================================================
+async function showEngrEroSupportMenu(phone: string, isSystem: boolean): Promise<void> {
+  if (!hasSuperAdminAccess(phone, isSystem)) return;
+  const [students, leads, requests] = await Promise.all([
+    supabase.from("students").select("id", { count: "exact", head: true }),
+    supabase.from("leads").select("id", { count: "exact", head: true }).not("contact_id", "is", null),
+    supabase.from("agent_requests").select("id", { count: "exact", head: true }).eq("status", "PENDING"),
+  ]);
+  await sendTextMessage(phone, [
+    "🎓 *ENGR ERO SUPPORT DESK*",
+    "",
+    "Students: " + (students.error ? "Unavailable" : students.count ?? 0),
+    "Business clients / enquiries: " + (leads.error ? "Unavailable" : leads.count ?? 0),
+    "Pending agent requests: " + (requests.error ? "Unavailable" : requests.count ?? 0),
+    "",
+    "Choose which conversations to open."
+  ].join("\n"));
+  await sendButtonMessage(phone, "Select an Engr Ero support group:", [
+    makeButton("admin_engr_students", "🎓 Student Chats"),
+    makeButton("admin_engr_clients", "💼 Business Clients"),
+    makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+  ]);
+}
+
+async function showEngrEroInbox(phone: string, isSystem: boolean, category: "students" | "clients"): Promise<void> {
+  if (!hasSuperAdminAccess(phone, isSystem)) return;
+  let contacts: any[] = [];
+  if (category === "students") {
+    const { data, error } = await supabase.from("students")
+      .select("name,phone,matric_number,department,level")
+      .order("updated_at", { ascending: false }).limit(40);
+    if (error) {
+      console.error("[Lizzy][Engr Support] Student inbox failed:", error.message);
+      await sendTextMessage(phone, "⚠️ Student conversations could not be loaded.");
+      return;
+    }
+    const phones = [...new Set((data || []).map((s: any) => normalizePhone(String(s.phone || ""))).filter(Boolean))];
+    const { data: found, error: contactError } = await supabase.from("contacts")
+      .select("id,phone,name").eq("tenant_id", SYSTEM_TENANT_ID);
+    if (contactError) {
+      await sendTextMessage(phone, "⚠️ Student contact records could not be loaded.");
+      return;
+    }
+    const byPhone = new Map((found || []).map((x: any) => [normalizePhone(String(x.phone || "")), x]));
+    contacts = (data || []).map((s: any) => {
+      const contact = byPhone.get(normalizePhone(String(s.phone || ""))) as any;
+      return contact ? { ...contact, display: (s.name || contact.name || "Student") + " • " + (s.matric_number || s.department || "Student") } : null;
+    }).filter(Boolean);
+  } else {
+    const { data: leads, error } = await supabase.from("leads")
+      .select("contact_id,business_name,service_type,status,created_at")
+      .not("contact_id", "is", null).order("created_at", { ascending: false }).limit(40);
+    if (error) {
+      console.error("[Lizzy][Engr Support] Client inbox failed:", error.message);
+      await sendTextMessage(phone, "⚠️ Business-client conversations could not be loaded.");
+      return;
+    }
+    const ids = [...new Set((leads || []).map((x: any) => String(x.contact_id || "")).filter(Boolean))];
+    if (ids.length) {
+      const { data: found, error: contactError } = await supabase.from("contacts")
+        .select("id,phone,name").eq("tenant_id", SYSTEM_TENANT_ID).in("id", ids);
+      if (contactError) {
+        await sendTextMessage(phone, "⚠️ Client contact records could not be loaded.");
+        return;
+      }
+      const byId = new Map((found || []).map((x: any) => [String(x.id), x]));
+      contacts = ids.map(id => byId.get(id)).filter(Boolean);
+    }
+  }
+  const unique = [...new Map(contacts.map((x: any) => [String(x.id), x])).values()].slice(0, 10);
+  if (!unique.length) {
+    await sendTextMessage(phone, category === "students"
+      ? "🎓 No student WhatsApp contacts are currently linked to saved conversations."
+      : "💼 No business-client WhatsApp conversations were found.");
+    await sendButtonMessage(phone, "Engr Ero Support:", [
+      makeButton("admin_engr_support", "⬅ Support Desk"),
+      makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+    ]);
+    return;
+  }
+  await sendListMessage(
+    phone,
+    category === "students"
+      ? "🎓 *ENGR ERO — STUDENT SUPPORT*\n\nSelect a student to view their saved WhatsApp chat history."
+      : "💼 *ENGR ERO — BUSINESS CLIENTS*\n\nSelect a client to view their saved WhatsApp chat history.",
+    "Open Chat",
+    [{ title: category === "students" ? "Students" : "Business clients", rows: unique.map((x: any) =>
+      makeListRow("admin_engr_chat_" + category + "_" + x.id, String(x.name || x.display || "Client").slice(0, 22), String(x.phone || "WhatsApp contact"))
+    ) }],
+    "Engr Ero Support",
+    "Choose a conversation",
+  );
+}
+
+async function showEngrEroChat(phone: string, isSystem: boolean, contactId: string, category: "students" | "clients"): Promise<void> {
+  if (!hasSuperAdminAccess(phone, isSystem)) return;
+  const { data: contact } = await supabase.from("contacts").select("id,phone,name")
+    .eq("tenant_id", SYSTEM_TENANT_ID).eq("id", contactId).maybeSingle();
+  if (!contact) {
+    await sendTextMessage(phone, "⚠️ Contact not found. Please reopen the Engr Ero inbox.");
+    return;
+  }
+  const { data: messages, error } = await supabase.from("messages")
+    .select("direction,message_type,body,content,text,message_text,created_at")
+    .eq("tenant_id", SYSTEM_TENANT_ID).eq("contact_id", contactId)
+    .order("created_at", { ascending: false }).limit(20);
+  if (error) {
+    await sendTextMessage(phone, "⚠️ Chat history could not be loaded.");
+    return;
+  }
+  const history = (messages || []).reverse().map((m: any) => {
+    const body = String(m.body || m.content || m.text || m.message_text || "").trim();
+    const who = String(m.direction || "").toUpperCase() === "OUTBOUND" ? "ENGR ERO / SUPPORT" : "CLIENT";
+    const time = m.created_at ? new Date(m.created_at).toLocaleString("en-NG", { timeZone: "Africa/Lagos", dateStyle: "short", timeStyle: "short" }) : "";
+    return who + (time ? " • " + time : "") + "\n" + (body || "[" + String(m.message_type || "message") + "]");
+  });
+  await sendTextMessage(phone, [
+    category === "students" ? "🎓 *STUDENT CHAT HISTORY*" : "💼 *BUSINESS CLIENT CHAT HISTORY*",
+    "",
+    "*" + String(contact.name || "Contact").slice(0, 70) + "*",
+    String(contact.phone),
+    "",
+    ... (history.length ? history : ["No saved messages were found."]),
+  ].join("\n").slice(0, 3800));
+  await updateConversationForEngrReply(phone, contact, category);
+}
+
+async function updateConversationForEngrReply(phone: string, contact: any, category: "students" | "clients"): Promise<void> {
+  const { data: adminContact } = await supabase.from("contacts").select("id")
+    .eq("tenant_id", SYSTEM_TENANT_ID).eq("phone", phone).maybeSingle();
+  if (!adminContact?.id) {
+    await sendTextMessage(phone, "⚠️ Your admin chat session could not be prepared. Send LIZZY and try again.");
+    return;
+  }
+  const { data: adminConversation } = await supabase.from("conversations").select("id")
+    .eq("tenant_id", SYSTEM_TENANT_ID).eq("contact_id", adminContact.id)
+    .order("updated_at", { ascending: false }).limit(1).maybeSingle();
+  if (!adminConversation?.id) {
+    await sendTextMessage(phone, "⚠️ Your admin conversation could not be found.");
+    return;
+  }
+  await updateConversation(adminConversation.id, {
+    current_module: "ADMIN_AGENT",
+    current_state: "ENGR_SUPPORT_REPLY",
+    context_json: {
+      admin_agent_active: true,
+      engr_support_contact_id: contact.id,
+      engr_support_phone: contact.phone,
+      engr_support_name: contact.name || "Client",
+      engr_support_category: category,
+    },
+  }, SYSTEM_TENANT_ID);
+  await sendButtonMessage(phone, "You are viewing " + String(contact.name || "this contact") + ". Tap Reply, then type normally. Send BACK TO ENGR INBOX to return.", [
+    makeButton("admin_engr_reply", "✍️ Reply to Client"),
+    makeButton("admin_engr_support", "⬅ Engr Ero Inbox"),
+    makeButton("admin_agent_menu", "🏠 Lizzy Menu"),
+  ]);
+}
+
 /* =========================================================
    COMMAND ROUTER (HYBRID: LISTS + BUTTONS + TEXT COMMANDS)
    ========================================================= */
@@ -3625,6 +3789,22 @@ export async function handleAdminAgent(
     .maybeSingle();
   const adminContext = (adminConversation?.context_json || {}) as Record<string, any>;
 
+  if (command === "admin_engr_support") { await showEngrEroSupportMenu(phone, isSystem); return; }
+  if (command === "admin_engr_students") { await showEngrEroInbox(phone, isSystem, "students"); return; }
+  if (command === "admin_engr_clients") { await showEngrEroInbox(phone, isSystem, "clients"); return; }
+  if (command.startsWith("admin_engr_chat_students_")) { await showEngrEroChat(phone, isSystem, inputRaw.slice("admin_engr_chat_students_".length), "students"); return; }
+  if (command.startsWith("admin_engr_chat_clients_")) { await showEngrEroChat(phone, isSystem, inputRaw.slice("admin_engr_chat_clients_".length), "clients"); return; }
+  if (command === "admin_engr_reply") {
+    const selectedId = String(adminContext.engr_support_contact_id || "");
+    if (!selectedId) { await sendTextMessage(phone, "Open a client chat first."); return; }
+    await updateConversation(conversationId, { current_state: "ENGR_SUPPORT_REPLY" }, SYSTEM_TENANT_ID);
+    await sendTextMessage(phone, "✍️ Reply mode is active. Type your message normally. Send BACK TO ENGR INBOX to stop.");
+    return;
+  }
+  if (command === "back to engr inbox") {
+    await updateConversation(conversationId, { current_module: "ADMIN_AGENT", current_state: "ACTIVE", context_json: { admin_agent_active: true } }, SYSTEM_TENANT_ID);
+    await showEngrEroSupportMenu(phone, isSystem); return;
+  }
   if (command.startsWith("admin_sabi_chat_")) {
     await showSabiSupportChat(phone, isSystem, inputRaw.slice("admin_sabi_chat_".length));
     return;
@@ -3643,6 +3823,18 @@ export async function handleAdminAgent(
     return;
   }
 
+  const selectedEngrContactId = String(adminContext.engr_support_contact_id || "");
+  const isEngrReplyMode = adminConversation?.current_state === "ENGR_SUPPORT_REPLY" && !!selectedEngrContactId;
+  if (isEngrReplyMode && !command.startsWith("admin_") && command !== "menu" && command !== "help" && command !== "exit") {
+    const replyText = text.trim();
+    if (!replyText || command === "back to engr inbox") { await updateConversation(conversationId, { current_module: "ADMIN_AGENT", current_state: "ACTIVE", context_json: { admin_agent_active: true } }, SYSTEM_TENANT_ID); await showEngrEroSupportMenu(phone, isSystem); return; }
+    const targetPhone = String(adminContext.engr_support_phone || "");
+    const sent = await sendTextMessage(targetPhone, "💬 *Engr Ero Support*\\n\\n" + replyText);
+    if (!sent) { await sendTextMessage(phone, "⚠️ WhatsApp could not deliver the reply. Your chat remains open."); return; }
+    await storeMessage(selectedEngrContactId, "OUTBOUND", "text", "Engr Ero Support: " + replyText, sent, SYSTEM_TENANT_ID);
+    await sendTextMessage(phone, "✅ Reply sent to " + String(adminContext.engr_support_name || "the client") + ". Type another reply or BACK TO ENGR INBOX.");
+    return;
+  }
   const selectedSupportContactId = String(adminContext.sabi_support_chat_contact_id || "");
   const isSupportReplyMode = adminConversation?.current_state === "SABI_SUPPORT_REPLY" && !!selectedSupportContactId;
   if (isSupportReplyMode && !command.startsWith("admin_") && command !== "menu" && command !== "help" && command !== "exit") {
