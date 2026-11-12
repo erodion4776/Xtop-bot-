@@ -47,7 +47,11 @@ class MainActivity : ComponentActivity() {
                 val navController = rememberNavController()
                 val repo = remember { CommandCentreRepository(SupabaseClient.client) }
 
-                NavHost(navController = navController, startDestination = "dashboard") {
+                NavHost(navController = navController, startDestination = "login") {
+
+                    composable("login") {
+                        AdminLoginScreen(navController)
+                    }
 
                     // ══════════════════════════════════════════
                     // EXISTING ROUTES (DO NOT MODIFY)
