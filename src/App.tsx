@@ -44,6 +44,7 @@ export default function App() {
   const [registrationRetry, setRegistrationRetry] = useState(0);
 
   const registeredUser = useRef("");
+  const authUserId = useRef("");
 
   const query = new URLSearchParams(window.location.search);
   const isPublicProductPage = query.has("product");
@@ -65,6 +66,7 @@ export default function App() {
         setRegistrationError(error.message);
       }
 
+      authUserId.current = data.session?.user?.id || "";
       setSession(data.session);
       setCheckingSession(false);
     });
@@ -74,11 +76,19 @@ export default function App() {
     } = supabase.auth.onAuthStateChange((_event, newSession) => {
       if (!mounted) return;
 
+      const nextUserId = newSession?.user?.id || "";
+
+      // Token refreshes and repeated INITIAL_SESSION events for the same
+      // user must not clear an already loaded merchant workspace.
+      if (authUserId.current !== nextUserId) {
+        authUserId.current = nextUserId;
+        setTenantId("");
+        setRegistrationError("");
+        setRegistering(false);
+        registeredUser.current = "";
+      }
+
       setSession(newSession);
-      setTenantId("");
-      setRegistrationError("");
-      setRegistering(false);
-      registeredUser.current = "";
     });
 
     return () => {
