@@ -194,7 +194,7 @@ export default function App() {
             style={{ width: 90, height: 90, objectFit: "contain" }}
           />
           <h2>Preparing your workspace</h2>
-          <p>Verifying your merchant account and business connection.</p>
+          <p>Setting up your merchant workspace.</p>
         </div>
       </div>
     );
@@ -490,7 +490,7 @@ function Dashboard({
                         <strong>Connect WhatsApp</strong>
                         <p>Link your business WhatsApp number.</p>
                       </div>
-                      <span className="setup-state">Pending</span>
+                      <span className="setup-state">{overviewStats.whatsappConnected ? "Connected" : "Pending"}</span>
                     </div>
 
                     <div className="setup-item">
@@ -499,7 +499,7 @@ function Dashboard({
                         <strong>Add your products</strong>
                         <p>Build your WhatsApp product catalogue.</p>
                       </div>
-                      <span className="setup-state">Pending</span>
+                      <span className="setup-state">{overviewStats.products > 0 ? "Started" : "Pending"}</span>
                     </div>
 
                     <div className="setup-item">
@@ -508,7 +508,7 @@ function Dashboard({
                         <strong>Receive your first order</strong>
                         <p>Manage customer orders in one place.</p>
                       </div>
-                      <span className="setup-state">Pending</span>
+                      <span className="setup-state">{overviewStats.orders > 0 ? "Received" : "Pending"}</span>
                     </div>
                   </div>
                 </div>
