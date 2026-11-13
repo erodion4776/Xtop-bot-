@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Activity, AlertCircle, ArrowDownRight, ArrowUpRight, BadgeCheck, Building2,
+  Activity, AlertCircle, BadgeCheck,
   CheckCircle2, ChevronRight, CircleDollarSign, CreditCard, LayoutDashboard,
   LogOut, Menu, MessageSquare, Package, RefreshCw, Search, ShieldCheck,
   ShoppingBag, Store, Users, Wallet, X, Ban, PlayCircle
@@ -201,7 +201,7 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
 
           {loading ? <div className="sa-loading"><RefreshCw className="sa-spin" size={22}/><strong>Loading platform data…</strong><span>Verifying access and retrieving records.</span></div> : (
             <>
-              {page === "Overview" && stats && <Overview stats={stats} merchants={merchants} onOpenMerchants={() => setPage("Merchants")} onOpenOrders={() => setPage("Orders & Payments")}/>}
+              {page === "Overview" && stats && <Overview stats={stats} onOpenMerchants={() => setPage("Merchants")} onOpenOrders={() => setPage("Orders & Payments")}/>}
               {page === "Merchants" && (
                 <div className="sa-panel">
                   <div className="sa-panel-head"><div><h2>Merchant directory</h2><p>Merchant workspaces only. The internal XTOP system tenant is excluded.</p></div><span>{merchants.length} merchants</span></div>
@@ -232,7 +232,7 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
               {page === "Activity Log" && (
                 <div className="sa-panel">
                   <div className="sa-panel-head"><div><h2>Administrative activity</h2><p>Recent platform-level changes and their recorded reasons.</p></div><span>{activity.length} records</span></div>
-                  <div className="sa-activity-list">{activity.map((item) => <div className="sa-activity-row" key={item.id}><div className="sa-activity-icon"><Activity size={17}/></div><div className="sa-activity-body"><strong>{item.action.replaceAll("_", " ")}</strong><span>{item.admin_user || "Admin"} · {item.entity || "Platform"} · {item.entity_id || "—"}</span>{item.metadata?.reason ? <p>Reason: {String(item.metadata.reason)}</p> : null}</div><time>{dateLabel(item.created_at)}</time></div>)}{activity.length === 0 && <div className="sa-empty">No administrative activity has been recorded yet.</div>}</div>
+                  <div className="sa-activity-list">{activity.map((item) => <div className="sa-activity-row" key={item.id}><div className="sa-activity-icon"><Activity size={17}/></div><div className="sa-activity-body"><strong>{item.action.replace(/_/g, " ")}</strong><span>{item.admin_user || "Admin"} · {item.entity || "Platform"} · {item.entity_id || "—"}</span>{item.metadata?.reason ? <p>Reason: {String(item.metadata.reason)}</p> : null}</div><time>{dateLabel(item.created_at)}</time></div>)}{activity.length === 0 && <div className="sa-empty">No administrative activity has been recorded yet.</div>}</div>
                 </div>
               )}
               {page === "Platform Controls" && stats && (
@@ -252,7 +252,7 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
 }
 
 function Overview({ stats, onOpenMerchants, onOpenOrders }: {
-  stats: Stats; merchants: Merchant[]; onOpenMerchants: () => void; onOpenOrders: () => void;
+  stats: Stats; onOpenMerchants: () => void; onOpenOrders: () => void;
 }) {
   const cards = [
     { label: "Active merchants", value: stats.activeMerchants, note: `${stats.inactiveMerchants} inactive / suspended`, icon: Store },
