@@ -21,6 +21,7 @@ import Inbox from "./Inbox";
 import Analytics from "./Analytics";
 import PublicProduct from "./PublicProduct";
 import Landing from "./Landing";
+import SuperAdmin from "./SuperAdmin";
 import { supabase } from "./lib/supabase";
 
 const navigation = [
@@ -48,6 +49,7 @@ export default function App() {
 
   const query = new URLSearchParams(window.location.search);
   const isPublicProductPage = query.has("product");
+  const isSuperAdminPage = window.location.pathname.replace(/\\/+$/, "") === "/super-admin";
   const isMarketingPage = window.location.pathname === "/" && !query.has("login") && !query.has("session_token") && !isPublicProductPage;
 
   const registrationToken = new URLSearchParams(
@@ -98,7 +100,7 @@ export default function App() {
   }, [isPublicProductPage, isMarketingPage]);
 
   useEffect(() => {
-    if (isPublicProductPage || isMarketingPage) return;
+    if (isPublicProductPage || isMarketingPage || isSuperAdminPage) return;
 
     if (!session?.user?.id) {
       setTenantId("");
@@ -155,6 +157,7 @@ export default function App() {
     registrationRetry,
     isPublicProductPage,
     isMarketingPage,
+    isSuperAdminPage,
     registrationToken
   ]);
 
@@ -192,6 +195,10 @@ export default function App() {
 
   if (!session) {
     return <Auth onAuthenticated={refreshSession} />;
+  }
+
+  if (isSuperAdminPage) {
+    return <SuperAdmin email={session.user.email || ""} onLogout={logout} />;
   }
 
   if (registering || (!tenantId && !registrationError)) {
