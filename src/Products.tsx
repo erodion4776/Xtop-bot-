@@ -49,7 +49,54 @@ const emptyForm: ProductForm = {
   status: "ACTIVE"
 };
 
-function makeSlug(value: string) {
+
+type BulkProductRow = {
+  rowNumber: number;
+  name: string;
+  description: string | null;
+  category: string | null;
+  price: number;
+  stock_quantity: number;
+  status: "ACTIVE" | "INACTIVE";
+  image_url: string | null;
+  error?: string;
+};
+
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+
+    if (char === '"') {
+      if (quoted && text[i + 1] === '"') {
+        cell += '"';
+        i += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (char === "," && !quoted) {
+      row.push(cell);
+      cell = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && text[i + 1] === "\n") i += 1;
+      row.push(cell);
+      if (row.some((value) => value.trim() !== "")) rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+
+  row.push(cell);
+  if (row.some((value) => value.trim() !== "")) rows.push(row);
+  return rows;
+}
+\nfunction makeSlug(value: string) {
   return value
     .toLowerCase()
     .trim()
@@ -392,6 +439,173 @@ export default function Products({ tenantId }: { tenantId: string }) {
     }
   }
 
+
+  function downloadBulkTemplate() {
+    const csv = [
+      "name,description,category,price,stock_quantity,status,image_url"
+    ].join("\\n");
+    const blob = new Blob(["\\uFEFF", csv], {
+      type: "text/csv;charset=utf-8;"
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "sabi-product-upload-template.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleBulkFile(file?: File) {
+    if (!file) return;
+    setError("");
+    setSuccess("");
+    setBulkSummary("");
+    setBulkRows([]);
+    setBulkFileName(file.name);
+
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setError("Please upload a CSV file. You can open the Sabi template in Excel and save it as CSV UTF-8.");
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      setError("The CSV file must be 2 MB or smaller. Split larger catalogues into separate uploads.");
+      return;
+    }
+
+    try {
+      const raw = (await file.text()).replace(/^\\uFEFF/, "");
+      const parsed = parseCsv(raw);
+      if (parsed.length < 2) {
+        setError("The CSV has no product rows. Add products below the header row and try again.");
+        return;
+      }
+
+      const headers = parsed[0].map((value) => value.trim().toLowerCase());
+      const column = (names: string[]) => headers.findIndex((header) => names.includes(header));
+      const nameCol = column(["name", "product_name", "product name"]);
+      const descriptionCol = column(["description"]);
+      const categoryCol = column(["category"]);
+      const priceCol = column(["price", "selling_price", "selling price"]);
+      const stockCol = column(["stock_quantity", "stock", "quantity"]);
+      const statusCol = column(["status"]);
+      const imageCol = column(["image_url", "image url", "image"]);
+
+      if (nameCol < 0 || priceCol < 0 || stockCol < 0) {
+        setError("Required columns are name, price and stock_quantity. Download the Sabi template to get the correct headings.");
+        return;
+      }
+
+      const existingNames = new Set(products.map((product) => product.name.trim().toLowerCase()));
+      const seenNames = new Set<string>();
+      const rows: BulkProductRow[] = parsed.slice(1).map((cells, index) => {
+        const get = (col: number) => col < 0 ? "" : (cells[col] || "").trim();
+        const name = get(nameCol);
+        const priceText = get(priceCol).replace(/[₦,\\s]/g, "");
+        const stockText = get(stockCol).replace(/[,\\s]/g, "");
+        const price = Number(priceText);
+        const stock = Number(stockText);
+        const statusText = get(statusCol).toUpperCase();
+        const imageUrl = get(imageCol);
+        let rowError = "";
+
+        if (!name) rowError = "Product name is required.";
+        else if (!priceText || !Number.isFinite(price) || price < 0) rowError = "Enter a valid price.";
+        else if (!stockText || !Number.isInteger(stock) || stock < 0) rowError = "Stock must be a whole number.";
+        else if (statusText && statusText !== "ACTIVE" && statusText !== "INACTIVE") rowError = "Status must be ACTIVE or INACTIVE.";
+
+        const normalizedName = name.toLowerCase();
+        if (!rowError && existingNames.has(normalizedName)) rowError = "A product with this name already exists in your store.";
+        if (!rowError && seenNames.has(normalizedName)) rowError = "This product name appears more than once in the upload.";
+        if (!rowError && imageUrl) {
+          try {
+            const parsedUrl = new URL(imageUrl);
+            if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+              rowError = "Image URL must start with http:// or https://.";
+            }
+          } catch {
+            rowError = "Image URL is not valid.";
+          }
+        }
+        if (!rowError && name) seenNames.add(normalizedName);
+
+        return {
+          rowNumber: index + 2,
+          name,
+          description: get(descriptionCol) || null,
+          category: get(categoryCol) || null,
+          price,
+          stock_quantity: stock,
+          status: statusText === "INACTIVE" ? "INACTIVE" : "ACTIVE",
+          image_url: imageUrl || null,
+          error: rowError || undefined
+        };
+      });
+
+      if (rows.length > 1000) {
+        setError("A single upload can contain up to 1,000 products. Split this file into smaller batches.");
+        return;
+      }
+
+      setBulkRows(rows);
+    } catch {
+      setError("We could not read this file. Please save it as CSV UTF-8 and try again.");
+    }
+  }
+
+  async function importBulkProducts() {
+    const validRows = bulkRows.filter((row) => !row.error);
+    if (!validRows.length) {
+      setError("There are no valid products to import. Correct the errors and upload the file again.");
+      return;
+    }
+
+    setBulkImporting(true);
+    setError("");
+    setSuccess("");
+    let imported = 0;
+    let failed = 0;
+
+    try {
+      for (let start = 0; start < validRows.length; start += 50) {
+        const batch = validRows.slice(start, start + 50).map((row) => ({
+          name: row.name,
+          slug: makeSlug(row.name),
+          description: row.description,
+          category: row.category,
+          price: row.price,
+          status: row.status,
+          is_active: row.status === "ACTIVE",
+          stock_quantity: row.stock_quantity,
+          image_url: row.image_url,
+          tenant_id: tenantId,
+          updated_at: new Date().toISOString()
+        }));
+
+        const { error: insertError } = await supabase.from("products").insert(batch);
+        if (insertError) {
+          failed += batch.length;
+        } else {
+          imported += batch.length;
+        }
+      }
+
+      await loadProducts();
+      const invalid = bulkRows.length - validRows.length;
+      setBulkSummary(`${imported} imported, ${invalid} skipped due to validation errors, ${failed} failed during database import.`);
+      if (imported > 0) setSuccess(`Successfully imported ${imported} products.`);
+      if (failed > 0) setError(`${failed} products could not be saved. Check your data and try those rows again.`);
+      if (imported === validRows.length && invalid === 0) {
+        setBulkRows([]);
+        setBulkFileName("");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Bulk import failed.");
+    } finally {
+      setBulkImporting(false);
+    }
+  }
+
   async function deleteProduct(product: Product) {
     const confirmed = window.confirm(
       `Delete "${product.name}"? This action cannot be undone.`
@@ -440,10 +654,30 @@ export default function Products({ tenantId }: { tenantId: string }) {
           <p>Add and manage the products your customers can order.</p>
         </div>
 
-        <button className="product-primary-btn" onClick={openNewProduct}>
-          <Plus size={18} />
-          Add product
-        </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="product-refresh-btn" type="button" onClick={downloadBulkTemplate}>
+            <FileText size={17} />
+            Download CSV template
+          </button>
+          <button className="product-refresh-btn" type="button" onClick={() => bulkFileInput.current?.click()}>
+            <Upload size={17} />
+            Bulk upload
+          </button>
+          <input
+            ref={bulkFileInput}
+            type="file"
+            accept=".csv,text/csv"
+            hidden
+            onChange={(event) => {
+              handleBulkFile(event.target.files?.[0]);
+              event.currentTarget.value = "";
+            }}
+          />
+          <button className="product-primary-btn" onClick={openNewProduct}>
+            <Plus size={18} />
+            Add product
+          </button>
+        </div>
       </div>
 
       <div className="product-summary-grid">
@@ -474,6 +708,47 @@ export default function Products({ tenantId }: { tenantId: string }) {
       {success && (
         <div className="product-alert product-alert-success">
           {success}
+        </div>
+      )}
+
+      {bulkRows.length > 0 && (
+        <div className="products-list-panel" style={{ padding: 18, marginBottom: 18 }}>
+          <div className="products-list-heading">
+            <div>
+              <h3>Bulk upload preview</h3>
+              <p>{bulkFileName} · {bulkRows.length} rows · {bulkRows.filter((row) => !row.error).length} ready · {bulkRows.filter((row) => row.error).length} with errors</p>
+            </div>
+            <button className="product-refresh-btn" type="button" onClick={() => { setBulkRows([]); setBulkFileName(""); setBulkSummary(""); }} disabled={bulkImporting} aria-label="Clear bulk upload">
+              <X size={17} />
+            </button>
+          </div>
+          {bulkSummary && <div className="product-alert product-alert-success">{bulkSummary}</div>}
+          <div style={{ overflowX: "auto", marginTop: 12 }}>
+            <table className="products-table">
+              <thead><tr><th>CSV row</th><th>Product</th><th>Price</th><th>Stock</th><th>Validation</th></tr></thead>
+              <tbody>
+                {bulkRows.slice(0, 12).map((row) => (
+                  <tr key={row.rowNumber}>
+                    <td>{row.rowNumber}</td>
+                    <td>{row.name || "—"}</td>
+                    <td>₦{Number.isFinite(row.price) ? row.price.toLocaleString("en-NG") : "—"}</td>
+                    <td>{Number.isFinite(row.stock_quantity) ? row.stock_quantity : "—"}</td>
+                    <td style={{ color: row.error ? "#b42318" : "#067647", minWidth: 170 }}>
+                      {row.error || "Ready"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {bulkRows.length > 12 && <p style={{ fontSize: 13, color: "#667085" }}>Showing the first 12 rows. All {bulkRows.length} rows will be checked before import.</p>}
+          <div className="product-modal-actions" style={{ marginTop: 16 }}>
+            <button className="product-cancel-btn" type="button" onClick={() => { setBulkRows([]); setBulkFileName(""); }} disabled={bulkImporting}>Cancel</button>
+            <button className="product-primary-btn" type="button" onClick={importBulkProducts} disabled={bulkImporting || bulkRows.every((row) => !!row.error)}>
+              {bulkImporting ? "Importing..." : `Import ${bulkRows.filter((row) => !row.error).length} valid products`}
+            </button>
+          </div>
+          <p style={{ fontSize: 12, color: "#667085", marginTop: 8 }}>CSV uploads only. To use Excel, open the template in Excel and save your completed file as CSV UTF-8 before uploading. Maximum 1,000 products per batch.</p>
         </div>
       )}
 
