@@ -189,7 +189,7 @@ export default function Products({ tenantId }: { tenantId: string }) {
       getProductLink(product),
       "",
       "Powered by Sabi"
-    ].filter(Boolean).join("\\n\\n");
+    ].filter(Boolean).join("\n\n");
   }
 
   async function copyProductAdvert(product: Product) {
@@ -449,8 +449,8 @@ export default function Products({ tenantId }: { tenantId: string }) {
   function downloadBulkTemplate() {
     const csv = [
       "name,description,category,price,stock_quantity,status,image_url"
-    ].join("\\n");
-    const blob = new Blob(["\\uFEFF", csv], {
+    ].join("\n");
+    const blob = new Blob(["\uFEFF", csv], {
       type: "text/csv;charset=utf-8;"
     });
     const url = URL.createObjectURL(blob);
@@ -480,7 +480,7 @@ export default function Products({ tenantId }: { tenantId: string }) {
     }
 
     try {
-      const raw = (await file.text()).replace(/^\\uFEFF/, "");
+      const raw = (await file.text()).replace(/^\uFEFF/, "");
       const parsed = parseCsv(raw);
       if (parsed.length < 2) {
         setError("The CSV has no product rows. Add products below the header row and try again.");
