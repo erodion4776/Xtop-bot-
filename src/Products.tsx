@@ -601,7 +601,7 @@ export default function Products({ tenantId }: { tenantId: string }) {
       setBulkSummary(`${imported} imported, ${invalid} skipped due to validation errors, ${failed} failed during database import.`);
       if (imported > 0) setSuccess(`Successfully imported ${imported} products.`);
       if (failed > 0) setError(`${failed} products could not be saved. Check your data and try those rows again.`);
-      if (imported === validRows.length && invalid === 0) {
+      if (imported > 0) {
         setBulkRows([]);
         setBulkFileName("");
       }
