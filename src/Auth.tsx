@@ -20,9 +20,6 @@ export default function Auth({ onAuthenticated }: AuthProps) {
     window.location.search
   ).get("session_token")?.trim() || "";
 
-  const whatsappRegistrationUrl =
-    "https://wa.me/2348024988555?text=REGISTER%20MY%20BUSINESS";
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setMessage("");
@@ -30,12 +27,6 @@ export default function Auth({ onAuthenticated }: AuthProps) {
 
     try {
       if (mode === "signup") {
-        if (!sessionToken) {
-          throw new Error(
-            "Please start registration from Sabi on WhatsApp and connect your dedicated business number first."
-          );
-        }
-
         if (!ownerName.trim() || !businessName.trim()) {
           throw new Error("Please enter your name and business name.");
         }
@@ -48,8 +39,10 @@ export default function Auth({ onAuthenticated }: AuthProps) {
           );
         }
 
-        const redirectUrl = new URL("/", window.location.origin);
-        redirectUrl.searchParams.set("session_token", sessionToken);
+        const redirectUrl = new URL("/?login=1", window.location.origin);
+        if (sessionToken) {
+          redirectUrl.searchParams.set("session_token", sessionToken);
+        }
 
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
@@ -151,10 +144,6 @@ export default function Auth({ onAuthenticated }: AuthProps) {
             className={mode === "signup" ? "selected" : ""}
             onClick={() => {
               setMessage("");
-              if (!sessionToken) {
-                window.location.href = whatsappRegistrationUrl;
-                return;
-              }
               setMode("signup");
             }}
           >
@@ -166,9 +155,8 @@ export default function Auth({ onAuthenticated }: AuthProps) {
           <div className="auth-notice">
             <strong>New to Sabi?</strong>
             <p>
-              New merchants must register through Sabi on WhatsApp and connect
-              their business WhatsApp number before creating a dashboard account.
-              Tap Create account above to start registration.
+              Create your Sabi merchant account first. You can connect a dedicated
+              business WhatsApp number later from Settings in your dashboard.
             </p>
             <a
               className="auth-whatsapp-link"
@@ -179,12 +167,13 @@ export default function Auth({ onAuthenticated }: AuthProps) {
           </div>
         )}
 
-        {mode === "signup" && sessionToken && (
+        {mode === "signup" && (
           <div className="auth-notice">
-            <strong>WhatsApp connection received.</strong>
+            <strong>WhatsApp connection is optional at this stage.</strong>
             <p>
-              Your dedicated business number is connected to Sabi.
-              Complete your details below to create your merchant account.
+              Create your dashboard account now. When you have a dedicated
+              business number ready, connect it later from Settings.
+              Your personal WhatsApp will not be connected to automation.
             </p>
           </div>
         )}
@@ -248,11 +237,10 @@ export default function Auth({ onAuthenticated }: AuthProps) {
               <div className="auth-notice">
                 <strong>Important about your WhatsApp numbers</strong>
                 <p>
-                  The business WhatsApp number you connected is the
-                  number Sabi will automate for your customers.
-                  Keep your personal WhatsApp separate. You may provide
-                  it above for contact purposes, but it will not be
-                  connected to Sabi automation.
+                  Your personal number is for contact purposes only.
+                  It will not be connected to Sabi automation. Your
+                  dedicated business WhatsApp number can be connected
+                  later from your dashboard Settings.
                 </p>
               </div>
             </>
@@ -267,13 +255,13 @@ export default function Auth({ onAuthenticated }: AuthProps) {
           <button
             className="auth-submit"
             type="submit"
-            disabled={loading || (mode === "signup" && !sessionToken)}
+            disabled={loading}
           >
             {loading
               ? "Please wait..."
               : mode === "login"
                 ? "Login to dashboard"
-                : "Complete business registration"}
+                : "Create merchant account"}
           </button>
         </form>
 
