@@ -158,12 +158,6 @@ export default function Auth({ onAuthenticated }: AuthProps) {
               Create your Sabi merchant account first. You can connect a dedicated
               business WhatsApp number later from Settings in your dashboard.
             </p>
-            <a
-              className="auth-whatsapp-link"
-              href={whatsappRegistrationUrl}
-            >
-              Start Registration on WhatsApp
-            </a>
           </div>
         )}
 
