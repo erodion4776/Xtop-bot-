@@ -53,7 +53,7 @@ async function sendButtonMessage(
   const brandedFooter = footer
     ? `${footer} • Powered by Sabi by XTOP`
     : "Powered by Sabi by XTOP";
-  return sendButtonMessageRaw(to, addSabiBrand(body), buttons, header, brandedFooter);
+  return sendButtonMessageRaw(to, body, buttons, header, brandedFooter);
 }
 
 async function sendListMessage(
@@ -64,7 +64,7 @@ async function sendListMessage(
   const brandedFooter = footer
     ? `${footer} • Powered by Sabi by XTOP`
     : "Powered by Sabi by XTOP";
-  return sendListMessageRaw(to, addSabiBrand(body), buttonText, sections, header, brandedFooter);
+  return sendListMessageRaw(to, body, buttonText, sections, header, brandedFooter);
 }
 
 
