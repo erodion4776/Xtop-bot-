@@ -523,14 +523,15 @@ Your registration link will be preserved.
 </div>
 
 <div class="info">
-<strong>Don't have a business WhatsApp number yet?</strong><br>
-You may be able to register a new number during Meta's setup.
+<strong>Don't have a dedicated business number yet?</strong><br>
+You can pause here and return when you have a separate number that you control and can verify by SMS or phone call. Meta may allow you to register a new number during setup, but you still need access to that number and its verification code.
 <ul>
 <li>Select Nigeria (+234) when choosing your country.</li>
-<li>Enter a mobile number you can access.</li>
-<li>Complete the SMS or phone-call verification requested by Meta.</li>
-<li>If the number is already registered on WhatsApp, follow Meta's migration or coexistence instructions where offered.</li>
+<li>Use a number dedicated to your business and available for verification.</li>
+<li>Do not enter the Sabi by XTOP platform number or a number used by another business.</li>
+<li>If Meta says the number is already registered, stop and review the migration or coexistence options before proceeding.</li>
 </ul>
+<strong>You do not need to connect a number just to read this page.</strong>
 </div>
 
 <div class="info">
@@ -921,9 +922,10 @@ function connectNow(){
 
     if(status==="unknown"){
      showError(
-      "Meta returned status UNKNOWN without an authorization code.\n\n"+
-      "This means the login process did not complete successfully.\n\n"+
-      "Please share the diagnostic information shown below."
+      "Meta did not complete the WhatsApp signup and no authorization code was returned. " +
+      "If you closed the Meta window or stopped at the phone-number screen, this is expected.\n\n"+
+      "No WhatsApp number was connected to Sabi. Your existing Sabi platform number has not been changed.\n\n"+
+      "You can return to this page and try again when you have a separate business number that you can verify."
      );
     }else{
      showError(
