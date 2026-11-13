@@ -18,6 +18,7 @@ import {
   IncomingMessage,
   sendTextMessage,
   sendImageMessage,
+  sendCtaUrlMessage,
   WhatsAppCredentials,
 } from "./whatsapp.ts";
 
@@ -315,6 +316,28 @@ async function handleTenantStoreMessage(
       contact.name || incoming.profileName, "", id, account.tenantId);
   };
 
+  const sendSabiDiscovery = async () => {
+    const body = "_Powered by Sabi by XTOP_";
+    const footer = "Discover the platform behind this shop";
+    const id = await sendCtaUrlMessage(
+      phone,
+      body,
+      "Discover Sabi",
+      "https://xtopbot.netlify.app",
+      footer,
+      credentials,
+    );
+    if (!id) {
+      safeErrorLog("tenantStore.sabiDiscovery", new Error("WhatsApp CTA URL send failed"));
+      return;
+    }
+    await storeMessage(contact.id, "OUTBOUND", "interactive", body, id, account.tenantId);
+    await logBotActivity(
+      phone, "OUTBOUND", "interactive", "TENANT_STORE", body,
+      contact.name || incoming.profileName, "", id, account.tenantId,
+    );
+  };
+
   const raw = String(incoming.interactiveId || incoming.text || "").trim();
   const message = raw.toLowerCase();
   const products = await getActiveProducts(account.tenantId);
@@ -511,6 +534,7 @@ async function handleTenantStoreMessage(
   if (["hi", "hello", "hey", "menu", "start", "shop", "catalogue", "catalog", "products", ""].includes(message)) {
     if (!products.length) {
       await send(`${greeting}\n\nOur product catalogue is being updated. Please contact the business for assistance.`);
+      await sendSabiDiscovery();
       return;
     }
     const categories = [...new Set(products.map(p => String((p as any).category || "Other")).filter(Boolean))];
@@ -519,6 +543,7 @@ async function handleTenantStoreMessage(
     );
     await save("IDLE", { store_page: 0 });
     await send(`${greeting}\n\n🛍️ *Welcome to ${account.businessName}*\nBrowse our real products below.\n\n${list.join("\n")}\n\nReply with a product name for details. To add one, reply *ADD product name*.\n\nCategories: ${categories.join(", ")}\n\nReply *cart* to view your basket or *more* to see more products.`);
+    await sendSabiDiscovery();
     return;
   }
 
