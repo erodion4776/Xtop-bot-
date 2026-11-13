@@ -8,7 +8,11 @@ import {
   getSupabaseClient,
 } from "../database.ts";
 import {
-  sendButtonMessage, sendListMessage, sendTextMessage, sendDocumentMessage, sendImageMessage,
+  sendButtonMessage as sendButtonMessageRaw,
+  sendListMessage as sendListMessageRaw,
+  sendTextMessage as sendTextMessageRaw,
+  sendDocumentMessage as sendDocumentMessageRaw,
+  sendImageMessage as sendImageMessageRaw,
   makeButton, makeListRow,
 } from "../whatsapp.ts";
 import { normalise, isExit } from "../utils.ts";
@@ -18,6 +22,51 @@ import { startAutomobileDiagnosis, handleAutomobileDiagnosis } from "./automobil
 import { handleRegistration } from "./attendance.ts";
 
 const supabase = getSupabaseClient();
+
+const SABI_BRAND_FOOTER = "_Powered by Sabi by XTOP_";
+
+function addSabiBrand(body?: string): string {
+  const clean = String(body || "").trim();
+  return /powered by sabi/i.test(clean)
+    ? clean
+    : `${clean}${clean ? "\\n\\n" : ""}${SABI_BRAND_FOOTER}`;
+}
+
+// Brand only Engr. Ero Learning Centre responses. Other system routes,
+// including XTOP Retail and the Sabi welcome menu, keep their own identity.
+async function sendTextMessage(to: string, body: string) {
+  return sendTextMessageRaw(to, addSabiBrand(body));
+}
+
+async function sendImageMessage(to: string, imageUrl: string, caption?: string) {
+  return sendImageMessageRaw(to, imageUrl, addSabiBrand(caption));
+}
+
+async function sendDocumentMessage(to: string, documentUrl: string, filename: string, caption?: string) {
+  return sendDocumentMessageRaw(to, documentUrl, filename, addSabiBrand(caption));
+}
+
+async function sendButtonMessage(
+  to: string, body: string, buttons: Parameters<typeof sendButtonMessageRaw>[2],
+  header?: string, footer?: string,
+) {
+  const brandedFooter = footer
+    ? `${footer} • Powered by Sabi by XTOP`
+    : "Powered by Sabi by XTOP";
+  return sendButtonMessageRaw(to, addSabiBrand(body), buttons, header, brandedFooter);
+}
+
+async function sendListMessage(
+  to: string, body: string, buttonText: string,
+  sections: Parameters<typeof sendListMessageRaw>[3],
+  header?: string, footer?: string,
+) {
+  const brandedFooter = footer
+    ? `${footer} • Powered by Sabi by XTOP`
+    : "Powered by Sabi by XTOP";
+  return sendListMessageRaw(to, addSabiBrand(body), buttonText, sections, header, brandedFooter);
+}
+
 
 // ═══════════════════════════════════════════════════════
 // HELPER: EXTRACT NUMERIC SELECTION (e.g., "1", "1️⃣", "Option 1")
