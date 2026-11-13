@@ -49,7 +49,7 @@ export default function App() {
 
   const query = new URLSearchParams(window.location.search);
   const isPublicProductPage = query.has("product");
-  const isSuperAdminPage = window.location.pathname.replace(/\\/+$/, "") === "/super-admin";
+  const isSuperAdminPage = window.location.pathname.replace(/\/+$/, "") === "/super-admin";
   const isMarketingPage = window.location.pathname === "/" && !query.has("login") && !query.has("session_token") && !isPublicProductPage;
 
   const registrationToken = new URLSearchParams(
