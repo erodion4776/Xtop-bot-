@@ -81,13 +81,6 @@ serve(async (req: Request) => {
       });
     }
 
-    // New registrations must have a valid WhatsApp onboarding session.
-    if (!sessionToken) {
-      return jsonResponse({
-        error: "Your WhatsApp registration session is missing. Please return to Sabi on WhatsApp and start registration again.",
-      }, 400);
-    }
-
     const metadata = user.user_metadata || {};
 
     const ownerName = String(metadata.owner_name || "").trim();
@@ -108,17 +101,32 @@ serve(async (req: Request) => {
       }, 400);
     }
 
-    // Attach this authenticated owner to the existing WhatsApp-connected tenant.
+    // Preserve the legacy Meta-first registration path when a valid
+    // WhatsApp onboarding session is supplied. New merchants can now
+    // create their workspace first and connect WhatsApp later in Settings.
+    const rpcName = sessionToken
+      ? "sabi_complete_merchant_registration"
+      : "sabi_create_merchant_workspace";
+    const rpcArgs = sessionToken
+      ? {
+          p_user_id: user.id,
+          p_session_token: sessionToken,
+          p_owner_name: ownerName,
+          p_business_name: businessName,
+          p_email: user.email,
+          p_personal_whatsapp: personalWhatsApp || null,
+        }
+      : {
+          p_user_id: user.id,
+          p_owner_name: ownerName,
+          p_business_name: businessName,
+          p_email: user.email,
+          p_personal_whatsapp: personalWhatsApp || null,
+        };
+
     const { data: tenantId, error: registrationError } = await admin.rpc(
-      "sabi_complete_merchant_registration",
-      {
-        p_user_id: user.id,
-        p_session_token: sessionToken,
-        p_owner_name: ownerName,
-        p_business_name: businessName,
-        p_email: user.email,
-        p_personal_whatsapp: personalWhatsApp || null,
-      }
+      rpcName,
+      rpcArgs,
     );
 
     if (registrationError || !tenantId) {
@@ -134,7 +142,10 @@ serve(async (req: Request) => {
       success: true,
       tenant_id: tenantId,
       existing_account: false,
-      message: "Your Sabi merchant workspace is ready.",
+      whatsapp_connected: !!sessionToken,
+      message: sessionToken
+        ? "Your Sabi merchant workspace is ready."
+        : "Your Sabi merchant workspace is ready. You can connect WhatsApp later from Settings.",
     });
 
   } catch (error) {
