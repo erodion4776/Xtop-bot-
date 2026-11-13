@@ -23,7 +23,7 @@ const LOGO_URL =
 const DEMO_VIDEO_URL = "/videos/sabi-homepage-demo-web.mp4";
 const SABI_WHATSAPP_NUMBER = "2348024988555";
 const WHATSAPP_DEMO_URL = `https://wa.me/${SABI_WHATSAPP_NUMBER}?text=DEMO`;
-const DASHBOARD_SIGNUP_URL = "/?login=1";
+const DASHBOARD_SIGNUP_URL = "/?login=1&signup=1";
 
 function getVideoEmbed(url: string) {
   try {
