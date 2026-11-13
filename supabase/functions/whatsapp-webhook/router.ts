@@ -73,6 +73,7 @@ import {
 } from "./modules/agents.ts";
 
 import { handleLearning } from "./modules/learning.ts";
+import { startVehicleDiagnosis, handleVehicleDiagnosis } from "./modules/vehicle-diagnosis.ts";
 
 import {
   handleSales,
@@ -946,6 +947,19 @@ export async function routeMessage(
         phone,
         conversation.id,
       );
+      return;
+    }
+
+    // Standalone Engr. Ero Vehicle Diagnosis: independent of course registration.
+    // Persisted diagnosis states take priority; explicit entry phrases open the mode selector.
+    const vehicleDiagnosisState = String(conversation.current_state || "").startsWith("VEHICLE_DIAG_");
+    const vehicleDiagnosisRequest = /^(vehicle diagnosis|vehicle fault diagnosis|automobile diagnosis|diagnose my car|car diagnosis|vehicle troubleshooting)$/i.test(String(text || "").trim());
+    if (vehicleDiagnosisState) {
+      await handleVehicleDiagnosis(phone, text, conversation);
+      return;
+    }
+    if (interactiveId === "cm_auto_diag" || interactiveId === "vehicle_diagnosis" || vehicleDiagnosisRequest) {
+      await startVehicleDiagnosis(phone, conversation);
       return;
     }
 
