@@ -249,8 +249,31 @@ function Dashboard({
   email: string;
   onLogout: () => void;
 }) {
-  const [activePage, setActivePage] = useState("Overview");
+  const validPages = navigation.map((item) => item.label);
+  const pageStorageKey = `sabi:merchant:last-page:${tenantId}`;
+
+  const [activePage, setActivePage] = useState(() => {
+    try {
+      const savedPage = window.localStorage.getItem(pageStorageKey);
+      return savedPage && validPages.includes(savedPage)
+        ? savedPage
+        : "Overview";
+    } catch {
+      return "Overview";
+    }
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Remember the last page separately for each merchant workspace.
+  useEffect(() => {
+    if (!tenantId || !validPages.includes(activePage)) return;
+
+    try {
+      window.localStorage.setItem(pageStorageKey, activePage);
+    } catch {
+      // The dashboard remains usable when browser storage is unavailable.
+    }
+  }, [activePage, pageStorageKey, tenantId]);
 
   const [overviewStats, setOverviewStats] = useState({
     orders: 0,
