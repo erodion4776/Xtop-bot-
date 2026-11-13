@@ -19,6 +19,7 @@ import { normalise, isExit } from "../utils.ts";
 import { showMainMenu } from "./main-menu.ts";
 import { startExamEntry } from "./exams.ts";
 import { startAutomobileDiagnosis, handleAutomobileDiagnosis } from "./automobile-diagnostics.ts";
+import { startVehicleDiagnosis } from "./vehicle-diagnosis.ts";
 import { handleRegistration } from "./attendance.ts";
 
 const supabase = getSupabaseClient();
@@ -475,7 +476,7 @@ async function processCourseMenuSelection(
   }
   if (n === "cm_auto_diag" || n.includes("vehicle fault diagnosis") || n.includes("automobile diagnosis")) {
     if (ctx.courseCode !== "ELA301") { await showCourseMenu(phone, conv.id, ctx); return; }
-    await startAutomobileDiagnosis(phone, conv.id, ctx as unknown as Record<string, unknown>);
+    await startVehicleDiagnosis(phone, conv);
     return;
   }
   if (n === "cm_materials" || num === 2 || n.includes("materials")) {
