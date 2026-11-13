@@ -121,6 +121,7 @@ serve(async (req: Request) => {
           p_owner_name: ownerName,
           p_business_name: businessName,
           p_email: user.email,
+          p_business_whatsapp: null,
           p_personal_whatsapp: personalWhatsApp || null,
         };
 
