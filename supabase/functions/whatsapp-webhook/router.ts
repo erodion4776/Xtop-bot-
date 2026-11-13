@@ -295,6 +295,26 @@ async function handleTenantStoreMessage(
   const credentials = account.credentials;
   if (!credentials) return;
   const phone = incoming.from;
+
+  // Automatic, unobtrusive Sabi attribution on every merchant-bot reply.
+  // This runs only for resolved merchant tenants, never the XTOP system bot.
+  const send = async (body: string, imageUrl?: string) => {
+    const cleanBody = String(body || "").trim();
+    const brandedBody = /powered by sabi/i.test(cleanBody)
+      ? cleanBody
+      : `${cleanBody}${cleanBody ? "\\n\\n" : ""}_Powered by Sabi by XTOP_`;
+    const id = imageUrl
+      ? await sendImageMessage(phone, imageUrl, brandedBody, credentials)
+      : await sendTextMessage(phone, brandedBody, credentials);
+    if (!id) {
+      safeErrorLog("tenantStore.send", new Error("WhatsApp send failed"));
+      return;
+    }
+    await storeMessage(contact.id, "OUTBOUND", imageUrl ? "image" : "text", brandedBody, id, account.tenantId);
+    await logBotActivity(phone, "OUTBOUND", imageUrl ? "image" : "text", "TENANT_STORE", brandedBody,
+      contact.name || incoming.profileName, "", id, account.tenantId);
+  };
+
   const raw = String(incoming.interactiveId || incoming.text || "").trim();
   const message = raw.toLowerCase();
   const products = await getActiveProducts(account.tenantId);
@@ -332,19 +352,6 @@ async function handleTenantStoreMessage(
     await send(`📦 *Order tracking: ${tracked.order_number}*\n\nOrder status: *${tracked.status}*\nProduct payment: *${tracked.payment_status}*\nDelivery payment: *${tracked.shipping_payment_status || "Not applicable"}*\nPayment method: *${tracked.payment_method}*\nOrder date: ${new Date(tracked.created_at).toLocaleString("en-NG")}\n\nReply *agent* if you need help from the shop.`);
     return;
   }
-
-  const send = async (body: string, imageUrl?: string) => {
-    const id = imageUrl
-      ? await sendImageMessage(phone, imageUrl, body, credentials)
-      : await sendTextMessage(phone, body, credentials);
-    if (!id) {
-      safeErrorLog("tenantStore.send", new Error("WhatsApp send failed"));
-      return;
-    }
-    await storeMessage(contact.id, "OUTBOUND", imageUrl ? "image" : "text", body, id, account.tenantId);
-    await logBotActivity(phone, "OUTBOUND", imageUrl ? "image" : "text", "TENANT_STORE", body,
-      contact.name || incoming.profileName, "", id, account.tenantId);
-  };
 
   const save = async (nextState: string, patch: Record<string, unknown> = {}) => {
     await updateConversation(conversation.id, {
