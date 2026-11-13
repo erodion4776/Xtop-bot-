@@ -7,7 +7,11 @@ type AuthProps = {
 };
 
 export default function Auth({ onAuthenticated }: AuthProps) {
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [mode, setMode] = useState<"login" | "signup">(() =>
+    new URLSearchParams(window.location.search).get("signup") === "1"
+      ? "signup"
+      : "login"
+  );
   const [ownerName, setOwnerName] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState("");
