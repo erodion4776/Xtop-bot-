@@ -302,7 +302,7 @@ async function handleTenantStoreMessage(
     const cleanBody = String(body || "").trim();
     const brandedBody = /powered by sabi/i.test(cleanBody)
       ? cleanBody
-      : `${cleanBody}${cleanBody ? "\\n\\n" : ""}_Powered by Sabi by XTOP_`;
+      : `${cleanBody}${cleanBody ? "\n\n" : ""}_Powered by Sabi by XTOP_`;
     const id = imageUrl
       ? await sendImageMessage(phone, imageUrl, brandedBody, credentials)
       : await sendTextMessage(phone, brandedBody, credentials);
