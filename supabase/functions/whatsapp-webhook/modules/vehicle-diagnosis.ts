@@ -8,6 +8,7 @@ const norm=(s:string)=>String(s||"").toLowerCase().replace(/[’']/g,"'").replac
 const menuWords=new Set(["menu","back","main menu","exit","quit","cancel","stop"]);
 function detectSystem(s:string):System {
  const t=norm(s);
+ if(/\b[pcbu][0-9a-f]{4}\b/i.test(t)) return "engine";
  if(/overheat|hot in traffic|temperature|coolant|radiator/.test(t)) return "cooling";
  if(/won't start|wont start|not start|no start|crank|starter|clicking/.test(t)) return "starting";
  if(/brake|abs|stopping|braking/.test(t)) return "brakes";
@@ -73,8 +74,10 @@ export async function handleVehicleDiagnosis(phone:string,text:string,conv:Conve
  if(state==="VEHICLE_DIAG_LEARN_QUIZ"){
   const lesson=lessons[String(ctx.vehicleDiagnosisLesson||"")];
   if(!lesson){await showMode(phone,conv,ctx);return;}
+  const answerKeys:Record<string,RegExp>={"1":/fan|airflow|coolant|thermostat/i,"2":/fuel|spark|ignition|injector|compression|timing/i,"3":/do not drive|recovery|inspection|hydraulic/i,"4":/charging|alternator|regulator|belt|wiring/i,"5":/cylinder\\s*1|misfire|p0301/i,"6":/fluid|scan|slip|pressure|vehicle details/i};
+  const correct=answerKeys[String(ctx.vehicleDiagnosisLesson||"")]?.test(raw)||false;
   await save(conv,"VEHICLE_DIAG_LEARN_TOPIC",{...ctx,vehicleDiagnosisLesson:null});
-  await sendTextMessage(phone,"📘 *MODEL ANSWER*\n"+lesson.answer+"\n\n*Why:* "+lesson.why+"\n\nNow choose another lesson (1–6), or reply *MENU* to change mode.");
+  await sendTextMessage(phone,(correct?"✅ *Good answer — you identified an important diagnostic point.*":"📘 *Let's review the model answer.*")+"\\n\\n*Model answer:* "+lesson.answer+"\\n\\n*Why:* "+lesson.why+"\\n\\nChoose another lesson (1–6), or reply *MENU* to change mode.");
   return;
  }
  if(state==="VEHICLE_DIAG_PRACTICAL_INPUT"){
