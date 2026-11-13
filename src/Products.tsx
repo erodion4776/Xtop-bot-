@@ -96,7 +96,8 @@ function parseCsv(text: string): string[][] {
   if (row.some((value) => value.trim() !== "")) rows.push(row);
   return rows;
 }
-\nfunction makeSlug(value: string) {
+
+function makeSlug(value: string) {
   return value
     .toLowerCase()
     .trim()
@@ -117,8 +118,13 @@ export default function Products({ tenantId }: { tenantId: string }) {
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState("");
   const [deletingId, setDeletingId] = useState("");
+  const [bulkRows, setBulkRows] = useState<BulkProductRow[]>([]);
+  const [bulkFileName, setBulkFileName] = useState("");
+  const [bulkImporting, setBulkImporting] = useState(false);
+  const [bulkSummary, setBulkSummary] = useState("");
 
   const fileInput = useRef<HTMLInputElement>(null);
+  const bulkFileInput = useRef<HTMLInputElement>(null);
 
   // Generate the public product URL.
   function getProductLink(product: Product) {
