@@ -23,7 +23,7 @@ const LOGO_URL =
 const DEMO_VIDEO_URL = "/videos/sabi-homepage-demo-web.mp4";
 const SABI_WHATSAPP_NUMBER = "2348024988555";
 const WHATSAPP_DEMO_URL = `https://wa.me/${SABI_WHATSAPP_NUMBER}?text=DEMO`;
-const WHATSAPP_REGISTER_URL = `https://wa.me/${SABI_WHATSAPP_NUMBER}?text=REGISTER%20MY%20BUSINESS`;
+const DASHBOARD_SIGNUP_URL = "/?login=1";
 
 function getVideoEmbed(url: string) {
   try {
@@ -80,14 +80,14 @@ const benefits = [
 ];
 
 const steps = [
-  ["01", "Connect your number — free to start", "Get started without a monthly Sabi subscription. Use a dedicated business number for automation and keep your personal WhatsApp separate."],
-  ["02", "Add the products you sell", "Upload product details, prices, categories and pictures so customers can browse what is available."],
-  ["03", "Share your shop and start serving", "Share product links, receive customer orders and manage the work from your dashboard."]
+  ["01", "Create your merchant account", "Get your dashboard ready first. You can connect a dedicated business WhatsApp number later from Settings and keep your personal WhatsApp separate."],
+  ["02", "Add the products you sell", "Upload product details, prices, categories and pictures while your WhatsApp connection is still pending."],
+  ["03", "Connect WhatsApp and start serving", "When your dedicated business number is ready, connect it from Settings, then share your shop and receive customer orders."]
 ];
 
 const faqs = [
-  ["Is it free to start using Sabi?", "Yes. You can get started with Sabi at no monthly Sabi subscription cost. Connect your dedicated business WhatsApp number, add your products and start selling. Any charges set by WhatsApp/Meta or payment providers are separate third-party charges, not a Sabi monthly subscription."],
-  ["Do I pay a monthly subscription to Sabi?", "No. Sabi does not require a monthly subscription or paid trial. Connect your dedicated business WhatsApp number, set up your products and begin serving customers."],
+  ["Is it free to start using Sabi?", "Yes. You can create your merchant account and set up your dashboard at no monthly Sabi subscription cost. Connect a dedicated business WhatsApp number later from Settings when it is ready. Any charges set by WhatsApp/Meta or payment providers are separate third-party charges, not a Sabi monthly subscription."],
+  ["Do I pay a monthly subscription to Sabi?", "No. Sabi does not require a monthly subscription or paid trial. Create your merchant account, prepare your products, and connect a dedicated business WhatsApp number from Settings when ready."],
   ["Is Sabi only for big businesses?", "No. Sabi is designed for the everyday business owner too: a fashion seller, food vendor, beauty store, phone dealer, home business, distributor or growing retail shop."],
   ["Do my customers need to download an app?", "No extra shopping app is required for the WhatsApp shopping conversation. Customers can chat with your business on WhatsApp and follow the product or payment links provided in the order flow."],
   ["Can I use my personal WhatsApp number?", "Sabi automation is intended for a dedicated business WhatsApp number. Your personal WhatsApp can remain personal and separate."],
@@ -113,7 +113,7 @@ export default function Landing() {
           <a href="#demo">See the demo</a>
           <a href="#faq">FAQs</a>
         </nav>
-        <div className="lp-nav-actions"><a className="lp-nav-demo" href={WHATSAPP_DEMO_URL} target="_blank" rel="noreferrer"><MessageCircle size={15} /> Try Sabi</a><a className="lp-nav-cta" href={WHATSAPP_REGISTER_URL} target="_blank" rel="noreferrer">Register your business <ArrowRight size={16} /></a><a className="lp-nav-login" href="/app">Login</a></div>
+        <div className="lp-nav-actions"><a className="lp-nav-demo" href={WHATSAPP_DEMO_URL} target="_blank" rel="noreferrer"><MessageCircle size={15} /> Try Sabi</a><a className="lp-nav-cta" href={DASHBOARD_SIGNUP_URL} target="_blank" rel="noreferrer">Register your business <ArrowRight size={16} /></a><a className="lp-nav-login" href="/app">Login</a></div>
       </header>
 
       <section className="lp-hero">
@@ -127,7 +127,7 @@ export default function Landing() {
             bring those moving parts into one simple WhatsApp-powered shop.
           </p>
           <div className="lp-hero-actions">
-            <a className="lp-button lp-button-primary" href={WHATSAPP_REGISTER_URL} target="_blank" rel="noreferrer">Register your business <ArrowRight size={18} /></a>
+            <a className="lp-button lp-button-primary" href={DASHBOARD_SIGNUP_URL} target="_blank" rel="noreferrer">Register your business <ArrowRight size={18} /></a>
             <a className="lp-button lp-button-whatsapp" href={WHATSAPP_DEMO_URL} target="_blank" rel="noreferrer"><MessageCircle size={17} /> Try Sabi on WhatsApp</a>
             <a className="lp-button lp-button-ghost" href="#demo"><Play size={16} /> Watch the demo video</a>
           </div>
@@ -268,7 +268,7 @@ export default function Landing() {
         <span className="lp-eyebrow">FREE TO GET STARTED · NO MONTHLY SUBSCRIPTION</span>
         <h2>Connect your business number. Put your products on WhatsApp. Start selling.</h2>
         <p>Start with Sabi at no monthly subscription cost. Connect your dedicated WhatsApp number, add your products and give customers a simple way to browse and order. You run your business — Sabi helps organise the conversations.</p>
-        <div className="lp-final-actions"><a className="lp-button lp-button-light" href={WHATSAPP_REGISTER_URL} target="_blank" rel="noreferrer">Register your business <ArrowRight size={18} /></a><a className="lp-button lp-button-final-demo" href={WHATSAPP_DEMO_URL} target="_blank" rel="noreferrer"><MessageCircle size={17} /> Try Sabi on WhatsApp</a><a className="lp-final-login" href="/app">Already registered? Merchant login</a></div>
+        <div className="lp-final-actions"><a className="lp-button lp-button-light" href={DASHBOARD_SIGNUP_URL} target="_blank" rel="noreferrer">Register your business <ArrowRight size={18} /></a><a className="lp-button lp-button-final-demo" href={WHATSAPP_DEMO_URL} target="_blank" rel="noreferrer"><MessageCircle size={17} /> Try Sabi on WhatsApp</a><a className="lp-final-login" href="/app">Already registered? Merchant login</a></div>
         <small>Sabi by XTOP · A product of XTOP Retail Technologies</small>
       </section>
 
