@@ -358,6 +358,47 @@ export async function sendButtonMessage(
 }
 
 // =====================================================
+// CALL-TO-ACTION URL MESSAGE
+// =====================================================
+
+export async function sendCtaUrlMessage(
+  to: string,
+  body: string,
+  buttonText: string,
+  buttonUrl: string,
+  footer?: string,
+  credentials?: WhatsAppCredentials,
+): Promise<string | null> {
+  const safeUrl = String(buttonUrl || "").trim();
+  if (!/^https:\/\//i.test(safeUrl)) {
+    safeErrorLog("sendCtaUrlMessage", new Error("A valid HTTPS URL is required."));
+    return null;
+  }
+
+  return sendToWhatsApp(
+    {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "interactive",
+      interactive: {
+        type: "cta_url",
+        body: { text: String(body || "").substring(0, 1024) },
+        ...(footer ? { footer: { text: footer.substring(0, 60) } } : {}),
+        action: {
+          name: "cta_url",
+          parameters: {
+            display_text: String(buttonText || "Discover Sabi").substring(0, 20),
+            url: safeUrl,
+          },
+        },
+      },
+    },
+    credentials,
+  );
+}
+
+// =====================================================
 // LIST MESSAGE
 // =====================================================
 
