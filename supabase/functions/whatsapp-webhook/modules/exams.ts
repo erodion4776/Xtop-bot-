@@ -533,10 +533,10 @@ function shuffleExamOptions(question: any): any {
   };
 }
 
-async function sendExamQuestionPrompt(phone: string, question: any, index: number, total: number): Promise<void> {
+async function sendExamQuestionPrompt(phone: string, question: any, index: number, total: number, courseCode: string): Promise<void> {
   await sendTextMessage(
     phone,
-    `📝 *ELA401 CBT — Question ${index + 1} of ${total}*\n\n` +
+    `📝 *${courseCode || "CBT"} CBT — Question ${index + 1} of ${total}*\n\n` +
     `${question.question}\n\n` +
     `A. ${question.option_a}\nB. ${question.option_b}\nC. ${question.option_c}\nD. ${question.option_d}\n\n` +
     `Reply with A, B, C or D.\n_Time remaining is checked when you submit each answer._`
@@ -587,7 +587,7 @@ async function launchExam(
     `_Answer carefully. If the timer exceeds ${ctx.examDurationMinutes} minutes, your exam will auto-submit._`
   );
 
-  await sendExamQuestionPrompt(phone, questions[0], 0, questions.length);
+  await sendExamQuestionPrompt(phone, questions[0], 0, questions.length, ctx.courseCode || "CBT");
 }
 
 async function handleExamAnswer(
@@ -645,7 +645,7 @@ async function handleExamAnswer(
 
   if (nextQIdx < questions.length) {
     await saveExamCtx(conv.id, updatedCtx, "IN_EXAM");
-    await sendExamQuestionPrompt(phone, questions[nextQIdx], nextQIdx, questions.length);
+    await sendExamQuestionPrompt(phone, questions[nextQIdx], nextQIdx, questions.length, ctx.courseCode || "CBT");
   } else {
     await completeAndSubmitExam(phone, conv.id, updatedCtx);
   }
