@@ -439,7 +439,7 @@ export async function handleExamPaymentRecovery(
     }
   }
 
-  await sendTextMessage(phone, "🎉 *CBT payment confirmed.* Restoring your ELA301 exam session now.");
+  await sendTextMessage(phone, `🎉 *CBT payment confirmed.* Restoring your *${course.course_code}* exam session now.`);
   await startExamEntry(phone, conv.id, recoveredCtx, true);
 }
 
