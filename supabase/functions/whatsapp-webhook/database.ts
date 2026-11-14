@@ -1210,7 +1210,7 @@ export async function getStudentCourseAccess(
       .insert({
         student_id: studentId,
         course_id: courseId,
-        access_status: courseStatus || "ACTIVE",
+        status: courseStatus || "ACTIVE",
         progress: {
           completed_lessons: [],
           last_lesson_order: 0,
