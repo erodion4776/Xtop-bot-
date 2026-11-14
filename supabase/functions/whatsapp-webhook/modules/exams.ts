@@ -288,7 +288,7 @@ export async function handleActiveExamRecovery(
   if (!student) return false;
 
   const { data: attempt } = await supabase.from("exam_attempts")
-    .select("id,student_id,course_id,exam_id,question_ids,answers_json,started_at,submitted_at,total_questions")
+    .select("id,student_id,course_id,exam_id,question_ids,answers_json,questions_snapshot,started_at,submitted_at,total_questions")
     .eq("student_id", student.id).is("submitted_at", null)
     .order("started_at", { ascending: false }).limit(1).maybeSingle();
   if (!attempt || !attempt.started_at) return false;
@@ -305,8 +305,14 @@ export async function handleActiveExamRecovery(
   if (!course || !enrollment || !questionRows?.length) return false;
 
   const byId = new Map(questionRows.map((q: any) => [String(q.id), q]));
-  const questions = (attempt.question_ids || []).map((id: string) => byId.get(String(id))).filter(Boolean);
-  if (!questions.length) return false;
+  const rawQuestions = (attempt.question_ids || []).map((id: string) => byId.get(String(id))).filter(Boolean);
+  if (!rawQuestions.length) return false;
+  const questions = Array.isArray(attempt.questions_snapshot) && attempt.questions_snapshot.length
+    ? attempt.questions_snapshot
+    : rawQuestions.map((question: any) => shuffleExamOptions(question));
+  if (!Array.isArray(attempt.questions_snapshot) || !attempt.questions_snapshot.length) {
+    await supabase.from("exam_attempts").update({ questions_snapshot: questions }).eq("id", attempt.id);
+  }
 
   const savedAnswers = Array.isArray(attempt.answers_json) ? attempt.answers_json : [];
   const examAnswers = savedAnswers.map((a: any) => ({
@@ -642,6 +648,7 @@ async function launchExam(
     score: 0,
     total_questions: questions.length,
     question_ids: questions.map((question: any) => question.id),
+    questions_snapshot: questions,
     total_marks: questions.reduce((sum: number, question: any) => sum + Number(question.marks || 1), 0),
     percentage: 0,
     pass_status: "PENDING",
