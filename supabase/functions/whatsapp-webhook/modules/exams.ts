@@ -453,6 +453,16 @@ export async function handleExams(
   const state = conv.current_state;
   const ctx = getExamCtx(conv);
 
+  // Explicit resume command re-sends the current question without grading it.
+  if (n === "resume exam" && state === "IN_EXAM") {
+    const index = ctx.currentExamQIndex || 0;
+    const question = (ctx.questions || [])[index];
+    if (question) {
+      await sendExamQuestionPrompt(phone, question, index, (ctx.questions || []).length, ctx.courseCode || "CBT");
+    }
+    return;
+  }
+
   // Global cancel/back handlers
   if (n === "cbt_cancel_pay" || isBack(text)) {
     await updateConversation(conv.id, { current_module: "LEARNING", current_state: "COURSE_MENU" });
