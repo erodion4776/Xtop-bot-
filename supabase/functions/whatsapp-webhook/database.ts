@@ -1237,48 +1237,16 @@ export async function markLessonComplete(
 ): Promise<any> {
   const sb = getSupabaseClient();
 
-  const { data: record, error: fetchErr } = await sb
-    .from("student_courses")
-    .select("progress")
-    .eq("id", studentCourseId)
-    .maybeSingle();
-
-  if (fetchErr || !record) {
-    safeErrorLog("markLessonComplete.fetch", fetchErr);
-    return null;
-  }
-
-  const progress = record.progress || {
-    completed_lessons: [],
-    last_lesson_order: 0,
-  };
-
-  const completed = Array.isArray(progress.completed_lessons)
-    ? [...progress.completed_lessons]
-    : [];
-
-  if (!completed.includes(lessonId)) completed.push(lessonId);
-
-  const updatedProgress = {
-    ...progress,
-    completed_lessons: completed,
-    last_lesson_order: Math.max(
-      progress.last_lesson_order || 0,
-      lastLessonOrder
-    ),
-  };
-
-  const { data, error } = await sb
-    .from("student_courses")
-    .update({
-      progress: updatedProgress,
-    })
-    .eq("id", studentCourseId)
-    .select("*")
-    .maybeSingle();
+  // The database function updates the JSONB progress atomically. This prevents
+  // simultaneous WhatsApp requests from overwriting each other's completed IDs.
+  const { data, error } = await sb.rpc("mark_learning_lesson_complete", {
+    p_student_course_id: studentCourseId,
+    p_lesson_id: lessonId,
+    p_lesson_order: lastLessonOrder,
+  });
 
   if (error) {
-    safeErrorLog("markLessonComplete.update", error);
+    safeErrorLog("markLessonComplete.atomic", error);
     return null;
   }
 
