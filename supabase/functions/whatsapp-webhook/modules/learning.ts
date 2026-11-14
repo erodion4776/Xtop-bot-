@@ -963,37 +963,21 @@ async function processLessonNavigation(
     ctx.currentSectionIndex = nextSectionIndex;
     ctx.step = "VIEWING_SECTION";
 
-    await sendTextMessage(phone, `📖 *Section ${secIdx + 1} of ${sections.length}*\n\n*${activeSection.title}*\n\n${activeSection.content}`);
+    const sectionMessage = `📖 *Section ${secIdx + 1} of ${sections.length}*\n\n*${activeSection.title}*\n\n${activeSection.content}`;
 
     if (nextSectionIndex >= sections.length) {
+      await sendTextMessage(phone, sectionMessage);
       await completeAndAdvanceLesson(phone, conv.id, ctx);
       return;
     }
 
-    const nextButtonMessageId = await sendButtonMessage(
+    // Send one WhatsApp message per section. Sending the slide and a separate
+    // interactive button immediately afterwards can trigger Meta error 131056
+    // (business/consumer pair rate limit), leaving students without controls.
+    await sendTextMessage(
       phone,
-      `Section ${nextSectionIndex} of ${sections.length} saved. You can continue now or return later; your next section will be remembered.`,
-      [
-        makeButton(`lsn_next_${nextSectionIndex}`, "Next Section ➡️"),
-        makeButton("lsn_menu", "📋 Course Menu")
-      ],
-      "Lecture Progress",
-      `Saved: ${nextSectionIndex}/${sections.length}`
+      `${sectionMessage}\n\n✅ *Progress saved: ${nextSectionIndex}/${sections.length}*\nReply *NEXT* to open the next section, or *MENU* for the course menu.`
     );
-
-    // WhatsApp can reject an interactive button message independently of the
-    // section text. Never leave the student without a way to continue.
-    if (!nextButtonMessageId) {
-      console.error("[learning] Next Section button was not accepted by WhatsApp", {
-        conversationId: conv.id,
-        lessonId,
-        nextSectionIndex,
-      });
-      await sendTextMessage(
-        phone,
-        `✅ Section ${nextSectionIndex} of ${sections.length} is saved. To continue, simply reply *NEXT*. Your progress is saved and will resume from Section ${nextSectionIndex + 1}.`
-      );
-    }
     return;
   }
 
