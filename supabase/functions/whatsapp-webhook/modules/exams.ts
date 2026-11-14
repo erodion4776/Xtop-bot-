@@ -47,7 +47,7 @@ async function saveExamCtx(convId: string, ctx: ExamCtx, state: string): Promise
 // ═══════════════════════════════════════════════════════
 
 export async function startExamEntry(
-  phone: string, conversationId: string, learningCtx: LearningCtx
+  phone: string, conversationId: string, learningCtx: LearningCtx, resumePaidPayment = false
 ): Promise<void> {
   const studentId = learningCtx.studentId;
   const courseId = learningCtx.courseId;
@@ -174,7 +174,7 @@ export async function startExamEntry(
   };
 
   // 3. Handle Retake Warning (Attempt 2 or 3)
-  if (attemptsCount > 0) {
+  if (attemptsCount > 0 && !resumePaidPayment) {
     await saveExamCtx(conversationId, examCtx, "WAITING_RETAKE_CONFIRMATION");
 
     const retakeWarning =
@@ -268,6 +268,94 @@ async function handlePaywallGate(
 // ═══════════════════════════════════════════════════════
 // 3. EXAM MODULE EVENT ROUTER
 // ═══════════════════════════════════════════════════════
+
+/**
+ * Recovers a student's CBT payment when the general Sabi menu has replaced
+ * the WhatsApp conversation context. The payment transaction is the durable
+ * source of the course and student identity; the student must match the
+ * WhatsApp sender before Paystack is verified.
+ */
+export async function handleExamPaymentRecovery(
+  phone: string, text: string, contact: Contact, conv: Conversation
+): Promise<void> {
+  const existing = getExamCtx(conv);
+  if (conv.current_module === "EXAMS" && existing.paymentReference) {
+    await handleExams(phone, text, contact, conv);
+    return;
+  }
+
+  const normalizedPhone = String(phone || "").replace(/\\D/g, "");
+  const { data: student, error: studentError } = await supabase
+    .from("students")
+    .select("id")
+    .eq("phone", normalizedPhone)
+    .maybeSingle();
+
+  if (studentError || !student) {
+    await sendTextMessage(phone, "⚠️ I could not match this WhatsApp number to the student record. Please contact the Learning Centre administrator. Do not make another payment.");
+    return;
+  }
+
+  const { data: payment, error: paymentError } = await supabase
+    .from("payment_transactions")
+    .select("reference,amount,status,course_id,created_at")
+    .eq("student_id", student.id)
+    .in("status", ["PENDING", "SUCCESSFUL"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (paymentError || !payment || ![500, 1000].includes(Number(payment.amount))) {
+    await sendTextMessage(phone, "⚠️ I could not find a valid CBT payment for this WhatsApp number. Please contact the Learning Centre administrator before making another payment.");
+    return;
+  }
+
+  const [{ data: course, error: courseError }, { data: enrollment, error: enrollmentError }] = await Promise.all([
+    supabase.from("courses").select("id,course_code,course_name,level").eq("id", payment.course_id).maybeSingle(),
+    supabase.from("student_courses").select("id,status").eq("student_id", student.id).eq("course_id", payment.course_id).eq("status", "ACTIVE").maybeSingle(),
+  ]);
+
+  if (courseError || enrollmentError || !course || !enrollment) {
+    await sendTextMessage(phone, "⚠️ Your payment record was found, but the course enrolment could not be restored. Your payment has not been discarded. Please contact the Learning Centre administrator.");
+    return;
+  }
+
+  const recoveredCtx: ExamCtx = {
+    step: "ENTRY",
+    learningUnlocked: true,
+    studentId: student.id,
+    studentCourseId: enrollment.id,
+    courseId: course.id,
+    courseCode: course.course_code,
+    courseName: course.course_name,
+    totalLessons: 16,
+    studentLevel: String(course.level || ""),
+    examFeeNaira: Number(payment.amount),
+    paymentReference: payment.reference,
+    examDurationMinutes: 60,
+  };
+
+  if (payment.status === "PENDING") {
+    await saveExamCtx(conv.id, recoveredCtx, "WAITING_PAYMENT_VERIFICATION");
+    await sendTextMessage(phone, "⏳ I found your ELA/CBT checkout. I am checking the ₦" + Number(payment.amount).toLocaleString("en-NG") + " payment with Paystack now. You do not need to pay again.");
+    const verified = await verifyExamPayment(payment.reference, Number(payment.amount));
+    if (!verified) {
+      await sendButtonMessage(
+        phone,
+        "⚠️ *Payment is not yet confirmed by Paystack.*\n\nIf your bank has debited you, do not pay again. Wait briefly and tap Verify Payment again.",
+        [
+          makeButton("cbt_verify_pay", "🔄 Verify Payment"),
+          makeButton("cbt_cancel_pay", "📋 Course Menu")
+        ],
+        "CBT Payment Verification"
+      );
+      return;
+    }
+  }
+
+  await sendTextMessage(phone, "🎉 *CBT payment confirmed.* Restoring your ELA301 exam session now.");
+  await startExamEntry(phone, conv.id, recoveredCtx, true);
+}
 
 export async function handleExams(
   phone: string, text: string, contact: Contact, conv: Conversation
