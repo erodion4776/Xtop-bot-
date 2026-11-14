@@ -80,7 +80,7 @@ import {
   showServiceTypeSelector,
 } from "./modules/sales.ts";
 
-import { handleExams, handleExamPaymentRecovery } from "./modules/exams.ts";
+import { handleExams, handleExamPaymentRecovery, handleActiveExamRecovery } from "./modules/exams.ts";
 
 import {
   handleTools,
@@ -1207,6 +1207,13 @@ export async function routeMessage(
           ? "✅ Your message has been forwarded to the Sabi support team. You can continue sending messages here; a human agent will respond in this chat."
           : "⚠️ Your message is saved, but we could not notify the support team just now. Please try again later.",
       );
+      return;
+    }
+
+    // An in-progress CBT attempt always takes priority over Sabi menus.
+    // This repairs exam sessions even if a previous gateway message replaced
+    // the conversation module and context.
+    if (await handleActiveExamRecovery(phone, text, contact, conversation)) {
       return;
     }
 
