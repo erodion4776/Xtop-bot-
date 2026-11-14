@@ -447,6 +447,33 @@ export async function handleExamPaymentRecovery(
     }
   }
 
+  if (payment.status === "SUCCESSFUL") {
+    const [{ data: successfulPayments }, { data: completedAttempts }] = await Promise.all([
+      supabase.from("payment_transactions").select("id,amount")
+        .eq("student_id", student.id).eq("course_id", course.id).eq("status", "SUCCESSFUL"),
+      supabase.from("exam_attempts").select("id,score,total_questions,submitted_at")
+        .eq("student_id", student.id).eq("course_id", course.id)
+        .not("submitted_at", "is", null).order("submitted_at", { ascending: false }),
+    ]);
+    const matchingPaidCount = (successfulPayments || [])
+      .filter((row: any) => Number(row.amount) === Number(payment.amount)).length;
+    const completedCount = (completedAttempts || []).length;
+
+    // A successful payment already consumed by a submitted attempt must not
+    // silently start another paid retake when the student taps Verify again.
+    if (matchingPaidCount <= completedCount) {
+      const latest = (completedAttempts || [])[0] as any;
+      const scoreText = latest
+        ? `Latest result: *${Number(latest.score || 0)}/${Number(latest.total_questions || 50)}*.`
+        : "Your earlier paid attempt has already been recorded.";
+      await sendTextMessage(
+        phone,
+        `ℹ️ Your *${course.course_code}* payment has already been used for a completed CBT attempt.\\n\\n${scoreText}\\n\\nNo new exam has been started and you do not need to pay again for that completed attempt. If you want to retake the exam, open the course menu and choose the retake option. A new attempt requires a new access-fee payment only after you confirm the retake.`
+      );
+      return;
+    }
+  }
+
   await sendTextMessage(phone, `🎉 *CBT payment confirmed.* Restoring your *${course.course_code}* exam session now.`);
   await startExamEntry(phone, conv.id, recoveredCtx, true);
 }
