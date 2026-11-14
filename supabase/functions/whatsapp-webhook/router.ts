@@ -1210,9 +1210,16 @@ export async function routeMessage(
       return;
     }
 
-    // An in-progress CBT attempt always takes priority over Sabi menus.
-    // This repairs exam sessions even if a previous gateway message replaced
-    // the conversation module and context.
+    // If the conversation already has the live exam context, process the
+    // answer normally. Do not rebuild the context from stale DB state on every
+    // answer; the attempt row is only the recovery source after context loss.
+    if (currentModule === "EXAMS" && conversation.current_state === "IN_EXAM") {
+      await handleExams(phone, text, contact, conversation);
+      return;
+    }
+
+    // An in-progress CBT attempt takes priority over Sabi menus only when
+    // another workflow has replaced the conversation module/context.
     if (await handleActiveExamRecovery(phone, text, contact, conversation)) {
       return;
     }
