@@ -1272,7 +1272,6 @@ export async function markLessonComplete(
     .from("student_courses")
     .update({
       progress: updatedProgress,
-      updated_at: new Date().toISOString(),
     })
     .eq("id", studentCourseId)
     .select("*")
