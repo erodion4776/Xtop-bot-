@@ -1190,8 +1190,14 @@ export async function routeMessage(
       return;
     }
 
-    // Continue an active Engr Ero learning session.
-    if (currentModule === "LEARNING") {
+    // Route Learning Centre button payloads directly to the learning handler.
+    // This keeps Next Section / Course Menu actions working even if another
+    // workflow changed the conversation module between WhatsApp deliveries.
+    if (
+      currentModule === "LEARNING" ||
+      interactiveId.startsWith("lsn_") ||
+      interactiveId.startsWith("cm_")
+    ) {
       await handleLearning(
         phone,
         text,
