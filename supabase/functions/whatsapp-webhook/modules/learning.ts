@@ -904,6 +904,14 @@ async function processLessonNavigation(
     n === "lsn_practice_start" ||
     n.includes("practice")
   ) {
+    // Ensure this student has an enrollment row before saving section progress.
+    // Older rows may be missing because the previous insert used a non-existent
+    // access_status column; getStudentCourseAccess now writes the real status column.
+    if (ctx.studentId && ctx.courseId && !ctx.studentCourseId) {
+      const enrollment = await getStudentCourseAccess(ctx.studentId, ctx.courseId);
+      ctx.studentCourseId = enrollment?.id;
+    }
+
     const sections = await fetchLessonSections(lessonId);
     const secIdx = ctx.currentSectionIndex || 0;
 
