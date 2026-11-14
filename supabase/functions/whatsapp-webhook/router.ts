@@ -80,7 +80,7 @@ import {
   showServiceTypeSelector,
 } from "./modules/sales.ts";
 
-import { handleExams } from "./modules/exams.ts";
+import { handleExams, handleExamPaymentRecovery } from "./modules/exams.ts";
 
 import {
   handleTools,
@@ -1207,6 +1207,13 @@ export async function routeMessage(
           ? "✅ Your message has been forwarded to the Sabi support team. You can continue sending messages here; a human agent will respond in this chat."
           : "⚠️ Your message is saved, but we could not notify the support team just now. Please try again later.",
       );
+      return;
+    }
+
+    // CBT payment controls must survive a return from Paystack or a Sabi
+    // welcome-menu context change. Recover the pending payment by sender number.
+    if (interactiveId.startsWith("cbt_") || /^(verify payment|paid|retry verification)$/i.test(String(text || "").trim())) {
+      await handleExamPaymentRecovery(phone, interactiveId || text, contact, conversation);
       return;
     }
 
