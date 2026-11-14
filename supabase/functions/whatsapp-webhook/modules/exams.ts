@@ -350,17 +350,14 @@ export async function handleActiveExamRecovery(
     current_state: "IN_EXAM",
     context_json: recoveredCtx,
   } as Conversation;
-  if (/^resume exam$/i.test(String(text || "").trim())) {
-    const qIndex = recoveredCtx.currentExamQIndex || 0;
-    const nextQuestion = questions[qIndex];
-    if (nextQuestion) {
-      await sendExamQuestionPrompt(phone, nextQuestion, qIndex, questions.length, course.course_code || "CBT");
-    } else {
-      await completeAndSubmitExam(phone, conv.id, recoveredCtx);
-    }
-    return true;
+  const qIndex = recoveredCtx.currentExamQIndex || 0;
+  const nextQuestion = questions[qIndex];
+  if (nextQuestion) {
+    await sendTextMessage(phone, "To protect your answers, I restored the saved exam position but did not grade the message that triggered recovery. Please send *RESUME EXAM* to continue, then answer the question shown.");
+    await sendExamQuestionPrompt(phone, nextQuestion, qIndex, questions.length, course.course_code || "CBT");
+  } else {
+    await completeAndSubmitExam(phone, conv.id, recoveredCtx);
   }
-  await handleExams(phone, text, contact, restoredConversation);
   return true;
 }
 
