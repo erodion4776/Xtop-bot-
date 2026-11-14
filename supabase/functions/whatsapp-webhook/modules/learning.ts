@@ -970,7 +970,7 @@ async function processLessonNavigation(
       return;
     }
 
-    await sendButtonMessage(
+    const nextButtonMessageId = await sendButtonMessage(
       phone,
       `Section ${nextSectionIndex} of ${sections.length} saved. You can continue now or return later; your next section will be remembered.`,
       [
@@ -980,6 +980,20 @@ async function processLessonNavigation(
       "Lecture Progress",
       `Saved: ${nextSectionIndex}/${sections.length}`
     );
+
+    // WhatsApp can reject an interactive button message independently of the
+    // section text. Never leave the student without a way to continue.
+    if (!nextButtonMessageId) {
+      console.error("[learning] Next Section button was not accepted by WhatsApp", {
+        conversationId: conv.id,
+        lessonId,
+        nextSectionIndex,
+      });
+      await sendTextMessage(
+        phone,
+        `✅ Section ${nextSectionIndex} of ${sections.length} is saved. To continue, simply reply *NEXT*. Your progress is saved and will resume from Section ${nextSectionIndex + 1}.`
+      );
+    }
     return;
   }
 
