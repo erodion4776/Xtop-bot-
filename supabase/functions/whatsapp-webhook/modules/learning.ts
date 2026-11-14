@@ -201,6 +201,37 @@ async function fetchLessonMedia(lessonId: string) {
   return data || [];
 }
 
+/**
+ * Persist the next section to read for each lesson. This is separate from
+ * completed_lessons so a student can leave WhatsApp and resume mid-lecture.
+ */
+async function saveLessonSectionCheckpoint(
+  studentCourseId: string | undefined,
+  lessonId: string,
+  nextSectionIndex: number,
+): Promise<void> {
+  if (!studentCourseId) return;
+  const { data: record, error: fetchError } = await supabase
+    .from("student_courses")
+    .select("progress")
+    .eq("id", studentCourseId)
+    .maybeSingle();
+  if (fetchError || !record) {
+    console.error("[learning] Could not load lecture progress", fetchError);
+    return;
+  }
+  const progress = record.progress || {};
+  const lessonSections = {
+    ...(progress.lesson_sections || {}),
+    [lessonId]: { next_section_index: nextSectionIndex, updated_at: new Date().toISOString() },
+  };
+  const { error } = await supabase
+    .from("student_courses")
+    .update({ progress: { ...progress, lesson_sections: lessonSections } })
+    .eq("id", studentCourseId);
+  if (error) console.error("[learning] Could not save lecture checkpoint", error);
+}
+
 async function fetchLessonPracticeQuestions(lessonId: string) {
   const { data } = await supabase
     .from("lesson_practice_questions")
@@ -302,7 +333,8 @@ export async function handleLearning(
       await processLessonNavigation(phone, text, conv, ctx);
       break;
     case "PRACTICE_QUESTION":
-      await processPracticeAnswer(phone, text, conv, ctx);
+      await sendTextMessage(phone, "The lesson format has been updated. Practice questions have been removed; your lecture will continue from the saved section.");
+      await deliverLesson(phone, conv.id, ctx, ctx.currentLessonOrder || 1);
       break;
     case "LESSON_COMPLETE":
       await processLessonCompleteAction(phone, text, conv, ctx);
@@ -757,18 +789,26 @@ async function deliverLesson(
   const currentLesson = allLessons[safeIndex];
   const activeOrder = safeIndex + 1;
   const isFirst = activeOrder <= 1;
+  const sections = await fetchLessonSections(currentLesson.id);
+  const mediaList = await fetchLessonMedia(currentLesson.id);
+
+  // Restore the last saved lecture position instead of restarting at Slide 1.
+  let savedSectionIndex = 0;
+  if (ctx.studentId && ctx.courseId) {
+    const enrollment = await getStudentCourseAccess(ctx.studentId, ctx.courseId);
+    ctx.studentCourseId = enrollment?.id || ctx.studentCourseId;
+    const saved = enrollment?.progress?.lesson_sections?.[currentLesson.id]?.next_section_index;
+    if (Number.isInteger(saved) && saved >= 0) savedSectionIndex = Math.min(saved, sections.length);
+  }
 
   ctx.step = "VIEWING_LESSON";
   ctx.currentLessonId = currentLesson.id;
   ctx.currentLessonOrder = activeOrder;
-  ctx.currentSectionIndex = 0;
+  ctx.currentSectionIndex = savedSectionIndex;
   ctx.currentPracticeIndex = 0;
   ctx.practiceScore = 0;
   ctx.totalLessons = allLessons.length;
   await saveCtx(conversationId, ctx, "VIEWING_LESSON");
-
-  const sections = await fetchLessonSections(currentLesson.id);
-  const mediaList = await fetchLessonMedia(currentLesson.id);
 
   const slideCount = sections.length;
   const objectives = currentLesson.objectives
@@ -800,15 +840,31 @@ async function deliverLesson(
   }
 
   const buttons = [];
-  if (sections.length > 0) {
-    buttons.push(makeButton("lsn_section_next", "▶️ Start Slide 1"));
-  } else {
-    buttons.push(makeButton("lsn_practice_start", "✍️ Practice Check"));
+  if (sections.length > 0 && savedSectionIndex < sections.length) {
+    buttons.push(makeButton("lsn_section_next", savedSectionIndex > 0 ? "▶️ Continue Lecture" : "▶️ Start Lecture"));
   }
   if (!isFirst) buttons.push(makeButton("lsn_prev", "⬅️ Prev Lesson"));
   buttons.push(makeButton("lsn_menu", "📋 Course Menu"));
 
-  await sendButtonMessage(phone, "Your lecture slides are ready. Start the presentation below.", buttons, `${ctx.courseCode} Classroom`, `Lesson ${activeOrder}/${allLessons.length}`);
+  if (sections.length === 0) {
+    await sendTextMessage(phone, "This lesson does not have any published lecture sections yet. Your course progress has been preserved.");
+    await showCourseMenu(phone, conversationId, ctx);
+    return;
+  }
+  if (savedSectionIndex >= sections.length) {
+    await completeAndAdvanceLesson(phone, conversationId, ctx);
+    return;
+  }
+
+  await sendButtonMessage(
+    phone,
+    savedSectionIndex > 0
+      ? `Your lecture is saved at Section ${savedSectionIndex + 1} of ${sections.length}. Select Continue Lecture to resume from where you stopped.`
+      : "Your lecture sections are ready. Select Start Lecture to begin.",
+    buttons,
+    `${ctx.courseCode} Classroom`,
+    `Lesson ${activeOrder}/${allLessons.length}`
+  );
 }
 
 // ═══════════════════════════════════════════════════════
@@ -822,131 +878,71 @@ async function processLessonNavigation(
   const currentOrder = ctx.currentLessonOrder || 1;
   const lessonId = ctx.currentLessonId;
 
-  if (n === "lsn_menu" || n.includes("course menu")) {
+  if (n === "lsn_menu" || n.includes("course menu") || n === "menu") {
     await showCourseMenu(phone, conv.id, ctx);
     return;
   }
-
   if (n === "lsn_prev" || n.includes("prev lesson")) {
     await deliverLesson(phone, conv.id, ctx, Math.max(1, currentOrder - 1));
     return;
   }
 
-  if (
-    n === "lsn_section_next" ||
-    n.includes("read section") ||
-    n.includes("next section") ||
-    n === "next" ||
-    n === "section"
-  ) {
-    if (!lessonId) { await showCourseMenu(phone, conv.id, ctx); return; }
-    const sections = await fetchLessonSections(lessonId);
-    const secIdx = ctx.currentSectionIndex || 0;
-
-    if (secIdx < sections.length) {
-      const activeSection = sections[secIdx];
-      ctx.currentSectionIndex = secIdx + 1;
-      ctx.step = "VIEWING_SECTION";
-      await saveCtx(conv.id, ctx, "VIEWING_SECTION");
-
-      let secMsg = `*${activeSection.title}*\n\n${activeSection.content}`;
-      await sendTextMessage(phone, secMsg);
-
-      const isLastSec = (secIdx + 1) >= sections.length;
-      const nextButtons = [
-        makeButton(isLastSec ? "lsn_practice_start" : "lsn_section_next", isLastSec ? "✍️ Start Practice" : "Next Section ➡️"),
-        makeButton("lsn_menu", "📋 Menu")
-      ];
-      await sendButtonMessage(phone, `Section ${secIdx + 1} of ${sections.length} completed.`, nextButtons, "Section Guide");
-      return;
-    }
+  // Legacy practice buttons and old PRACTICE_QUESTION sessions now return
+  // to lecture delivery; practice questions are no longer part of lessons.
+  if (!lessonId) {
+    await deliverLesson(phone, conv.id, ctx, currentOrder);
+    return;
   }
 
   if (
+    n === "lsn_section_next" ||
+    n.includes("continue lecture") ||
+    n.includes("start lecture") ||
+    n.includes("next section") ||
+    n === "next" ||
+    n === "section" ||
     n === "lsn_practice_start" ||
-    n.includes("practice") ||
-    n.includes("start practice")
+    n.includes("practice")
   ) {
-    if (!lessonId) { await showCourseMenu(phone, conv.id, ctx); return; }
-    const questions = await fetchLessonPracticeQuestions(lessonId);
+    const sections = await fetchLessonSections(lessonId);
+    const secIdx = ctx.currentSectionIndex || 0;
 
-    if (questions.length === 0) {
+    if (secIdx >= sections.length) {
       await completeAndAdvanceLesson(phone, conv.id, ctx);
       return;
     }
 
-    ctx.step = "PRACTICE_QUESTION";
-    ctx.currentPracticeIndex = 0;
-    ctx.practiceScore = 0;
-    await saveCtx(conv.id, ctx, "PRACTICE_QUESTION");
-    await sendPracticeQuestionPrompt(phone, questions[0], 0, questions.length);
+    const activeSection = sections[secIdx];
+    const nextSectionIndex = secIdx + 1;
+    ctx.currentSectionIndex = nextSectionIndex;
+    ctx.step = "VIEWING_SECTION";
+
+    // Save to the database before sending the content, so the checkpoint
+    // survives a restart or a student returning with a new WhatsApp session.
+    await saveLessonSectionCheckpoint(ctx.studentCourseId, lessonId, nextSectionIndex);
+    await saveCtx(conv.id, ctx, "VIEWING_SECTION");
+
+    await sendTextMessage(phone, `📖 *Section ${secIdx + 1} of ${sections.length}*\n\n*${activeSection.title}*\n\n${activeSection.content}`);
+
+    if (nextSectionIndex >= sections.length) {
+      await completeAndAdvanceLesson(phone, conv.id, ctx);
+      return;
+    }
+
+    await sendButtonMessage(
+      phone,
+      `Section ${nextSectionIndex} of ${sections.length} saved. You can continue now or return later; your next section will be remembered.`,
+      [
+        makeButton("lsn_section_next", "Next Section ➡️"),
+        makeButton("lsn_menu", "📋 Course Menu")
+      ],
+      "Lecture Progress",
+      `Saved: ${nextSectionIndex}/${sections.length}`
+    );
     return;
   }
 
   await deliverLesson(phone, conv.id, ctx, currentOrder);
-}
-
-async function sendPracticeQuestionPrompt(phone: string, q: any, index: number, total: number) {
-  let body = `✍️ *Practice Question ${index + 1}/${total}*\n\n${q.question}\n\n`;
-  body += `*A)* ${q.option_a}\n`;
-  body += `*B)* ${q.option_b}\n`;
-  if (q.option_c) body += `*C)* ${q.option_c}\n`;
-  if (q.option_d) body += `*D)* ${q.option_d}\n\n`;
-  body += `_Reply with the correct letter: *A*, *B*, *C*, or *D*_`;
-
-  await sendTextMessage(phone, body);
-}
-
-async function processPracticeAnswer(
-  phone: string, text: string, conv: Conversation, ctx: LearningCtx
-): Promise<void> {
-  const lessonId = ctx.currentLessonId;
-  if (!lessonId) { await showCourseMenu(phone, conv.id, ctx); return; }
-
-  const questions = await fetchLessonPracticeQuestions(lessonId);
-  const qIdx = ctx.currentPracticeIndex || 0;
-  const activeQ = questions[qIdx];
-
-  if (!activeQ) {
-    await completeAndAdvanceLesson(phone, conv.id, ctx);
-    return;
-  }
-
-  // Accept a clear A-D answer only. Do not guess from arbitrary text,
-  // because words such as "car" or "diesel" can contain answer letters.
-  const answerText = String(text || "").trim().toUpperCase();
-  const answerMatch = answerText.match(/^(?:(?:OPTION|ANSWER)\s*[:.-]?\s*)?([A-D])(?:[)..!\s]*)$/);
-  const ans = answerMatch?.[1] || "";
-
-  if (!ans) {
-    await sendTextMessage(
-      phone,
-      "⚠️ I couldn't read that answer. Please reply with only *A*, *B*, *C*, or *D*.\n\n" +
-      "Your current question is still open."
-    );
-    await sendPracticeQuestionPrompt(phone, activeQ, qIdx, questions.length);
-    return;
-  }
-
-  const isCorrect = ans === String(activeQ.correct_answer || "").trim().toUpperCase();
-
-  if (isCorrect) {
-    ctx.practiceScore = (ctx.practiceScore || 0) + 1;
-    await sendTextMessage(phone, `✅ *Correct!*\n\n${activeQ.explanation || ""}`);
-  } else {
-    await sendTextMessage(phone, `❌ *Incorrect.*\n*Correct Answer:* Option ${activeQ.correct_answer}\n\n${activeQ.explanation || ""}`);
-  }
-
-  const nextIdx = qIdx + 1;
-  if (nextIdx < questions.length) {
-    ctx.currentPracticeIndex = nextIdx;
-    await saveCtx(conv.id, ctx, "PRACTICE_QUESTION");
-    await sendPracticeQuestionPrompt(phone, questions[nextIdx], nextIdx, questions.length);
-  } else {
-    const finalScore = ctx.practiceScore || 0;
-    await sendTextMessage(phone, `🎯 *Practice Complete!*\nScore: *${finalScore}/${questions.length}*`);
-    await completeAndAdvanceLesson(phone, conv.id, ctx);
-  }
 }
 
 async function completeAndAdvanceLesson(
@@ -1083,6 +1079,7 @@ async function showStudentProgress(phone: string, conversationId: string, ctx: L
     try {
       await supabase.from("student_courses").update({
         progress: {
+          ...(access.progress || {}),
           completed_lessons: validCompleted,
           last_lesson_order: validCompleted.length
         }
