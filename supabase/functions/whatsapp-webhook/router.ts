@@ -1226,7 +1226,7 @@ export async function routeMessage(
 
     // CBT payment controls must survive a return from Paystack or a Sabi
     // welcome-menu context change. Recover the pending payment by sender number.
-    if (interactiveId.startsWith("cbt_") || /^(verify payment|paid|retry verification)$/i.test(String(text || "").trim())) {
+    if (interactiveId.startsWith("cbt_") || /^(verify payment|paid|retry verification)$/i.test(String(text || "").trim()) || /completed.*cbt payment.*verify.*payment/i.test(String(text || "").trim())) {
       await handleExamPaymentRecovery(phone, interactiveId || text, contact, conversation);
       return;
     }
