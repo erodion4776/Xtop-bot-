@@ -183,6 +183,20 @@ async function fetchAllCourseLessons(courseId: string) {
   return playlist;
 }
 
+function getCompletedLessonCount(lessons: any[], progress: Record<string, any> = {}): number {
+  if (!lessons.length) return 0;
+  const raw = Array.isArray(progress.completed_lessons) ? progress.completed_lessons : [];
+  const completedIds = new Set(raw.filter((id: unknown): id is string => typeof id === "string"));
+  const highestRecordedOrder = lessons.reduce(
+    (highest: number, lesson: any, index: number) =>
+      completedIds.has(lesson.id) ? Math.max(highest, index + 1) : highest,
+    0,
+  );
+  const savedOrder = Number(progress.last_lesson_order || 0);
+  const safeSavedOrder = Number.isFinite(savedOrder) ? Math.max(0, savedOrder) : 0;
+  return Math.min(lessons.length, Math.max(highestRecordedOrder, safeSavedOrder));
+}
+
 async function fetchLessonSections(lessonId: string) {
   const { data } = await supabase
     .from("lesson_sections")
@@ -434,11 +448,10 @@ async function processCourseCodeAuth(
   const lessons = await fetchAllCourseLessons(course.id);
   const enrollment = await getStudentCourseAccess(student.id, course.id, course.status);
 
-  // Filter completed lessons against only valid published lesson IDs
-  const publishedIds = new Set(lessons.map((l: any) => l.id));
-  const rawCompleted = enrollment?.progress?.completed_lessons || [];
-  const validCompleted = rawCompleted.filter((id: string) => publishedIds.has(id));
-  const nextLessonOrder = validCompleted.length >= lessons.length ? 1 : validCompleted.length + 1;
+  // Recover the sequential completion high-water mark as well as saved lesson IDs.
+  // Older concurrent writes could lose IDs while last_lesson_order remained correct.
+  const completedCount = getCompletedLessonCount(lessons, enrollment?.progress || {});
+  const nextLessonOrder = completedCount >= lessons.length ? 1 : completedCount + 1;
 
   const ctx: LearningCtx = {
     step: "COURSE_MENU",
@@ -1111,26 +1124,31 @@ async function showStudentProgress(phone: string, conversationId: string, ctx: L
     return;
   }
 
-  // Filter completed lessons to only count published lessons (removes old/stale test IDs)
-  const publishedIds = new Set(lessons.map((l: any) => l.id));
-  const rawCompleted = access?.progress?.completed_lessons || [];
-  const validCompleted = rawCompleted.filter((id: string) => publishedIds.has(id));
-
-  // Sync back to database if there were stale IDs
-  if (access?.id && validCompleted.length !== rawCompleted.length) {
-    try {
-      await supabase.from("student_courses").update({
-        progress: {
-          ...(access.progress || {}),
-          completed_lessons: validCompleted,
-          last_lesson_order: validCompleted.length
-        }
-      }).eq("id", access.id);
-    } catch (_) {}
-  }
-
-  const done = validCompleted.length;
+  // Use both saved lesson IDs and the sequential high-water mark. The latter
+  // protects students whose IDs were lost by older concurrent read/write updates.
+  const done = getCompletedLessonCount(lessons, access?.progress || {});
   const total = lessons.length;
+  const reconciledCompleted = lessons.slice(0, done).map((lesson: any) => lesson.id);
+
+  // Repair the saved list without ever lowering the completion high-water mark.
+  const rawCompleted = Array.isArray(access?.progress?.completed_lessons)
+    ? access.progress.completed_lessons
+    : [];
+  const savedOrder = Number(access?.progress?.last_lesson_order || 0);
+  const needsRepair = reconciledCompleted.length !== rawCompleted.length ||
+    reconciledCompleted.some((id: string, index: number) => rawCompleted[index] !== id) ||
+    savedOrder < done;
+
+  if (access?.id && needsRepair) {
+    const { error } = await supabase.from("student_courses").update({
+      progress: {
+        ...(access.progress || {}),
+        completed_lessons: reconciledCompleted,
+        last_lesson_order: Math.max(Number.isFinite(savedOrder) ? savedOrder : 0, done),
+      }
+    }).eq("id", access.id);
+    if (error) console.error("[learning] Could not reconcile completed lesson history", error);
+  }
   const pct = Math.min(100, Math.round((done / total) * 100));
   const bar = `[${"🟩".repeat(Math.round(pct / 10))}${"⬜".repeat(10 - Math.round(pct / 10))}]`;
 
