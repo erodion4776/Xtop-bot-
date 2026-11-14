@@ -135,3 +135,5 @@ export async function hasPaidForExam(studentId: string, courseId: string): Promi
 
   return !!data;
 }
+
+// CBT checkout returns to the Learning Centre payment confirmation page.
