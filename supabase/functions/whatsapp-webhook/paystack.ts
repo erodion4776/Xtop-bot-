@@ -38,7 +38,7 @@ export async function initializeExamPayment(
         email: `${phone.replace(/\+/g, "")}@xtop.edu.ng`,
         amount: amountInKobo,
         reference,
-        callback_url: "https://naijashop.com.ng",
+        callback_url: "https://xtopbot.netlify.app/cbt-payment-return.html",
         metadata: {
           student_id: studentId,
           course_id: courseId,
