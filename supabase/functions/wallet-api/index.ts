@@ -557,6 +557,52 @@ async function handlePaystackWebhook(
   }
 
   try {
+    // CBT fees share the Paystack account/webhook with merchant wallet top-ups.
+    // Detect the CBT transaction first so a valid exam payment is not sent to
+    // the merchant-wallet credit routine (which does not own CBT references).
+    const { data: cbtPayment, error: cbtLookupError } = await db
+      .from("payment_transactions")
+      .select("id,amount,status")
+      .eq("reference", reference)
+      .maybeSingle();
+
+    if (cbtLookupError) throw cbtLookupError;
+
+    if (cbtPayment) {
+      const paidAmountKobo = Number(event.data?.amount);
+      const expectedAmountKobo = Number(cbtPayment.amount) * 100;
+      if (
+        event.data?.status !== "success" ||
+        !Number.isFinite(paidAmountKobo) ||
+        paidAmountKobo !== expectedAmountKobo
+      ) {
+        return respond({ received: true, credited: false, message: "CBT payment amount/status mismatch." }, 202);
+      }
+
+      if (cbtPayment.status === "PENDING") {
+        const { data: updated, error: updateError } = await db
+          .from("payment_transactions")
+          .update({ status: "SUCCESSFUL", updated_at: new Date().toISOString() })
+          .eq("id", cbtPayment.id)
+          .eq("status", "PENDING")
+          .select("id")
+          .maybeSingle();
+        if (updateError) throw updateError;
+        if (!updated) {
+          const { data: current, error: currentError } = await db
+            .from("payment_transactions")
+            .select("status")
+            .eq("id", cbtPayment.id)
+            .maybeSingle();
+          if (currentError || current?.status !== "SUCCESSFUL") {
+            throw currentError || new Error("CBT payment could not be marked successful.");
+          }
+        }
+      }
+
+      return respond({ received: true, credited: true, kind: "CBT_EXAM", message: "CBT payment confirmed." });
+    }
+
     const result = await creditVerifiedTopup(reference);
 
     if (!result.success) {
