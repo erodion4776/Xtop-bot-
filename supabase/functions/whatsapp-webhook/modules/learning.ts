@@ -973,13 +973,14 @@ async function completeAndAdvanceLesson(
 
 You have completed all *${total}* published topics in *${ctx.courseCode} — ${ctx.courseName}*.
 
-You can now proceed to the course CBT examination, or return to the course menu.`,
+Would you like to open another available course, or take the CBT examination for this course?`,
       [
+        makeButton("lsn_next_course", "Yes, Next Course"),
         makeButton("lsn_final_exam", "📝 Start CBT Exam"),
         makeButton("lsn_menu", "📋 Course Menu")
       ],
       "Course Completed",
-      "Final assessment"
+      "Choose what to do next"
     );
     return;
   }
@@ -999,12 +1000,27 @@ async function processLessonCompleteAction(
   phone: string, text: string, conv: Conversation, ctx: LearningCtx
 ): Promise<void> {
   const n = normalise(text);
-  if (n === "lsn_next_go" || n.includes("lesson") || n.includes("next")) {
+  if (n === "lsn_next_go" || n.includes("lesson") || n.includes("next") || n === "yes") {
     const nextOrder = ctx.currentLessonOrder || 1;
     await deliverLesson(phone, conv.id, ctx, nextOrder);
     return;
   }
-  await showCourseMenu(phone, conv.id, ctx);
+  if (n === "lsn_menu" || n.includes("course menu") || n === "menu" || n === "no" || n === "back") {
+    await showCourseMenu(phone, conv.id, ctx);
+    return;
+  }
+
+  // A repeated A-D answer can arrive after the final practice answer has
+  // already advanced the conversation. Do not treat it as a new selection.
+  await sendButtonMessage(
+    phone,
+    "Your practice for this lesson has already been completed. Please choose whether to continue to the next lesson or return to the course menu.",
+    [
+      makeButton("lsn_next_go", `Next Topic ${ctx.currentLessonOrder || 1} ➡️`),
+      makeButton("lsn_menu", "📋 Course Menu")
+    ],
+    `${ctx.courseCode} Progress`
+  );
 }
 
 async function processCourseFinalAction(
@@ -1015,19 +1031,27 @@ async function processCourseFinalAction(
     await startExamEntry(phone, conv.id, ctx);
     return;
   }
-  if (n === "lsn_menu" || n.includes("course menu") || n === "menu" || n === "back") {
+  if (n === "lsn_next_course" || n === "yes" || n.includes("next course") || n.includes("another course")) {
+    await showLearningCentreGateway(phone, conv.id, {
+      learningUnlocked: true,
+      step: "WAITING_COURSE_CODE",
+    });
+    return;
+  }
+  if (n === "lsn_menu" || n.includes("course menu") || n === "menu" || n === "back" || n === "no") {
     await showCourseMenu(phone, conv.id, ctx);
     return;
   }
   await sendButtonMessage(
     phone,
-    "All course topics are complete. Choose the CBT examination or return to the course menu.",
+    "All course topics are complete. Would you like to open another available course, take the CBT examination, or return to the course menu?",
     [
+      makeButton("lsn_next_course", "Yes, Next Course"),
       makeButton("lsn_final_exam", "📝 Start CBT Exam"),
       makeButton("lsn_menu", "📋 Course Menu")
     ],
     "Course Completed",
-    "Final assessment"
+    "Choose what to do next"
   );
 }
 
