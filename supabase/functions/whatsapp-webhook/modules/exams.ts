@@ -195,7 +195,15 @@ export async function startExamEntry(
     return;
   }
 
-  // First attempt flow (no retake warning)
+  // A payment recovery has already verified this exact payment reference.
+  // Do not run the payment-count gate again: it would demand a second fee
+  // for a retake whose payment was just confirmed.
+  if (resumePaidPayment) {
+    await launchExam(phone, conversationId, examCtx);
+    return;
+  }
+
+  // First attempt / normal entry flow (no retake warning)
   await handlePaywallGate(phone, conversationId, examCtx);
 }
 
