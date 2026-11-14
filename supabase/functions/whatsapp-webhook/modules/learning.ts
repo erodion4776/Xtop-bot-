@@ -1009,15 +1009,17 @@ async function completeAndAdvanceLesson(
 
 You have completed all *${total}* published topics in *${ctx.courseCode} — ${ctx.courseName}*.
 
-Would you like to open another available course, or take the CBT examination for this course?`,
+🛠️ *System Maintenance Fee: ₦500*
+
+The ₦500 fee helps maintain the learning system and cover WhatsApp/Meta platform messaging charges. It is a system operating fee, not a personal payment to Engr. Ero.
+
+You may now proceed to the CBT examination for this course.`,
       [
-        makeButton("lsn_next_course", "Yes, Next Course"),
         makeButton("lsn_final_exam", "📝 Start CBT Exam"),
         makeButton("lsn_menu", "📋 Course Menu")
       ],
       "Course Completed",
-      "Choose what to do next"
-    );
+      "System maintenance: ₦500"    );
     return;
   }
 
