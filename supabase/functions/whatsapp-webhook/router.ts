@@ -770,6 +770,26 @@ export async function routeMessage(
       tenantId,
     ).catch(() => {});
 
+    // Learning Centre controls belong to the system classroom, not the
+    // Sabi merchant/support gateway. Route them before global Sabi pause,
+    // agent-takeover, and merchant-store guards so lecture navigation cannot
+    // be swallowed by an unrelated Sabi workflow.
+    if (
+      tenantId === SYSTEM_TENANT_ID &&
+      (interactiveId.startsWith("lsn_") || interactiveId.startsWith("cm_"))
+    ) {
+      await handleLearning(
+        phone,
+        interactiveId || text,
+        contact,
+        {
+          ...conversation,
+          current_module: "LEARNING",
+        } as Conversation,
+      );
+      return;
+    }
+
     // ===================================================
     // CUSTOMER TENANTS — PAUSE AND TAKEOVER
     // ===================================================
