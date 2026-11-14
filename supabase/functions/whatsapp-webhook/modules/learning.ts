@@ -894,7 +894,7 @@ async function processLessonNavigation(
     return;
   }
 
-  const sectionActionMatch = n.match(/^lsn_next_(\\d+)$/);
+  const sectionActionMatch = n.match(/^lsn_next_(\d+)$/);
   if (
     n === "lsn_section_next" ||
     sectionActionMatch !== null ||
