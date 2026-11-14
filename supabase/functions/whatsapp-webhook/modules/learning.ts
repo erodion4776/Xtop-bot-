@@ -894,8 +894,10 @@ async function processLessonNavigation(
     return;
   }
 
+  const sectionActionMatch = n.match(/^lsn_next_(\\d+)$/);
   if (
     n === "lsn_section_next" ||
+    sectionActionMatch !== null ||
     n.includes("continue lecture") ||
     n.includes("start lecture") ||
     n.includes("next section") ||
@@ -905,8 +907,6 @@ async function processLessonNavigation(
     n.includes("practice")
   ) {
     // Ensure this student has an enrollment row before saving section progress.
-    // Older rows may be missing because the previous insert used a non-existent
-    // access_status column; getStudentCourseAccess now writes the real status column.
     if (ctx.studentId && ctx.courseId && !ctx.studentCourseId) {
       const enrollment = await getStudentCourseAccess(ctx.studentId, ctx.courseId);
       ctx.studentCourseId = enrollment?.id;
@@ -915,6 +915,16 @@ async function processLessonNavigation(
     const sections = await fetchLessonSections(lessonId);
     const secIdx = ctx.currentSectionIndex || 0;
 
+    // Each newly sent Next button carries the section position it belongs to.
+    // Tapping an older WhatsApp button cannot skip forward through the lecture.
+    if (sectionActionMatch && Number(sectionActionMatch[1]) !== secIdx) {
+      await sendTextMessage(
+        phone,
+        "That Next button belongs to an earlier section. Please use the Next Section button on the latest lecture message."
+      );
+      return;
+    }
+
     if (secIdx >= sections.length) {
       await completeAndAdvanceLesson(phone, conv.id, ctx);
       return;
@@ -922,13 +932,36 @@ async function processLessonNavigation(
 
     const activeSection = sections[secIdx];
     const nextSectionIndex = secIdx + 1;
+
+    // Atomically compare-and-advance the conversation position and the saved
+    // student checkpoint. Only one request can consume a particular button.
+    const { data: advanced, error: advanceError } = await supabase.rpc(
+      "advance_learning_section",
+      {
+        p_conversation_id: conv.id,
+        p_expected_index: secIdx,
+        p_next_index: nextSectionIndex,
+        p_student_course_id: ctx.studentCourseId || null,
+        p_lesson_id: lessonId,
+      },
+    );
+
+    if (advanceError) {
+      console.error("[learning] Atomic section advance failed", advanceError);
+      await sendTextMessage(
+        phone,
+        "I could not safely move to the next section just now. Your saved progress has not been reset. Please try the latest Next Section button again."
+      );
+      return;
+    }
+
+    if (advanced !== true) {
+      // A second tap or an older request lost the atomic update race.
+      return;
+    }
+
     ctx.currentSectionIndex = nextSectionIndex;
     ctx.step = "VIEWING_SECTION";
-
-    // Save to the database before sending the content, so the checkpoint
-    // survives a restart or a student returning with a new WhatsApp session.
-    await saveLessonSectionCheckpoint(ctx.studentCourseId, lessonId, nextSectionIndex);
-    await saveCtx(conv.id, ctx, "VIEWING_SECTION");
 
     await sendTextMessage(phone, `📖 *Section ${secIdx + 1} of ${sections.length}*\n\n*${activeSection.title}*\n\n${activeSection.content}`);
 
@@ -941,7 +974,7 @@ async function processLessonNavigation(
       phone,
       `Section ${nextSectionIndex} of ${sections.length} saved. You can continue now or return later; your next section will be remembered.`,
       [
-        makeButton("lsn_section_next", "Next Section ➡️"),
+        makeButton(`lsn_next_${nextSectionIndex}`, "Next Section ➡️"),
         makeButton("lsn_menu", "📋 Course Menu")
       ],
       "Lecture Progress",
