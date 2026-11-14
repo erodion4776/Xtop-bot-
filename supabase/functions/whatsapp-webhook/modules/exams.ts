@@ -275,6 +275,79 @@ async function handlePaywallGate(
  * source of the course and student identity; the student must match the
  * WhatsApp sender before Paystack is verified.
  */
+/**
+ * Restores an in-progress paid exam even when another Sabi workflow has
+ * overwritten the conversation context. The active attempt row is durable.
+ */
+export async function handleActiveExamRecovery(
+  phone: string, text: string, contact: Contact, conv: Conversation
+): Promise<boolean> {
+  const normalizedPhone = String(phone || "").replace(/\\D/g, "");
+  const { data: student } = await supabase.from("students").select("id")
+    .eq("phone", normalizedPhone).maybeSingle();
+  if (!student) return false;
+
+  const { data: attempt } = await supabase.from("exam_attempts")
+    .select("id,student_id,course_id,exam_id,question_ids,answers_json,started_at,submitted_at,total_questions")
+    .eq("student_id", student.id).is("submitted_at", null)
+    .order("started_at", { ascending: false }).limit(1).maybeSingle();
+  if (!attempt || !attempt.started_at) return false;
+
+  const elapsed = Date.now() - new Date(attempt.started_at).getTime();
+  if (!Number.isFinite(elapsed) || elapsed > 60 * 60 * 1000) return false;
+
+  const [{ data: course }, { data: enrollment }, { data: questionRows }, { count: attemptCount }] = await Promise.all([
+    supabase.from("courses").select("id,course_code,course_name,level").eq("id", attempt.course_id).maybeSingle(),
+    supabase.from("student_courses").select("id").eq("student_id", student.id).eq("course_id", attempt.course_id).eq("status", "ACTIVE").maybeSingle(),
+    supabase.from("course_questions").select("*").in("id", attempt.question_ids || []),
+    supabase.from("exam_attempts").select("id", { count: "exact", head: true }).eq("student_id", student.id).eq("course_id", attempt.course_id),
+  ]);
+  if (!course || !enrollment || !questionRows?.length) return false;
+
+  const byId = new Map(questionRows.map((q: any) => [String(q.id), q]));
+  const questions = (attempt.question_ids || []).map((id: string) => byId.get(String(id))).filter(Boolean);
+  if (!questions.length) return false;
+
+  const savedAnswers = Array.isArray(attempt.answers_json) ? attempt.answers_json : [];
+  const examAnswers = savedAnswers.map((a: any) => ({
+    question_id: String(a.question_id),
+    selected_option: String(a.selected_option || ""),
+    correct_option: String(a.correct_option || ""),
+    is_correct: Boolean(a.is_correct),
+  }));
+  const recoveredCtx: ExamCtx = {
+    step: "IN_EXAM",
+    learningUnlocked: true,
+    studentId: student.id,
+    studentCourseId: enrollment.id,
+    courseId: course.id,
+    courseCode: course.course_code,
+    courseName: course.course_name,
+    totalLessons: 16,
+    studentLevel: String(course.level || ""),
+    examId: attempt.exam_id || undefined,
+    attemptId: attempt.id,
+    questions,
+    currentExamQIndex: examAnswers.length,
+    examScore: examAnswers.reduce((sum: number, a: any) => sum + (a.is_correct ? Number(questions.find((q: any) => q.id === a.question_id)?.marks || 1) : 0), 0),
+    examAnswers,
+    examStartTime: attempt.started_at,
+    examDurationMinutes: 60,
+    attemptsCount: Math.max(0, Number(attemptCount || 1) - 1),
+  };
+
+  await saveExamCtx(conv.id, recoveredCtx, "IN_EXAM");
+  await sendTextMessage(phone, `🔄 *ELA CBT session restored: ${course.course_code}*\\nYour paid attempt is still active. Continuing from Question ${Math.min(examAnswers.length + 1, questions.length)} of ${questions.length}.`);
+  const restoredConversation = {
+    ...conv,
+    current_module: "EXAMS",
+    current_state: "IN_EXAM",
+    context_json: recoveredCtx,
+  } as Conversation;
+  await handleExams(phone, text, contact, restoredConversation);
+  return true;
+}
+
 export async function handleExamPaymentRecovery(
   phone: string, text: string, contact: Contact, conv: Conversation
 ): Promise<void> {
