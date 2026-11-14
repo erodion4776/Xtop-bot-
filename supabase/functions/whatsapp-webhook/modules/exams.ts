@@ -344,6 +344,16 @@ export async function handleActiveExamRecovery(
     current_state: "IN_EXAM",
     context_json: recoveredCtx,
   } as Conversation;
+  if (/^resume exam$/i.test(String(text || "").trim())) {
+    const qIndex = recoveredCtx.currentExamQIndex || 0;
+    const nextQuestion = questions[qIndex];
+    if (nextQuestion) {
+      await sendExamQuestionPrompt(phone, nextQuestion, qIndex, questions.length, course.course_code || "CBT");
+    } else {
+      await completeAndSubmitExam(phone, conv.id, recoveredCtx);
+    }
+    return true;
+  }
   await handleExams(phone, text, contact, restoredConversation);
   return true;
 }
