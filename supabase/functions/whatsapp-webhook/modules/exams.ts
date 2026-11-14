@@ -288,7 +288,7 @@ export async function handleActiveExamRecovery(
   if (!student) return false;
 
   const { data: attempt } = await supabase.from("exam_attempts")
-    .select("id,student_id,course_id,exam_id,question_ids,answers_json,questions_snapshot,started_at,submitted_at,total_questions")
+    .select("id,student_id,course_id,exam_id,question_ids,answers_json,questions_snapshot,current_question_index,started_at,submitted_at,total_questions")
     .eq("student_id", student.id).is("submitted_at", null)
     .order("started_at", { ascending: false }).limit(1).maybeSingle();
   if (!attempt || !attempt.started_at) return false;
@@ -334,7 +334,7 @@ export async function handleActiveExamRecovery(
     examId: attempt.exam_id || undefined,
     attemptId: attempt.id,
     questions,
-    currentExamQIndex: examAnswers.length,
+    currentExamQIndex: Number.isInteger(attempt.current_question_index) ? Number(attempt.current_question_index) : examAnswers.length,
     examScore: examAnswers.reduce((sum: number, a: any) => sum + (a.is_correct ? Number(questions.find((q: any) => q.id === a.question_id)?.marks || 1) : 0), 0),
     examAnswers,
     examStartTime: attempt.started_at,
@@ -716,7 +716,18 @@ async function handleExamAnswer(
 
   const isCorrect = selectedAns === activeQ.correct_answer.trim().toUpperCase();
   const currentScore = (ctx.examScore || 0) + (isCorrect ? (activeQ.marks || 1) : 0);
-  const answersList = ctx.examAnswers || [];
+  const answersList = [...(ctx.examAnswers || [])];
+  const alreadyAnswered = answersList.some((answer: any) => String(answer.question_id) === String(activeQ.id));
+  if (alreadyAnswered) {
+    const nextIdx = Math.max(qIdx + 1, answersList.length);
+    const nextQuestion = questions[nextIdx];
+    if (nextQuestion) {
+      const nextCtx = { ...ctx, currentExamQIndex: nextIdx };
+      await saveExamCtx(conv.id, nextCtx, "IN_EXAM");
+      await sendExamQuestionPrompt(phone, nextQuestion, nextIdx, questions.length, ctx.courseCode || "CBT");
+    }
+    return;
+  }
 
   answersList.push({
     question_id: activeQ.id,
@@ -732,6 +743,20 @@ async function handleExamAnswer(
     examScore: currentScore,
     examAnswers: answersList
   };
+
+  // Persist every answer immediately. Conversation context alone is not durable
+  // because the Sabi gateway can replace it between WhatsApp messages.
+  if (ctx.attemptId) {
+    const { error } = await supabase.from("exam_attempts").update({
+      answers_json: answersList,
+      score: currentScore,
+      current_question_index: nextQIdx
+    }).eq("id", ctx.attemptId).is("submitted_at", null);
+    if (error) {
+      await sendTextMessage(phone, "⚠️ Your answer could not be safely saved. Please send the same option again; your exam will not be advanced until it is saved.");
+      return;
+    }
+  }
 
   if (nextQIdx < questions.length) {
     await saveExamCtx(conv.id, updatedCtx, "IN_EXAM");
