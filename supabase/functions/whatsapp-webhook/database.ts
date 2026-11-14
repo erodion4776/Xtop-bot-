@@ -1260,6 +1260,7 @@ export async function markLessonComplete(
   if (!completed.includes(lessonId)) completed.push(lessonId);
 
   const updatedProgress = {
+    ...progress,
     completed_lessons: completed,
     last_lesson_order: Math.max(
       progress.last_lesson_order || 0,
