@@ -282,7 +282,7 @@ async function handlePaywallGate(
 export async function handleActiveExamRecovery(
   phone: string, text: string, contact: Contact, conv: Conversation
 ): Promise<boolean> {
-  const normalizedPhone = String(phone || "").replace(/\\D/g, "");
+  const normalizedPhone = String(phone || "").replace(/\D/g, "");
   const { data: student } = await supabase.from("students").select("id")
     .eq("phone", normalizedPhone).maybeSingle();
   if (!student) return false;
