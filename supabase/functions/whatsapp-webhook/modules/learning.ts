@@ -966,8 +966,9 @@ async function processLessonNavigation(
     const sectionMessage = `📖 *Section ${secIdx + 1} of ${sections.length}*\n\n*${activeSection.title}*\n\n${activeSection.content}`;
 
     if (nextSectionIndex >= sections.length) {
-      await sendTextMessage(phone, sectionMessage);
-      await completeAndAdvanceLesson(phone, conv.id, ctx);
+      // Combine the final slide and lesson handoff into one WhatsApp message.
+      // A second immediate message can be rejected by Meta pair rate limiting.
+      await completeAndAdvanceLesson(phone, conv.id, ctx, sectionMessage);
       return;
     }
 
@@ -985,7 +986,7 @@ async function processLessonNavigation(
 }
 
 async function completeAndAdvanceLesson(
-  phone: string, convId: string, ctx: LearningCtx
+  phone: string, convId: string, ctx: LearningCtx, finalSectionMessage?: string
 ) {
   const currentOrder = ctx.currentLessonOrder || 1;
   const allLessons = await fetchAllCourseLessons(ctx.courseId || "");
@@ -1024,10 +1025,10 @@ Would you like to open another available course, or take the CBT examination for
   ctx.step = "LESSON_COMPLETE";
   await saveCtx(convId, ctx, "LESSON_COMPLETE");
 
-  await sendButtonMessage(phone,
-    `✅ *Lesson ${currentOrder} Complete!*\n\nReady to start Lesson ${nextOrder}?`,
-    [makeButton("lsn_next_go", `Next Topic ${nextOrder} ➡️`), makeButton("lsn_menu", "📋 Course Menu")],
-    `${ctx.courseCode} Progress`, `${currentOrder}/${total} completed`
+  const handoff = `✅ *Lesson ${currentOrder} Complete!*\n\nReady to start Lesson ${nextOrder}?\n\nReply *NEXT* to start Lesson ${nextOrder}, or *MENU* to return to your course menu.`;
+  await sendTextMessage(
+    phone,
+    finalSectionMessage ? `${finalSectionMessage}\n\n━━━━━━━━━━━━━━\n${handoff}` : handoff
   );
 }
 
