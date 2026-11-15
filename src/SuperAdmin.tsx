@@ -260,15 +260,26 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
                       <span>Free service allowance configured: {setting.monthly_free_service_allowance} per month</span>
                     </div>)}
                   </div>}
-                  <div className="sa-usage-note">Meta's webhook reports whether each delivered message is billable. Estimated dollar charges are not calculated here because the webhook does not provide the final invoice amount. Use Meta Billing for the authoritative amount.</div>
-                  <div className="sa-table-wrap"><table><thead><tr><th>Billing month</th><th>Phone number ID</th><th>Application</th><th>Outbound</th><th>Delivered / read</th><th>Failed</th><th>Meta billable</th><th>Meta free</th><th>Estimated cost</th></tr></thead><tbody>
+                  <div className="sa-historical-block">
+                    <div className="sa-historical-heading"><div><h3>Historical Meta usage · previous 30-day snapshot</h3><p>Imported from the Meta Insights figures you shared earlier. This is a historical summary, not a live feed.</p></div><span className="sa-pill neutral">Historical</span></div>
+                    <div className="sa-historical-grid">
+                      <div><span>Messages sent / delivered</span><strong>1,732</strong></div>
+                      <div><span>Messages received</span><strong>1,073</strong></div>
+                      <div><span>Free messages</span><strong>1,116</strong></div>
+                      <div><span>Paid delivered messages</span><strong>616</strong></div>
+                      <div><span>Estimated Meta billing</span><strong>$4.13</strong></div>
+                    </div>
+                    <p className="sa-historical-footnote">Meta classified the recorded usage as Service. These figures cover the shared WhatsApp number used by both Sabi and Engr Ero, so they cannot be reliably split by application. The screenshot's exact start and end dates were not retained. Check Meta Billing for the final invoice amount.</p>
+                  </div>
+                  <div className="sa-usage-note">New usage below is collected from webhook events after monitoring was deployed. Meta Billing remains the authoritative source for charges. Delivered and read are shown as separate status counts.</div>
+                  <div className="sa-table-wrap"><table><thead><tr><th>Billing month</th><th>Phone number ID</th><th>Application</th><th>Outbound</th><th>Delivered</th><th>Read</th><th>Failed</th><th>Meta billable</th><th>Meta free</th><th>Estimated cost</th></tr></thead><tbody>
                     {whatsappUsage.map((row, index) => <tr key={row.phone_number_id + row.billing_month + row.source_app + index}>
                       <td>{new Date(row.billing_month).toLocaleDateString("en-NG", { month: "short", year: "numeric", timeZone: "Africa/Lagos" })}</td>
                       <td>{row.phone_number_id}</td><td><span className="sa-pill neutral">{row.source_app}</span></td>
-                      <td>{row.outbound_messages}</td><td>{row.delivered_messages + row.read_messages}</td><td>{row.failed_messages}</td>
+                      <td>{row.outbound_messages}</td><td>{row.delivered_messages}</td><td>{row.read_messages}</td><td>{row.failed_messages}</td>
                       <td>{row.billable_messages}</td><td>{row.non_billable_messages}</td><td>{row.estimated_cost > 0 ? "$" + Number(row.estimated_cost).toFixed(2) : "See Meta invoice"}</td>
                     </tr>)}
-                    {whatsappUsage.length === 0 && <tr><td colSpan={9} className="sa-empty">No new WhatsApp delivery-status events have been collected yet. New events will appear after Meta sends webhook status updates.</td></tr>}
+                    {whatsappUsage.length === 0 && <tr><td colSpan={10} className="sa-empty">No new WhatsApp delivery-status events have been collected yet. New events will appear after Meta sends webhook status updates.</td></tr>}
                   </tbody></table></div>
                 </div>
               )}
