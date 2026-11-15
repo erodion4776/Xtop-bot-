@@ -477,14 +477,17 @@ async function getPublicPaymentDetails(body: Record<string, unknown>) {
     .select("tenant_id,order_id,reference,expected_amount,currency,status,payment_type")
     .eq("reference", reference).maybeSingle();
   if (intentError || !intent) throw new Error("PAYMENT_REFERENCE_NOT_FOUND");
-  const [{ data: order, error: orderError }, { data: tenant, error: tenantError }] =
+  const [{ data: order, error: orderError }, { data: tenant, error: tenantError }, { data: whatsapp, error: whatsappError }] =
     await Promise.all([
       db.from("tenant_orders").select("id,order_number,status,payment_status,subtotal,delivery_fee,total,currency")
         .eq("id", intent.order_id).eq("tenant_id", intent.tenant_id).maybeSingle(),
       db.from("tenants").select("business_name,name,logo_url,brand_color,slug")
-        .eq("id", intent.tenant_id).maybeSingle()
+        .eq("id", intent.tenant_id).maybeSingle(),
+      db.from("tenant_whatsapp_accounts").select("display_phone_number,is_active")
+        .eq("tenant_id", intent.tenant_id).eq("is_active", true).maybeSingle()
     ]);
   if (orderError || !order || tenantError || !tenant) throw new Error("PAYMENT_REFERENCE_NOT_FOUND");
+  if (whatsappError) console.error("Merchant WhatsApp lookup failed:", whatsappError);
   return respond({
     success: true,
     payment_confirmed: intent.status === "COMPLETED",
@@ -499,7 +502,8 @@ async function getPublicPaymentDetails(body: Record<string, unknown>) {
     },
     merchant: {
       name: tenant.business_name || tenant.name || "Merchant",
-      logo_url: tenant.logo_url || null, brand_color: tenant.brand_color || null, slug: tenant.slug || null
+      logo_url: tenant.logo_url || null, brand_color: tenant.brand_color || null, slug: tenant.slug || null,
+      whatsapp_phone: whatsapp?.display_phone_number || null
     }
   });
 }
