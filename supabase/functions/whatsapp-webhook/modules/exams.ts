@@ -493,6 +493,11 @@ export async function handleExams(
 
   // Explicit resume command re-sends the current question without grading it.
   if (n === "resume exam" && state === "IN_EXAM") {
+    if (ctx.examStartTime && Date.now() >= new Date(ctx.examStartTime).getTime() + 30 * 60 * 1000) {
+      await sendTextMessage(phone, "⏰ *TIME EXPIRED!*\\nYour 30-minute CBT deadline has passed. I am submitting your saved answers now.");
+      await completeAndSubmitExam(phone, conv.id, ctx);
+      return;
+    }
     const index = ctx.currentExamQIndex || 0;
     const question = (ctx.questions || [])[index];
     if (question) {
