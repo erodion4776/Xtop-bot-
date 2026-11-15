@@ -657,8 +657,7 @@ export async function handleOnboardingCallback(
       .update({
         metadata: {
           ...(tenantBilling.metadata || {}),
-          meta_messaging_costs_paid_by: "MERCHANT",
-          meta_billing_owner_confirmed: true,
+          meta_billing_status: "MERCHANT_ACKNOWLEDGED",
           meta_billing_acknowledged_at: new Date().toISOString(),
         },
       })
