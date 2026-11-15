@@ -170,7 +170,7 @@ export async function startExamEntry(
     attemptsCount,
     studentLevel: courseLevel,
     examFeeNaira,
-    examDurationMinutes: 60 // 60-minute exam timer
+    examDurationMinutes: 30 // 30-minute exam timer
   };
 
   // 3. Handle Retake Warning (Attempt 2 or 3)
@@ -302,7 +302,8 @@ export async function handleActiveExamRecovery(
   if (!attempt || !attempt.started_at) return false;
 
   const elapsed = Date.now() - new Date(attempt.started_at).getTime();
-  if (!Number.isFinite(elapsed) || elapsed > 60 * 60 * 1000) return false;
+  if (!Number.isFinite(elapsed)) return false;
+  const examExpired = elapsed >= 30 * 60 * 1000;
 
   const [{ data: course }, { data: enrollment }, { data: questionRows }, { count: attemptCount }] = await Promise.all([
     supabase.from("courses").select("id,course_code,course_name,level").eq("id", attempt.course_id).maybeSingle(),
@@ -346,11 +347,16 @@ export async function handleActiveExamRecovery(
     examScore: examAnswers.reduce((sum: number, a: any) => sum + (a.is_correct ? Number(questions.find((q: any) => q.id === a.question_id)?.marks || 1) : 0), 0),
     examAnswers,
     examStartTime: attempt.started_at,
-    examDurationMinutes: 60,
+    examDurationMinutes: 30,
     attemptsCount: Math.max(0, Number(attemptCount || 1) - 1),
   };
 
   await saveExamCtx(conv.id, recoveredCtx, "IN_EXAM");
+  if (examExpired) {
+    await sendTextMessage(phone, `⏰ *TIME EXPIRED — ${course.course_code}*\\nYour 30-minute exam window has ended. I am submitting the answers saved before the deadline.`);
+    await completeAndSubmitExam(phone, conv.id, recoveredCtx);
+    return true;
+  }
   await sendTextMessage(phone, `🔄 *ELA CBT session restored: ${course.course_code}*\\nYour paid attempt is still active. Continuing from Question ${Math.min(examAnswers.length + 1, questions.length)} of ${questions.length}.`);
   const restoredConversation = {
     ...conv,
@@ -426,7 +432,7 @@ export async function handleExamPaymentRecovery(
     studentLevel: String(course.level || ""),
     examFeeNaira: Number(payment.amount),
     paymentReference: payment.reference,
-    examDurationMinutes: 60,
+    examDurationMinutes: 30,
   };
 
   if (payment.status === "PENDING") {
@@ -503,6 +509,16 @@ export async function handleExams(
   }
 
   switch (state) {
+    case "WAITING_EXAM_START_CONFIRMATION":
+      if (n === "cbt_start_exam" || n.includes("start exam") || n === "start") {
+        await beginExam(phone, conv.id, { ...ctx, examDurationMinutes: 30 });
+      } else if (n === "cbt_cancel_exam_start" || n.includes("not yet") || n.includes("cancel")) {
+        await sendTextMessage(phone, "Your exam has not started. Your 30-minute timer will begin only when you confirm Start Exam. Send *START EXAM* whenever you are ready.");
+      } else {
+        await launchExam(phone, conv.id, ctx);
+      }
+      break;
+
     case "WAITING_RETAKE_CONFIRMATION":
       if (n === "cbt_accept_retake" || n.includes("accept") || n.includes("yes")) {
         await handlePaywallGate(phone, conv.id, ctx);
@@ -677,6 +693,28 @@ async function sendExamQuestionPrompt(phone: string, question: any, index: numbe
 async function launchExam(
   phone: string, conversationId: string, ctx: ExamCtx
 ): Promise<void> {
+  const readyCtx = { ...ctx, examDurationMinutes: 30 };
+  await saveExamCtx(conversationId, readyCtx, "WAITING_EXAM_START_CONFIRMATION");
+  await sendButtonMessage(
+    phone,
+    `📢 *IMPORTANT CBT EXAM INSTRUCTIONS*\\n\\n` +
+    `Course: *${ctx.courseCode || "CBT"} — ${ctx.courseName || ""}*\\n` +
+    `Duration: *30 MINUTES*\\n` +
+    `Questions: *${(ctx.questions || []).length}*\\n\\n` +
+    `• Your countdown begins only after you tap *Start Exam*.\\n` +
+    `• Closing WhatsApp or locking your phone will NOT stop the timer.\\n` +
+    `• Your answers are saved as you progress.\\n` +
+    `• Return and send *RESUME EXAM* to continue before time expires.\\n` +
+    `• At the deadline, the answers saved so far will be submitted automatically.\\n\\n` +
+    `Please make sure you are ready before starting.`,
+    [makeButton("cbt_start_exam", "▶️ Start Exam"), makeButton("cbt_cancel_exam_start", "Not Yet")],
+    "Before You Begin"
+  );
+}
+
+async function beginExam(
+  phone: string, conversationId: string, ctx: ExamCtx
+): Promise<void> {
   const studentId = ctx.studentId!;
   const courseId = ctx.courseId!;
   const questions = ctx.questions || [];
@@ -695,7 +733,9 @@ async function launchExam(
     percentage: 0,
     pass_status: "PENDING",
     is_locked: false,
-    started_at: startTime
+    started_at: startTime,
+    start_time: startTime,
+    end_time: new Date(Date.parse(startTime) + 30 * 60 * 1000).toISOString()
   }).select().single();
 
   const examCtx: ExamCtx = {
@@ -734,14 +774,14 @@ async function handleExamAnswer(
     return;
   }
 
-  // 1. ENFORCE THE 60-MINUTE EXAM TIME LIMIT
+  // 1. ENFORCE THE 30-MINUTE EXAM TIME LIMIT
   if (ctx.examStartTime) {
     const startTimeMs = new Date(ctx.examStartTime).getTime();
     const nowMs = Date.now();
-    const limitMs = (ctx.examDurationMinutes || 60) * 60 * 1000;
+    const limitMs = 30 * 60 * 1000;
 
-    if (nowMs > startTimeMs + limitMs) {
-      await sendTextMessage(phone, "⏳ *TIME EXPIRED!*\nThe 60-minute exam time limit has been exceeded. Grading what you have completed...");
+    if (nowMs >= startTimeMs + limitMs) {
+      await sendTextMessage(phone, "⏳ *TIME EXPIRED!*\nThe 30-minute exam time limit has been exceeded. Grading your saved answers...");
       await completeAndSubmitExam(phone, conv.id, ctx);
       return;
     }
