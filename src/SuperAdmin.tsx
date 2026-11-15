@@ -8,7 +8,13 @@ import {
 import { supabase } from "./lib/supabase";
 import "./SuperAdmin.css";
 
-type Page = "Overview" | "Merchants" | "Orders & Payments" | "Activity Log" | "Platform Controls";
+type Page = "Overview" | "Merchants" | "Orders & Payments" | "Activity Log" | "WhatsApp Usage" | "Platform Controls";
+type WhatsAppUsageRow = {
+  phone_number_id: string; billing_month: string; source_app: string;
+  outbound_messages: number; inbound_messages: number; delivered_messages: number;
+  read_messages: number; failed_messages: number; billable_messages: number;
+  non_billable_messages: number; estimated_cost: number; currency: string;
+};
 type Stats = {
   activeMerchants: number; inactiveMerchants: number; products: number; orders: number;
   paidOrders: number; whatsappConnections: number; pendingPayouts: number; verifiedPayouts: number;
@@ -35,6 +41,7 @@ const pages: { label: Page; icon: any }[] = [
   { label: "Merchants", icon: Store },
   { label: "Orders & Payments", icon: CreditCard },
   { label: "Activity Log", icon: Activity },
+  { label: "WhatsApp Usage", icon: MessageSquare },
   { label: "Platform Controls", icon: ShieldCheck },
 ];
 
@@ -52,6 +59,8 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
+  const [whatsappUsage, setWhatsappUsage] = useState<WhatsAppUsageRow[]>([]);
+  const [usageSettings, setUsageSettings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -94,6 +103,10 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
       } else if (target === "Activity Log") {
         const result = await callAdmin("activity");
         setActivity(result.data || []);
+      } else if (target === "WhatsApp Usage") {
+        const result = await callAdmin("whatsapp-usage");
+        setWhatsappUsage(result.data?.monthly || []);
+        setUsageSettings(result.data?.settings || []);
       } else if (target === "Platform Controls") {
         const result = await callAdmin("overview");
         setStats(result.data);
@@ -233,6 +246,30 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
                 <div className="sa-panel">
                   <div className="sa-panel-head"><div><h2>Administrative activity</h2><p>Recent platform-level changes and their recorded reasons.</p></div><span>{activity.length} records</span></div>
                   <div className="sa-activity-list">{activity.map((item) => <div className="sa-activity-row" key={item.id}><div className="sa-activity-icon"><Activity size={17}/></div><div className="sa-activity-body"><strong>{item.action.replace(/_/g, " ")}</strong><span>{item.admin_user || "Admin"} · {item.entity || "Platform"} · {item.entity_id || "—"}</span>{item.metadata?.reason ? <p>Reason: {String(item.metadata.reason)}</p> : null}</div><time>{dateLabel(item.created_at)}</time></div>)}{activity.length === 0 && <div className="sa-empty">No administrative activity has been recorded yet.</div>}</div>
+                </div>
+              )}
+              {page === "WhatsApp Usage" && (
+                <div className="sa-panel">
+                  <div className="sa-panel-head">
+                    <div><h2>WhatsApp message usage</h2><p>Meta delivery status and billing category data grouped by phone number, month and application.</p></div>
+                    <span>{whatsappUsage.length} usage groups</span>
+                  </div>
+                  {usageSettings.length > 0 && <div className="sa-usage-settings">
+                    {usageSettings.map((setting) => <div key={setting.phone_number_id}>
+                      <strong>{setting.display_phone_number || setting.phone_number_id}</strong>
+                      <span>Free service allowance configured: {setting.monthly_free_service_allowance} per month</span>
+                    </div>)}
+                  </div>}
+                  <div className="sa-usage-note">Meta's webhook reports whether each delivered message is billable. Estimated dollar charges are not calculated here because the webhook does not provide the final invoice amount. Use Meta Billing for the authoritative amount.</div>
+                  <div className="sa-table-wrap"><table><thead><tr><th>Billing month</th><th>Phone number ID</th><th>Application</th><th>Outbound</th><th>Delivered / read</th><th>Failed</th><th>Meta billable</th><th>Meta free</th><th>Estimated cost</th></tr></thead><tbody>
+                    {whatsappUsage.map((row, index) => <tr key={row.phone_number_id + row.billing_month + row.source_app + index}>
+                      <td>{new Date(row.billing_month).toLocaleDateString("en-NG", { month: "short", year: "numeric", timeZone: "Africa/Lagos" })}</td>
+                      <td>{row.phone_number_id}</td><td><span className="sa-pill neutral">{row.source_app}</span></td>
+                      <td>{row.outbound_messages}</td><td>{row.delivered_messages + row.read_messages}</td><td>{row.failed_messages}</td>
+                      <td>{row.billable_messages}</td><td>{row.non_billable_messages}</td><td>{row.estimated_cost > 0 ? "$" + Number(row.estimated_cost).toFixed(2) : "See Meta invoice"}</td>
+                    </tr>)}
+                    {whatsappUsage.length === 0 && <tr><td colSpan={9} className="sa-empty">No new WhatsApp delivery-status events have been collected yet. New events will appear after Meta sends webhook status updates.</td></tr>}
+                  </tbody></table></div>
                 </div>
               )}
               {page === "Platform Controls" && stats && (
