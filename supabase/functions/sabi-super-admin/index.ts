@@ -133,6 +133,18 @@ serve(async (req: Request) => {
       return response({ data: data || [] });
     }
 
+    if (body.action === "whatsapp-usage") {
+      const [usageResult, settingsResult] = await Promise.all([
+        sb.from("whatsapp_usage_monthly").select("*").order("billing_month", { ascending: false }).limit(100),
+        sb.from("whatsapp_usage_settings").select("*").order("created_at", { ascending: true }),
+      ]);
+      if (usageResult.error || settingsResult.error) {
+        console.error("[WhatsApp Usage]", usageResult.error || settingsResult.error);
+        return response({ error: "Could not load WhatsApp usage data." }, 500);
+      }
+      return response({ data: { monthly: usageResult.data || [], settings: settingsResult.data || [] } });
+    }
+
     if (body.action === "toggle-global-handoff") {
       if (typeof body.enabled !== "boolean") return response({ error: "A boolean enabled value is required" }, 400);
       const { error } = await sb.from("system_settings").upsert({
