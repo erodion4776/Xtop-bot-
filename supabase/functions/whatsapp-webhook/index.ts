@@ -368,6 +368,13 @@ Deno.serve(async (req: Request) => {
 
       if (Array.isArray(value?.statuses) && value.statuses.length) {
         const phoneNumberId = String(value?.metadata?.phone_number_id || "");
+        if (phoneNumberId) {
+          const { error: settingsError } = await sb.from("whatsapp_usage_settings").upsert({
+            phone_number_id: phoneNumberId,
+            display_phone_number: value?.metadata?.display_phone_number || null,
+          }, { onConflict: "phone_number_id", ignoreDuplicates: true });
+          if (settingsError) console.error("[WhatsApp Usage] Could not register phone number:", settingsError.message);
+        }
         for (const statusEvent of value.statuses) {
           const messageId = String(statusEvent?.id || "");
           if (!messageId || !phoneNumberId) continue;
