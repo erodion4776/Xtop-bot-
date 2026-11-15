@@ -372,10 +372,22 @@ Deno.serve(async (req: Request) => {
           const messageId = String(statusEvent?.id || "");
           if (!messageId || !phoneNumberId) continue;
           const pricing = statusEvent?.pricing || {};
-          const { data: activity } = await sb.from("bot_activity_log")
+          let { data: activity } = await sb.from("bot_activity_log")
             .select("module")
             .eq("whatsapp_message_id", messageId)
             .maybeSingle();
+          if (!activity && statusEvent?.recipient_id) {
+            const recentSince = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+            const { data: recentActivity } = await sb.from("bot_activity_log")
+              .select("module")
+              .eq("phone_number", String(statusEvent.recipient_id))
+              .eq("direction", "INBOUND")
+              .gte("created_at", recentSince)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            activity = recentActivity;
+          }
           const moduleName = String(activity?.module || "").toLowerCase();
           const sourceApp = /sabi|shop|merchant|product|order/.test(moduleName)
             ? "SABI"
