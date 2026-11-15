@@ -366,11 +366,55 @@ Deno.serve(async (req: Request) => {
       const changes = entry?.changes?.[0];
       const value = changes?.value;
 
-      if (value?.statuses && !value?.messages) {
-        return new Response(JSON.stringify({ status: "ignored_status" }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+      if (Array.isArray(value?.statuses) && value.statuses.length) {
+        const phoneNumberId = String(value?.metadata?.phone_number_id || "");
+        for (const statusEvent of value.statuses) {
+          const messageId = String(statusEvent?.id || "");
+          if (!messageId || !phoneNumberId) continue;
+          const pricing = statusEvent?.pricing || {};
+          const { data: activity } = await sb.from("bot_activity_log")
+            .select("module")
+            .eq("whatsapp_message_id", messageId)
+            .maybeSingle();
+          const moduleName = String(activity?.module || "").toLowerCase();
+          const sourceApp = /sabi|shop|merchant|product|order/.test(moduleName)
+            ? "SABI"
+            : /learning|course|exam|student|lecture/.test(moduleName)
+              ? "ENGR_ERO"
+              : "UNKNOWN";
+          const providerStatus = String(statusEvent?.status || "").toLowerCase();
+          const deliveryStatus = providerStatus === "delivered" ? "DELIVERED"
+            : providerStatus === "read" ? "READ"
+            : providerStatus === "failed" ? "FAILED"
+            : providerStatus === "sent" ? "SENT"
+            : "ACCEPTED";
+          const eventSeconds = Number(statusEvent?.timestamp || 0);
+          const eventAt = eventSeconds > 0 ? new Date(eventSeconds * 1000).toISOString() : new Date().toISOString();
+          const eventRow = {
+            phone_number_id: phoneNumberId,
+            whatsapp_message_id: messageId,
+            source_app: sourceApp,
+            direction: "OUTBOUND",
+            delivery_status: deliveryStatus,
+            pricing_category: pricing?.category || null,
+            pricing_model: pricing?.pricing_model || null,
+            meta_billable: typeof pricing?.billable === "boolean" ? pricing.billable : null,
+            recipient_phone: statusEvent?.recipient_id || null,
+            event_at: eventAt,
+            delivered_at: ["DELIVERED", "READ"].includes(deliveryStatus) ? eventAt : null,
+            raw_pricing: pricing,
+            updated_at: new Date().toISOString(),
+          };
+          const { error: usageError } = await sb.from("whatsapp_usage_events")
+            .upsert(eventRow, { onConflict: "whatsapp_message_id" });
+          if (usageError) console.error("[WhatsApp Usage] Could not save status:", usageError.message);
+        }
+        if (!value?.messages?.length) {
+          return new Response(JSON.stringify({ status: "usage_status_recorded" }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
       }
 
       const messageObj = value?.messages?.[0];
@@ -402,6 +446,22 @@ Deno.serve(async (req: Request) => {
       } else if (messageObj.type === "button") {
         interactiveId = messageObj.button?.payload || "";
         text = messageObj.button?.text || "";
+      }
+
+      if (phoneNumberId && messageObj?.id) {
+        const { error: inboundUsageError } = await sb.from("whatsapp_usage_events").upsert({
+          phone_number_id: phoneNumberId,
+          whatsapp_message_id: String(messageObj.id),
+          source_app: "UNKNOWN",
+          direction: "INBOUND",
+          delivery_status: "RECEIVED",
+          recipient_phone: String(messageObj.from || ""),
+          event_at: messageObj.timestamp
+            ? new Date(Number(messageObj.timestamp) * 1000).toISOString()
+            : new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "whatsapp_message_id" });
+        if (inboundUsageError) console.error("[WhatsApp Usage] Could not save inbound message:", inboundUsageError.message);
       }
 
       const incoming: IncomingMessage = {
