@@ -32,7 +32,7 @@ function fail(message: string, status = 400): Response {
 }
 
 function getPaymentCallback(orderId: string): string {
-  return `https://xtopbot.netlify.app/?order=${encodeURIComponent(orderId)}&payment=return`;
+  return `https://xtopbot.netlify.app/payment-confirmation.html?order=${encodeURIComponent(orderId)}&payment=return`;
 }
 
 // INITIALIZE PAYSTACK WITH MERCHANT SPLIT SETTLEMENT
@@ -467,6 +467,43 @@ async function initializeMerchantOrder(
   });
 }
 
+// Public-safe order summary for a customer returning from Paystack.
+// The payment reference is required; no customer contact or delivery details are exposed.
+async function getPublicPaymentDetails(body: Record<string, unknown>) {
+  const reference = String(body.reference || "").trim();
+  if (!reference) throw new Error("PAYMENT_REFERENCE_REQUIRED");
+  const { data: intent, error: intentError } = await db
+    .from("tenant_order_payment_intents")
+    .select("tenant_id,order_id,reference,expected_amount,currency,status,payment_type")
+    .eq("reference", reference).maybeSingle();
+  if (intentError || !intent) throw new Error("PAYMENT_REFERENCE_NOT_FOUND");
+  const [{ data: order, error: orderError }, { data: tenant, error: tenantError }] =
+    await Promise.all([
+      db.from("tenant_orders").select("id,order_number,status,payment_status,subtotal,delivery_fee,total,currency")
+        .eq("id", intent.order_id).eq("tenant_id", intent.tenant_id).maybeSingle(),
+      db.from("tenants").select("business_name,name,logo_url,brand_color,slug")
+        .eq("id", intent.tenant_id).maybeSingle()
+    ]);
+  if (orderError || !order || tenantError || !tenant) throw new Error("PAYMENT_REFERENCE_NOT_FOUND");
+  return respond({
+    success: true,
+    payment_confirmed: intent.status === "COMPLETED",
+    payment_status: intent.status,
+    amount: Number(intent.expected_amount),
+    currency: intent.currency,
+    payment_type: intent.payment_type,
+    order: {
+      order_number: order.order_number, status: order.status, payment_status: order.payment_status,
+      subtotal: Number(order.subtotal || 0), delivery_fee: Number(order.delivery_fee || 0),
+      total: Number(order.total || 0), currency: order.currency
+    },
+    merchant: {
+      name: tenant.business_name || tenant.name || "Merchant",
+      logo_url: tenant.logo_url || null, brand_color: tenant.brand_color || null, slug: tenant.slug || null
+    }
+  });
+}
+
 // VERIFY PAYMENT DIRECTLY WITH PAYSTACK
 async function verifyOrderPayment(body: Record<string, unknown>) {
   const reference = String(body.reference || "").trim();
@@ -660,6 +697,10 @@ Deno.serve(async (req: Request) => {
 
     if (action === "initialize_merchant") {
       return await initializeMerchantOrder(req, body);
+    }
+
+    if (action === "payment_details") {
+      return await getPublicPaymentDetails(body);
     }
 
     if (action === "verify") {

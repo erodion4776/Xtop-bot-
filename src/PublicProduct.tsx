@@ -602,8 +602,15 @@ export default function PublicProduct() {
                     : `Continue to Paystack — ${money(paymentAmount)}`}
                 </button>
 
+                <div style={styles.paymentTrust}>
+                  <div style={styles.paymentTrustIcon}><CreditCard size={18} /></div>
+                  <div>
+                    <strong style={{ display: "block", fontSize: 13, marginBottom: 4 }}>Secure payment powered by Paystack</strong>
+                    <span style={{ display: "block", fontSize: 12, lineHeight: 1.55, color: "#526b5d" }}>You will complete payment on Paystack's protected checkout. Sabi does not ask for or store your card PIN or one-time password.</span>
+                  </div>
+                </div>
                 <p style={styles.secureNote}>
-                  Your payment will be processed securely through Paystack.
+                  Your order is linked to {product.business_name} and is confirmed only after payment verification.
                 </p>
               </form>
             </section>
@@ -869,9 +876,33 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     textDecoration: "none"
   },
+  paymentTrust: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 12,
+    width: "100%",
+    boxSizing: "border-box",
+    padding: 14,
+    border: "1px solid #dce8e2",
+    borderRadius: 12,
+    background: "#f6faf8",
+    color: "#1f5138"
+  },
+  paymentTrustIcon: {
+    width: 36,
+    height: 36,
+    flex: "0 0 36px",
+    borderRadius: 10,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#e2f3e9",
+    color: "#16804a"
+  },
   secureNote: {
     margin: 0,
     fontSize: 11,
+    lineHeight: 1.55,
     color: "#64748b",
     textAlign: "center"
   },
