@@ -168,6 +168,19 @@ Deno.serve(async (req: Request) => {
     }
 
     const session = await requireSession(body);
+    const [{ data: currentStudent, error: studentStatusError }, { data: courseAccess, error: accessError }] = await Promise.all([
+      sb.from("students").select("status").eq("id", session.student_id).maybeSingle(),
+      sb.from("student_course_access").select("access_status")
+        .eq("student_id", session.student_id).eq("course_id", session.course_id).maybeSingle(),
+    ]);
+    if (studentStatusError || accessError) throw studentStatusError || accessError;
+    if (!currentStudent || String(currentStudent.status || "ACTIVE").toUpperCase() !== "ACTIVE") {
+      return response({ error: "Your student registration is not active. Contact the Learning Centre." }, 403);
+    }
+    if (String(courseAccess?.access_status || "").toUpperCase() === "BLOCKED") {
+      return response({ error: "Your access to this course has been blocked by the lecturer." }, 403);
+    }
+
     if (session.purpose === "LESSON" && action === "lesson") {
       const { data: enrollment, error: enrollmentError } = await sb.from("student_courses").select("id,progress,status")
         .eq("student_id", session.student_id).eq("course_id", session.course_id).eq("status", "ACTIVE").maybeSingle();
