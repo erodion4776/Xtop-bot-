@@ -22,14 +22,16 @@ function portalUrl(token: string): string {
 
 export async function issueLessonPortalLink(
   phone: string,
+  conversationId: string,
   ctx: { studentId?: string; courseId?: string; courseCode?: string; courseName?: string },
   lessonOrder: number,
 ): Promise<boolean> {
-  if (!ctx.studentId || !ctx.courseId || !Number.isInteger(lessonOrder) || lessonOrder < 1) return false;
+  if (!conversationId || !ctx.studentId || !ctx.courseId || !Number.isInteger(lessonOrder) || lessonOrder < 1) return false;
   const token = randomToken();
   const { error } = await supabase.from("engr_ero_portal_sessions").insert({
     access_token_hash: await sha256(token),
     purpose: "LESSON",
+    conversation_id: conversationId,
     student_id: ctx.studentId,
     course_id: ctx.courseId,
     lesson_order: lessonOrder,
@@ -49,12 +51,13 @@ export async function issueLessonPortalLink(
 
 export async function issueExamPortalLink(
   phone: string,
+  conversationId: string,
   ctx: {
     studentId?: string; courseId?: string; courseCode?: string; courseName?: string;
     questions?: any[]; attemptsCount?: number; examFeeNaira?: number; paymentReference?: string;
   },
 ): Promise<boolean> {
-  if (!ctx.studentId || !ctx.courseId || !ctx.paymentReference || !Array.isArray(ctx.questions) || ctx.questions.length !== 50) return false;
+  if (!conversationId || !ctx.studentId || !ctx.courseId || !ctx.paymentReference || !Array.isArray(ctx.questions) || ctx.questions.length !== 50) return false;
   const token = randomToken();
   const tokenHash = await sha256(token);
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -74,12 +77,12 @@ export async function issueExamPortalLink(
   }
   const write = existing
     ? await supabase.from("engr_ero_portal_sessions").update({
-        access_token_hash: tokenHash, expires_at: expiresAt, payload_json: payload,
+        access_token_hash: tokenHash, conversation_id: conversationId, expires_at: expiresAt, payload_json: payload,
         otp_hash: null, otp_expires_at: null, otp_sent_at: null, otp_attempts: 0,
         session_token_hash: null, device_hash: null, redeemed_at: null,
       }).eq("id", existing.id)
     : await supabase.from("engr_ero_portal_sessions").insert({
-        access_token_hash: tokenHash, purpose: "EXAM", student_id: ctx.studentId,
+        access_token_hash: tokenHash, purpose: "EXAM", conversation_id: conversationId, student_id: ctx.studentId,
         course_id: ctx.courseId, payment_reference: ctx.paymentReference,
         expires_at: expiresAt, payload_json: payload,
       });
