@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendTextMessage } from "../whatsapp-webhook/whatsapp.ts";
 
-// All student access is mediated by short-lived, hashed, WhatsApp-verified tokens.
+// All student access is mediated by short-lived, hashed, WhatsApp-verified tokens.\n// The browser receives neither service credentials nor CBT answer keys.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://xtopbot.netlify.app",
