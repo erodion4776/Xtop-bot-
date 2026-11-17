@@ -61,8 +61,8 @@ async function requireSession(body: any) {
   const [sessionHash, deviceHash] = await Promise.all([hash(sessionToken), hash(deviceId)]);
   const { data, error } = await sb.from("engr_ero_portal_sessions").select("*")
     .eq("session_token_hash", sessionHash).eq("device_hash", deviceHash).maybeSingle();
-  if (error || !data || data.completed_at) throw new Error("Your secure session has expired or has already been completed. Return to WhatsApp for a new link.");
-  if (new Date(data.expires_at).getTime() <= Date.now()) throw new Error("This link has expired. Return to WhatsApp to request a new link.");
+  if (error || !data || (data.completed_at && data.purpose !== "EXAM")) throw new Error("Your secure session has expired or has already been completed. Return to WhatsApp for a new link.");
+  if (new Date(data.expires_at).getTime() <= Date.now() && !(data.purpose === "EXAM" && data.attempt_id && !data.completed_at)) throw new Error("This link has expired. Return to WhatsApp to request a new link.");
   return data;
 }
 async function finishExam(session: any, attempt: any) {
@@ -99,7 +99,7 @@ async function finishExam(session: any, attempt: any) {
 async function currentExamQuestion(session: any, attempt: any) {
   const questions = Array.isArray(session.payload_json?.questions) ? session.payload_json.questions : [];
   const index = Number(attempt.current_question_index || 0);
-  if (attempt.submitted_at || index >= questions.length) return { completed: true, attempt };
+  if (attempt.submitted_at || index >= questions.length) return { completed: true, score: attempt.score, percentage: attempt.percentage, pass_status: attempt.pass_status };
   return { completed: false, index, total: questions.length, question: safeQuestion(questions[index]), expires_at: attempt.end_time || session.expires_at };
 }
 
@@ -212,6 +212,18 @@ Deno.serve(async (req: Request) => {
       }
       await sb.from("engr_ero_portal_sessions").update({ lesson_order: nextOrder }).eq("id", session.id);
       return response({ course_complete: false, next_order: nextOrder });
+    }
+
+    if (session.purpose === "EXAM" && action === "exam_status") {
+      if (!session.attempt_id) return response({ ready: true });
+      const { data: existing, error } = await sb.from("exam_attempts").select("*").eq("id", session.attempt_id).maybeSingle();
+      if (error || !existing) return response({ error: "Exam attempt not found." }, 404);
+      if (existing.submitted_at) return response({ completed: true, score: existing.score, percentage: existing.percentage, pass_status: existing.pass_status });
+      if (new Date(existing.end_time || session.expires_at).getTime() <= Date.now()) {
+        const final = await finishExam(session, existing);
+        return response({ completed: true, expired: true, score: final.score, percentage: final.percentage, pass_status: final.pass_status });
+      }
+      return response(await currentExamQuestion(session, existing));
     }
 
     if (session.purpose === "EXAM" && action === "start_exam") {
