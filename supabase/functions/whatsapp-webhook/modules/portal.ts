@@ -66,9 +66,9 @@ export async function issueExamPortalLink(
       duration_minutes: 30,
     };
   const { data: existing } = await supabase.from("engr_ero_portal_sessions")
-    .select("id,attempt_id,redeemed_at,completed_at")
+    .select("id,attempt_id,started_at,completed_at")
     .eq("payment_reference", ctx.paymentReference).maybeSingle();
-  if (existing?.attempt_id || existing?.redeemed_at || existing?.completed_at) {
+  if (existing?.attempt_id || existing?.started_at || existing?.completed_at) {
     await sendTextMessage(phone, "Your CBT link for this payment has already been opened or used. Continue on the same verified phone/browser. If you have lost access to that device, contact the Learning Centre before making another payment.");
     return true;
   }
