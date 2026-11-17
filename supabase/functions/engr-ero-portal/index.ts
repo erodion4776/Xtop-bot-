@@ -86,6 +86,10 @@ async function finishExam(session: any, attempt: any) {
     status: "RELEASED", released_at: submittedAt,
   });
   await sb.from("engr_ero_portal_sessions").update({ completed_at: submittedAt }).eq("id", session.id);
+  if (session.conversation_id) {
+    await sb.from("conversations").update({ current_module: "LEARNING", current_state: "COURSE_MENU" })
+      .eq("id", session.conversation_id);
+  }
   const [{ data: student }, { data: course }] = await Promise.all([
     sb.from("students").select("phone").eq("id", session.student_id).maybeSingle(),
     sb.from("courses").select("course_code,course_name").eq("id", session.course_id).maybeSingle(),
@@ -210,6 +214,14 @@ Deno.serve(async (req: Request) => {
           sb.from("students").select("phone").eq("id", session.student_id).maybeSingle(),
           sb.from("courses").select("course_code").eq("id", session.course_id).maybeSingle(),
         ]);
+        if (session.conversation_id) {
+          const { data: conversation } = await sb.from("conversations").select("context_json").eq("id", session.conversation_id).maybeSingle();
+          await sb.from("conversations").update({
+            current_module: "LEARNING",
+            current_state: "COURSE_FINAL_READY",
+            context_json: { ...(conversation?.context_json || {}), step: "COURSE_FINAL_READY", learningUnlocked: true },
+          }).eq("id", session.conversation_id);
+        }
         if (student?.phone) await sendTextMessage(student.phone,
           `🎉 You have completed all the online lectures for *${course?.course_code || "your course"}*. Return to this WhatsApp chat and choose *Final CBT Exam* when you are ready. CBT payment and exam access remain managed here on WhatsApp.`);
         return response({ course_complete: true, total: lessons.length });
