@@ -51,27 +51,40 @@ export async function issueExamPortalLink(
   phone: string,
   ctx: {
     studentId?: string; courseId?: string; courseCode?: string; courseName?: string;
-    questions?: any[]; attemptsCount?: number; examFeeNaira?: number;
+    questions?: any[]; attemptsCount?: number; examFeeNaira?: number; paymentReference?: string;
   },
 ): Promise<boolean> {
-  if (!ctx.studentId || !ctx.courseId || !Array.isArray(ctx.questions) || ctx.questions.length !== 50) return false;
+  if (!ctx.studentId || !ctx.courseId || !ctx.paymentReference || !Array.isArray(ctx.questions) || ctx.questions.length !== 50) return false;
   const token = randomToken();
-  const { error } = await supabase.from("engr_ero_portal_sessions").insert({
-    access_token_hash: await sha256(token),
-    purpose: "EXAM",
-    student_id: ctx.studentId,
-    course_id: ctx.courseId,
-    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    payload_json: {
+  const tokenHash = await sha256(token);
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const payload = {
       course_code: ctx.courseCode || "CBT",
       course_name: ctx.courseName || "",
       questions: ctx.questions,
       attempts_count: Number(ctx.attemptsCount || 0),
       duration_minutes: 30,
-    },
-  });
-  if (error) {
-    console.error("[engr-ero-portal] exam token insert failed", error);
+    };
+  const { data: existing } = await supabase.from("engr_ero_portal_sessions")
+    .select("id,attempt_id,redeemed_at,completed_at")
+    .eq("payment_reference", ctx.paymentReference).maybeSingle();
+  if (existing?.attempt_id || existing?.redeemed_at || existing?.completed_at) {
+    await sendTextMessage(phone, "Your CBT link for this payment has already been opened or used. Continue on the same verified phone/browser. If you have lost access to that device, contact the Learning Centre before making another payment.");
+    return true;
+  }
+  const write = existing
+    ? await supabase.from("engr_ero_portal_sessions").update({
+        access_token_hash: tokenHash, expires_at: expiresAt, payload_json: payload,
+        otp_hash: null, otp_expires_at: null, otp_sent_at: null, otp_attempts: 0,
+        session_token_hash: null, device_hash: null, redeemed_at: null,
+      }).eq("id", existing.id)
+    : await supabase.from("engr_ero_portal_sessions").insert({
+        access_token_hash: tokenHash, purpose: "EXAM", student_id: ctx.studentId,
+        course_id: ctx.courseId, payment_reference: ctx.paymentReference,
+        expires_at: expiresAt, payload_json: payload,
+      });
+  if (write.error) {
+    console.error("[engr-ero-portal] exam token insert failed", write.error);
     return false;
   }
   const sent = await sendTextMessage(
