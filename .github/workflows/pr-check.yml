@@ -57,7 +57,7 @@ jobs:
       - name: Validate portal JavaScript and dashboard build
         run: |
           node --check public/engr-ero-portal.js
-          npm ci
+          npm install
           npm run build
 
       - name: Validate SQL migrations
