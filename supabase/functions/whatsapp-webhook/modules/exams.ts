@@ -110,10 +110,11 @@ export async function startExamEntry(
       : [],
   );
   const recordedOrder = Math.max(0, Number(enrollment.progress?.last_lesson_order || 0));
-  const completedCount = Math.min(publishedLessonIds.length, Math.max(
-    recordedOrder,
-    publishedLessonIds.filter(id => completedIds.has(id)).length,
-  ));
+  const highestCompletedOrder = publishedLessonIds.reduce(
+    (highest, id, index) => completedIds.has(id) ? Math.max(highest, index + 1) : highest,
+    0,
+  );
+  const completedCount = Math.min(publishedLessonIds.length, Math.max(recordedOrder, highestCompletedOrder));
   if (publishedLessonIds.length === 0 || completedCount < publishedLessonIds.length) {
     await sendTextMessage(phone,
       `🔒 *Complete your lectures first.*\n\nYou have completed ${completedCount} of ${publishedLessonIds.length} published lectures for *${courseCode}*. Your CBT link will become available when all lectures are completed in the online classroom.`);
