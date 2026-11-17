@@ -168,7 +168,8 @@ Deno.serve(async (req: Request) => {
       if (enrollmentError || !enrollment) return response({ error: "Your course access is not active. Contact the Learning Centre." }, 403);
       const lessons = await loadLessons(session.course_id);
       const completed = Array.isArray(enrollment.progress?.completed_lessons) ? enrollment.progress.completed_lessons : [];
-      const highWater = Math.max(Number(enrollment.progress?.last_lesson_order || 0), ...lessons.map((item, index) => completed.includes(item.id) ? index + 1 : 0));
+      const highestCompletedOrder = lessons.reduce((highest, item, index) => completed.includes(item.id) ? Math.max(highest, index + 1) : highest, 0);
+      const highWater = Math.min(lessons.length, Math.max(Number(enrollment.progress?.last_lesson_order || 0), highestCompletedOrder));
       if (highWater >= lessons.length) return response({ course_complete: true, total: lessons.length });
       const order = Number(session.lesson_order || 1);
       if (order > highWater + 1 || order < 1 || order > lessons.length) return response({ error: "Complete the previous lecture before opening this one." }, 403);
@@ -193,8 +194,11 @@ Deno.serve(async (req: Request) => {
       if (!enrollment) return response({ error: "Your course access is not active." }, 403);
       const lessons = await loadLessons(session.course_id);
       const order = Number(session.lesson_order || 1);
+      const completed = Array.isArray(enrollment.progress?.completed_lessons) ? enrollment.progress.completed_lessons : [];
+      const highestCompletedOrder = lessons.reduce((highest, item, index) => completed.includes(item.id) ? Math.max(highest, index + 1) : highest, 0);
+      const highWater = Math.min(lessons.length, Math.max(Number(enrollment.progress?.last_lesson_order || 0), highestCompletedOrder));
       const lesson = lessons[order - 1];
-      if (!lesson || String(body.lesson_id || "") !== String(lesson.id)) return response({ error: "This lecture is not the current lesson for your account." }, 409);
+      if (order > highWater + 1 || !lesson || String(body.lesson_id || "") !== String(lesson.id)) return response({ error: "This lecture is not the current lesson for your account." }, 409);
       const { error } = await sb.rpc("mark_learning_lesson_complete", {
         p_student_course_id: enrollment.id, p_lesson_id: lesson.id, p_lesson_order: order,
       });
