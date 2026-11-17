@@ -86,7 +86,7 @@ export async function startExamEntry(
     await sendTextMessage(phone, "I could not verify your lecture completion. Please try again shortly.");
     return;
   }
-  let publishedLessonIds: string[] = [];
+  const publishedLessonIds: string[] = [];
   for (const module of courseModules || []) {
     const { data: slides, error: slidesError } = await supabase
       .from("module_slides").select("id,order_index").eq("module_id", module.id)
