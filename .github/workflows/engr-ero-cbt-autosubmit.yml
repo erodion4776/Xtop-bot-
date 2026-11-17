@@ -1,0 +1,30 @@
+name: ENGR ERO CBT Auto-submit
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  submit-expired-exams:
+    name: Submit expired web CBT attempts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Submit expired attempts
+        env:
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          ENGR_ERO_CRON_SECRET: ${{ secrets.ENGR_ERO_CRON_SECRET }}
+        run: |
+          if [ -z "$SUPABASE_PROJECT_ID" ] || [ -z "$ENGR_ERO_CRON_SECRET" ]; then
+            echo "Auto-submit secrets are not configured yet; skipping this scheduled run."
+            exit 0
+          fi
+
+          curl --fail-with-body --silent --show-error \
+            --request POST "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/engr-ero-portal" \
+            --header "Content-Type: application/json" \
+            --header "x-portal-cron-secret: ${ENGR_ERO_CRON_SECRET}" \
+            --data '{"action":"sweep_expired_exams"}'

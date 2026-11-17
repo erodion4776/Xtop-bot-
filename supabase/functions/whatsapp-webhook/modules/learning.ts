@@ -21,6 +21,7 @@ import { startExamEntry } from "./exams.ts";
 import { startAutomobileDiagnosis, handleAutomobileDiagnosis } from "./automobile-diagnostics.ts";
 import { startVehicleDiagnosis } from "./vehicle-diagnosis.ts";
 import { handleRegistration } from "./attendance.ts";
+import { issueLessonPortalLink } from "./portal.ts";
 
 const supabase = getSupabaseClient();
 
@@ -822,6 +823,19 @@ async function deliverLesson(
   ctx.practiceScore = 0;
   ctx.totalLessons = allLessons.length;
   await saveCtx(conversationId, ctx, "VIEWING_LESSON");
+
+  // Lecture content now lives in the secure mobile classroom. WhatsApp remains
+  // the authority for registration, course access and progress hand-off.
+  if (sections.length === 0) {
+    await sendTextMessage(phone, "This lecture has no published teaching sections yet. Please contact the Learning Centre administrator.");
+    await showCourseMenu(phone, conversationId, ctx);
+    return;
+  }
+  const portalSent = await issueLessonPortalLink(phone, conversationId, ctx, activeOrder);
+  if (!portalSent) {
+    await sendTextMessage(phone, "I could not create your secure classroom link just now. Your course progress is unchanged. Please try again shortly.");
+  }
+  return;
 
   const slideCount = sections.length;
   const objectives = currentLesson.objectives

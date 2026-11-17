@@ -24,3 +24,6 @@ verify_jwt = false
 
 [functions.merchant-paystack]
 verify_jwt = false
+
+[functions.engr-ero-portal]
+verify_jwt = false

@@ -12,6 +12,7 @@ import {
 import { normalise, isBack } from "../utils.ts";
 import { showCourseMenu, LearningCtx } from "./learning.ts";
 import { initializeExamPayment, verifyExamPayment } from "../paystack.ts";
+import { issueExamPortalLink, resendActiveExamPortalLink } from "./portal.ts";
 
 const supabase = getSupabaseClient();
 
@@ -75,6 +76,48 @@ export async function startExamEntry(
   const examFeeNaira = levelDigits === "400" ? 1000 : levelDigits === "300" ? 500 : 0;
   if (!examFeeNaira) {
     await sendTextMessage(phone, `❌ CBT payment is currently configured for 300 Level (₦500) and 400 Level (₦1,000). This course is recorded as *${courseLevel}*. Please contact the administrator.`);
+    return;
+  }
+
+  // CBT is available only after every published lecture has been completed.
+  const { data: courseModules, error: modulesError } = await supabase
+    .from("course_modules").select("id,module_order").eq("course_id", courseId).eq("status", "ACTIVE").order("module_order", { ascending: true });
+  if (modulesError) {
+    await sendTextMessage(phone, "I could not verify your lecture completion. Please try again shortly.");
+    return;
+  }
+  const publishedLessonIds: string[] = [];
+  for (const module of courseModules || []) {
+    const { data: slides, error: slidesError } = await supabase
+      .from("module_slides").select("id,order_index").eq("module_id", module.id)
+      .eq("status", "ACTIVE").eq("is_draft", false).order("order_index", { ascending: true });
+    if (slidesError) {
+      await sendTextMessage(phone, "I could not verify your lecture completion. Please try again shortly.");
+      return;
+    }
+    publishedLessonIds.push(...(slides || []).map((slide: any) => String(slide.id)));
+  }
+  const { data: enrollment, error: enrollmentError } = await supabase
+    .from("student_courses").select("progress,status")
+    .eq("student_id", studentId).eq("course_id", courseId).eq("status", "ACTIVE").maybeSingle();
+  if (enrollmentError || !enrollment) {
+    await sendTextMessage(phone, "Your active course enrolment could not be confirmed. Please contact the Learning Centre.");
+    return;
+  }
+  const completedIds = new Set(
+    Array.isArray(enrollment.progress?.completed_lessons)
+      ? enrollment.progress.completed_lessons.map((id: unknown) => String(id))
+      : [],
+  );
+  const recordedOrder = Math.max(0, Number(enrollment.progress?.last_lesson_order || 0));
+  const highestCompletedOrder = publishedLessonIds.reduce(
+    (highest, id, index) => completedIds.has(id) ? Math.max(highest, index + 1) : highest,
+    0,
+  );
+  const completedCount = Math.min(publishedLessonIds.length, Math.max(recordedOrder, highestCompletedOrder));
+  if (publishedLessonIds.length === 0 || completedCount < publishedLessonIds.length) {
+    await sendTextMessage(phone,
+      `🔒 *Complete your lectures first.*\n\nYou have completed ${completedCount} of ${publishedLessonIds.length} published lectures for *${courseCode}*. Your CBT link will become available when all lectures are completed in the online classroom.`);
     return;
   }
 
@@ -222,13 +265,15 @@ async function handlePaywallGate(
   // Count successful payment transactions
   const { data: payments } = await supabase
     .from("payment_transactions")
-    .select("id, amount")
+    .select("id, amount, reference, created_at")
     .eq("student_id", studentId)
     .eq("course_id", courseId)
-    .eq("status", "SUCCESSFUL");
+    .eq("status", "SUCCESSFUL")
+    .order("created_at", { ascending: true });
 
   const examFeeNaira = ctx.examFeeNaira || 0;
-  const paymentsCount = (payments || []).filter((payment: any) => Number(payment.amount) === examFeeNaira).length;
+  const eligiblePayments = (payments || []).filter((payment: any) => Number(payment.amount) === examFeeNaira);
+  const paymentsCount = eligiblePayments.length;
 
   // If paymentsCount <= attemptsCount, a new payment is required for this attempt
   if (paymentsCount <= attemptsCount) {
@@ -269,8 +314,13 @@ async function handlePaywallGate(
     return;
   }
 
-  // Already paid for this current attempt -> proceed
-  await launchExam(phone, conversationId, ctx);
+  // Use the next unused successful payment reference for this attempt.
+  const unusedPayment = eligiblePayments[attemptsCount];
+  if (!unusedPayment?.reference) {
+    await sendTextMessage(phone, "I could not match this CBT access to a confirmed Paystack payment. Please contact the Learning Centre; do not pay again.");
+    return;
+  }
+  await launchExam(phone, conversationId, { ...ctx, paymentReference: unusedPayment.reference });
 }
 
 // ═══════════════════════════════════════════════════════
@@ -300,6 +350,19 @@ export async function handleActiveExamRecovery(
     .eq("student_id", student.id).is("submitted_at", null)
     .order("started_at", { ascending: false }).limit(1).maybeSingle();
   if (!attempt || !attempt.started_at) return false;
+
+  // New web CBT attempts must never fall back to answering questions in WhatsApp.
+  const { data: portalAttempt } = await supabase.from("engr_ero_portal_sessions")
+    .select("id,completed_at").eq("attempt_id", attempt.id).eq("purpose", "EXAM").maybeSingle();
+  if (portalAttempt) {
+    if (normalise(text) === "resume exam" || normalise(text) === "resume cbt" || normalise(text) === "open cbt") {
+      const resent = await resendActiveExamPortalLink(phone, attempt.id);
+      if (!resent) await sendTextMessage(phone, "I could not refresh your CBT link. Your exam timer has not been reset. Please contact the Learning Centre.");
+    } else {
+      await sendTextMessage(phone, "Your CBT is being completed in the secure web classroom, not in WhatsApp. Open the personal CBT link previously sent to this chat. If you have lost it, send *RESUME EXAM* to refresh access; your timer will not reset.");
+    }
+    return true;
+  }
 
   const elapsed = Date.now() - new Date(attempt.started_at).getTime();
   if (!Number.isFinite(elapsed)) return false;
@@ -699,22 +762,11 @@ async function launchExam(
   phone: string, conversationId: string, ctx: ExamCtx
 ): Promise<void> {
   const readyCtx = { ...ctx, examDurationMinutes: 30 };
-  await saveExamCtx(conversationId, readyCtx, "WAITING_EXAM_START_CONFIRMATION");
-  await sendButtonMessage(
-    phone,
-    `📢 *IMPORTANT CBT EXAM INSTRUCTIONS*\\n\\n` +
-    `Course: *${ctx.courseCode || "CBT"} — ${ctx.courseName || ""}*\\n` +
-    `Duration: *30 MINUTES*\\n` +
-    `Questions: *${(ctx.questions || []).length}*\\n\\n` +
-    `• Your countdown begins only after you tap *Start Exam*.\\n` +
-    `• Closing WhatsApp or locking your phone will NOT stop the timer.\\n` +
-    `• Your answers are saved as you progress.\\n` +
-    `• Return and send *RESUME EXAM* to continue before time expires.\\n` +
-    `• At the deadline, the answers saved so far will be submitted automatically.\\n\\n` +
-    `Please make sure you are ready before starting.`,
-    [makeButton("cbt_start_exam", "▶️ Start Exam"), makeButton("cbt_cancel_exam_start", "Not Yet")],
-    "Before You Begin"
-  );
+  await saveExamCtx(conversationId, readyCtx, "WAITING_WEB_CBT");
+  const sent = await issueExamPortalLink(phone, conversationId, readyCtx);
+  if (!sent) {
+    await sendTextMessage(phone, "Your Paystack payment is confirmed, but I could not create the secure CBT link. Your payment is recorded. Please send *RESUME EXAM* in this WhatsApp chat or contact the Learning Centre; do not pay again.");
+  }
 }
 
 async function beginExam(
