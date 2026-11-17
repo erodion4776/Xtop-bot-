@@ -1,0 +1,82 @@
+// Shared ENGR ERO portal link issuer. Only called from the trusted WhatsApp webhook.
+import { getSupabaseClient } from "../database.ts";
+import { sendTextMessage } from "../whatsapp.ts";
+
+const supabase = getSupabaseClient();
+
+function randomToken(bytes = 32): string {
+  const data = crypto.getRandomValues(new Uint8Array(bytes));
+  let binary = "";
+  for (const value of data) binary += String.fromCharCode(value);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+async function sha256(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function portalUrl(token: string): string {
+  return `https://xtopbot.netlify.app/engr-ero-portal.html?token=${encodeURIComponent(token)}`;
+}
+
+export async function issueLessonPortalLink(
+  phone: string,
+  ctx: { studentId?: string; courseId?: string; courseCode?: string; courseName?: string },
+  lessonOrder: number,
+): Promise<boolean> {
+  if (!ctx.studentId || !ctx.courseId || !Number.isInteger(lessonOrder) || lessonOrder < 1) return false;
+  const token = randomToken();
+  const { error } = await supabase.from("engr_ero_portal_sessions").insert({
+    access_token_hash: await sha256(token),
+    purpose: "LESSON",
+    student_id: ctx.studentId,
+    course_id: ctx.courseId,
+    lesson_order: lessonOrder,
+    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    payload_json: {},
+  });
+  if (error) {
+    console.error("[engr-ero-portal] lesson token insert failed", error);
+    return false;
+  }
+  const sent = await sendTextMessage(
+    phone,
+    `🎓 *Engr. Ero Learning Centre — Online Classroom*\n\nYour next lecture for *${ctx.courseCode || "your course"}* is ready.\n\nOpen your personal classroom link:\n${portalUrl(token)}\n\nFor security, open it on your phone and request the verification code. The code will be sent to this registered WhatsApp number. Do not share it.\n\n_This link expires in 24 hours._`,
+  );
+  return !!sent;
+}
+
+export async function issueExamPortalLink(
+  phone: string,
+  ctx: {
+    studentId?: string; courseId?: string; courseCode?: string; courseName?: string;
+    questions?: any[]; attemptsCount?: number; examFeeNaira?: number;
+  },
+): Promise<boolean> {
+  if (!ctx.studentId || !ctx.courseId || !Array.isArray(ctx.questions) || ctx.questions.length !== 50) return false;
+  const token = randomToken();
+  const { error } = await supabase.from("engr_ero_portal_sessions").insert({
+    access_token_hash: await sha256(token),
+    purpose: "EXAM",
+    student_id: ctx.studentId,
+    course_id: ctx.courseId,
+    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    payload_json: {
+      course_code: ctx.courseCode || "CBT",
+      course_name: ctx.courseName || "",
+      questions: ctx.questions,
+      attempts_count: Number(ctx.attemptsCount || 0),
+      duration_minutes: 30,
+    },
+  });
+  if (error) {
+    console.error("[engr-ero-portal] exam token insert failed", error);
+    return false;
+  }
+  const sent = await sendTextMessage(
+    phone,
+    `🎉 *CBT payment confirmed — ${ctx.courseCode || "Course"}*\n\nYour personal CBT link is ready:\n${portalUrl(token)}\n\nOpen the link on your phone, request the verification code sent to this registered WhatsApp number, then start when you are ready.\n\n⏱️ Duration: *30 minutes*\n🔒 One student, one verified browser session. Do not forward the link or code.\n\n_The timer begins only when you tap Start Exam._`,
+  );
+  return !!sent;
+}
