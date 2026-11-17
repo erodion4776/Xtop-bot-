@@ -41,6 +41,13 @@ jobs:
             --no-verify-jwt \
             --yes
 
+      - name: Deploy ENGR ERO portal API
+        run: |
+          npx --no-install supabase functions deploy engr-ero-portal \
+            --project-ref "$SUPABASE_PROJECT_ID" \
+            --no-verify-jwt \
+            --yes
+
       - name: Deploy wallet API
         run: |
           if [ -d "supabase/functions/wallet-api" ]; then
@@ -85,6 +92,7 @@ jobs:
       - name: Deployment Summary
         run: |
           echo "WhatsApp webhook preserved."
+          echo "ENGR ERO secure web portal API deployment configured."
           echo "Wallet API deployment checked."
           echo "Order API deployment checked."
           echo "Merchant Paystack API deployment configured."
