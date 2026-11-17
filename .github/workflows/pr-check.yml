@@ -52,7 +52,7 @@ jobs:
       - name: Strictly type-check ENGR ERO portal functions
         run: |
           deno check supabase/functions/engr-ero-portal/index.ts
-          deno check supabase/functions/whatsapp-webhook/index.ts
+          deno check supabase/functions/whatsapp-webhook/modules/portal.ts
 
       - name: Validate portal JavaScript and dashboard build
         run: |
