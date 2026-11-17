@@ -108,7 +108,8 @@
       else if (result.ready) showExamIntro();
       else renderQuestion(result);
     } catch (error) { status(error.message, true); }
-  }\n  function showExamIntro() {
+  }
+  function showExamIntro() {
     contentEl.classList.remove("hidden");
     contentEl.innerHTML = `<article class="panel"><h2>Personal CBT Examination</h2><p class="muted">You have 50 questions and 30 minutes. The timer is controlled by the server and will continue if you refresh or close this page. Your answers are saved as you go.</p><button id="startExam">Start 30-minute exam</button></article>`;
     document.getElementById("startExam").addEventListener("click", async () => {
