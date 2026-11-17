@@ -96,3 +96,29 @@ export async function issueExamPortalLink(
   );
   return !!sent;
 }
+
+/** Re-issues access to an already-started web CBT without changing its timer or attempt. */
+export async function resendActiveExamPortalLink(phone: string, attemptId: string): Promise<boolean> {
+  const { data: session, error } = await supabase.from("engr_ero_portal_sessions")
+    .select("id,attempt_id,completed_at").eq("attempt_id", attemptId).eq("purpose", "EXAM").maybeSingle();
+  if (error || !session || session.completed_at) return false;
+  const token = randomToken();
+  const { error: updateError } = await supabase.from("engr_ero_portal_sessions").update({
+    access_token_hash: await sha256(token),
+    session_token_hash: null,
+    device_hash: null,
+    otp_hash: null,
+    otp_expires_at: null,
+    otp_sent_at: null,
+    otp_attempts: 0,
+    redeemed_at: null,
+    expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  }).eq("id", session.id);
+  if (updateError) {
+    console.error("[engr-ero-portal] active CBT link recovery failed", updateError);
+    return false;
+  }
+  const sent = await sendTextMessage(phone,
+    `🔄 *Resume your existing CBT*\n\nYour examination is already in progress. Open this refreshed personal link and verify with the code sent to your registered WhatsApp number:\n${portalUrl(token)}\n\n⏱️ Your original 30-minute timer has NOT been reset. Only your access link has been refreshed.`);
+  return !!sent;
+}
