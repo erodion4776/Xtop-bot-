@@ -831,7 +831,7 @@ async function deliverLesson(
     await showCourseMenu(phone, conversationId, ctx);
     return;
   }
-  const portalSent = await issueLessonPortalLink(phone, ctx, activeOrder);
+  const portalSent = await issueLessonPortalLink(phone, conversationId, ctx, activeOrder);
   if (!portalSent) {
     await sendTextMessage(phone, "I could not create your secure classroom link just now. Your course progress is unchanged. Please try again shortly.");
   }
