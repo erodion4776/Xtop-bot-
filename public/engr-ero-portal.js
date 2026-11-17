@@ -9,6 +9,7 @@
   const codeArea = document.getElementById("codeArea");
   const deviceId = getDeviceId();
   let sessionToken = localStorage.getItem("engr_ero_session_" + accessToken) || "";
+  let sessionPurpose = localStorage.getItem("engr_ero_purpose_" + accessToken) || "";
   let selectedAnswer = "";
   let timerHandle = null;
 
@@ -53,9 +54,11 @@
       status("Verifying your code…");
       const result = await api("verify_otp", { code });
       sessionToken = result.session_token;
+      sessionPurpose = result.purpose;
       localStorage.setItem("engr_ero_session_" + accessToken, sessionToken);
+      localStorage.setItem("engr_ero_purpose_" + accessToken, sessionPurpose);
       verifyEl.classList.add("hidden");
-      if (result.purpose === "EXAM") showExamIntro();
+      if (sessionPurpose === "EXAM") await restoreExam();
       else await loadLesson();
     } catch (error) { status(error.message, true); }
   });
@@ -98,7 +101,7 @@
       status("Return to the WhatsApp conversation where you received your classroom link.");
     });
   }
-  function showExamIntro() {
+  async function restoreExam() {\n    try {\n      const result = await api("exam_status");\n      if (result.completed) showExamResult(result);\n      else if (result.ready) showExamIntro();\n      else renderQuestion(result);\n    } catch (error) { status(error.message, true); }\n  }\n  function showExamIntro() {
     contentEl.classList.remove("hidden");
     contentEl.innerHTML = `<article class="panel"><h2>Personal CBT Examination</h2><p class="muted">You have 50 questions and 30 minutes. The timer is controlled by the server and will continue if you refresh or close this page. Your answers are saved as you go.</p><button id="startExam">Start 30-minute exam</button></article>`;
     document.getElementById("startExam").addEventListener("click", async () => {
