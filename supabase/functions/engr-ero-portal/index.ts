@@ -102,7 +102,7 @@ async function finishExam(session: any, attempt: any) {
   }
   return finalAttempt;
 }
-async function currentExamQuestion(session: any, attempt: any) {
+function currentExamQuestion(session: any, attempt: any) {
   const questions = Array.isArray(session.payload_json?.questions) ? session.payload_json.questions : [];
   const index = Number(attempt.current_question_index || 0);
   if (attempt.submitted_at || index >= questions.length) return { completed: true, score: attempt.score, percentage: attempt.percentage, pass_status: attempt.pass_status };
