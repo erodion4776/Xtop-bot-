@@ -313,8 +313,13 @@ async function handlePaywallGate(
     return;
   }
 
-  // Already paid for this current attempt -> proceed
-  await launchExam(phone, conversationId, ctx);
+  // Use the next unused successful payment reference for this attempt.
+  const unusedPayment = eligiblePayments[attemptsCount];
+  if (!unusedPayment?.reference) {
+    await sendTextMessage(phone, "I could not match this CBT access to a confirmed Paystack payment. Please contact the Learning Centre; do not pay again.");
+    return;
+  }
+  await launchExam(phone, conversationId, { ...ctx, paymentReference: unusedPayment.reference });
 }
 
 // ═══════════════════════════════════════════════════════
