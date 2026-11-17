@@ -750,7 +750,7 @@ async function launchExam(
 ): Promise<void> {
   const readyCtx = { ...ctx, examDurationMinutes: 30 };
   await saveExamCtx(conversationId, readyCtx, "WAITING_WEB_CBT");
-  const sent = await issueExamPortalLink(phone, readyCtx);
+  const sent = await issueExamPortalLink(phone, conversationId, readyCtx);
   if (!sent) {
     await sendTextMessage(phone, "Your Paystack payment is confirmed, but I could not create the secure CBT link. Your payment is recorded. Please send *RESUME EXAM* in this WhatsApp chat or contact the Learning Centre; do not pay again.");
   }
