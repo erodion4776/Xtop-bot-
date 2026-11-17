@@ -81,7 +81,7 @@ export async function startExamEntry(
 
   // CBT is available only after every published lecture has been completed.
   const { data: courseModules, error: modulesError } = await supabase
-    .from("course_modules").select("id").eq("course_id", courseId).eq("status", "ACTIVE");
+    .from("course_modules").select("id,module_order").eq("course_id", courseId).eq("status", "ACTIVE").order("module_order", { ascending: true });
   if (modulesError) {
     await sendTextMessage(phone, "I could not verify your lecture completion. Please try again shortly.");
     return;
@@ -89,8 +89,8 @@ export async function startExamEntry(
   let publishedLessonIds: string[] = [];
   for (const module of courseModules || []) {
     const { data: slides, error: slidesError } = await supabase
-      .from("module_slides").select("id").eq("module_id", module.id)
-      .eq("status", "ACTIVE").eq("is_draft", false);
+      .from("module_slides").select("id,order_index").eq("module_id", module.id)
+      .eq("status", "ACTIVE").eq("is_draft", false).order("order_index", { ascending: true });
     if (slidesError) {
       await sendTextMessage(phone, "I could not verify your lecture completion. Please try again shortly.");
       return;
