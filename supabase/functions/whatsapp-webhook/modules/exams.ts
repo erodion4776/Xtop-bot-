@@ -12,7 +12,7 @@ import {
 import { normalise, isBack } from "../utils.ts";
 import { showCourseMenu, LearningCtx } from "./learning.ts";
 import { initializeExamPayment, verifyExamPayment } from "../paystack.ts";
-import { issueExamPortalLink } from "./portal.ts";
+import { issueExamPortalLink, resendActiveExamPortalLink } from "./portal.ts";
 
 const supabase = getSupabaseClient();
 
@@ -350,6 +350,19 @@ export async function handleActiveExamRecovery(
     .eq("student_id", student.id).is("submitted_at", null)
     .order("started_at", { ascending: false }).limit(1).maybeSingle();
   if (!attempt || !attempt.started_at) return false;
+
+  // New web CBT attempts must never fall back to answering questions in WhatsApp.
+  const { data: portalAttempt } = await supabase.from("engr_ero_portal_sessions")
+    .select("id,completed_at").eq("attempt_id", attempt.id).eq("purpose", "EXAM").maybeSingle();
+  if (portalAttempt) {
+    if (normalise(text) === "resume exam" || normalise(text) === "resume cbt" || normalise(text) === "open cbt") {
+      const resent = await resendActiveExamPortalLink(phone, attempt.id);
+      if (!resent) await sendTextMessage(phone, "I could not refresh your CBT link. Your exam timer has not been reset. Please contact the Learning Centre.");
+    } else {
+      await sendTextMessage(phone, "Your CBT is being completed in the secure web classroom, not in WhatsApp. Open the personal CBT link previously sent to this chat. If you have lost it, send *RESUME EXAM* to refresh access; your timer will not reset.");
+    }
+    return true;
+  }
 
   const elapsed = Date.now() - new Date(attempt.started_at).getTime();
   if (!Number.isFinite(elapsed)) return false;
