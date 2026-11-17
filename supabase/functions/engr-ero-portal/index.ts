@@ -62,7 +62,7 @@ async function requireSession(body: any) {
   const { data, error } = await sb.from("engr_ero_portal_sessions").select("*")
     .eq("session_token_hash", sessionHash).eq("device_hash", deviceHash).maybeSingle();
   if (error || !data || (data.completed_at && data.purpose !== "EXAM")) throw new Error("Your secure session has expired or has already been completed. Return to WhatsApp for a new link.");
-  if (new Date(data.expires_at).getTime() <= Date.now() && !(data.purpose === "EXAM" && data.attempt_id && !data.completed_at)) throw new Error("This link has expired. Return to WhatsApp to request a new link.");
+  if (new Date(data.expires_at).getTime() <= Date.now() && !(data.purpose === "EXAM" && data.attempt_id)) throw new Error("This link has expired. Return to WhatsApp to request a new link.");
   return data;
 }
 async function finishExam(session: any, attempt: any) {
@@ -259,6 +259,10 @@ Deno.serve(async (req: Request) => {
       if (Number(count || 0) >= 3) return response({ error: "You have reached the three-attempt limit. Contact Engr. Ero for assistance." }, 403);
       const start = new Date();
       const end = new Date(start.getTime() + 30 * 60_000);
+      const { data: startLock } = await sb.from("engr_ero_portal_sessions").update({
+        started_at: start.toISOString(),
+      }).eq("id", session.id).is("started_at", null).is("attempt_id", null).select("id").maybeSingle();
+      if (!startLock) return response({ error: "Your exam is already starting in this browser. Refresh the page in a moment." }, 409);
       const { data: attempt, error } = await sb.from("exam_attempts").insert({
         student_id: session.student_id, course_id: session.course_id, score: 0,
         total_questions: questions.length, question_ids: questions.map((q: any) => q.id),
@@ -268,8 +272,13 @@ Deno.serve(async (req: Request) => {
         started_at: start.toISOString(), start_time: start.toISOString(), end_time: end.toISOString(),
         answers_json: [], current_question_index: 0,
       }).select("*").single();
-      if (error) throw error;
-      await sb.from("engr_ero_portal_sessions").update({ attempt_id: attempt.id, started_at: start.toISOString(), expires_at: end.toISOString() }).eq("id", session.id);
+      if (error) {
+        await sb.from("engr_ero_portal_sessions").update({ started_at: null }).eq("id", session.id).is("attempt_id", null);
+        throw error;
+      }
+      const { error: sessionUpdateError } = await sb.from("engr_ero_portal_sessions")
+        .update({ attempt_id: attempt.id, started_at: start.toISOString(), expires_at: end.toISOString() }).eq("id", session.id);
+      if (sessionUpdateError) throw sessionUpdateError;
       return response(await currentExamQuestion({ ...session, attempt_id: attempt.id }, attempt));
     }
 
