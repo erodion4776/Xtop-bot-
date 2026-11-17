@@ -232,7 +232,11 @@ Deno.serve(async (req: Request) => {
         if (existing) return response(await currentExamQuestion(session, existing));
       }
       const questions = Array.isArray(session.payload_json?.questions) ? session.payload_json.questions : [];
-      if (questions.length !== 50) return response({ error: "The exam question set is incomplete. Contact the Learning Centre." }, 409);
+      if (questions.length !== 50 || !session.payment_reference) return response({ error: "The exam question set or confirmed payment reference is missing. Contact the Learning Centre." }, 409);
+      const { data: payment } = await sb.from("payment_transactions").select("reference,status,student_id,course_id")
+        .eq("reference", session.payment_reference).eq("student_id", session.student_id)
+        .eq("course_id", session.course_id).eq("status", "SUCCESSFUL").maybeSingle();
+      if (!payment) return response({ error: "A successful CBT payment could not be verified for this link." }, 403);
       const { count, error: countError } = await sb.from("exam_attempts").select("id", { count: "exact", head: true })
         .eq("student_id", session.student_id).eq("course_id", session.course_id);
       if (countError) throw countError;
