@@ -81,7 +81,12 @@ async function finishExam(session: any, attempt: any) {
     current_question_index: Number(attempt.current_question_index || 0),
   }).eq("id", attempt.id).is("submitted_at", null).select("*").maybeSingle();
   if (error) throw error;
-  const finalAttempt = updated || attempt;
+  if (!updated) {
+    const { data: latest } = await sb.from("exam_attempts").select("*").eq("id", attempt.id).maybeSingle();
+    if (latest?.submitted_at) return latest;
+    throw new Error("The exam could not be finalized. Please retry.");
+  }
+  const finalAttempt = updated;
   await sb.from("results").upsert({
     student_id: session.student_id, course_id: session.course_id,
     cbt_score: percentage, total_score: percentage, percentage,
@@ -117,6 +122,27 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json();
     const action = String(body.action || "");
+
+    if (action === "sweep_expired_exams") {
+      const cronSecret = Deno.env.get("ENGR_ERO_CRON_SECRET") || "";
+      if (!cronSecret || req.headers.get("x-portal-cron-secret") !== cronSecret) {
+        return response({ error: "Not authorized." }, 401);
+      }
+      const now = new Date().toISOString();
+      const { data: expiredAttempts, error: expiredError } = await sb.from("exam_attempts")
+        .select("*").is("submitted_at", null).not("started_at", "is", null)
+        .lte("end_time", now).order("end_time", { ascending: true }).limit(100);
+      if (expiredError) throw expiredError;
+      let submitted = 0;
+      for (const attempt of expiredAttempts || []) {
+        const { data: session } = await sb.from("engr_ero_portal_sessions").select("*")
+          .eq("attempt_id", attempt.id).eq("purpose", "EXAM").maybeSingle();
+        if (!session || session.completed_at) continue;
+        await finishExam(session, attempt);
+        submitted += 1;
+      }
+      return response({ success: true, submitted, checked_at: now });
+    }
 
     if (action === "request_otp") {
       const token = String(body.token || "");
