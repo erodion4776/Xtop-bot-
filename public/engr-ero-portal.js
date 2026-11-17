@@ -97,9 +97,7 @@
   function showCourseComplete() {
     contentEl.classList.remove("hidden");
     contentEl.innerHTML = `<article class="panel"><h2>🎉 All course lectures completed</h2><p class="muted">Your lecture progress has been saved. Return to your WhatsApp chat with Engr. Ero Learning Centre. Your CBT payment and personal examination link will be handled there.</p><button id="backWhatsApp">Return to WhatsApp</button></article>`;
-    document.getElementById("backWhatsApp").addEventListener("click", () => {
-      status("Return to the WhatsApp conversation where you received your classroom link.");
-    });
+    document.getElementById("backWhatsApp").addEventListener("click", () => { history.back(); });
   }
   async function restoreExam() {
     try {
