@@ -49,6 +49,17 @@ jobs:
           deno check supabase/functions/whatsapp-webhook/index.ts || true
           echo "✅ Type check complete"
 
+      - name: Strictly type-check ENGR ERO portal functions
+        run: |
+          deno check supabase/functions/engr-ero-portal/index.ts
+          deno check supabase/functions/whatsapp-webhook/index.ts
+
+      - name: Validate portal JavaScript and dashboard build
+        run: |
+          node --check public/engr-ero-portal.js
+          npm ci
+          npm run build
+
       - name: Validate SQL migrations
         run: |
           echo "🔍 Validating SQL migration files..."
