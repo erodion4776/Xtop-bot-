@@ -151,7 +151,7 @@ Deno.serve(async (req: Request) => {
         return response({ error: "The code is incorrect or has expired." }, 403);
       }
       const sessionToken = randomSecret();
-      const lessonExpiry = new Date(Date.now() + 6 * 60 * 60_000).toISOString();
+      const lessonExpiry = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
       const { error } = await sb.from("engr_ero_portal_sessions").update({
         session_token_hash: await hash(sessionToken), device_hash: await hash(deviceId),
         redeemed_at: new Date().toISOString(), otp_hash: null, otp_expires_at: null,
