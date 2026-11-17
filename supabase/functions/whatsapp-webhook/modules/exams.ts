@@ -12,6 +12,7 @@ import {
 import { normalise, isBack } from "../utils.ts";
 import { showCourseMenu, LearningCtx } from "./learning.ts";
 import { initializeExamPayment, verifyExamPayment } from "../paystack.ts";
+import { issueExamPortalLink } from "./portal.ts";
 
 const supabase = getSupabaseClient();
 
@@ -75,6 +76,47 @@ export async function startExamEntry(
   const examFeeNaira = levelDigits === "400" ? 1000 : levelDigits === "300" ? 500 : 0;
   if (!examFeeNaira) {
     await sendTextMessage(phone, `❌ CBT payment is currently configured for 300 Level (₦500) and 400 Level (₦1,000). This course is recorded as *${courseLevel}*. Please contact the administrator.`);
+    return;
+  }
+
+  // CBT is available only after every published lecture has been completed.
+  const { data: courseModules, error: modulesError } = await supabase
+    .from("course_modules").select("id").eq("course_id", courseId).eq("status", "ACTIVE");
+  if (modulesError) {
+    await sendTextMessage(phone, "I could not verify your lecture completion. Please try again shortly.");
+    return;
+  }
+  let publishedLessonIds: string[] = [];
+  for (const module of courseModules || []) {
+    const { data: slides, error: slidesError } = await supabase
+      .from("module_slides").select("id").eq("module_id", module.id)
+      .eq("status", "ACTIVE").eq("is_draft", false);
+    if (slidesError) {
+      await sendTextMessage(phone, "I could not verify your lecture completion. Please try again shortly.");
+      return;
+    }
+    publishedLessonIds.push(...(slides || []).map((slide: any) => String(slide.id)));
+  }
+  const { data: enrollment, error: enrollmentError } = await supabase
+    .from("student_courses").select("progress,status")
+    .eq("student_id", studentId).eq("course_id", courseId).eq("status", "ACTIVE").maybeSingle();
+  if (enrollmentError || !enrollment) {
+    await sendTextMessage(phone, "Your active course enrolment could not be confirmed. Please contact the Learning Centre.");
+    return;
+  }
+  const completedIds = new Set(
+    Array.isArray(enrollment.progress?.completed_lessons)
+      ? enrollment.progress.completed_lessons.map((id: unknown) => String(id))
+      : [],
+  );
+  const recordedOrder = Math.max(0, Number(enrollment.progress?.last_lesson_order || 0));
+  const completedCount = Math.min(publishedLessonIds.length, Math.max(
+    recordedOrder,
+    publishedLessonIds.filter(id => completedIds.has(id)).length,
+  ));
+  if (publishedLessonIds.length === 0 || completedCount < publishedLessonIds.length) {
+    await sendTextMessage(phone,
+      `🔒 *Complete your lectures first.*\n\nYou have completed ${completedCount} of ${publishedLessonIds.length} published lectures for *${courseCode}*. Your CBT link will become available when all lectures are completed in the online classroom.`);
     return;
   }
 
@@ -699,22 +741,11 @@ async function launchExam(
   phone: string, conversationId: string, ctx: ExamCtx
 ): Promise<void> {
   const readyCtx = { ...ctx, examDurationMinutes: 30 };
-  await saveExamCtx(conversationId, readyCtx, "WAITING_EXAM_START_CONFIRMATION");
-  await sendButtonMessage(
-    phone,
-    `📢 *IMPORTANT CBT EXAM INSTRUCTIONS*\\n\\n` +
-    `Course: *${ctx.courseCode || "CBT"} — ${ctx.courseName || ""}*\\n` +
-    `Duration: *30 MINUTES*\\n` +
-    `Questions: *${(ctx.questions || []).length}*\\n\\n` +
-    `• Your countdown begins only after you tap *Start Exam*.\\n` +
-    `• Closing WhatsApp or locking your phone will NOT stop the timer.\\n` +
-    `• Your answers are saved as you progress.\\n` +
-    `• Return and send *RESUME EXAM* to continue before time expires.\\n` +
-    `• At the deadline, the answers saved so far will be submitted automatically.\\n\\n` +
-    `Please make sure you are ready before starting.`,
-    [makeButton("cbt_start_exam", "▶️ Start Exam"), makeButton("cbt_cancel_exam_start", "Not Yet")],
-    "Before You Begin"
-  );
+  await saveExamCtx(conversationId, readyCtx, "WAITING_WEB_CBT");
+  const sent = await issueExamPortalLink(phone, readyCtx);
+  if (!sent) {
+    await sendTextMessage(phone, "Your Paystack payment is confirmed, but I could not create the secure CBT link. Your payment is recorded. Please send *RESUME EXAM* in this WhatsApp chat or contact the Learning Centre; do not pay again.");
+  }
 }
 
 async function beginExam(
