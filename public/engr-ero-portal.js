@@ -68,6 +68,31 @@
       const data = await api("lesson");
       if (data.course_complete) return showCourseComplete();
       contentEl.classList.remove("hidden");
+      if (data.presentation_html) {
+        contentEl.innerHTML = `
+          <article class="panel">
+            <p class="muted">${escapeHtml(data.course?.course_code)} · Lecture ${data.order} of ${data.total}</p>
+            <h2 class="lesson-title">${escapeHtml(data.lesson?.title)}</h2>
+            <p class="muted">70-minute interactive lecture · 39 scenes · 10 sections</p>
+            <iframe id="lecturePresentation" title="History of the Automobile lecture" sandbox="allow-scripts allow-presentation" allowfullscreen style="display:block;width:100%;height:78vh;min-height:580px;border:0;border-radius:14px;background:#050d19"></iframe>
+            <p class="muted" style="margin-top:12px">Use the Play, scene, chapter, speed and Voice controls inside the lecture. Browser voice narration is enabled by default; availability depends on your phone's speech engine.</p>
+          </article>
+          <article class="panel">
+            <p class="muted">Study the complete presentation before continuing. Your progress is saved when you complete this lecture.</p>
+            <button id="completeLesson">Complete this lecture and continue</button>
+          </article>`;
+        document.getElementById("lecturePresentation").srcdoc = data.presentation_html;
+        document.getElementById("completeLesson").addEventListener("click", async () => {
+          const button = document.getElementById("completeLesson");
+          button.disabled = true; button.textContent = "Saving your progress…";
+          try {
+            const result = await api("complete_lesson", { lesson_id: data.lesson.id });
+            if (result.course_complete) showCourseComplete();
+            else { status("Lecture completed. Opening your next lecture…"); await loadLesson(); }
+          } catch (error) { button.disabled = false; button.textContent = "Complete this lecture and continue"; status(error.message, true); }
+        });
+        return;
+      }
       contentEl.innerHTML = `
         <article class="panel">
           <p class="muted">${escapeHtml(data.course?.course_code)} · Lesson ${data.order} of ${data.total}</p>
