@@ -1,5 +1,20 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendTextMessage } from "../whatsapp-webhook/whatsapp.ts";
+async function sendTextMessage(to: string, body: string): Promise<string | null> {
+  const accessToken = Deno.env.get("WHATSAPP_ACCESS_TOKEN") || "";
+  const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "";
+  if (!accessToken || !phoneNumberId) return null;
+  try {
+    const result = await fetch("https://graph.facebook.com/v21.0/" + encodeURIComponent(phoneNumberId) + "/messages", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to,
+        type: "text", text: { preview_url: false, body } }),
+    });
+    if (!result.ok) return null;
+    const data = await result.json();
+    return data?.messages?.[0]?.id || null;
+  } catch { return null; }
+}
 
 // All student access is mediated by short-lived, hashed, WhatsApp-verified tokens.\n// The browser receives neither service credentials nor CBT answer keys.\n// Session deadlines are enforced by the database timestamp, never the client clock.
 
@@ -118,7 +133,7 @@ function currentExamQuestion(session: any, attempt: any) {
 const ADMIN_EMAIL = "eroeliza1234@gmail.com";
 async function requireAdmin(req: Request) {
   const authorization = req.headers.get("Authorization") || "";
-  const match = authorization.match(/^Bearer\\s+(.+)$/i);
+  const match = authorization.match(/^Bearer\s+(.+)$/i)$/i);
   if (!match) throw new Error("Admin sign-in is required.");
   const { data, error } = await sb.auth.getUser(match[1]);
   if (error || !data?.user || String(data.user.email || "").toLowerCase() !== ADMIN_EMAIL) {
