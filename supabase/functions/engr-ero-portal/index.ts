@@ -219,16 +219,18 @@ Deno.serve(async (req: Request) => {
       const order = Number(session.lesson_order || 1);
       if (order > highWater + 1 || order < 1 || order > lessons.length) return response({ error: "Complete the previous lecture before opening this one." }, 403);
       const lesson = lessons[order - 1];
-      const [{ data: sections, error: sectionError }, { data: media, error: mediaError }, { data: course }] = await Promise.all([
+      const [{ data: sections, error: sectionError }, { data: media, error: mediaError }, { data: course }, { data: presentation, error: presentationError }] = await Promise.all([
         sb.from("lesson_sections").select("id,title,content,order_index").eq("lesson_id", lesson.id).order("order_index", { ascending: true }),
         sb.from("lesson_media").select("id,file_url,caption,description,order_index").eq("lesson_id", lesson.id).order("order_index", { ascending: true }),
         sb.from("courses").select("course_code,course_name").eq("id", session.course_id).maybeSingle(),
+        sb.from("engr_ero_lecture_presentations").select("title,html_content").eq("lesson_id", lesson.id).maybeSingle(),
       ]);
-      if (sectionError || mediaError) throw sectionError || mediaError;
+      if (sectionError || mediaError || presentationError) throw sectionError || mediaError || presentationError;
       return response({
         course, order, total: lessons.length,
-        lesson: { id: lesson.id, title: lesson.title, objectives: lesson.objectives, duration: lesson.duration, image_url: lesson.image_url, module_title: lesson.moduleTitle },
+        lesson: { id: lesson.id, title: presentation?.title || lesson.title, objectives: lesson.objectives, duration: presentation ? "70 minutes" : lesson.duration, image_url: lesson.image_url, module_title: lesson.moduleTitle },
         sections: sections || [], media: media || [],
+        ...(presentation ? { presentation_html: presentation.html_content } : {}),
         completed_count: highWater,
       });
     }
