@@ -114,6 +114,63 @@ function currentExamQuestion(session: any, attempt: any) {
   return { completed: false, index, total: questions.length, question: safeQuestion(questions[index]), expires_at: attempt.end_time || session.expires_at };
 }
 
+
+const ADMIN_EMAIL = "eroeliza1234@gmail.com";
+async function requireAdmin(req: Request) {
+  const authorization = req.headers.get("Authorization") || "";
+  const match = authorization.match(/^Bearer\\s+(.+)$/i);
+  if (!match) throw new Error("Admin sign-in is required.");
+  const { data, error } = await sb.auth.getUser(match[1]);
+  if (error || !data?.user || String(data.user.email || "").toLowerCase() !== ADMIN_EMAIL) {
+    throw new Error("This account is not authorized for lecturer preview.");
+  }
+  return data.user;
+}
+async function adminPreview(action: string, body: any) {
+  if (action === "admin_courses") {
+    const { data, error } = await sb.from("courses")
+      .select("id,course_code,course_name,status").order("course_code", { ascending: true });
+    if (error) throw error;
+    return response({ courses: data || [] });
+  }
+  if (action === "admin_lessons") {
+    const courseId = String(body.course_id || "");
+    if (!courseId) return response({ error: "Select a course." }, 400);
+    const lessons = await loadLessons(courseId);
+    return response({ lessons: lessons.map((item, index) => ({
+      id: item.id, title: item.title, order: index + 1,
+      module_title: item.moduleTitle, duration: item.duration,
+    })) });
+  }
+  if (action === "admin_preview") {
+    const courseId = String(body.course_id || "");
+    const lessonId = String(body.lesson_id || "");
+    if (!courseId || !lessonId) return response({ error: "Select a lecture to preview." }, 400);
+    const lessons = await loadLessons(courseId);
+    const order = lessons.findIndex((item) => String(item.id) === lessonId);
+    if (order < 0) return response({ error: "Lecture not found in this course." }, 404);
+    const lesson = lessons[order];
+    const [{ data: sections, error: sectionError }, { data: media, error: mediaError },
+      { data: course, error: courseError }, { data: presentation, error: presentationError }] = await Promise.all([
+      sb.from("lesson_sections").select("id,title,content,order_index").eq("lesson_id", lesson.id).order("order_index", { ascending: true }),
+      sb.from("lesson_media").select("id,file_url,caption,description,order_index").eq("lesson_id", lesson.id).order("order_index", { ascending: true }),
+      sb.from("courses").select("course_code,course_name").eq("id", courseId).maybeSingle(),
+      sb.from("engr_ero_lecture_presentations").select("title,html_content").eq("lesson_id", lesson.id).maybeSingle(),
+    ]);
+    if (sectionError || mediaError || courseError || presentationError) throw sectionError || mediaError || courseError || presentationError;
+    return response({
+      course, order: order + 1, total: lessons.length,
+      lesson: { id: lesson.id, title: presentation?.title || lesson.title,
+        objectives: lesson.objectives, duration: presentation ? "70 minutes" : lesson.duration,
+        image_url: lesson.image_url, module_title: lesson.moduleTitle },
+      sections: sections || [], media: media || [],
+      ...(presentation ? { presentation_html: presentation.html_content } : {}),
+      preview_only: true,
+    });
+  }
+  return response({ error: "Unsupported admin action." }, 400);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return response({ error: "POST required" }, 405);
@@ -122,6 +179,11 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json();
     const action = String(body.action || "");
+
+    if (action.startsWith("admin_")) {
+      await requireAdmin(req);
+      return await adminPreview(action, body);
+    }
 
     if (action === "sweep_expired_exams") {
       const cronSecret = Deno.env.get("ENGR_ERO_CRON_SECRET") || "";
