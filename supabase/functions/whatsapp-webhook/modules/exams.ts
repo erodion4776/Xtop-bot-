@@ -73,9 +73,9 @@ export async function startExamEntry(
   }
   const courseLevel = String(course.level);
   const levelDigits = courseLevel.match(/\d{3}/)?.[0];
-  const examFeeNaira = levelDigits === "400" ? 1000 : levelDigits === "300" ? 500 : 0;
+  const examFeeNaira = levelDigits === "400" || levelDigits === "300" ? 1000 : 0;
   if (!examFeeNaira) {
-    await sendTextMessage(phone, `❌ CBT payment is currently configured for 300 Level (₦500) and 400 Level (₦1,000). This course is recorded as *${courseLevel}*. Please contact the administrator.`);
+    await sendTextMessage(phone, `❌ CBT payment is currently configured for 300 Level and 400 Level at ₦1,000. This course is recorded as *${courseLevel}*. Please contact the administrator.`);
     return;
   }
 
@@ -277,7 +277,7 @@ async function handlePaywallGate(
 
   // If paymentsCount <= attemptsCount, a new payment is required for this attempt
   if (paymentsCount <= attemptsCount) {
-    const examFeeNaira = ctx.examFeeNaira || (String(ctx.studentLevel || "").includes("400") ? 1000 : 500);
+    const examFeeNaira = ctx.examFeeNaira || (1000);
     const payment = await initializeExamPayment(studentId, courseId, courseCode, phone, examFeeNaira);
 
     if (!payment) {
