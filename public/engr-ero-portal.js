@@ -12,6 +12,7 @@
   let sessionPurpose = localStorage.getItem("engr_ero_purpose_" + accessToken) || "";
   let selectedAnswer = "";
   let timerHandle = null;
+  let completingLesson = false;
 
   function getDeviceId() {
     let value = localStorage.getItem("engr_ero_device");
@@ -79,18 +80,11 @@
           </article>
           <article class="panel">
             <p class="muted">Study the complete presentation before continuing. Your progress is saved when you complete this lecture.</p>
-            <button id="completeLesson">Complete this lecture and continue</button>
+            <button id="completeLesson" data-lesson-id="${escapeHtml(data.lesson.id)}">Complete this lecture and continue</button>
           </article>`;
-        document.getElementById("lecturePresentation").srcdoc = data.presentation_html;
-        document.getElementById("completeLesson").addEventListener("click", async () => {
-          const button = document.getElementById("completeLesson");
-          button.disabled = true; button.textContent = "Saving your progress…";
-          try {
-            const result = await api("complete_lesson", { lesson_id: data.lesson.id });
-            if (result.course_complete) showCourseComplete();
-            else { status("Lecture completed. Opening your next lecture…"); await loadLesson(); }
-          } catch (error) { button.disabled = false; button.textContent = "Complete this lecture and continue"; status(error.message, true); }
-        });
+        const lectureFrame = document.getElementById("lecturePresentation");
+        lectureFrame.srcdoc = data.presentation_html;
+        document.getElementById("completeLesson").addEventListener("click", () => completeCurrentLesson(data.lesson.id));
         return;
       }
       contentEl.innerHTML = `
@@ -106,23 +100,42 @@
           ${(data.sections || []).map((section, i) => `<section class="section"><h3>${i + 1}. ${escapeHtml(section.title)}</h3><div class="section-content">${escapeHtml(section.content)}</div></section>`).join("")}
           ${(data.media || []).map(item => item.file_url ? `<div class="section media"><img src="${escapeHtml(item.file_url)}" alt="${escapeHtml(item.caption || "Course diagram")}" loading="lazy"><p class="muted">${escapeHtml(item.caption || item.description || "")}</p></div>` : "").join("")}
           <p class="muted">Read the lecture and study the diagrams before marking it complete. Your progress is saved to your student record.</p>
-          <button id="completeLesson">Complete this lecture and continue</button>
+          <button id="completeLesson" data-lesson-id="${escapeHtml(data.lesson.id)}">Complete this lecture and continue</button>
         </article>`;
-      document.getElementById("completeLesson").addEventListener("click", async () => {
-        const button = document.getElementById("completeLesson");
-        button.disabled = true; button.textContent = "Saving your progress…";
-        try {
-          const result = await api("complete_lesson", { lesson_id: data.lesson.id });
-          if (result.course_complete) showCourseComplete();
-          else { status("Lecture completed. Opening your next lecture…"); await loadLesson(); }
-        } catch (error) { button.disabled = false; button.textContent = "Complete this lecture and continue"; status(error.message, true); }
-      });
+      document.getElementById("completeLesson").addEventListener("click", () => completeCurrentLesson(data.lesson.id));
     } catch (error) { status(error.message, true); }
   }
+  async function completeCurrentLesson(lessonId) {
+    if (completingLesson) return;
+    completingLesson = true;
+    const button = document.getElementById("completeLesson");
+    if (button) { button.disabled = true; button.textContent = "Saving your progress…"; }
+    try {
+      const result = await api("complete_lesson", { lesson_id: lessonId });
+      if (result.course_complete) {
+        showCourseComplete();
+      } else {
+        status("Lecture completed. Opening lecture " + result.next_order + " of the course…");
+        await loadLesson();
+      }
+    } catch (error) {
+      if (button) { button.disabled = false; button.textContent = "Complete this lecture and continue"; }
+      status(error.message, true);
+    } finally {
+      completingLesson = false;
+    }
+  }
+  window.addEventListener("message", event => {
+    const frame = document.getElementById("lecturePresentation");
+    if (!frame || event.source !== frame.contentWindow || event.data?.type !== "ENGR_ERO_COMPLETE_LESSON") return;
+    const lessonId = document.getElementById("completeLesson")?.dataset.lessonId;
+    if (lessonId) completeCurrentLesson(lessonId);
+  });
   function showCourseComplete() {
     contentEl.classList.remove("hidden");
-    contentEl.innerHTML = `<article class="panel"><h2>🎉 All course lectures completed</h2><p class="muted">Your lecture progress has been saved. Return to your WhatsApp chat with Engr. Ero Learning Centre. Your CBT payment and personal examination link will be handled there.</p><button id="backWhatsApp">Return to WhatsApp</button></article>`;
-    document.getElementById("backWhatsApp").addEventListener("click", () => { history.back(); });
+    contentEl.innerHTML = `<article class="panel"><h2>🎉 All course lectures completed</h2><p class="muted">Your lecture progress has been saved. You are being returned to WhatsApp. Choose Final CBT Exam there to pay and unlock your secure examination.</p><a id="backWhatsApp" href="https://wa.me/2348024988555?text=I%20have%20completed%20all%20my%20lectures.%20Please%20help%20me%20continue%20to%20the%20CBT%20payment." style="display:block;text-align:center;text-decoration:none;background:#146b4a;color:white;padding:14px 17px;border-radius:12px;font-weight:700;margin-top:16px">Return to WhatsApp and continue to CBT</a></article>`;
+    const backLink = document.getElementById("backWhatsApp");
+    setTimeout(() => { if (backLink) window.location.href = backLink.href; }, 1800);
   }
   async function restoreExam() {
     try {
