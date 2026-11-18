@@ -23,7 +23,7 @@ export async function initializeExamPayment(
   phone: string,
   amountNaira: number
 ): Promise<{ paymentUrl: string; reference: string } | null> {
-  if (![500, 1000].includes(amountNaira)) {
+  if (amountNaira !== 1000) {
     throw new Error("Unsupported CBT fee amount");
   }
 
@@ -82,7 +82,7 @@ export async function verifyExamPayment(
   reference: string,
   expectedAmountNaira: number
 ): Promise<boolean> {
-  if (![500, 1000].includes(expectedAmountNaira)) return false;
+  if (expectedAmountNaira !== 1000) return false;
 
   try {
     const resp = await fetch(`${PAYSTACK_API_BASE}/transaction/verify/${reference}`, {
