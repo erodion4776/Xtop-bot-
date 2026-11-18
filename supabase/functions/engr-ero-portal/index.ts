@@ -133,7 +133,7 @@ function currentExamQuestion(session: any, attempt: any) {
 const ADMIN_EMAIL = "eroeliza1234@gmail.com";
 async function requireAdmin(req: Request) {
   const authorization = req.headers.get("Authorization") || "";
-  const match = authorization.match(/^Bearer\s+(.+)$/i)$/i);
+  const match = authorization.match(/^Bearer\\s+(.+)$/i);
   if (!match) throw new Error("Admin sign-in is required.");
   const { data, error } = await sb.auth.getUser(match[1]);
   if (error || !data?.user || String(data.user.email || "").toLowerCase() !== ADMIN_EMAIL) {
