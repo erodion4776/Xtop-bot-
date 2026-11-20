@@ -68,6 +68,10 @@
   async function loadLesson() {
     try {
       const data = await api("lesson");
+      // A successful lesson response means the classroom session is valid.
+      // Hide any stale expiry warning left from an earlier request or page state.
+      statusEl.classList.add("hidden");
+      statusEl.textContent = "";
       if (data.course?.course_code) {
         activeCourseCode = String(data.course.course_code).toUpperCase();
         localStorage.setItem("engr_ero_course_" + accessToken, activeCourseCode);
