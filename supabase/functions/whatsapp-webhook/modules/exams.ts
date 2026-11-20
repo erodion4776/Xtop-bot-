@@ -79,24 +79,8 @@ export async function startExamEntry(
     return;
   }
 
-  // CBT is available only after every published lecture has been completed.
-  const { data: courseModules, error: modulesError } = await supabase
-    .from("course_modules").select("id,module_order").eq("course_id", courseId).eq("status", "ACTIVE").order("module_order", { ascending: true });
-  if (modulesError) {
-    await sendTextMessage(phone, "I could not verify your lecture completion. Please try again shortly.");
-    return;
-  }
-  const publishedLessonIds: string[] = [];
-  for (const module of courseModules || []) {
-    const { data: slides, error: slidesError } = await supabase
-      .from("module_slides").select("id,order_index").eq("module_id", module.id)
-      .eq("status", "ACTIVE").eq("is_draft", false).order("order_index", { ascending: true });
-    if (slidesError) {
-      await sendTextMessage(phone, "I could not verify your lecture completion. Please try again shortly.");
-      return;
-    }
-    publishedLessonIds.push(...(slides || []).map((slide: any) => String(slide.id)));
-  }
+  // ELA401 uses the approved manual-based classroom and MTM simulation.
+  // Other courses retain the existing published-module completion check.
   const { data: enrollment, error: enrollmentError } = await supabase
     .from("student_courses").select("progress,status")
     .eq("student_id", studentId).eq("course_id", courseId).eq("status", "ACTIVE").maybeSingle();
@@ -104,21 +88,47 @@ export async function startExamEntry(
     await sendTextMessage(phone, "Your active course enrolment could not be confirmed. Please contact the Learning Centre.");
     return;
   }
-  const completedIds = new Set(
-    Array.isArray(enrollment.progress?.completed_lessons)
-      ? enrollment.progress.completed_lessons.map((id: unknown) => String(id))
-      : [],
-  );
-  const recordedOrder = Math.max(0, Number(enrollment.progress?.last_lesson_order || 0));
-  const highestCompletedOrder = publishedLessonIds.reduce(
-    (highest, id, index) => completedIds.has(id) ? Math.max(highest, index + 1) : highest,
-    0,
-  );
-  const completedCount = Math.min(publishedLessonIds.length, Math.max(recordedOrder, highestCompletedOrder));
-  if (publishedLessonIds.length === 0 || completedCount < publishedLessonIds.length) {
-    await sendTextMessage(phone,
-      `🔒 *Complete your lectures first.*\n\nYou have completed ${completedCount} of ${publishedLessonIds.length} published lectures for *${courseCode}*. Your CBT link will become available when all lectures are completed in the online classroom.`);
-    return;
+
+  if (courseCode.toUpperCase() === "ELA401") {
+    if (!enrollment.progress?.ela401_lecture_completed_at || learningCtx.mtmSimulationCompleted !== true) {
+      await sendTextMessage(phone,
+        "🔒 Complete your ELA401 online lecture and the Experiment 17 MTM plug-assembly simulation before opening the Final CBT.");
+      return;
+    }
+  } else {
+    const { data: courseModules, error: modulesError } = await supabase
+      .from("course_modules").select("id,module_order").eq("course_id", courseId).eq("status", "ACTIVE").order("module_order", { ascending: true });
+    if (modulesError) {
+      await sendTextMessage(phone, "I could not verify your lecture completion. Please try again shortly.");
+      return;
+    }
+    const publishedLessonIds: string[] = [];
+    for (const module of courseModules || []) {
+      const { data: slides, error: slidesError } = await supabase
+        .from("module_slides").select("id,order_index").eq("module_id", module.id)
+        .eq("status", "ACTIVE").eq("is_draft", false).order("order_index", { ascending: true });
+      if (slidesError) {
+        await sendTextMessage(phone, "I could not verify your lecture completion. Please try again shortly.");
+        return;
+      }
+      publishedLessonIds.push(...(slides || []).map((slide: any) => String(slide.id)));
+    }
+    const completedIds = new Set(
+      Array.isArray(enrollment.progress?.completed_lessons)
+        ? enrollment.progress.completed_lessons.map((id: unknown) => String(id))
+        : [],
+    );
+    const recordedOrder = Math.max(0, Number(enrollment.progress?.last_lesson_order || 0));
+    const highestCompletedOrder = publishedLessonIds.reduce(
+      (highest, id, index) => completedIds.has(id) ? Math.max(highest, index + 1) : highest,
+      0,
+    );
+    const completedCount = Math.min(publishedLessonIds.length, Math.max(recordedOrder, highestCompletedOrder));
+    if (publishedLessonIds.length === 0 || completedCount < publishedLessonIds.length) {
+      await sendTextMessage(phone,
+        `🔒 *Complete your lectures first.*\n\nYou have completed ${completedCount} of ${publishedLessonIds.length} published lectures for *${courseCode}*. Your CBT link will become available when all lectures are completed in the online classroom.`);
+      return;
+    }
   }
 
   // 1. Fetch CBT Questions
