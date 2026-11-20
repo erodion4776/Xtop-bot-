@@ -475,11 +475,17 @@ export async function handleEla401CbtContinuation(
     .eq("course_id", course.id).eq("status", "ACTIVE").maybeSingle();
   if (!enrollment?.progress?.ela401_lecture_completed_at) return false;
 
-  const { data: submission } = await supabase.from("ela401_experiment_submissions")
-    .select("id").eq("student_id", student.id).eq("course_id", course.id)
-    .eq("status", "SUBMITTED").order("submitted_at", { ascending: false })
-    .limit(1).maybeSingle();
-  if (!submission) return false;
+  // Experiment 17 is saved by the secure classroom portal in
+  // engr_ero_portal_sessions.payload_json.mtm_simulation_result, not in
+  // ela401_experiment_submissions (that table stores separate practical labs).
+  const { data: simulationSessions, error: simulationError } = await supabase
+    .from("engr_ero_portal_sessions").select("id,payload_json")
+    .eq("student_id", student.id).eq("course_id", course.id).eq("purpose", "LESSON")
+    .order("created_at", { ascending: false }).limit(20);
+  const hasSavedSimulation = !simulationError && (simulationSessions || []).some((session: any) =>
+    Boolean(session.payload_json?.mtm_simulation_result?.saved_at)
+  );
+  if (!hasSavedSimulation) return false;
 
   const learningCtx: LearningCtx = {
     step: "COURSE_MENU",
@@ -549,12 +555,17 @@ export async function handleExamPaymentRecovery(
 
   let ela401SimulationCompleted = false;
   if (String(course.course_code || "").toUpperCase() === "ELA401") {
-    const { data: submission, error: submissionError } = await supabase
-      .from("ela401_experiment_submissions").select("id")
-      .eq("student_id", student.id).eq("course_id", course.id)
-      .eq("status", "SUBMITTED").order("submitted_at", { ascending: false })
-      .limit(1).maybeSingle();
-    if (submissionError || !enrollment.progress?.ela401_lecture_completed_at || !submission) {
+    // The Experiment 17 workbench saves its completion in the portal session
+    // payload; ela401_experiment_submissions is for the separate practical-lab
+    // input workflow and is not the source of truth for this simulation.
+    const { data: simulationSessions, error: simulationError } = await supabase
+      .from("engr_ero_portal_sessions").select("id,payload_json")
+      .eq("student_id", student.id).eq("course_id", course.id).eq("purpose", "LESSON")
+      .order("created_at", { ascending: false }).limit(20);
+    const hasSavedSimulation = !simulationError && (simulationSessions || []).some((session: any) =>
+      Boolean(session.payload_json?.mtm_simulation_result?.saved_at)
+    );
+    if (simulationError || !enrollment.progress?.ela401_lecture_completed_at || !hasSavedSimulation) {
       await sendTextMessage(phone, "⚠️ Your CBT payment is recorded, but I could not yet restore the saved ELA401 lecture and Experiment 17 completion. Your payment is safe—do not pay again. Please contact the Learning Centre administrator.");
       return;
     }
