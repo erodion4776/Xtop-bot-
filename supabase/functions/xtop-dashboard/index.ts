@@ -1,5 +1,3 @@
-File: "supabase/functions/xtop-dashboard/index.ts"
-
 // Sabi by XTOP — Secure Dashboard API
 // Merchant Inbox, WhatsApp replies and bot controls.
 // Super Admin global handoff remains separate.
@@ -160,6 +158,89 @@ serve(async (req: Request) => {
         connected: !!account,
         phone: account?.display_phone_number || "",
         verified_name: account?.verified_name || "",
+      });
+    }
+
+    // =====================================================
+    // REGISTER THE EXISTING MERCHANT WHATSAPP NUMBER
+    // PIN is accepted only for this request and is never stored/logged.
+    // =====================================================
+    if (action === "whatsapp-register" && req.method === "POST") {
+      if (merchant.role !== "OWNER" && merchant.role !== "ADMIN") {
+        return jsonResponse({ error: "Only the workspace owner or administrator can register WhatsApp." }, 403);
+      }
+
+      const body = await readJson(req);
+      const pin = String(body?.pin || "").trim();
+      if (!/^\\d{6}$/.test(pin)) {
+        return jsonResponse({ error: "Enter a valid six-digit PIN." }, 400);
+      }
+
+      const { data: account, error: accountError } = await sb
+        .from("tenant_whatsapp_accounts")
+        .select("phone_number_id, encrypted_access_token, display_phone_number, verified_name")
+        .eq("tenant_id", merchant.tenantId)
+        .eq("is_active", true)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (accountError || !account) {
+        return jsonResponse({ error: "No active WhatsApp number is connected to this workspace." }, 404);
+      }
+
+      if (!account.phone_number_id || !account.encrypted_access_token) {
+        return jsonResponse({ error: "The connected WhatsApp credentials are incomplete. Contact support." }, 409);
+      }
+
+      let accessToken: string;
+      try {
+        accessToken = await decryptToken(account.encrypted_access_token);
+      } catch {
+        return jsonResponse({ error: "Sabi could not securely access the connected WhatsApp credentials." }, 500);
+      }
+
+      let metaResponse: Response;
+      try {
+        metaResponse = await fetch(
+          `https://graph.facebook.com/v21.0/${encodeURIComponent(account.phone_number_id)}/register`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ messaging_product: "whatsapp", pin }),
+          },
+        );
+      } catch {
+        return jsonResponse({ error: "Could not reach Meta. Please try again later." }, 502);
+      }
+
+      const metaResult = await metaResponse.json().catch(() => ({}));
+      if (!metaResponse.ok || metaResult?.success !== true) {
+        const code = Number(metaResult?.error?.code || 0);
+        const message = code === 133005
+          ? "Meta rejected that PIN. Check the six digits and try again."
+          : code === 133006
+          ? "Meta requires this number to be verified again. Do not disconnect it; contact support before repeating signup."
+          : code === 133016 || code === 133015
+          ? "Meta is temporarily limiting registration attempts. Wait before trying again."
+          : code === 200
+          ? "The connected Meta token lacks permission to register this number. Contact support."
+          : code === 131031
+          ? "Meta has locked this WhatsApp Business Account. Contact Meta support."
+          : code === 133012
+          ? "Meta reports this number is linked to a companion app. Contact support before changing anything."
+          : "Meta could not register this number. Contact support with the time of this attempt.";
+        return jsonResponse({ error: message, meta_error_code: code || null }, 502);
+      }
+
+      return jsonResponse({
+        success: true,
+        phone: account.display_phone_number || "",
+        verified_name: account.verified_name || "",
+        message: "Meta confirmed that the WhatsApp number is registered for Cloud API messaging.",
       });
     }
 
