@@ -298,14 +298,17 @@ Deno.serve(async (req: Request) => {
       }
       const elapsed = Math.max(0, Math.min(86400, Number(result.elapsed_seconds || 0)));
       const accuracy = Math.max(0, Math.min(100, Number(result.accuracy_percent || 0)));
-      const { data: saved, error: saveError } = await sb.from("engr_ero_mtm_simulation_results").upsert({
-        student_id: session.student_id, course_id: session.course_id,
-        portal_session_id: session.id, experiment_code: "ELA401-EXP17",
-        result_json: result, elapsed_seconds: elapsed,
-        accuracy_percent: accuracy, completed_at: new Date().toISOString(),
-      }, { onConflict: "portal_session_id" }).select("id,elapsed_seconds,accuracy_percent,completed_at").single();
+      const payload = {
+        ...(session.payload_json && typeof session.payload_json === "object" ? session.payload_json : {}),
+        mtm_simulation_result: {
+          ...result, elapsed_seconds: elapsed, accuracy_percent: accuracy,
+          saved_at: new Date().toISOString(),
+        },
+      };
+      const { error: saveError } = await sb.from("engr_ero_portal_sessions")
+        .update({ payload_json: payload }).eq("id", session.id);
       if (saveError) throw saveError;
-      return response({ success: true, saved });
+      return response({ success: true, saved_at: payload.mtm_simulation_result.saved_at });
     }
 
     if (session.purpose === "LESSON" && action === "lesson") {
