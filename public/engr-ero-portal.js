@@ -217,7 +217,7 @@
     }
     function updateDrawing() {
       const show = (id, yes) => { const el = document.getElementById(id); if (el) el.setAttribute("opacity", yes ? "1" : "0"); };
-      show("plugCover", completed.includes(10));
+      show("plugCover", !completed.includes(1) || completed.includes(10));
       show("wireEarth", completed.includes(5));
       show("wireNeutral", completed.includes(6));
       show("wireLive", completed.includes(7));
