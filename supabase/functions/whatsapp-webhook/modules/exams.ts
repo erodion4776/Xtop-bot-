@@ -460,7 +460,7 @@ export async function handleActiveExamRecovery(
 export async function handleEla401CbtContinuation(
   phone: string, conversationId: string, conv: Conversation
 ): Promise<boolean> {
-  const normalizedPhone = String(phone || "").replace(/\\D/g, "");
+  const normalizedPhone = String(phone || "").replace(/\D/g, "");
   const { data: student } = await supabase.from("students").select("id")
     .eq("phone", normalizedPhone).maybeSingle();
   if (!student) return false;
@@ -511,7 +511,7 @@ export async function handleExamPaymentRecovery(
     return;
   }
 
-  const normalizedPhone = String(phone || "").replace(/\\D/g, "");
+  const normalizedPhone = String(phone || "").replace(/\D/g, "");
   const { data: student, error: studentError } = await supabase
     .from("students")
     .select("id")
