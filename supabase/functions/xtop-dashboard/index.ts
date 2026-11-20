@@ -172,7 +172,7 @@ serve(async (req: Request) => {
 
       const body = await readJson(req);
       const pin = String(body?.pin || "").trim();
-      if (!/^\\d{6}$/.test(pin)) {
+      if (!/^\d{6}$/.test(pin)) {
         return jsonResponse({ error: "Enter a valid six-digit PIN." }, 400);
       }
 
