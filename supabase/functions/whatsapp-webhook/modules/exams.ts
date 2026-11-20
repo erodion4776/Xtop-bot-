@@ -539,7 +539,7 @@ export async function handleExamPaymentRecovery(
 
   const [{ data: course, error: courseError }, { data: enrollment, error: enrollmentError }] = await Promise.all([
     supabase.from("courses").select("id,course_code,course_name,level").eq("id", payment.course_id).maybeSingle(),
-    supabase.from("student_courses").select("id,status").eq("student_id", student.id).eq("course_id", payment.course_id).eq("status", "ACTIVE").maybeSingle(),
+    supabase.from("student_courses").select("id,status,progress").eq("student_id", student.id).eq("course_id", payment.course_id).eq("status", "ACTIVE").maybeSingle(),
   ]);
 
   if (courseError || enrollmentError || !course || !enrollment) {
@@ -547,9 +547,24 @@ export async function handleExamPaymentRecovery(
     return;
   }
 
+  let ela401SimulationCompleted = false;
+  if (String(course.course_code || "").toUpperCase() === "ELA401") {
+    const { data: submission, error: submissionError } = await supabase
+      .from("ela401_experiment_submissions").select("id")
+      .eq("student_id", student.id).eq("course_id", course.id)
+      .eq("status", "SUBMITTED").order("submitted_at", { ascending: false })
+      .limit(1).maybeSingle();
+    if (submissionError || !enrollment.progress?.ela401_lecture_completed_at || !submission) {
+      await sendTextMessage(phone, "⚠️ Your CBT payment is recorded, but I could not yet restore the saved ELA401 lecture and Experiment 17 completion. Your payment is safe—do not pay again. Please contact the Learning Centre administrator.");
+      return;
+    }
+    ela401SimulationCompleted = true;
+  }
+
   const recoveredCtx: ExamCtx = {
     step: "ENTRY",
     learningUnlocked: true,
+    mtmSimulationCompleted: ela401SimulationCompleted,
     studentId: student.id,
     studentCourseId: enrollment.id,
     courseId: course.id,
