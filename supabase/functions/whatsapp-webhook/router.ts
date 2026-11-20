@@ -1256,6 +1256,8 @@ export async function routeMessage(
     // Restore the ELA401 post-simulation handoff if Sabi's welcome menu
     // replaced the learning context before the student requested CBT payment.
     if (
+      interactiveId === "cm_test" ||
+      /^(?:4|final cbt exam|take course test)$/i.test(String(text || "").trim()) ||
       /(?:completed|finished).*(?:experiment\\s*17|plug\\s*assembly).*(?:final\\s*cbt|cbt\\s*payment|continue)/i.test(String(text || "")) ||
       /(?:final\\s*cbt|cbt\\s*payment).*(?:experiment\\s*17|plug\\s*assembly)/i.test(String(text || ""))
     ) {
