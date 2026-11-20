@@ -14,6 +14,8 @@
   let timerHandle = null;
   let completingLesson = false;
   let activeCourseCode = localStorage.getItem("engr_ero_course_" + accessToken) || "";
+  const portalStageKey = "engr_ero_stage_" + accessToken;
+  const simulationProgressKey = "engr_ero_simulation_" + accessToken;
 
   function getDeviceId() {
     let value = localStorage.getItem("engr_ero_device");
@@ -122,7 +124,10 @@
     try {
       const result = await api("complete_lesson", { lesson_id: lessonId });
       if (result.course_complete) {
-        if (activeCourseCode === "ELA401") showMtmSimulation();
+        if (activeCourseCode === "ELA401") {
+          localStorage.setItem(portalStageKey, "SIMULATION");
+          showMtmSimulation();
+        }
         else showCourseComplete();
       } else {
         status("Lecture completed. Opening lecture " + result.next_order + " of the course…");
@@ -165,9 +170,16 @@
       {name:"Replace the plug cover", part:"Plug cover", symbol:"▱", target:"the plug base", action:"Tap the plug cover, then tap the plug base.", done:"The cover is back in place."},
       {name:"Return the screwdriver and inspect", part:"Screwdriver", symbol:"🪛", target:"the tool tray", action:"Tap the screwdriver, then tap the tool tray.", done:"The tool is returned. The virtual plug assembly is complete."}
     ];
-    let stepIndex = 0, errors = 0, started = Date.now(), selected = false;
-    const records = [];
-    const completed = [];
+    const savedProgress = (() => { try { return JSON.parse(localStorage.getItem(simulationProgressKey) || "null"); } catch (_) { return null; } })();
+    let stepIndex = Math.max(0, Math.min(steps.length, Number(savedProgress?.stepIndex || 0)));
+    let errors = Math.max(0, Number(savedProgress?.errors || 0));
+    let started = Number(savedProgress?.started || Date.now());
+    let selected = false;
+    const records = Array.isArray(savedProgress?.records) ? savedProgress.records.slice(0, steps.length).map((r, i) => ({...r, _at: Number(r._at || (started + (Array.isArray(savedProgress.records) ? savedProgress.records.slice(0, i + 1).reduce((sum, x) => sum + Number(x.duration_seconds || 0), 0) : 0) * 1000))})) : [];
+    const completed = records.map((_, i) => i);
+    function saveSimulationProgress() {
+      localStorage.setItem(simulationProgressKey, JSON.stringify({stepIndex, errors, started, records: records.map(r => ({operation:r.operation,component:r.component,destination:r.destination,correct:r.correct,duration_seconds:r.duration_seconds,_at:r._at}))}));
+    }
     const itemNames = ["Plug base","Plug cover","Screwdriver","Three-core cable","Cable end","Green/yellow wire","Blue wire","Brown wire","Cable grip"];
     const itemSymbols = ["▰","▱","🪛","〰️","✂️","🟩","🟦","🟫","▰"];
 
@@ -256,6 +268,7 @@
       document.getElementById("simTarget").onclick = () => {
         if (!selected) {
           errors++;
+          saveSimulationProgress();
           document.getElementById("simErrors").textContent = "Mistakes: " + errors;
           document.getElementById("simFeedback").textContent = "Pick up the " + s.part.toLowerCase() + " first. Tap the left box.";
           return;
@@ -264,6 +277,7 @@
         records.push({operation:s.name, component:s.part, destination:s.target, correct:true, duration_seconds:Number(((now - (records.length ? records[records.length - 1]._at : started))/1000).toFixed(2))});
         records[records.length - 1]._at = now;
         completed.push(stepIndex);
+        saveSimulationProgress();
         document.getElementById("simFeedback").textContent = s.done;
         stepIndex++;
         updateDrawing();
@@ -321,6 +335,8 @@
         state.mtm_time_seconds = tmuValue === null ? null : Number((tmuValue * 0.036).toFixed(3));
         try {
           await api("save_mtm_simulation", {result:state});
+          localStorage.removeItem(simulationProgressKey);
+          localStorage.setItem(portalStageKey, "RESULT_SAVED");
           document.getElementById("personalFeedback").textContent = "Your Experiment 17 result is saved. Returning to WhatsApp for Final CBT payment…";
           button.textContent = "Result saved";
           const back = document.createElement("a");
@@ -410,6 +426,8 @@
     verifyEl.classList.add("hidden");
     if (sessionPurpose === "EXAM") {
       restoreExam();
+    } else if (activeCourseCode === "ELA401" && localStorage.getItem(portalStageKey) === "SIMULATION") {
+      showMtmSimulation();
     } else {
       loadLesson().catch(() => {
         localStorage.removeItem("engr_ero_session_" + accessToken);
