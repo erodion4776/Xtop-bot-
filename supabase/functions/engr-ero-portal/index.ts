@@ -78,7 +78,14 @@ async function requireSession(body: any) {
   const [sessionHash, deviceHash] = await Promise.all([hash(sessionToken), hash(deviceId)]);
   const { data, error } = await sb.from("engr_ero_portal_sessions").select("*")
     .eq("session_token_hash", sessionHash).eq("device_hash", deviceHash).maybeSingle();
-  const isEla401Classroom = data?.payload_json?.course_mode === "ELA401_MTM_CLASSROOM";
+  let isEla401Classroom = data?.payload_json?.course_mode === "ELA401_MTM_CLASSROOM";
+  // Older ELA401 links may have the course recorded without the classroom-mode
+  // marker. Verify the actual course before allowing a completed session to
+  // reload its lecture; never infer access from the browser request alone.
+  if (!isEla401Classroom && data?.purpose === "LESSON" && body.action === "lesson" && data.course_id) {
+    const { data: course } = await sb.from("courses").select("course_code").eq("id", data.course_id).maybeSingle();
+    isEla401Classroom = String(course?.course_code || "").toUpperCase() === "ELA401";
+  }
   const completedLessonReadAllowed = isEla401Classroom && body.action === "lesson";
   if (error || !data || (data.completed_at && data.purpose !== "EXAM" && body.action !== "save_mtm_simulation" && !completedLessonReadAllowed)) throw new Error("Your secure session has expired or has already been completed. Return to WhatsApp for a new link.");
   if (new Date(data.expires_at).getTime() <= Date.now() && !(data.purpose === "EXAM" && data.attempt_id)) throw new Error("This link has expired. Return to WhatsApp to request a new link.");
