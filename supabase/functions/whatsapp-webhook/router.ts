@@ -19,6 +19,8 @@ import {
   sendTextMessage,
   sendImageMessage,
   sendCtaUrlMessage,
+  sendListMessage,
+  sendButtonMessage,
   WhatsAppCredentials,
 } from "./whatsapp.ts";
 
@@ -321,6 +323,37 @@ async function handleTenantStoreMessage(
       contact.name || incoming.profileName, "", id, account.tenantId);
   };
 
+
+  const sendShopList = async (body: string, rows: Array<{id:string;title:string;description?:string}>) => {
+    const id = await sendListMessage(phone, body, "Open shop", [{title:"Shop",rows:rows.slice(0,10)}], account.businessName, "Powered by Sabi by XTOP", credentials);
+    if (id) {
+      await storeMessage(contact.id,"OUTBOUND","interactive",body,id,account.tenantId);
+      await logBotActivity(phone,"OUTBOUND","interactive","TENANT_STORE",body,contact.name||incoming.profileName,"",id,account.tenantId);
+    } else await send("Please type *menu* to continue.");
+  };
+  const sendShopButtons = async (body:string, buttons:Array<{id:string;title:string}>) => {
+    const id=await sendButtonMessage(phone,body,buttons.slice(0,3).map(b=>({type:"reply" as const,reply:{id:b.id,title:b.title}})),account.businessName,"Powered by Sabi by XTOP",credentials);
+    if(id){await storeMessage(contact.id,"OUTBOUND","interactive",body,id,account.tenantId);await logBotActivity(phone,"OUTBOUND","interactive","TENANT_STORE",body,contact.name||incoming.profileName,"",id,account.tenantId);}
+    else await send("Please type *menu* to continue.");
+  };
+  const showShopProduct = async (p:any) => {
+    const price=productPrice(p), stock=productStock(p);
+    const body=`🛍️ *${p.name}*\n\n${p.description||"Contact the shop for more information."}\n\nPrice: *${p.price_text||money(price)}*\nAvailability: *${stock===null?"Please confirm with shop":stock>0?stock+" in stock":"Out of stock"}*\n\nWould you like to add this item to your cart?`;
+    const image=String(p.image_url||"").trim();
+    await send(body,image.startsWith("https://")||image.startsWith("http://")?image:undefined);
+    await sendShopButtons("Choose your next step:",stock===null||stock>0?[
+      {id:`store_add:${p.id}`,title:"Add to Cart"},{id:"store_products",title:"Keep Shopping"},{id:"store_cart",title:"View Cart"}
+    ]:[{id:"store_products",title:"Keep Shopping"},{id:"store_cart",title:"View Cart"}]);
+  };
+  const showShopPage = async (page=0, source:any[]=products) => {
+    const size=8, pages=Math.max(1,Math.ceil(source.length/size)), current=Math.max(0,Math.min(page,pages-1));
+    const rows=source.slice(current*size,(current+1)*size).map((p:any)=>({id:`store_product:${p.id}`,title:String(p.name||"Product").slice(0,24),description:money(productPrice(p)).slice(0,72)}));
+    if(current>0) rows.push({id:"store_prev",title:"⬅️ Previous page"});
+    if(current<pages-1) rows.push({id:"store_next",title:"Next page ➡️"});
+    rows.push({id:"store_categories",title:"Browse categories"},{id:"store_cart",title:"🛒 View cart"});
+    await save("IDLE",{store_page:current});
+    await sendShopList(`Browse ${source.length} product(s). Page ${current+1} of ${pages}. Select a product to view its picture, details and price.`,rows);
+  };
   const sendSabiDiscovery = async () => {
     const body = "_Powered by Sabi by XTOP_";
     const footer = "Discover the platform behind this shop";
@@ -393,6 +426,60 @@ async function handleTenantStoreMessage(
   const productPrice = (p: any) => Number(p.price ?? 0);
   const productStock = (p: any) => p.stock_quantity == null ? null : Number(p.stock_quantity);
 
+
+  if(message==="store_categories"){
+    const cats=[...new Set(products.map((p:any)=>String(p.category||"Other").trim()).filter(Boolean))];
+    const rows=cats.slice(0,8).map((c:string)=>({id:`store_cat:${c}`,title:c.slice(0,24),description:`Browse ${c}`}));
+    rows.push({id:"store_products",title:"All products"},{id:"store_cart",title:"🛒 View cart"});
+    await sendShopList("Choose a category to browse.",rows);return;
+  }
+  if(message.startsWith("store_cat:")){
+    const c=raw.slice(9).trim(), found=products.filter((p:any)=>String(p.category||"Other").toLowerCase()===c.toLowerCase());
+    if(!found.length){await send("No products are listed in that category.");return;}
+    await showShopPage(0,found);return;
+  }
+  if(message==="store_products"){await showShopPage(Number(context.store_page||0));return;}
+  if(message==="store_next"||message==="store_prev"){await showShopPage(Number(context.store_page||0)+(message==="store_next"?1:-1));return;}
+  if(message.startsWith("store_product:")){
+    const p=products.find((x:any)=>String(x.id)===raw.slice(14).trim());
+    if(!p){await send("That product is no longer available. Please refresh the catalogue.");return;}
+    await showShopProduct(p);return;
+  }
+  if(message.startsWith("store_add:")){
+    const p=products.find((x:any)=>String(x.id)===raw.slice(10).trim());
+    if(!p){await send("That product is no longer available.");return;}
+    const price=productPrice(p),stock=productStock(p);
+    if(!Number.isFinite(price)||price<=0||(stock!==null&&stock<=0)){await send("This product cannot currently be added to your cart.");return;}
+    const old=cart.find(x=>x.product_id===String(p.id));
+    const next=old?cart.map(x=>x.product_id===String(p.id)?{...x,quantity:x.quantity+1}:x):[...cart,{product_id:String(p.id),name:String(p.name),price,quantity:1}];
+    await save("IDLE",{store_cart:next});await send(`✅ Added *${p.name}* to your cart.`);
+    await sendShopButtons("What would you like to do next?",[{id:"store_cart",title:"View Cart"},{id:"store_products",title:"Keep Shopping"},{id:"store_checkout",title:"Checkout"}]);return;
+  }
+  if(message==="store_cart"){
+    if(!cart.length){await send("🛒 Your cart is empty.");return;}
+    const subtotal=cart.reduce((n,x)=>n+x.price*x.quantity,0);
+    await send(`🛒 *Your cart*\n\n${cart.map((x,i)=>`${i+1}. ${x.name} × ${x.quantity} — ${money(x.price*x.quantity)}`).join("\n")}\n\n*Products subtotal: ${money(subtotal)}*\nDelivery will be calculated from the shop's settings at checkout.`);
+    await sendShopButtons("Choose an action:",[{id:"store_products",title:"Add More"},{id:"store_checkout",title:"Checkout"},{id:"store_clear",title:"Clear Cart"}]);return;
+  }
+  if(message==="store_clear"){await save("IDLE",{store_cart:[],store_checkout:null});await send("Your cart has been cleared.");await showShopPage(0);return;}
+  if(message==="store_checkout"){
+    if(!cart.length){await send("Your cart is empty. Browse products first.");return;}
+    await save("CHECKOUT_NAME",{store_checkout:{name:"",email:"",address:"",payment_method:""}});
+    await send("Let's complete your order. Please enter your *full name*.");return;
+  }
+  if(message.startsWith("search ")){
+    const q=message.slice(7).trim(), terms=q.split(/\s+/).filter((x:string)=>x.length>1);
+    const price=q.match(/(?:under|below|less than|up to)\s*₦?\s*(\d+(?:\.\d+)?)\s*(k)?/);
+    const limit=price?Number(price[1])*(price[2]?1000:1):null;
+    const found=products.filter((p:any)=>{
+      const hay=[p.name,p.description,p.category,p.slug].join(" ").toLowerCase();
+      const wordMatch=terms.some((t:string)=>!["under","below","less","than","up","to"].includes(t)&&hay.includes(t));
+      const priceMatch=limit!==null&&productPrice(p)<=limit;
+      return wordMatch||priceMatch;
+    });
+    if(!found.length){await send(`No products matched *${raw.slice(7)}*. Try another search or browse categories.`);return;}
+    await showShopPage(0,found);return;
+  }
   if (["cancel", "cancel checkout", "stop"].includes(message)) {
     await save("IDLE", { store_checkout: null });
     await send("Checkout cancelled. Your cart is still saved. Reply *cart* to view it or *menu* to shop.");
@@ -540,18 +627,12 @@ async function handleTenantStoreMessage(
     if (!products.length) {
       if (account.logoUrl) await send(greeting, account.logoUrl);
       await send("Our product catalogue is being updated. Please contact the business for assistance.");
-      await sendSabiDiscovery();
-      return;
+      await sendSabiDiscovery();return;
     }
-    const categories = [...new Set(products.map(p => String((p as any).category || "Other")).filter(Boolean))];
-    const list = products.slice(0, 10).map((p: any, i: number) =>
-      `${i + 1}. *${p.name}* — ${p.price_text || money(productPrice(p))}${productStock(p) === null ? "" : productStock(p) <= 0 ? " (Out of stock)" : ""}`
-    );
-    await save("IDLE", { store_page: 0 });
-    if (account.logoUrl) await send(greeting, account.logoUrl);
-    await send(`🛍️ *Welcome to ${account.businessName}*\nBrowse our real products below.\n\n${list.join("\n")}\n\nReply with a product name for details. To add one, reply *ADD product name*.\n\nCategories: ${categories.join(", ")}\n\nReply *cart* to view your basket or *more* to see more products.`);
-    await sendSabiDiscovery();
-    return;
+    if(account.logoUrl) await send(greeting,account.logoUrl);
+    await send(`🛍️ *Welcome to ${account.businessName}*\n\nBrowse categories, search for products, view pictures and details, add items to your cart and checkout securely here on WhatsApp.\n\nType *search black shoe* or *search under 20k* to find products.`);
+    await sendShopButtons("What would you like to do?",[{id:"store_categories",title:"Shop Categories"},{id:"store_products",title:"All Products"},{id:"store_cart",title:"View Cart"}]);
+    await showShopPage(0);await sendSabiDiscovery();return;
   }
 
   if (message === "more" || message.startsWith("more ")) {
