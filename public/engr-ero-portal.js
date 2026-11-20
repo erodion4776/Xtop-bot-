@@ -251,6 +251,8 @@
       };
       document.getElementById("simTarget").onclick = () => {
         if (!selected) {
+          errors++;
+          document.getElementById("simErrors").textContent = "Mistakes: " + errors;
           document.getElementById("simFeedback").textContent = "Pick up the " + s.part.toLowerCase() + " first. Tap the left box.";
           return;
         }
