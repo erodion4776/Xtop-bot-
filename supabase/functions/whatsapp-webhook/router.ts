@@ -346,7 +346,7 @@ async function handleTenantStoreMessage(
     ]:[{id:"store_products",title:"Keep Shopping"},{id:"store_cart",title:"View Cart"}]);
   };
   const showShopPage = async (page=0, source:any[]=products) => {
-    const size=8, pages=Math.max(1,Math.ceil(source.length/size)), current=Math.max(0,Math.min(page,pages-1));
+    const size=7, pages=Math.max(1,Math.ceil(source.length/size)), current=Math.max(0,Math.min(page,pages-1));
     const rows=source.slice(current*size,(current+1)*size).map((p:any)=>({id:`store_product:${p.id}`,title:String(p.name||"Product").slice(0,24),description:money(productPrice(p)).slice(0,72)}));
     if(current>0) rows.push({id:"store_prev",title:"⬅️ Previous page"});
     if(current<pages-1) rows.push({id:"store_next",title:"Next page ➡️"});
@@ -434,7 +434,7 @@ async function handleTenantStoreMessage(
     await sendShopList("Choose a category to browse.",rows);return;
   }
   if(message.startsWith("store_cat:")){
-    const c=raw.slice(9).trim(), found=products.filter((p:any)=>String(p.category||"Other").toLowerCase()===c.toLowerCase());
+    const c=raw.slice(10).trim(), found=products.filter((p:any)=>String(p.category||"Other").toLowerCase()===c.toLowerCase());
     if(!found.length){await send("No products are listed in that category.");return;}
     await showShopPage(0,found);return;
   }
@@ -468,14 +468,13 @@ async function handleTenantStoreMessage(
     await send("Let's complete your order. Please enter your *full name*.");return;
   }
   if(message.startsWith("search ")){
-    const q=message.slice(7).trim(), terms=q.split(/\s+/).filter((x:string)=>x.length>1);
+    const q=message.slice(7).trim(), terms=q.split(/\s+/).filter((x:string)=>x.length>1&&!/^\d/.test(x)&&!["under","below","less","than","up","to"].includes(x));
     const price=q.match(/(?:under|below|less than|up to)\s*₦?\s*(\d+(?:\.\d+)?)\s*(k)?/);
     const limit=price?Number(price[1])*(price[2]?1000:1):null;
     const found=products.filter((p:any)=>{
       const hay=[p.name,p.description,p.category,p.slug].join(" ").toLowerCase();
-      const wordMatch=terms.some((t:string)=>!["under","below","less","than","up","to"].includes(t)&&hay.includes(t));
-      const priceMatch=limit!==null&&productPrice(p)<=limit;
-      return wordMatch||priceMatch;
+      const wordMatch=terms.length===0||terms.every((t:string)=>hay.includes(t));
+      return wordMatch&&(limit===null||productPrice(p)<=limit);
     });
     if(!found.length){await send(`No products matched *${raw.slice(7)}*. Try another search or browse categories.`);return;}
     await showShopPage(0,found);return;
