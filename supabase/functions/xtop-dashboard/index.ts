@@ -237,7 +237,8 @@ serve(async (req: Request) => {
         return jsonResponse({ error: "Connect an active WhatsApp number before updating its profile photo." }, 409);
       }
 
-      const appId = Deno.env.get("META_APP_ID") || Deno.env.get("FACEBOOK_APP_ID") || Deno.env.get("WHATSAPP_APP_ID") || "";
+      const appId = Deno.env.get("META_APP_ID") || Deno.env.get("FACEBOOK_APP_ID") || Deno.env.get("WHATSAPP_APP_ID") || "1947931015867084";
+      const graphVersion = (Deno.env.get("META_GRAPH_API_VERSION") || "v26.0").replace(/^v/, "");
       if (!/^\d+$/.test(appId)) {
         return jsonResponse({ error: "The Meta App ID is not configured for profile-photo uploads. Sabi support must configure META_APP_ID." }, 503);
       }
