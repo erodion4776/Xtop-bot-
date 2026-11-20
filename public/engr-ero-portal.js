@@ -190,13 +190,13 @@
       '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px">' +
       '<div id="zoneBench" class="sim-zone">🧩<br><small>Assembly mat</small></div>' +
       '<div id="zoneTerminals" class="sim-zone">🔩<br><small>Terminal screws</small></div>' +
-      '<div id="zoneEntry" class="sim-zone">〰️<br><small>Cable entry</small></div>' +
+      '<div id="zoneEntry" class="sim-zone">〰️<br><small>Cable entry</small></div><div id="zonePrep" class="sim-zone">✂️<br><small>Preparation area</small></div>' +
       '<div id="zoneEarthTerminal" class="sim-zone">🟩<br><small>E terminal</small></div>' +
       '<div id="zoneNeutralTerminal" class="sim-zone">🟦<br><small>N terminal</small></div>' +
       '<div id="zoneLiveTerminal" class="sim-zone">🟫<br><small>L terminal</small></div>' +
       '<div id="zoneCoverTray" class="sim-zone">▱<br><small>Cover tray</small></div>' +
       '<div id="zoneGripSlot" class="sim-zone">▰<br><small>Cable grip</small></div>' +
-      '<div id="zoneToolTray" class="sim-zone">🪛<br><small>Tool tray</small></div>' +
+      '<div id="zoneToolTray" class="sim-zone">🪛<br><small>Tool tray</small></div><div id="zonePlugTop" class="sim-zone">🔒<br><small>Plug body / cover</small></div>' +
       '</div><p class="muted" style="font-size:12px;margin-top:8px">Completed operations will be marked on the workbench.</p></section>' +
       '</article>';
     const style = document.createElement("style");
@@ -214,7 +214,7 @@
       document.getElementById("simFeedback").textContent = "Select the component required for this operation.";
       document.getElementById("simInventory").innerHTML = inventory.map(item =>
         '<button type="button" class="sim-pick" data-pick="' + item[0] + '"' +
-        (item[0] === step.item ? "" : " disabled") + '>' + item[2] + '<br>' + escapeHtml(item[1]) + '</button>'
+        "" + '>' + item[2] + '<br>' + escapeHtml(item[1]) + '</button>'
       ).join("");
       document.getElementById("simTargets").innerHTML = [
         ["bench","Assembly mat"],["coverTray","Cover tray"],["terminals","Terminal screws"],
@@ -222,7 +222,7 @@
         ["neutralTerminal","N terminal"],["liveTerminal","L terminal"],["tighten","Tighten screws"],
         ["gripSlot","Cable grip position"],["plugTop","Plug body"],["toolTray","Tool tray"]
       ].map(target => '<button type="button" class="sim-target" data-target="' + target[0] + '"' +
-        (target[0] === step.target ? "" : " disabled") + '>' + escapeHtml(target[1]) + '</button>').join("");
+        "" + '>' + escapeHtml(target[1]) + '</button>').join("");
       document.querySelectorAll("[data-pick]").forEach(button => button.addEventListener("click", () => {
         selectedItem = button.dataset.pick;
         document.querySelectorAll("[data-pick]").forEach(el => el.classList.toggle("selected", el === button));
