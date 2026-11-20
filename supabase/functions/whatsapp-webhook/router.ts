@@ -770,6 +770,17 @@ export async function routeMessage(
       tenantId,
     ).catch(() => {});
 
+    // Restore the ELA401 post-simulation handoff if Sabi's welcome menu
+    // replaced the learning context before the student requested CBT payment.
+    if (
+      interactiveId === "cm_test" ||
+      /^(?:4|final cbt exam|take course test)$/i.test(String(text || "").trim()) ||
+      /(?:completed|finished).*(?:experiment\\s*17|plug\\s*assembly).*(?:final\\s*cbt|cbt\\s*payment|continue)/i.test(String(text || "")) ||
+      /(?:final\\s*cbt|cbt\\s*payment).*(?:experiment\\s*17|plug\\s*assembly)/i.test(String(text || ""))
+    ) {
+      if (await handleEla401CbtContinuation(phone, conversation.id, conversation)) return;
+    }
+
     // Learning Centre controls belong to the system classroom, not the
     // Sabi merchant/support gateway. Route them before global Sabi pause,
     // agent-takeover, and merchant-store guards so lecture navigation cannot
@@ -1251,17 +1262,6 @@ export async function routeMessage(
     // another workflow has replaced the conversation module/context.
     if (await handleActiveExamRecovery(phone, text, contact, conversation)) {
       return;
-    }
-
-    // Restore the ELA401 post-simulation handoff if Sabi's welcome menu
-    // replaced the learning context before the student requested CBT payment.
-    if (
-      interactiveId === "cm_test" ||
-      /^(?:4|final cbt exam|take course test)$/i.test(String(text || "").trim()) ||
-      /(?:completed|finished).*(?:experiment\\s*17|plug\\s*assembly).*(?:final\\s*cbt|cbt\\s*payment|continue)/i.test(String(text || "")) ||
-      /(?:final\\s*cbt|cbt\\s*payment).*(?:experiment\\s*17|plug\\s*assembly)/i.test(String(text || ""))
-    ) {
-      if (await handleEla401CbtContinuation(phone, conversation.id, conversation)) return;
     }
 
     // CBT payment controls must survive a return from Paystack or a Sabi
