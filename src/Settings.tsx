@@ -54,6 +54,10 @@ export default function Settings({ tenantId }: { tenantId: string }) {
   const [businessNameSaving, setBusinessNameSaving] = useState(false);
   const [businessNameError, setBusinessNameError] = useState("");
   const [businessNameSuccess, setBusinessNameSuccess] = useState("");
+  const [businessLogoUrl, setBusinessLogoUrl] = useState("");
+  const [businessLogoBusy, setBusinessLogoBusy] = useState(false);
+  const [businessLogoError, setBusinessLogoError] = useState("");
+  const [businessLogoSuccess, setBusinessLogoSuccess] = useState("");
 
   const [banks, setBanks] = useState<Bank[]>([]);
   const [bankCode, setBankCode] = useState("");
@@ -109,6 +113,7 @@ export default function Settings({ tenantId }: { tenantId: string }) {
       setBusinessNameError(data?.error || error?.message || "Unable to load business profile.");
     } else {
       setBusinessName(data?.business_name || "");
+      setBusinessLogoUrl(data?.logo_url || "");
     }
     setBusinessNameLoading(false);
   }
@@ -137,6 +142,70 @@ export default function Settings({ tenantId }: { tenantId: string }) {
       setBusinessNameError(err instanceof Error ? err.message : "Unable to save business name.");
     } finally {
       setBusinessNameSaving(false);
+    }
+  }
+
+  async function saveBusinessLogoUrl(logoUrl: string | null) {
+    const { data, error } = await supabase.functions.invoke(
+      "xtop-dashboard?action=merchant-profile",
+      { body: { logo_url: logoUrl } }
+    );
+    if (error || !data?.success) {
+      throw new Error(data?.error || error?.message || "Unable to save business image.");
+    }
+    setBusinessLogoUrl(data.logo_url || "");
+  }
+
+  async function uploadBusinessLogo(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    setBusinessLogoError("");
+    setBusinessLogoSuccess("");
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setBusinessLogoError("Choose a JPG, PNG or WEBP image.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setBusinessLogoError("Business image must be 2 MB or smaller.");
+      return;
+    }
+    setBusinessLogoBusy(true);
+    try {
+      const extension = file.type === "image/jpeg" ? "jpg" : file.type === "image/png" ? "png" : "webp";
+      const path = `${tenantId}/business-logo/logo.${extension}`;
+      const { error: uploadError } = await supabase.storage
+        .from("sabi-product-images")
+        .upload(path, file, { upsert: true, contentType: file.type, cacheControl: "3600" });
+      if (uploadError) throw uploadError;
+      const { data } = supabase.storage.from("sabi-product-images").getPublicUrl(path);
+      await saveBusinessLogoUrl(data.publicUrl);
+      setBusinessLogoSuccess("Business image saved. It will appear with new WhatsApp shop greetings.");
+    } catch (err) {
+      setBusinessLogoError(err instanceof Error ? err.message : "Unable to upload business image.");
+    } finally {
+      setBusinessLogoBusy(false);
+    }
+  }
+
+  async function removeBusinessLogo() {
+    if (!businessLogoUrl) return;
+    setBusinessLogoBusy(true);
+    setBusinessLogoError("");
+    setBusinessLogoSuccess("");
+    try {
+      const marker = "/storage/v1/object/public/sabi-product-images/";
+      const path = businessLogoUrl.includes(marker) ? businessLogoUrl.split(marker)[1] : "";
+      if (path && path.startsWith(`${tenantId}/business-logo/`)) {
+        const { error } = await supabase.storage.from("sabi-product-images").remove([path]);
+        if (error) throw error;
+      }
+      await saveBusinessLogoUrl(null);
+      setBusinessLogoSuccess("Business image removed.");
+    } catch (err) {
+      setBusinessLogoError(err instanceof Error ? err.message : "Unable to remove business image.");
+    } finally {
+      setBusinessLogoBusy(false);
     }
   }
 
@@ -511,6 +580,16 @@ export default function Settings({ tenantId }: { tenantId: string }) {
         <small style={{ display: "block", color: "#64748b", marginTop: 6 }}>
           This changes the customer-facing shop name, not your WhatsApp verified name or legal workspace identity.
         </small>
+        <div style={{ marginTop: 22, paddingTop: 18, borderTop: "1px solid #e2e8f0" }}>
+          <strong>Business image / logo</strong>
+          <p style={{ color: "#64748b", margin: "5px 0 12px" }}>Upload your shop logo or business photo. JPG, PNG or WEBP; maximum 2 MB.</p>
+          {businessLogoUrl && <img src={businessLogoUrl} alt="Business logo preview" style={{ width: 112, height: 112, objectFit: "contain", border: "1px solid #e2e8f0", borderRadius: 12, padding: 6, display: "block", marginBottom: 12, background: "#fff" }} />}
+          {businessLogoError && <div role="alert" style={{ color: "#b91c1c", marginBottom: 10 }}>{businessLogoError}</div>}
+          {businessLogoSuccess && <div role="status" style={{ color: "#047857", marginBottom: 10 }}>{businessLogoSuccess}</div>}
+          <input type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadBusinessLogo} disabled={businessLogoBusy || businessNameLoading} style={{ ...fieldStyle, maxWidth: 420 }} />
+          {businessLogoUrl && <button type="button" onClick={removeBusinessLogo} disabled={businessLogoBusy} style={{ marginTop: 10, marginRight: 10, padding: "10px 14px", border: "1px solid #dc2626", borderRadius: 9, color: "#b91c1c", background: "#fff" }}>Remove image</button>}
+          {businessLogoBusy && <span style={{ marginLeft: 8, color: "#64748b" }}>Saving image...</span>}
+        </div>
         <button type="submit" disabled={businessNameLoading || businessNameSaving} style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 14, padding: "11px 18px", border: 0, borderRadius: 9, background: "#0f766e", color: "#fff", fontWeight: 700, opacity: businessNameSaving ? 0.7 : 1 }}>
           {businessNameSaving ? <RefreshCw size={17} /> : <Save size={17} />}
           {businessNameSaving ? "Saving..." : "Save business name"}
