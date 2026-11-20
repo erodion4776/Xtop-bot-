@@ -452,6 +452,56 @@ export async function handleActiveExamRecovery(
   return true;
 }
 
+/**
+ * Restores the ELA401 post-simulation handoff when Sabi's welcome menu has
+ * replaced the conversation context. Only a saved SUBMITTED Experiment 17
+ * record and completed lecture progress can unlock the CBT payment step.
+ */
+export async function handleEla401CbtContinuation(
+  phone: string, conversationId: string, conv: Conversation
+): Promise<boolean> {
+  const normalizedPhone = String(phone || "").replace(/\\D/g, "");
+  const { data: student } = await supabase.from("students").select("id")
+    .eq("phone", normalizedPhone).maybeSingle();
+  if (!student) return false;
+
+  const { data: course } = await supabase.from("courses")
+    .select("id,course_code,course_name,level")
+    .eq("course_code", "ELA401").maybeSingle();
+  if (!course) return false;
+
+  const { data: enrollment } = await supabase.from("student_courses")
+    .select("id,progress,status").eq("student_id", student.id)
+    .eq("course_id", course.id).eq("status", "ACTIVE").maybeSingle();
+  if (!enrollment?.progress?.ela401_lecture_completed_at) return false;
+
+  const { data: submission } = await supabase.from("ela401_experiment_submissions")
+    .select("id").eq("student_id", student.id).eq("course_id", course.id)
+    .eq("status", "SUBMITTED").order("submitted_at", { ascending: false })
+    .limit(1).maybeSingle();
+  if (!submission) return false;
+
+  const learningCtx: LearningCtx = {
+    step: "COURSE_MENU",
+    learningUnlocked: true,
+    mtmSimulationCompleted: true,
+    studentId: student.id,
+    studentCourseId: enrollment.id,
+    courseId: course.id,
+    courseCode: course.course_code,
+    courseName: course.course_name,
+    totalLessons: 16,
+  };
+  await updateConversation(conversationId, {
+    current_module: "EXAMS",
+    current_state: "ENTRY",
+    context_json: learningCtx as unknown as Record<string, unknown>,
+  });
+  await sendTextMessage(phone, "✅ Your saved ELA401 lecture and Experiment 17 simulation have been verified. Continuing to Final CBT payment.");
+  await startExamEntry(phone, conversationId, learningCtx);
+  return true;
+}
+
 export async function handleExamPaymentRecovery(
   phone: string, text: string, contact: Contact, conv: Conversation
 ): Promise<void> {
