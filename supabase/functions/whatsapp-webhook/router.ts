@@ -776,8 +776,26 @@ export async function routeMessage(
     // be swallowed by an unrelated Sabi workflow.
     if (
       tenantId === SYSTEM_TENANT_ID &&
-      (interactiveId.startsWith("lsn_") || interactiveId.startsWith("cm_"))
+      (
+        interactiveId.startsWith("lsn_") ||
+        interactiveId.startsWith("cm_") ||
+        conversation.current_module === "LEARNING"
+      )
     ) {
+      // Course-menu selections must be handled in COURSE_MENU state. Older
+      // gateway states (for example SABI_GATEWAY) otherwise cause the menu to
+      // be shown again instead of opening the selected lecture.
+      const savedLearningContext = (
+        conversation.context_json || {}
+      ) as Record<string, any>;
+      const learningState = interactiveId.startsWith("cm_")
+        ? "COURSE_MENU"
+        : (
+            conversation.current_state === "SABI_GATEWAY" &&
+            savedLearningContext.courseId
+              ? "COURSE_MENU"
+              : (conversation.current_state || "ENTRY")
+          );
       await handleLearning(
         phone,
         interactiveId || text,
@@ -785,6 +803,11 @@ export async function routeMessage(
         {
           ...conversation,
           current_module: "LEARNING",
+          current_state: learningState,
+          context_json: {
+            ...savedLearningContext,
+            ...(learningState === "COURSE_MENU" ? { step: "COURSE_MENU", learningUnlocked: true } : {}),
+          },
         } as Conversation,
       );
       return;
