@@ -36,7 +36,9 @@ export async function issueLessonPortalLink(
     course_id: ctx.courseId,
     lesson_order: lessonOrder,
     expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    payload_json: {},
+    payload_json: String(ctx.courseCode || "").toUpperCase() === "ELA401"
+      ? { course_mode: "ELA401_MTM_CLASSROOM", experiment_code: "ELA401-EXP17" }
+      : {},
   });
   if (error) {
     console.error("[engr-ero-portal] lesson token insert failed", error);
