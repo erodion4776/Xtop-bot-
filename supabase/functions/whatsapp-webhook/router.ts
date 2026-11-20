@@ -347,7 +347,7 @@ async function handleTenantStoreMessage(
   };
   const showShopPage = async (page=0, source:any[]=products) => {
     const size=7, pages=Math.max(1,Math.ceil(source.length/size)), current=Math.max(0,Math.min(page,pages-1));
-    const rows=source.slice(current*size,(current+1)*size).map((p:any)=>({id:`store_product:${p.id}`,title:String(p.name||"Product").slice(0,24),description:money(productPrice(p)).slice(0,72)}));
+    const rows: Array<{id:string;title:string;description?:string}> = source.slice(current*size,(current+1)*size).map((p:any)=>({id:`store_product:${p.id}`,title:String(p.name||"Product").slice(0,24),description:money(productPrice(p)).slice(0,72)}));
     if(current>0) rows.push({id:"store_prev",title:"⬅️ Previous page"});
     if(current<pages-1) rows.push({id:"store_next",title:"Next page ➡️"});
     rows.push({id:"store_categories",title:"Browse categories"},{id:"store_cart",title:"🛒 View cart"});
@@ -429,7 +429,7 @@ async function handleTenantStoreMessage(
 
   if(message==="store_categories"){
     const cats=[...new Set(products.map((p:any)=>String(p.category||"Other").trim()).filter(Boolean))];
-    const rows=cats.slice(0,8).map((c:string)=>({id:`store_cat:${c}`,title:c.slice(0,24),description:`Browse ${c}`}));
+    const rows: Array<{id:string;title:string;description?:string}> = cats.slice(0,8).map((c:string)=>({id:`store_cat:${c}`,title:c.slice(0,24),description:`Browse ${c}`}));
     rows.push({id:"store_products",title:"All products"},{id:"store_cart",title:"🛒 View cart"});
     await sendShopList("Choose a category to browse.",rows);return;
   }
