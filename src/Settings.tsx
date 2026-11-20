@@ -49,6 +49,11 @@ export default function Settings({ tenantId }: { tenantId: string }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [businessName, setBusinessName] = useState("");
+  const [businessNameLoading, setBusinessNameLoading] = useState(true);
+  const [businessNameSaving, setBusinessNameSaving] = useState(false);
+  const [businessNameError, setBusinessNameError] = useState("");
+  const [businessNameSuccess, setBusinessNameSuccess] = useState("");
 
   const [banks, setBanks] = useState<Bank[]>([]);
   const [bankCode, setBankCode] = useState("");
@@ -92,6 +97,48 @@ export default function Settings({ tenantId }: { tenantId: string }) {
     fontSize: 16,
     background: "#fff"
   };
+
+  async function loadBusinessProfile() {
+    setBusinessNameLoading(true);
+    setBusinessNameError("");
+    const { data, error } = await supabase.functions.invoke(
+      "xtop-dashboard?action=merchant-profile",
+      { method: "GET" }
+    );
+    if (error || data?.error) {
+      setBusinessNameError(data?.error || error?.message || "Unable to load business profile.");
+    } else {
+      setBusinessName(data?.business_name || "");
+    }
+    setBusinessNameLoading(false);
+  }
+
+  async function saveBusinessProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusinessNameError("");
+    setBusinessNameSuccess("");
+    const cleanName = businessName.trim();
+    if (!cleanName || cleanName.length > 80) {
+      setBusinessNameError("Enter a business name between 1 and 80 characters.");
+      return;
+    }
+    setBusinessNameSaving(true);
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "xtop-dashboard?action=merchant-profile",
+        { body: { business_name: cleanName } }
+      );
+      if (error || !data?.success) {
+        throw new Error(data?.error || error?.message || "Unable to save business name.");
+      }
+      setBusinessName(data.business_name || cleanName);
+      setBusinessNameSuccess("Business name saved. New WhatsApp greetings will use this name.");
+    } catch (err) {
+      setBusinessNameError(err instanceof Error ? err.message : "Unable to save business name.");
+    } finally {
+      setBusinessNameSaving(false);
+    }
+  }
 
   async function loadSettings() {
     setLoading(true);
@@ -238,6 +285,7 @@ export default function Settings({ tenantId }: { tenantId: string }) {
   useEffect(() => {
     if (!tenantId) return;
 
+    loadBusinessProfile();
     loadSettings();
     loadWhatsAppStatus();
     loadBanks();
@@ -438,6 +486,36 @@ export default function Settings({ tenantId }: { tenantId: string }) {
 
   return (
     <div style={{ maxWidth: 760 }}>
+      <form onSubmit={saveBusinessProfile} style={card}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+          <Building2 size={25} color="#0f766e" />
+          <div>
+            <h2 style={{ margin: 0 }}>Business profile</h2>
+            <p style={{ color: "#64748b", margin: "5px 0 0" }}>Edit the name customers see in your WhatsApp shop.</p>
+          </div>
+        </div>
+        {businessNameError && <div role="alert" style={{ padding: 10, marginBottom: 12, borderRadius: 8, background: "#fef2f2", color: "#b91c1c" }}>{businessNameError}</div>}
+        {businessNameSuccess && <div role="status" style={{ padding: 10, marginBottom: 12, borderRadius: 8, background: "#ecfdf5", color: "#047857" }}>{businessNameSuccess}</div>}
+        <label htmlFor="merchant-business-name"><strong>Business name</strong></label>
+        <input
+          id="merchant-business-name"
+          type="text"
+          maxLength={80}
+          value={businessName}
+          onChange={event => setBusinessName(event.target.value)}
+          placeholder={businessNameLoading ? "Loading business name..." : "Enter your business name"}
+          disabled={businessNameLoading || businessNameSaving}
+          required
+          style={fieldStyle}
+        />
+        <small style={{ display: "block", color: "#64748b", marginTop: 6 }}>
+          This changes the customer-facing shop name, not your WhatsApp verified name or legal workspace identity.
+        </small>
+        <button type="submit" disabled={businessNameLoading || businessNameSaving} style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 14, padding: "11px 18px", border: 0, borderRadius: 9, background: "#0f766e", color: "#fff", fontWeight: 700, opacity: businessNameSaving ? 0.7 : 1 }}>
+          {businessNameSaving ? <RefreshCw size={17} /> : <Save size={17} />}
+          {businessNameSaving ? "Saving..." : "Save business name"}
+        </button>
+      </form>
       <div style={{ ...card, background: "#f8fafc" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Truck size={26} color="#0f766e" />
