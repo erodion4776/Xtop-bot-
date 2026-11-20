@@ -136,6 +136,51 @@ serve(async (req: Request) => {
     const merchant = merchantResult.context;
 
     // =================================================
+    // MERCHANT BUSINESS PROFILE
+    // Customer-facing business name; workspace identity is preserved.
+    // =================================================
+    if (action === "merchant-profile" && req.method === "GET") {
+      const { data: tenant, error } = await sb
+        .from("tenants")
+        .select("business_name,name")
+        .eq("id", merchant.tenantId)
+        .maybeSingle();
+
+      if (error || !tenant) {
+        return jsonResponse({ error: "Could not load this merchant profile." }, 500);
+      }
+
+      return jsonResponse({
+        business_name: tenant.business_name || tenant.name || "",
+      });
+    }
+
+    if (action === "merchant-profile" && req.method === "POST") {
+      if (merchant.role !== "OWNER" && merchant.role !== "ADMIN") {
+        return jsonResponse({ error: "Only the workspace owner or administrator can edit the business name." }, 403);
+      }
+
+      const body = await readJson(req);
+      const businessName = String(body?.business_name || "").trim();
+      if (!businessName || businessName.length > 80) {
+        return jsonResponse({ error: "Enter a business name between 1 and 80 characters." }, 400);
+      }
+
+      const { data: updated, error } = await sb
+        .from("tenants")
+        .update({ business_name: businessName, updated_at: new Date().toISOString() })
+        .eq("id", merchant.tenantId)
+        .select("business_name")
+        .maybeSingle();
+
+      if (error || !updated) {
+        return jsonResponse({ error: "Could not save the business name. Please try again." }, 500);
+      }
+
+      return jsonResponse({ success: true, business_name: updated.business_name });
+    }
+
+    // =================================================
     // MERCHANT WHATSAPP CONNECTION
     // Session ownership comes only from authenticated membership.
     // =================================================
