@@ -265,7 +265,7 @@ serve(async (req: Request) => {
 
         const extension = contentType === "image/png" ? "png" : "jpg";
         const fileName = `sabi-business-logo.${extension}`;
-        const sessionUrl = new URL(`https://graph.facebook.com/v21.0/${appId}/uploads`);
+        const sessionUrl = new URL(`https://graph.facebook.com/v${graphVersion}/${appId}/uploads`);
         sessionUrl.searchParams.set("file_name", fileName);
         sessionUrl.searchParams.set("file_length", String(imageBytes.length));
         sessionUrl.searchParams.set("file_type", contentType);
@@ -280,7 +280,7 @@ serve(async (req: Request) => {
           return jsonResponse({ error: sessionResult?.error?.message || "Meta could not create a profile-photo upload session. Check WhatsApp management permissions." }, 502);
         }
 
-        const uploadResponse = await fetch(`https://graph.facebook.com/v21.0/${sessionResult.id}`, {
+        const uploadResponse = await fetch(`https://graph.facebook.com/v${graphVersion}/${sessionResult.id}`, {
           method: "POST",
           headers: {
             Authorization: `OAuth ${accessToken}`,
@@ -296,7 +296,7 @@ serve(async (req: Request) => {
         }
 
         const profileResponse = await fetch(
-          `https://graph.facebook.com/v21.0/${encodeURIComponent(account.phone_number_id)}/whatsapp_business_profile`,
+          `https://graph.facebook.com/v${graphVersion}/${encodeURIComponent(account.phone_number_id)}/whatsapp_business_profile`,
           {
             method: "POST",
             headers: {
