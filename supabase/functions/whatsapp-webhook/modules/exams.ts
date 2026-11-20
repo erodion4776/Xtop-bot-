@@ -188,15 +188,18 @@ export async function startExamEntry(
   }
   const selectedPractical = unusedPractical.slice(0, 5);
 
-  const eligibleQuestions = (questions || []).filter((question: any) => !previouslyUsed.has(String(question.id)));
-  const shuffledPool = [...eligibleQuestions];
+  const bankNeeded = 50 - selectedPractical.length;
+  const unusedBankQuestions = (questions || []).filter((question: any) => !previouslyUsed.has(String(question.id)));
+  // Prefer unseen bank items. If the approved lecture bank is smaller than the
+  // remaining exam size on a retake, reuse the approved bank rather than block
+  // a paid student. Each individual exam still receives a shuffled 50-item set.
+  const shuffledPool = [...(unusedBankQuestions.length >= bankNeeded ? unusedBankQuestions : (questions || []))];
   for (let i = shuffledPool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [shuffledPool[i], shuffledPool[j]] = [shuffledPool[j], shuffledPool[i]];
   }
-  const bankNeeded = 50 - selectedPractical.length;
   if (shuffledPool.length < bankNeeded) {
-    await sendTextMessage(phone, `⚠️ Only ${shuffledPool.length} unused question-bank items remain. Please contact the lecturer before starting another attempt.`);
+    await sendTextMessage(phone, `⚠️ The published question bank has only ${shuffledPool.length} items; contact the lecturer before starting this exam.`);
     return;
   }
   const selectedQuestions = [...selectedPractical, ...shuffledPool.slice(0, bankNeeded)]
