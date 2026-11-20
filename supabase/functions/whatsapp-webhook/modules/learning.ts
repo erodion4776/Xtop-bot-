@@ -103,6 +103,7 @@ function extractSelection(text: string): number | null {
 export interface LearningCtx {
   step: string;
   learningUnlocked?: boolean;
+  mtmSimulationCompleted?: boolean;
   courseCode?: string;
   courseId?: string;
   courseName?: string;
