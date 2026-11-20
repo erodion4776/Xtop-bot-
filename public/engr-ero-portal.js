@@ -259,6 +259,7 @@
     }
 
     function finishSimulation() {
+      clearInterval(clockHandle);
       const elapsed = Number(((Date.now() - started) / 1000).toFixed(2));
       const accuracy = Math.max(0, Math.round((steps.length / (steps.length + errors)) * 100));
       const weak = errors >= 3 ? "component identification and operation sequence" : errors >= 1 ? "careful component selection and placement" : "consistent component handling and assembly sequence";
