@@ -791,6 +791,30 @@ async function deliverLesson(
   phone: string, conversationId: string, ctx: LearningCtx, targetOrder: number
 ): Promise<void> {
   if (!ctx.courseId) { await promptCourseCode(phone, conversationId); return; }
+
+  // ELA401 uses its approved Experiment 17 classroom flow, not the
+  // course_modules/module_slides playlist used by other courses.
+  if (String(ctx.courseCode || "").toUpperCase() === "ELA401") {
+    const enrollment = ctx.studentId
+      ? await getStudentCourseAccess(ctx.studentId, ctx.courseId)
+      : null;
+    if (!enrollment || String(enrollment.status || "ACTIVE").toUpperCase() !== "ACTIVE") {
+      await sendTextMessage(phone, "Your ELA401 course access is not active. Please contact the Learning Centre.");
+      return;
+    }
+    ctx.studentCourseId = enrollment.id;
+    ctx.currentLessonOrder = 1;
+    ctx.totalLessons = 1;
+    ctx.currentLessonId = "ELA401-EXP17";
+    ctx.currentSectionIndex = 0;
+    ctx.step = "VIEWING_LESSON";
+    await saveCtx(conversationId, ctx, "VIEWING_LESSON");
+    const portalSent = await issueLessonPortalLink(phone, conversationId, ctx, 1);
+    if (!portalSent) {
+      await sendTextMessage(phone, "I could not create your secure ELA401 classroom link just now. Your course progress is unchanged. Please try again shortly.");
+    }
+    return;
+  }
   
   const allLessons = await fetchAllCourseLessons(ctx.courseId);
   if (allLessons.length === 0) {
