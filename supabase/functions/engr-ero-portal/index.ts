@@ -319,7 +319,11 @@ Deno.serve(async (req: Request) => {
       const completed = Array.isArray(enrollment.progress?.completed_lessons) ? enrollment.progress.completed_lessons : [];
       const highestCompletedOrder = lessons.reduce((highest, item, index) => completed.includes(item.id) ? Math.max(highest, index + 1) : highest, 0);
       const highWater = Math.min(lessons.length, Math.max(Number(enrollment.progress?.last_lesson_order || 0), highestCompletedOrder));
-      if (highWater >= lessons.length) return response({ course_complete: true, total: lessons.length });
+      if (highWater >= lessons.length) {
+        const { data: completedCourse } = await sb.from("courses").select("course_code,course_name")
+          .eq("id", session.course_id).maybeSingle();
+        return response({ course_complete: true, total: lessons.length, course: completedCourse });
+      }
       const order = Number(session.lesson_order || 1);
       if (order > highWater + 1 || order < 1 || order > lessons.length) return response({ error: "Complete the previous lecture before opening this one." }, 403);
       const lesson = lessons[order - 1];
