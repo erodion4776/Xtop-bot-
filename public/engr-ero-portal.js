@@ -277,9 +277,9 @@
         records.push({operation:s.name, component:s.part, destination:s.target, correct:true, duration_seconds:Number(((now - (records.length ? records[records.length - 1]._at : started))/1000).toFixed(2))});
         records[records.length - 1]._at = now;
         completed.push(stepIndex);
-        saveSimulationProgress();
         document.getElementById("simFeedback").textContent = s.done;
         stepIndex++;
+        saveSimulationProgress();
         updateDrawing();
         renderChecklist();
         if (stepIndex >= steps.length) setTimeout(finishSimulation, 500);
