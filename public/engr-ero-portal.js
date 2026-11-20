@@ -417,7 +417,19 @@
   function showExamResult(result) {
     if (timerHandle) clearInterval(timerHandle);
     contentEl.classList.remove("hidden");
-    contentEl.innerHTML = `<article class="panel"><h2>CBT submitted</h2><p class="timer">${escapeHtml(result.percentage ?? 0)}%</p><p class="muted">Score: ${escapeHtml(result.score ?? 0)} · Result: ${escapeHtml(result.pass_status || (result.percentage >= 50 ? "PASS" : "FAIL"))}</p><p class="muted">Your result has been saved and sent to your registered WhatsApp number.</p></article>`;
+    const passed = String(result.pass_status || (Number(result.percentage || 0) >= 50 ? "PASS" : "FAIL")).toUpperCase() === "PASS";
+    const whatsappUrl = "https://wa.me/2348024988555?text=" + encodeURIComponent("COURSE MENU");
+    contentEl.innerHTML = `
+      <article class="panel">
+        <h2>CBT submitted</h2>
+        <p class="timer">${escapeHtml(result.percentage ?? 0)}%</p>
+        <p class="muted">Score: ${escapeHtml(result.score ?? 0)} · Result: ${escapeHtml(result.pass_status || (passed ? "PASS" : "FAIL"))}</p>
+        <p class="muted">Your result has been saved and sent to your registered WhatsApp number.</p>
+        <div style="display:grid;gap:10px;margin-top:18px">
+          <a href="${whatsappUrl}" style="display:block;text-align:center;text-decoration:none;background:#146b4a;color:white;padding:14px 17px;border-radius:12px;font-weight:700">Return to WhatsApp / Course Menu</a>
+          <p class="muted" style="margin:0;text-align:center;font-size:13px">${passed ? "You have passed this CBT. Return to WhatsApp to view your course menu and result." : "You may request a retake from the WhatsApp Course Menu, subject to the three-attempt limit and the applicable retake payment."}</p>
+        </div>
+      </article>`;
   }
   if (!accessToken) {
     verifyEl.classList.add("hidden");
