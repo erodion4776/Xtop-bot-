@@ -293,8 +293,14 @@ Deno.serve(async (req: Request) => {
       }
       const result = body.result && typeof body.result === "object" ? body.result : {};
       const steps = Array.isArray(result.steps) ? result.steps.slice(0, 20) : [];
-      if (steps.length < 8 || steps.some((step: any) => typeof step.label !== "string")) {
-        return response({ error: "Complete all plug assembly stages before submitting your result." }, 400);
+      // The current 2D workbench records each completed operation by its operation name.
+      // Accept the legacy label field as well so previously issued classroom links remain compatible.
+      const validCompletedSteps = steps.length === 12 && steps.every((step: any) =>
+        step && step.correct === true &&
+        (typeof step.operation === "string" || typeof step.label === "string")
+      );
+      if (!validCompletedSteps) {
+        return response({ error: "The server could not verify all 12 completed plug assembly operations. Please refresh the classroom and repeat the simulation." }, 400);
       }
       const elapsed = Math.max(0, Math.min(86400, Number(result.elapsed_seconds || 0)));
       const accuracy = Math.max(0, Math.min(100, Number(result.accuracy_percent || 0)));
