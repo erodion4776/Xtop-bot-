@@ -80,7 +80,7 @@ import {
   showServiceTypeSelector,
 } from "./modules/sales.ts";
 
-import { handleExams, handleExamPaymentRecovery, handleActiveExamRecovery } from "./modules/exams.ts";
+import { handleExams, handleExamPaymentRecovery, handleActiveExamRecovery, handleEla401CbtContinuation } from "./modules/exams.ts";
 
 import {
   handleTools,
@@ -1245,6 +1245,15 @@ export async function routeMessage(
     // another workflow has replaced the conversation module/context.
     if (await handleActiveExamRecovery(phone, text, contact, conversation)) {
       return;
+    }
+
+    // Restore the ELA401 post-simulation handoff if Sabi's welcome menu
+    // replaced the learning context before the student requested CBT payment.
+    if (
+      /(?:completed|finished).*(?:experiment\\s*17|plug\\s*assembly).*(?:final\\s*cbt|cbt\\s*payment|continue)/i.test(String(text || "")) ||
+      /(?:final\\s*cbt|cbt\\s*payment).*(?:experiment\\s*17|plug\\s*assembly)/i.test(String(text || ""))
+    ) {
+      if (await handleEla401CbtContinuation(phone, conversation.id, conversation)) return;
     }
 
     // CBT payment controls must survive a return from Paystack or a Sabi
