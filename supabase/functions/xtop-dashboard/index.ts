@@ -200,6 +200,132 @@ serve(async (req: Request) => {
       });
     }
 
+    // =====================================================
+    // UPDATE THE CONNECTED MERCHANT'S OFFICIAL WHATSAPP PHOTO
+    // The image is read only from this tenant's saved Sabi logo.
+    // =====================================================
+    if (action === "whatsapp-profile-picture" && req.method === "POST") {
+      if (merchant.role !== "OWNER" && merchant.role !== "ADMIN") {
+        return jsonResponse({ error: "Only the workspace owner or administrator can update the WhatsApp profile photo." }, 403);
+      }
+
+      const { data: tenant, error: tenantError } = await sb
+        .from("tenants")
+        .select("logo_url")
+        .eq("id", merchant.tenantId)
+        .maybeSingle();
+
+      if (tenantError || !tenant?.logo_url) {
+        return jsonResponse({ error: "Upload and save a business logo first." }, 400);
+      }
+
+      const expectedPrefix = `${SUPABASE_URL}/storage/v1/object/public/sabi-product-images/${merchant.tenantId}/business-logo/`;
+      if (!String(tenant.logo_url).startsWith(expectedPrefix)) {
+        return jsonResponse({ error: "The saved logo is not in this merchant's approved image folder." }, 400);
+      }
+
+      const { data: account, error: accountError } = await sb
+        .from("tenant_whatsapp_accounts")
+        .select("phone_number_id, encrypted_access_token, display_phone_number")
+        .eq("tenant_id", merchant.tenantId)
+        .eq("is_active", true)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (accountError || !account?.phone_number_id || !account?.encrypted_access_token) {
+        return jsonResponse({ error: "Connect an active WhatsApp number before updating its profile photo." }, 409);
+      }
+
+      const appId = Deno.env.get("META_APP_ID") || Deno.env.get("FACEBOOK_APP_ID") || Deno.env.get("WHATSAPP_APP_ID") || "";
+      if (!/^\d+$/.test(appId)) {
+        return jsonResponse({ error: "The Meta App ID is not configured for profile-photo uploads. Sabi support must configure META_APP_ID." }, 503);
+      }
+
+      let accessToken: string;
+      try {
+        accessToken = await decryptToken(account.encrypted_access_token);
+      } catch {
+        return jsonResponse({ error: "Sabi could not securely access this merchant's WhatsApp credentials." }, 500);
+      }
+
+      try {
+        const imageResponse = await fetch(tenant.logo_url);
+        if (!imageResponse.ok) {
+          return jsonResponse({ error: "Sabi could not retrieve the saved business logo." }, 502);
+        }
+        const contentType = (imageResponse.headers.get("content-type") || "").split(";")[0].toLowerCase();
+        if (!["image/jpeg", "image/png"].includes(contentType)) {
+          return jsonResponse({ error: "WhatsApp profile photos must be JPG or PNG. Please upload a JPG or PNG logo." }, 415);
+        }
+        const imageBytes = new Uint8Array(await imageResponse.arrayBuffer());
+        if (!imageBytes.length || imageBytes.length > 5 * 1024 * 1024) {
+          return jsonResponse({ error: "The WhatsApp profile photo must be no larger than 5 MB." }, 413);
+        }
+
+        const extension = contentType === "image/png" ? "png" : "jpg";
+        const fileName = `sabi-business-logo.${extension}`;
+        const sessionUrl = new URL(`https://graph.facebook.com/v21.0/${appId}/uploads`);
+        sessionUrl.searchParams.set("file_name", fileName);
+        sessionUrl.searchParams.set("file_length", String(imageBytes.length));
+        sessionUrl.searchParams.set("file_type", contentType);
+
+        const sessionResponse = await fetch(sessionUrl.toString(), {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        const sessionResult = await sessionResponse.json().catch(() => ({}));
+        if (!sessionResponse.ok || !sessionResult?.id) {
+          console.error("Meta profile photo upload session failed:", sessionResponse.status, sessionResult?.error?.message || "unknown");
+          return jsonResponse({ error: sessionResult?.error?.message || "Meta could not create a profile-photo upload session. Check WhatsApp management permissions." }, 502);
+        }
+
+        const uploadResponse = await fetch(`https://graph.facebook.com/v21.0/${sessionResult.id}`, {
+          method: "POST",
+          headers: {
+            Authorization: `OAuth ${accessToken}`,
+            "file_offset": "0",
+            "Content-Type": "application/octet-stream",
+          },
+          body: imageBytes,
+        });
+        const uploadResult = await uploadResponse.json().catch(() => ({}));
+        if (!uploadResponse.ok || !uploadResult?.h) {
+          console.error("Meta profile photo binary upload failed:", uploadResponse.status, uploadResult?.error?.message || "unknown");
+          return jsonResponse({ error: uploadResult?.error?.message || "Meta could not receive the profile photo." }, 502);
+        }
+
+        const profileResponse = await fetch(
+          `https://graph.facebook.com/v21.0/${encodeURIComponent(account.phone_number_id)}/whatsapp_business_profile`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              messaging_product: "whatsapp",
+              profile_picture_handle: uploadResult.h,
+            }),
+          },
+        );
+        const profileResult = await profileResponse.json().catch(() => ({}));
+        if (!profileResponse.ok || profileResult?.success !== true) {
+          console.error("Meta WhatsApp profile photo update failed:", profileResponse.status, profileResult?.error?.message || "unknown");
+          return jsonResponse({ error: profileResult?.error?.message || "Meta received the image but did not update the WhatsApp profile photo." }, 502);
+        }
+
+        return jsonResponse({
+          success: true,
+          phone: account.display_phone_number || "",
+          message: "Meta confirmed that the WhatsApp Business profile photo was updated.",
+        });
+      } catch (error) {
+        console.error("WhatsApp profile photo update failed:", error);
+        return jsonResponse({ error: "Could not complete the WhatsApp profile-photo update. Please try again." }, 502);
+      }
+    }
+
     // =================================================
     // MERCHANT WHATSAPP CONNECTION
     // Session ownership comes only from authenticated membership.
