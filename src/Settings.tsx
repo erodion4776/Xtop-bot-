@@ -58,6 +58,9 @@ export default function Settings({ tenantId }: { tenantId: string }) {
   const [businessLogoBusy, setBusinessLogoBusy] = useState(false);
   const [businessLogoError, setBusinessLogoError] = useState("");
   const [businessLogoSuccess, setBusinessLogoSuccess] = useState("");
+  const [whatsappPhotoBusy, setWhatsappPhotoBusy] = useState(false);
+  const [whatsappPhotoError, setWhatsappPhotoError] = useState("");
+  const [whatsappPhotoSuccess, setWhatsappPhotoSuccess] = useState("");
 
   const [banks, setBanks] = useState<Bank[]>([]);
   const [bankCode, setBankCode] = useState("");
@@ -156,14 +159,38 @@ export default function Settings({ tenantId }: { tenantId: string }) {
     setBusinessLogoUrl(data.logo_url || "");
   }
 
+  async function updateWhatsAppProfilePhoto() {
+    setWhatsappPhotoError("");
+    setWhatsappPhotoSuccess("");
+    if (!businessLogoUrl) {
+      setWhatsappPhotoError("Upload and save a JPG or PNG business logo first.");
+      return;
+    }
+    setWhatsappPhotoBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "xtop-dashboard?action=whatsapp-profile-picture",
+        { body: {} }
+      );
+      if (error || !data?.success) {
+        throw new Error(data?.error || error?.message || "Unable to update WhatsApp profile photo.");
+      }
+      setWhatsappPhotoSuccess(data.message || "WhatsApp profile photo updated successfully.");
+    } catch (err) {
+      setWhatsappPhotoError(err instanceof Error ? err.message : "Unable to update WhatsApp profile photo.");
+    } finally {
+      setWhatsappPhotoBusy(false);
+    }
+  }
+
   async function uploadBusinessLogo(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
     setBusinessLogoError("");
     setBusinessLogoSuccess("");
     if (!file) return;
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      setBusinessLogoError("Choose a JPG, PNG or WEBP image.");
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      setBusinessLogoError("Choose a JPG or PNG image. WhatsApp profile photos do not support WEBP.");
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
@@ -180,7 +207,8 @@ export default function Settings({ tenantId }: { tenantId: string }) {
       if (uploadError) throw uploadError;
       const { data } = supabase.storage.from("sabi-product-images").getPublicUrl(path);
       await saveBusinessLogoUrl(data.publicUrl);
-      setBusinessLogoSuccess("Business image saved. It will appear with new WhatsApp shop greetings.");
+      setBusinessLogoSuccess("Business image saved. Updating the official WhatsApp profile photo...");
+      await updateWhatsAppProfilePhoto();
     } catch (err) {
       setBusinessLogoError(err instanceof Error ? err.message : "Unable to upload business image.");
     } finally {
@@ -586,9 +614,15 @@ export default function Settings({ tenantId }: { tenantId: string }) {
           {businessLogoUrl && <img src={businessLogoUrl} alt="Business logo preview" style={{ width: 112, height: 112, objectFit: "contain", border: "1px solid #e2e8f0", borderRadius: 12, padding: 6, display: "block", marginBottom: 12, background: "#fff" }} />}
           {businessLogoError && <div role="alert" style={{ color: "#b91c1c", marginBottom: 10 }}>{businessLogoError}</div>}
           {businessLogoSuccess && <div role="status" style={{ color: "#047857", marginBottom: 10 }}>{businessLogoSuccess}</div>}
+          {whatsappPhotoError && <div role="alert" style={{ color: "#b91c1c", marginBottom: 10 }}>{whatsappPhotoError}</div>}
+          {whatsappPhotoSuccess && <div role="status" style={{ color: "#047857", marginBottom: 10 }}>{whatsappPhotoSuccess}</div>}
           <input type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadBusinessLogo} disabled={businessLogoBusy || businessNameLoading} style={{ ...fieldStyle, maxWidth: 420 }} />
           {businessLogoUrl && <button type="button" onClick={removeBusinessLogo} disabled={businessLogoBusy} style={{ marginTop: 10, marginRight: 10, padding: "10px 14px", border: "1px solid #dc2626", borderRadius: 9, color: "#b91c1c", background: "#fff" }}>Remove image</button>}
           {businessLogoBusy && <span style={{ marginLeft: 8, color: "#64748b" }}>Saving image...</span>}
+          {businessLogoUrl && <button type="button" onClick={updateWhatsAppProfilePhoto} disabled={businessLogoBusy || whatsappPhotoBusy} style={{ display: "block", marginTop: 12, padding: "10px 14px", border: 0, borderRadius: 9, background: "#0f766e", color: "#fff", fontWeight: 700 }}>
+            {whatsappPhotoBusy ? "Updating WhatsApp photo..." : "Update WhatsApp profile photo"}
+          </button>}
+          <small style={{ display: "block", color: "#64748b", marginTop: 8 }}>This updates the official photo on the connected WhatsApp number. JPG and PNG are supported; Meta may take a short time to display the change.</small>
         </div>
         <button type="submit" disabled={businessNameLoading || businessNameSaving} style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 14, padding: "11px 18px", border: 0, borderRadius: 9, background: "#0f766e", color: "#fff", fontWeight: 700, opacity: businessNameSaving ? 0.7 : 1 }}>
           {businessNameSaving ? <RefreshCw size={17} /> : <Save size={17} />}
