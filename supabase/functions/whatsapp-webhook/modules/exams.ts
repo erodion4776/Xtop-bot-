@@ -71,9 +71,13 @@ export async function startExamEntry(
     await sendTextMessage(phone, "⚠️ We could not confirm this course's academic level. Please contact the Learning Centre administrator before paying.");
     return;
   }
-  const courseLevel = String(course.level);
+  // ELA401 is the approved 400 Level Time Measurement course. Keep its
+  // displayed level and CBT fee consistent even if an older course row has
+  // an incorrect level value; all other courses continue using their DB level.
+  const isEla401 = courseCode.toUpperCase() === "ELA401";
+  const courseLevel = isEla401 ? "400 Level" : String(course.level);
   const levelDigits = courseLevel.match(/\d{3}/)?.[0];
-  const examFeeNaira = levelDigits === "400" ? 1000 : levelDigits === "300" ? 500 : 0;
+  const examFeeNaira = isEla401 ? 1000 : levelDigits === "400" ? 1000 : levelDigits === "300" ? 500 : 0;
   if (!examFeeNaira) {
     await sendTextMessage(phone, `❌ CBT payment is currently configured for 300 Level (₦500) and 400 Level (₦1,000). This course is recorded as *${courseLevel}*. Please contact the administrator.`);
     return;
