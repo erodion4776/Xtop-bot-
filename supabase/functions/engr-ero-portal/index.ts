@@ -308,6 +308,21 @@ Deno.serve(async (req: Request) => {
       const { error: saveError } = await sb.from("engr_ero_portal_sessions")
         .update({ payload_json: payload }).eq("id", session.id);
       if (saveError) throw saveError;
+      if (session.conversation_id) {
+        const { data: conversation, error: conversationError } = await sb.from("conversations")
+          .select("context_json").eq("id", session.conversation_id).maybeSingle();
+        if (conversationError) throw conversationError;
+        await sb.from("conversations").update({
+          current_module: "LEARNING",
+          current_state: "COURSE_FINAL_READY",
+          context_json: {
+            ...(conversation?.context_json || {}),
+            step: "COURSE_FINAL_READY",
+            learningUnlocked: true,
+            mtmSimulationCompleted: true
+          }
+        }).eq("id", session.conversation_id);
+      }
       return response({ success: true, saved_at: payload.mtm_simulation_result.saved_at });
     }
 
@@ -315,6 +330,47 @@ Deno.serve(async (req: Request) => {
       const { data: enrollment, error: enrollmentError } = await sb.from("student_courses").select("id,progress,status")
         .eq("student_id", session.student_id).eq("course_id", session.course_id).eq("status", "ACTIVE").maybeSingle();
       if (enrollmentError || !enrollment) return response({ error: "Your course access is not active. Contact the Learning Centre." }, 403);
+      if (session.payload_json?.course_mode === "ELA401_MTM_CLASSROOM") {
+        const { data: course, error: courseError } = await sb.from("courses")
+          .select("course_code,course_name").eq("id", session.course_id).maybeSingle();
+        if (courseError) throw courseError;
+        if (String(course?.course_code || "").toUpperCase() !== "ELA401") {
+          return response({ error: "This classroom link is not valid for ELA401." }, 403);
+        }
+        return response({
+          course, order: 1, total: 1,
+          lesson: {
+            id: "ELA401-EXP17",
+            title: "Determination of Normal Time Using the Method-Time Measurement (MTM) Technique",
+            duration: "Experiment 17",
+            objectives: "Determine normal time for the assembly of a three-point electric plug by applying the MTM technique."
+          },
+          sections: [
+            {
+              title: "Aim and apparatus",
+              content: "Aim: To determine normal time for assembling a three-point electric plug using the Method-Time Measurement (MTM) technique.\n\nApparatus: Three-point electric plug, screwdriver and the official MTM tables."
+            },
+            {
+              title: "Experimental arrangement",
+              content: "Place the plug and screwdriver on the desk before the operation begins. The student's hands start resting on the desk. The operation ends when both hands return to the resting position. Use the supplied laboratory manual and official MTM tables for the motion symbols and time values."
+            },
+            {
+              title: "Procedure",
+              content: "1. Observe the complete plug-assembly task.\n2. Break the task into individual motions and record the left-hand and right-hand activities.\n3. Identify the applicable MTM motion elements and symbols using the official MTM tables.\n4. Read the time value for each motion from those tables.\n5. Record the limiting time and add the applicable values to obtain the total TMU.\n6. Convert the total TMU to normal time using the stated conversion.\n7. Compare the result with Experiment Sixteen and discuss difficulties encountered when applying MTM."
+            },
+            {
+              title: "Results to record",
+              content: "Use the result-table headings in your laboratory manual: Left-hand description; LH symbol; Limiting time (TMU); RH symbol; Right-hand description. Record each observed motion in its correct row. Do not guess missing motion symbols or TMU values; obtain them from the official MTM tables supplied for the experiment."
+            },
+            {
+              title: "Calculation and conclusion",
+              content: "Conversion: 1 TMU = 0.0006 minute = 0.036 second.\n\nTime in minutes = Total TMU × 0.0006.\nTime in seconds = Total TMU × 0.036.\n\nAdd the applicable MTM limiting-time values to obtain total TMU before converting. In your discussion, state the difficulties encountered and compare your findings with Experiment Sixteen. Conclude from the values you actually recorded."
+            }
+          ],
+          media: [],
+          classroom_mode: "ELA401_MTM_CLASSROOM"
+        });
+      }
       const lessons = await loadLessons(session.course_id);
       const completed = Array.isArray(enrollment.progress?.completed_lessons) ? enrollment.progress.completed_lessons : [];
       const highestCompletedOrder = lessons.reduce((highest, item, index) => completed.includes(item.id) ? Math.max(highest, index + 1) : highest, 0);
@@ -347,6 +403,28 @@ Deno.serve(async (req: Request) => {
       const { data: enrollment } = await sb.from("student_courses").select("id,progress,status")
         .eq("student_id", session.student_id).eq("course_id", session.course_id).eq("status", "ACTIVE").maybeSingle();
       if (!enrollment) return response({ error: "Your course access is not active." }, 403);
+      if (session.payload_json?.course_mode === "ELA401_MTM_CLASSROOM") {
+        const { data: course, error: courseError } = await sb.from("courses")
+          .select("course_code,course_name").eq("id", session.course_id).maybeSingle();
+        if (courseError) throw courseError;
+        if (String(course?.course_code || "").toUpperCase() !== "ELA401") {
+          return response({ error: "This classroom link is not valid for ELA401." }, 403);
+        }
+        const completedAt = new Date().toISOString();
+        const progress = enrollment.progress && typeof enrollment.progress === "object" ? enrollment.progress : {};
+        const { error: progressError } = await sb.from("student_courses")
+          .update({ progress: { ...progress, ela401_lecture_completed_at: completedAt } })
+          .eq("id", enrollment.id);
+        if (progressError) throw progressError;
+        const payload = {
+          ...(session.payload_json && typeof session.payload_json === "object" ? session.payload_json : {}),
+          lecture_completed_at: completedAt
+        };
+        const { error: sessionError } = await sb.from("engr_ero_portal_sessions")
+          .update({ completed_at: completedAt, payload_json: payload }).eq("id", session.id);
+        if (sessionError) throw sessionError;
+        return response({ course_complete: true, total: 1 });
+      }
       const lessons = await loadLessons(session.course_id);
       const order = Number(session.lesson_order || 1);
       const completed = Array.isArray(enrollment.progress?.completed_lessons) ? enrollment.progress.completed_lessons : [];
