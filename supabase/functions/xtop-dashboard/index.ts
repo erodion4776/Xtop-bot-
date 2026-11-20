@@ -142,7 +142,7 @@ serve(async (req: Request) => {
     if (action === "merchant-profile" && req.method === "GET") {
       const { data: tenant, error } = await sb
         .from("tenants")
-        .select("business_name,name")
+        .select("business_name,name,logo_url")
         .eq("id", merchant.tenantId)
         .maybeSingle();
 
@@ -152,6 +152,7 @@ serve(async (req: Request) => {
 
       return jsonResponse({
         business_name: tenant.business_name || tenant.name || "",
+        logo_url: tenant.logo_url || "",
       });
     }
 
@@ -161,23 +162,42 @@ serve(async (req: Request) => {
       }
 
       const body = await readJson(req);
-      const businessName = String(body?.business_name || "").trim();
-      if (!businessName || businessName.length > 80) {
-        return jsonResponse({ error: "Enter a business name between 1 and 80 characters." }, 400);
+      const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (Object.prototype.hasOwnProperty.call(body || {}, "business_name")) {
+        const businessName = String(body?.business_name || "").trim();
+        if (!businessName || businessName.length > 80) {
+          return jsonResponse({ error: "Enter a business name between 1 and 80 characters." }, 400);
+        }
+        updates.business_name = businessName;
+      }
+      if (Object.prototype.hasOwnProperty.call(body || {}, "logo_url")) {
+        const logoUrl = body.logo_url;
+        if (logoUrl !== null && (typeof logoUrl !== "string" ||
+          !logoUrl.startsWith(`${SUPABASE_URL}/storage/v1/object/public/sabi-product-images/${merchant.tenantId}/business-logo/`))) {
+          return jsonResponse({ error: "Business image must be uploaded to this merchant's Sabi image folder." }, 400);
+        }
+        updates.logo_url = logoUrl;
+      }
+      if (Object.keys(updates).length === 1) {
+        return jsonResponse({ error: "No business profile changes were supplied." }, 400);
       }
 
       const { data: updated, error } = await sb
         .from("tenants")
-        .update({ business_name: businessName, updated_at: new Date().toISOString() })
+        .update(updates)
         .eq("id", merchant.tenantId)
-        .select("business_name")
+        .select("business_name,logo_url")
         .maybeSingle();
 
       if (error || !updated) {
-        return jsonResponse({ error: "Could not save the business name. Please try again." }, 500);
+        return jsonResponse({ error: "Could not save the business profile. Please try again." }, 500);
       }
 
-      return jsonResponse({ success: true, business_name: updated.business_name });
+      return jsonResponse({
+        success: true,
+        business_name: updated.business_name,
+        logo_url: updated.logo_url || "",
+      });
     }
 
     // =================================================
