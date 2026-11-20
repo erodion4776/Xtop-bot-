@@ -774,28 +774,34 @@ export async function routeMessage(
     // Sabi merchant/support gateway. Route them before global Sabi pause,
     // agent-takeover, and merchant-store guards so lecture navigation cannot
     // be swallowed by an unrelated Sabi workflow.
+    const savedLearningContextForNavigation = (
+      conversation.context_json || {}
+    ) as Record<string, any>;
+    const isExplicitLearningMenuText =
+      /^(course menu|learning centre menu|learning center menu|my results|final cbt exam)$/i.test(String(text || "").trim());
+
     if (
       tenantId === SYSTEM_TENANT_ID &&
       (
         interactiveId.startsWith("lsn_") ||
         interactiveId.startsWith("cm_") ||
-        conversation.current_module === "LEARNING"
+        conversation.current_module === "LEARNING" ||
+        (isExplicitLearningMenuText && !!savedLearningContextForNavigation.courseId)
       )
     ) {
       // Course-menu selections must be handled in COURSE_MENU state. Older
       // gateway states (for example SABI_GATEWAY) otherwise cause the menu to
       // be shown again instead of opening the selected lecture.
-      const savedLearningContext = (
-        conversation.context_json || {}
-      ) as Record<string, any>;
-      const learningState = interactiveId.startsWith("cm_")
-        ? "COURSE_MENU"
-        : (
-            conversation.current_state === "SABI_GATEWAY" &&
-            savedLearningContext.courseId
-              ? "COURSE_MENU"
-              : (conversation.current_state || "ENTRY")
-          );
+      const savedLearningContext = savedLearningContextForNavigation;
+      const learningState =
+        interactiveId.startsWith("cm_") || isExplicitLearningMenuText
+          ? "COURSE_MENU"
+          : (
+              conversation.current_state === "SABI_GATEWAY" &&
+              savedLearningContext.courseId
+                ? "COURSE_MENU"
+                : (conversation.current_state || "ENTRY")
+            );
       await handleLearning(
         phone,
         interactiveId || text,
