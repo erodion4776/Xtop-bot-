@@ -284,6 +284,30 @@ Deno.serve(async (req: Request) => {
       return response({ error: "Your access to this course has been blocked by the lecturer." }, 403);
     }
 
+    if (session.purpose === "LESSON" && action === "save_mtm_simulation") {
+      const { data: course, error: courseError } = await sb.from("courses")
+        .select("course_code").eq("id", session.course_id).maybeSingle();
+      if (courseError) throw courseError;
+      if (String(course?.course_code || "").toUpperCase() !== "ELA401") {
+        return response({ error: "This practical simulation is only available for the 400 Level course." }, 403);
+      }
+      const result = body.result && typeof body.result === "object" ? body.result : {};
+      const steps = Array.isArray(result.steps) ? result.steps.slice(0, 20) : [];
+      if (steps.length < 8 || steps.some((step: any) => typeof step.label !== "string")) {
+        return response({ error: "Complete all plug assembly stages before submitting your result." }, 400);
+      }
+      const elapsed = Math.max(0, Math.min(86400, Number(result.elapsed_seconds || 0)));
+      const accuracy = Math.max(0, Math.min(100, Number(result.accuracy_percent || 0)));
+      const { data: saved, error: saveError } = await sb.from("engr_ero_mtm_simulation_results").upsert({
+        student_id: session.student_id, course_id: session.course_id,
+        portal_session_id: session.id, experiment_code: "ELA401-EXP17",
+        result_json: result, elapsed_seconds: elapsed,
+        accuracy_percent: accuracy, completed_at: new Date().toISOString(),
+      }, { onConflict: "portal_session_id" }).select("id,elapsed_seconds,accuracy_percent,completed_at").single();
+      if (saveError) throw saveError;
+      return response({ success: true, saved });
+    }
+
     if (session.purpose === "LESSON" && action === "lesson") {
       const { data: enrollment, error: enrollmentError } = await sb.from("student_courses").select("id,progress,status")
         .eq("student_id", session.student_id).eq("course_id", session.course_id).eq("status", "ACTIVE").maybeSingle();
