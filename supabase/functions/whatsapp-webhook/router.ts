@@ -164,6 +164,7 @@ interface ResolvedBotAccount {
   credentials?: WhatsAppCredentials;
   isSystem: boolean;
   businessName: string;
+  logoUrl: string | null;
   welcomeGreeting: string | null;
   merchantPaused: boolean;
 }
@@ -196,6 +197,7 @@ async function resolveBotAccount(
       tenantId: SYSTEM_TENANT_ID,
       isSystem: true,
       businessName: "XTOP Retail Technologies",
+      logoUrl: null,
       welcomeGreeting: null,
       merchantPaused: false,
     };
@@ -225,7 +227,7 @@ async function resolveBotAccount(
   const { data: tenant, error: tenantError } = await supabase
     .from("tenants")
     .select(
-      "id, name, business_name, welcome_greeting, is_active, metadata",
+      "id, name, business_name, logo_url, welcome_greeting, is_active, metadata",
     )
     .eq("id", account.tenant_id)
     .eq("is_active", true)
@@ -275,6 +277,8 @@ async function resolveBotAccount(
       tenant.business_name ||
       tenant.name ||
       "Our Store",
+
+    logoUrl: tenant.logo_url || null,
 
     welcomeGreeting:
       tenant.welcome_greeting || null,
@@ -534,7 +538,8 @@ async function handleTenantStoreMessage(
 
   if (["hi", "hello", "hey", "menu", "start", "shop", "catalogue", "catalog", "products", ""].includes(message)) {
     if (!products.length) {
-      await send(`${greeting}\n\nOur product catalogue is being updated. Please contact the business for assistance.`);
+      if (account.logoUrl) await send(greeting, account.logoUrl);
+      await send("Our product catalogue is being updated. Please contact the business for assistance.");
       await sendSabiDiscovery();
       return;
     }
@@ -543,7 +548,8 @@ async function handleTenantStoreMessage(
       `${i + 1}. *${p.name}* — ${p.price_text || money(productPrice(p))}${productStock(p) === null ? "" : productStock(p) <= 0 ? " (Out of stock)" : ""}`
     );
     await save("IDLE", { store_page: 0 });
-    await send(`${greeting}\n\n🛍️ *Welcome to ${account.businessName}*\nBrowse our real products below.\n\n${list.join("\n")}\n\nReply with a product name for details. To add one, reply *ADD product name*.\n\nCategories: ${categories.join(", ")}\n\nReply *cart* to view your basket or *more* to see more products.`);
+    if (account.logoUrl) await send(greeting, account.logoUrl);
+    await send(`🛍️ *Welcome to ${account.businessName}*\nBrowse our real products below.\n\n${list.join("\n")}\n\nReply with a product name for details. To add one, reply *ADD product name*.\n\nCategories: ${categories.join(", ")}\n\nReply *cart* to view your basket or *more* to see more products.`);
     await sendSabiDiscovery();
     return;
   }
