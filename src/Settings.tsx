@@ -68,6 +68,9 @@ export default function Settings({ tenantId }: { tenantId: string }) {
   const [whatsappPhone, setWhatsappPhone] = useState("");
   const [whatsappVerifiedName, setWhatsappVerifiedName] = useState("");
   const [whatsappError, setWhatsappError] = useState("");
+  const [whatsappPin, setWhatsappPin] = useState("");
+  const [whatsappRegistering, setWhatsappRegistering] = useState(false);
+  const [whatsappRegistrationSuccess, setWhatsappRegistrationSuccess] = useState("");
 
   const card: React.CSSProperties = {
     background: "#fff",
@@ -147,6 +150,31 @@ export default function Settings({ tenantId }: { tenantId: string }) {
       setWhatsappVerifiedName(data?.verified_name || "");
     }
     setWhatsappLoading(false);
+  }
+
+  async function registerWhatsAppNumber() {
+    setWhatsappError("");
+    setWhatsappRegistrationSuccess("");
+    if (!/^\d{6}$/.test(whatsappPin)) {
+      setWhatsappError("Enter a six-digit PIN.");
+      return;
+    }
+    setWhatsappRegistering(true);
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "xtop-dashboard?action=whatsapp-register",
+        { body: { pin: whatsappPin } }
+      );
+      if (error || !data?.success) {
+        throw new Error(data?.error || error?.message || "Meta could not register this number.");
+      }
+      setWhatsappRegistrationSuccess(data.message || "WhatsApp number registered successfully.");
+      setWhatsappPin("");
+    } catch (err) {
+      setWhatsappError(err instanceof Error ? err.message : "WhatsApp registration failed.");
+    } finally {
+      setWhatsappRegistering(false);
+    }
   }
 
   async function connectWhatsApp() {
@@ -592,8 +620,34 @@ export default function Settings({ tenantId }: { tenantId: string }) {
           </div>}
         </div>
         {whatsappError && <div role="alert" style={{ padding: 12, marginBottom: 14, borderRadius: 9, background: "#fef2f2", color: "#b91c1c" }}>{whatsappError}</div>}
+        {whatsappRegistrationSuccess && <div role="status" style={{ padding: 12, marginBottom: 14, borderRadius: 9, background: "#ecfdf5", color: "#047857" }}>{whatsappRegistrationSuccess}</div>}
         {whatsappConnected ? (
-          <p style={{ color: "#047857" }}>Your business number is connected to this merchant workspace. Contact support if you need to change it.</p>
+          <div>
+            <p style={{ color: "#047857" }}>Your business number is connected to this merchant workspace. It will remain connected while you complete this activation step.</p>
+            <p style={{ color: "#64748b", lineHeight: 1.6 }}>Choose a six-digit two-step verification PIN and keep it somewhere safe. Meta uses it to register this existing number for Cloud API messaging. Do not share it with anyone.</p>
+            <label htmlFor="whatsapp-registration-pin"><strong>Six-digit WhatsApp PIN</strong></label>
+            <input
+              id="whatsapp-registration-pin"
+              type="password"
+              inputMode="numeric"
+              autoComplete="new-password"
+              maxLength={6}
+              pattern="[0-9]{6}"
+              value={whatsappPin}
+              onChange={e => setWhatsappPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="Enter 6 digits"
+              style={fieldStyle}
+              disabled={whatsappRegistering}
+            />
+            <button
+              type="button"
+              onClick={registerWhatsAppNumber}
+              disabled={whatsappRegistering || whatsappPin.length !== 6}
+              style={{ display: "inline-flex", alignItems: "center", gap: 9, marginTop: 14, padding: "12px 20px", border: 0, borderRadius: 9, background: "#0f766e", color: "#fff", fontWeight: 700, cursor: whatsappRegistering ? "wait" : "pointer", opacity: whatsappRegistering || whatsappPin.length !== 6 ? 0.65 : 1 }}
+            >
+              {whatsappRegistering ? "Registering with Meta..." : "Register existing WhatsApp number"}
+            </button>
+          </div>
         ) : (
           <>
             <p style={{ color: "#64748b", lineHeight: 1.6 }}>Use a dedicated business number that you can verify by SMS or phone call. Do not connect your personal number unless you deliberately intend to dedicate it to business automation.</p>
