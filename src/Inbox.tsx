@@ -22,6 +22,7 @@ type Contact = {
   agent_mode?: boolean;
   service_status?: ServiceStatus;
   last_message?: Message | null;
+  unread?: boolean;
 };
 
 type CustomerOrder = {
@@ -39,6 +40,7 @@ type CustomerOrder = {
 const filters = [
   { id: "ALL", label: "All chats" },
   { id: "NEEDS_REPLY", label: "Needs reply" },
+  { id: "UNREAD", label: "Unread" },
   { id: "HUMAN", label: "Human takeover" },
   { id: "RESOLVED", label: "Resolved" },
 ] as const;
@@ -77,6 +79,7 @@ export default function Inbox() {
   const [sending, setSending] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [error, setError] = useState("");
+  const [responseMetrics, setResponseMetrics] = useState<{ average_response_minutes: number | null; responses_measured: number } | null>(null);
 
   async function loadInbox(keepSelection = true, silent = false) {
     if (!silent) setLoading(true);
@@ -92,6 +95,7 @@ export default function Inbox() {
     }
     const rows = Array.isArray(data?.data) ? data.data as Contact[] : [];
     setContacts(rows);
+    setResponseMetrics(data?.response_metrics || null);
     if (keepSelection) {
       setSelected((current) => {
         if (!current) return current;
@@ -146,6 +150,7 @@ export default function Inbox() {
       const status = contact.service_status || "OPEN";
       const matchesFilter = activeFilter === "ALL" ||
         (activeFilter === "NEEDS_REPLY" && status === "NEEDS_REPLY") ||
+        (activeFilter === "UNREAD" && contact.unread === true) ||
         (activeFilter === "HUMAN" && contact.agent_mode === true) ||
         (activeFilter === "RESOLVED" && status === "RESOLVED");
       const matchesSearch = !term ||
@@ -157,7 +162,13 @@ export default function Inbox() {
   }, [contacts, search, activeFilter]);
 
   const needsReplyCount = contacts.filter((item) => item.service_status === "NEEDS_REPLY").length;
+  const unreadCount = contacts.filter((item) => item.unread === true).length;
   const humanCount = contacts.filter((item) => item.agent_mode === true).length;
+  const averageResponseLabel = responseMetrics?.average_response_minutes == null
+    ? "—"
+    : responseMetrics.average_response_minutes < 60
+      ? `${responseMetrics.average_response_minutes} min`
+      : `${(responseMetrics.average_response_minutes / 60).toFixed(1)} hr`;
 
   async function sendReply() {
     if (!selected || !draft.trim() || sending) return;
@@ -245,6 +256,7 @@ export default function Inbox() {
         <div className="cs-stat"><span>Total conversations</span><strong>{contacts.length}</strong></div>
         <div className="cs-stat"><span>Waiting for reply</span><strong>{needsReplyCount}</strong></div>
         <div className="cs-stat"><span>Human takeover</span><strong>{humanCount}</strong></div>
+        <div className="cs-stat"><span>Avg. first response</span><strong>{averageResponseLabel}</strong><small>{responseMetrics?.responses_measured || 0} replies measured</small></div>
       </div>
 
       {error && <div className="inline-error" role="alert">{error}</div>}
@@ -263,6 +275,7 @@ export default function Inbox() {
               <button key={filter.id} className={activeFilter === filter.id ? "active" : ""} onClick={() => setActiveFilter(filter.id)}>
                 {filter.label}
                 {filter.id === "NEEDS_REPLY" && needsReplyCount > 0 && <span>{needsReplyCount}</span>}
+                {filter.id === "UNREAD" && unreadCount > 0 && <span>{unreadCount}</span>}
               </button>
             ))}
           </div>
@@ -276,6 +289,7 @@ export default function Inbox() {
                     <strong>{contact.name || contact.phone || "WhatsApp customer"}</strong>
                     <small>{messageText(contact.last_message)}</small>
                     <span className={`cs-status cs-status-${(contact.service_status || "OPEN").toLowerCase()}`}>{statusLabel(contact.service_status)}</span>
+                    {contact.unread && <span className="cs-status cs-status-needs_reply">Unread</span>}
                   </span>
                   {contact.agent_mode && <span className="takeover-dot" title="Human takeover active"/>}
                 </button>
