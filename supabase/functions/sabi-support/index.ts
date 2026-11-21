@@ -111,7 +111,11 @@ Deno.serve(async (req: Request) => {
 
     let verifiedGuide = "";
     if (asksToAddProduct) {
-      verifiedGuide = "To add a product:\n1. Open *Products* in your merchant dashboard.\n2. In *Product catalogue*, tap *Add product*. If your catalogue is empty, tap *Add your first product*.\n3. Enter the product name, selling price and stock quantity. Description and category are optional. You can also add a JPG, PNG or WebP image (up to 5 MB).\n4. Set the status to *Active* if customers should be able to order it, then tap *Create product*.";
+      verifiedGuide = `To add a product:
+1. Open Products in your merchant dashboard.
+2. In Product catalogue, tap Add product. If your catalogue is empty, tap Add your first product.
+3. Enter the product name, selling price and stock quantity. Description and category are optional. You can also add a JPG, PNG or WebP image (up to 5 MB).
+4. Set the status to Active if customers should be able to order it, then tap Create product.`;
     } else if (asksToUpdateStock) {
       verifiedGuide = `To update a product's stock quantity:
 1. Open Products in your merchant dashboard.
