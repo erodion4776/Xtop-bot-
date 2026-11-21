@@ -469,7 +469,7 @@ serve(async (req: Request) => {
       const { data: contacts, error: contactsError } = await sb
         .from("contacts")
         .select(
-          "id, phone, name, agent_mode, created_at, updated_at",
+          "id, phone, name, agent_mode, metadata, created_at, updated_at",
         )
         .eq("tenant_id", merchant.tenantId)
         .order("updated_at", { ascending: false })
@@ -516,10 +516,29 @@ serve(async (req: Request) => {
         }
       }
 
-      const result = contacts.map((contact) => ({
-        ...contact,
-        last_message: latestMessages.get(contact.id) || null,
-      }));
+      const result = contacts.map((contact) => {
+        const lastMessage = latestMessages.get(contact.id) || null;
+        const metadata = contact.metadata && typeof contact.metadata === "object"
+          ? contact.metadata
+          : {};
+        const resolvedAt = metadata.customer_service_resolved_at
+          ? new Date(metadata.customer_service_resolved_at).getTime()
+          : 0;
+        const lastMessageAt = lastMessage?.created_at
+          ? new Date(lastMessage.created_at).getTime()
+          : 0;
+        const isResolved = metadata.customer_service_status === "RESOLVED" &&
+          resolvedAt > 0 &&
+          (!lastMessageAt || lastMessageAt <= resolvedAt);
+        const serviceStatus = isResolved
+          ? "RESOLVED"
+          : lastMessage?.direction === "INBOUND"
+            ? "NEEDS_REPLY"
+            : contact.agent_mode === true
+              ? "HUMAN"
+              : "OPEN";
+        return { ...contact, last_message: lastMessage, service_status: serviceStatus };
+      });
 
       // Sort by actual message activity; contacts.updated_at is not changed
       // by inbound message inserts in the webhook storage helper.
@@ -577,7 +596,77 @@ serve(async (req: Request) => {
         return jsonResponse({ error: error.message }, 500);
       }
 
-      return jsonResponse({ data: data || [] });
+      const { data: customer, error: customerError } = await sb
+        .from("contacts")
+        .select("id, phone, name, metadata, agent_mode")
+        .eq("id", contactId)
+        .eq("tenant_id", merchant.tenantId)
+        .maybeSingle();
+
+      if (customerError || !customer) {
+        return jsonResponse({ error: "Customer not found" }, 404);
+      }
+
+      const { data: orders, error: ordersError } = await sb
+        .from("tenant_orders")
+        .select("id, order_number, status, payment_status, subtotal, delivery_fee, total, created_at, delivery_address")
+        .eq("tenant_id", merchant.tenantId)
+        .eq("contact_id", contactId)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (ordersError) {
+        console.error("Customer service order history lookup failed:", ordersError.message);
+      }
+
+      return jsonResponse({ data: data || [], customer, orders: orders || [] });
+    }
+
+    // =================================================
+    // UPDATE CUSTOMER SERVICE STATUS
+    // =================================================
+
+    if (action === "customer-service-status" && req.method === "POST") {
+      const body = await readJson(req);
+      const contactId = String(body?.contact_id || "").trim();
+      const status = String(body?.status || "").trim().toUpperCase();
+
+      if (!isUuid(contactId) || !["OPEN", "RESOLVED"].includes(status)) {
+        return jsonResponse({ error: "A valid customer and status are required." }, 400);
+      }
+
+      const { data: contact, error: readError } = await sb
+        .from("contacts")
+        .select("id, metadata")
+        .eq("id", contactId)
+        .eq("tenant_id", merchant.tenantId)
+        .maybeSingle();
+
+      if (readError || !contact) {
+        return jsonResponse({ error: "Customer not found." }, 404);
+      }
+
+      const metadata = contact.metadata && typeof contact.metadata === "object"
+        ? { ...contact.metadata }
+        : {};
+      metadata.customer_service_status = status;
+      if (status === "RESOLVED") {
+        metadata.customer_service_resolved_at = new Date().toISOString();
+      } else {
+        delete metadata.customer_service_resolved_at;
+      }
+
+      const { error: updateError } = await sb
+        .from("contacts")
+        .update({ metadata, updated_at: new Date().toISOString() })
+        .eq("id", contactId)
+        .eq("tenant_id", merchant.tenantId);
+
+      if (updateError) {
+        return jsonResponse({ error: "Could not update this conversation. Please try again." }, 500);
+      }
+
+      return jsonResponse({ success: true, status });
     }
 
     // =================================================
