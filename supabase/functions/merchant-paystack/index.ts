@@ -486,6 +486,121 @@ async function refreshSubaccountStatus(
   });
 }
 
+
+async function syncSubaccountSettlements(
+  req: Request,
+  body: Record<string, unknown>,
+) {
+  const tenantId = String(body.tenant_id || "").trim();
+  if (!tenantId) throw new Error("TENANT_REQUIRED");
+  await authenticateOwner(req, tenantId);
+
+  const { data: tenant, error: tenantError } = await db
+    .from("tenants")
+    .select("paystack_subaccount_code,paystack_subaccount_status")
+    .eq("id", tenantId)
+    .maybeSingle();
+
+  if (tenantError || !tenant) throw new Error("TENANT_NOT_FOUND");
+  if (!tenant.paystack_subaccount_code) {
+    return respond({ success: true, configured: false, updated: 0 });
+  }
+
+  const { data: charges, error: chargesError } = await db
+    .from("sabi_order_paystack_charges")
+    .select("id,paystack_transaction_id,payment_reference,settlement_status,metadata,created_at")
+    .eq("tenant_id", tenantId)
+    .neq("settlement_status", "REFUNDED")
+    .limit(100);
+
+  if (chargesError) {
+    console.error("Settlement records lookup failed:", chargesError);
+    throw new Error("SETTLEMENT_LOOKUP_FAILED");
+  }
+  if (!charges || charges.length === 0) {
+    return respond({ success: true, configured: true, updated: 0, matched: 0 });
+  }
+
+  const earliest = charges.reduce((value: string, row: any) =>
+    !value || row.created_at < value ? row.created_at : value, "");
+  const params = new URLSearchParams({
+    subaccount: String(tenant.paystack_subaccount_code),
+    perPage: "100",
+    page: "1",
+  });
+  if (earliest) params.set("from", new Date(earliest).toISOString());
+
+  const settlements = await paystackRequest(`/settlement?${params.toString()}`);
+  let updated = 0;
+  let matched = 0;
+
+  for (const settlement of (Array.isArray(settlements) ? settlements : [])) {
+    const rawStatus = String(settlement.status || "").toLowerCase();
+    const nextStatus =
+      rawStatus === "success" ? "SETTLED" :
+      rawStatus === "pending" || rawStatus === "processing" ? "PENDING" :
+      rawStatus === "failed" ? "FAILED" : "";
+    if (!nextStatus || !settlement.id) continue;
+
+    const txParams = new URLSearchParams({ perPage: "100", page: "1" });
+    const transactions = await paystackRequest(
+      `/settlement/${encodeURIComponent(String(settlement.id))}/transactions?${txParams.toString()}`,
+    );
+
+    for (const transaction of (Array.isArray(transactions) ? transactions : [])) {
+      const charge = charges.find((row: any) =>
+        String(row.paystack_transaction_id) === String(transaction.id) ||
+        String(row.payment_reference) === String(transaction.reference)
+      );
+      if (!charge) continue;
+      matched++;
+
+      const metadata = {
+        ...(charge.metadata && typeof charge.metadata === "object" ? charge.metadata : {}),
+        paystack_settlement_id: String(settlement.id),
+        paystack_settlement_status: rawStatus,
+        paystack_settlement_date: settlement.settlement_date || null,
+        paystack_settlement_updated_at: new Date().toISOString(),
+      };
+
+      if (
+        charge.settlement_status === nextStatus &&
+        String(charge.metadata?.paystack_settlement_id || "") === String(settlement.id)
+      ) continue;
+
+      const { error: updateError } = await db
+        .from("sabi_order_paystack_charges")
+        .update({
+          settlement_status: nextStatus,
+          metadata,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", charge.id)
+        .eq("tenant_id", tenantId);
+
+      if (updateError) {
+        console.error("Settlement status update failed:", updateError);
+        throw new Error("SETTLEMENT_UPDATE_FAILED");
+      }
+
+      charge.settlement_status = nextStatus;
+      charge.metadata = metadata;
+      updated++;
+    }
+  }
+
+  return respond({
+    success: true,
+    configured: true,
+    updated,
+    matched,
+    checked: charges.length,
+    message: matched
+      ? "Paystack settlement records were checked."
+      : "Paystack has not yet reported a matching subaccount settlement. The payment remains awaiting settlement confirmation.",
+  });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -527,6 +642,10 @@ Deno.serve(async (req: Request) => {
       return await refreshSubaccountStatus(req, body);
     }
 
+    if (action === "sync_settlements") {
+      return await syncSubaccountSettlements(req, body);
+    }
+
     return fail("Unknown action.", 404);
   } catch (error) {
     const message =
@@ -555,6 +674,10 @@ Deno.serve(async (req: Request) => {
         "Paystack created the subaccount, but saving it failed. Contact support before retrying.",
       STATUS_UPDATE_FAILED:
         "Could not update the Paystack verification status.",
+      SETTLEMENT_LOOKUP_FAILED:
+        "Could not load merchant settlement records.",
+      SETTLEMENT_UPDATE_FAILED:
+        "Paystack returned settlement information, but Sabi could not save the status.",
       PAYSTACK_REQUEST_FAILED:
         "Paystack could not complete the request. Please retry later.",
       CREATION_REVIEW:
@@ -572,6 +695,7 @@ Deno.serve(async (req: Request) => {
       message === "PAYSTACK_REQUEST_FAILED" ? 502 :
       message === "SUBACCOUNT_SAVE_FAILED" ? 503 :
       message === "SUBACCOUNT_RESERVATION_FAILED" ? 503 :
+      message === "SETTLEMENT_LOOKUP_FAILED" || message === "SETTLEMENT_UPDATE_FAILED" ? 503 :
       isBlockedStatus ? 409 :
       400;
 
