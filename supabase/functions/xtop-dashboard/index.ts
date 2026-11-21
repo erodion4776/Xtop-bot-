@@ -527,6 +527,10 @@ serve(async (req: Request) => {
         const lastMessageAt = lastMessage?.created_at
           ? new Date(lastMessage.created_at).getTime()
           : 0;
+        const readAt = metadata.customer_service_read_at
+          ? new Date(metadata.customer_service_read_at).getTime()
+          : 0;
+        const unread = lastMessage?.direction === "INBOUND" && lastMessageAt > readAt;
         const isResolved = metadata.customer_service_status === "RESOLVED" &&
           resolvedAt > 0 &&
           (!lastMessageAt || lastMessageAt <= resolvedAt);
@@ -537,8 +541,36 @@ serve(async (req: Request) => {
             : contact.agent_mode === true
               ? "HUMAN"
               : "OPEN";
-        return { ...contact, last_message: lastMessage, service_status: serviceStatus };
+        return { ...contact, last_message: lastMessage, service_status: serviceStatus, unread };
       });
+
+      // Estimate recent first-response time from inbound messages followed by
+      // the next outbound reply, using the latest message sample loaded above.
+      const messagesByContact = new Map<string, any[]>();
+      for (const message of messages || []) {
+        if (!message.contact_id) continue;
+        const list = messagesByContact.get(message.contact_id) || [];
+        list.push(message);
+        messagesByContact.set(message.contact_id, list);
+      }
+      const responseMinutes: number[] = [];
+      for (const list of messagesByContact.values()) {
+        list.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        let waitingSince: number | null = null;
+        for (const message of list) {
+          const at = new Date(message.created_at).getTime();
+          if (message.direction === "INBOUND") {
+            if (waitingSince === null) waitingSince = at;
+          } else if (message.direction === "OUTBOUND" && waitingSince !== null) {
+            const minutes = (at - waitingSince) / 60000;
+            if (minutes >= 0 && minutes <= 30 * 24 * 60) responseMinutes.push(minutes);
+            waitingSince = null;
+          }
+        }
+      }
+      const averageResponseMinutes = responseMinutes.length
+        ? Math.round(responseMinutes.reduce((sum, value) => sum + value, 0) / responseMinutes.length)
+        : null;
 
       // Sort by actual message activity; contacts.updated_at is not changed
       // by inbound message inserts in the webhook storage helper.
@@ -552,7 +584,13 @@ serve(async (req: Request) => {
         return bTime - aTime;
       });
 
-      return jsonResponse({ data: result });
+      return jsonResponse({
+        data: result,
+        response_metrics: {
+          average_response_minutes: averageResponseMinutes,
+          responses_measured: responseMinutes.length,
+        },
+      });
     }
 
     // =================================================
@@ -594,6 +632,30 @@ serve(async (req: Request) => {
 
       if (error) {
         return jsonResponse({ error: error.message }, 500);
+      }
+
+      // Mark only the messages actually loaded as read. Using the newest
+      // loaded message timestamp avoids marking a newer arriving message read.
+      const readThrough = data?.length
+        ? data[data.length - 1].created_at
+        : null;
+      if (readThrough) {
+        const { data: readContact } = await sb
+          .from("contacts")
+          .select("metadata")
+          .eq("id", contactId)
+          .eq("tenant_id", merchant.tenantId)
+          .maybeSingle();
+        if (readContact) {
+          const readMetadata = readContact.metadata && typeof readContact.metadata === "object"
+            ? { ...readContact.metadata }
+            : {};
+          readMetadata.customer_service_read_at = readThrough;
+          await sb.from("contacts")
+            .update({ metadata: readMetadata })
+            .eq("id", contactId)
+            .eq("tenant_id", merchant.tenantId);
+        }
       }
 
       const { data: customer, error: customerError } = await sb
