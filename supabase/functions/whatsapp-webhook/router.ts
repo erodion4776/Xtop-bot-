@@ -414,6 +414,85 @@ async function handleTenantStoreMessage(
     return;
   }
 
+
+  // Recognise customer payment-confirmation messages before product search.
+  // The customer's text is never trusted as proof: order/payment state is read
+  // from this tenant's database and matched to the sender's WhatsApp number.
+  const paymentConfirmationIntent =
+    /\\b(payment\\s+(?:has\\s+been\\s+)?confirmed|payment\\s+(?:was\\s+)?successful|i\\s+(?:have\\s+)?paid|i\\s+made\\s+payment|paid\\s+for\\s+(?:my\\s+)?order)\\b/i.test(raw) ||
+    /SABI-ORDER-[A-Z0-9-]+/i.test(raw);
+  if (paymentConfirmationIntent) {
+    const orderNumberMatch = raw.match(/SABI-\\d{8}-[A-Z0-9]+/i);
+    const paymentReferenceMatch = raw.match(/SABI-ORDER-[A-Z0-9-]+/i);
+    const requestedOrder = (orderNumberMatch?.[0] || String(context.store_last_order || "")).trim().toUpperCase();
+    const requestedReference = paymentReferenceMatch?.[0]?.trim();
+
+    let order: any = null;
+    let paymentIntent: any = null;
+
+    if (requestedReference) {
+      const { data: intent, error: intentError } = await supabase
+        .from("tenant_order_payment_intents")
+        .select("id,order_id,reference,status,paystack_status,expected_amount,completed_at")
+        .eq("tenant_id", account.tenantId)
+        .eq("reference", requestedReference)
+        .maybeSingle();
+      if (intentError) safeErrorLog("tenantStore.paymentConfirmation.intent", intentError);
+      paymentIntent = intent || null;
+      if (intent?.order_id) {
+        const { data: referencedOrder, error: orderError } = await supabase
+          .from("tenant_orders")
+          .select("order_number,status,payment_status,shipping_payment_status,payment_method,created_at,subtotal,delivery_fee,total")
+          .eq("tenant_id", account.tenantId)
+          .eq("id", intent.order_id)
+          .eq("customer_phone", phone)
+          .maybeSingle();
+        if (orderError) safeErrorLog("tenantStore.paymentConfirmation.orderByReference", orderError);
+        order = referencedOrder || null;
+      }
+    } else if (requestedOrder) {
+      const { data: numberedOrder, error: orderError } = await supabase
+        .from("tenant_orders")
+        .select("id,order_number,status,payment_status,shipping_payment_status,payment_method,created_at,subtotal,delivery_fee,total")
+        .eq("tenant_id", account.tenantId)
+        .eq("order_number", requestedOrder)
+        .eq("customer_phone", phone)
+        .maybeSingle();
+      if (orderError) safeErrorLog("tenantStore.paymentConfirmation.orderByNumber", orderError);
+      order = numberedOrder || null;
+      if (order?.id) {
+        const { data: intent, error: intentError } = await supabase
+          .from("tenant_order_payment_intents")
+          .select("id,order_id,reference,status,paystack_status,expected_amount,completed_at")
+          .eq("tenant_id", account.tenantId)
+          .eq("order_id", order.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (intentError) safeErrorLog("tenantStore.paymentConfirmation.intentByOrder", intentError);
+        paymentIntent = intent || null;
+      }
+    }
+
+    if (!order) {
+      await send("I couldn't verify that payment against an order belonging to this WhatsApp number. Please check the order number or payment reference and send it again, or reply *agent* for help. Please don't make another payment until the shop checks it.");
+      return;
+    }
+
+    const isPaid = String(order.payment_status || "").toUpperCase() === "PAID";
+    const paymentLine = isPaid
+      ? "✅ *Payment: CONFIRMED*"
+      : "⏳ *Payment: NOT YET CONFIRMED*";
+    const referenceLine = paymentIntent?.reference
+      ? `\\nPayment reference: ${paymentIntent.reference}`
+      : "";
+    const nextStep = isPaid
+      ? "The shop can now process your order. You do not need to pay again."
+      : "Please allow the payment verification process to complete. Do not pay again yet; contact the shop if the status does not update.";
+    await send(`📦 *Order: ${order.order_number}*\\n\\n${paymentLine}\\nOrder fulfilment: *${order.status}*\\nDelivery payment: *${order.shipping_payment_status || "Not applicable"}*${referenceLine}\\n\\n${nextStep}\\n\\nReply *track ${order.order_number}* to check again, or *agent* to contact the shop.`);
+    return;
+  }
+
   const save = async (nextState: string, patch: Record<string, unknown> = {}) => {
     await updateConversation(conversation.id, {
       current_module: "TENANT_STORE",
