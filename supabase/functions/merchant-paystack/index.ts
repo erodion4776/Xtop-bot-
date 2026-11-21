@@ -273,8 +273,8 @@ async function createMerchantSubaccount(
       "/subaccount",
       "POST",
       {
-        business_name:
-          tenant.business_name || tenant.name,
+        // Paystack subaccount identity must match the verified bank account holder.
+        business_name: account.account_name,
         settlement_bank: bankCode,
         account_number: accountNumber,
         percentage_charge: 0,
@@ -400,6 +400,17 @@ async function refreshSubaccountStatus(
   );
 
   const verified = subaccount.is_verified === true;
+
+  // Keep the Paystack subaccount name aligned with the verified bank account holder,
+  // not the merchant's storefront/business name in Sabi.
+  const verifiedAccountName = String(subaccount.account_name || "").trim();
+  if (verifiedAccountName) {
+    await paystackRequest(
+      `/subaccount/${encodeURIComponent(tenant.paystack_subaccount_code)}`,
+      "PUT",
+      { business_name: verifiedAccountName },
+    );
+  }
 
   // Diagnostic: safely log Paystack's verification response.
   // Never log the complete bank account number.
