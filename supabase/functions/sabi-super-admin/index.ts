@@ -201,21 +201,46 @@ serve(async (req: Request) => {
     }
 
     if (body.action === "toggle-global-handoff") {
-      if (typeof body.enabled !== "boolean") return response({ error: "A boolean enabled value is required" }, 400);
-      const { error } = await sb.from("system_settings").upsert({
+      const reason = String(body.reason || "").trim().slice(0, 500);
+      if (typeof body.enabled !== "boolean" || typeof body.expected_enabled !== "boolean" || reason.length < 3) {
+        return response({ error: "A target setting, expected current setting and reason (at least 3 characters) are required." }, 400);
+      }
+      const { data: currentSetting, error: readSettingError } = await sb
+        .from("system_settings").select("value").eq("key", "sabi_global_handoff").maybeSingle();
+      if (readSettingError) return response({ error: "Could not verify the current global handoff setting." }, 500);
+      const previousEnabled = currentSetting?.value?.enabled === true;
+      if (previousEnabled !== body.expected_enabled) {
+        return response({ error: "The global handoff setting changed elsewhere. Refresh and try again." }, 409);
+      }
+      if (previousEnabled === body.enabled) return response({ success: true, unchanged: true, enabled: previousEnabled });
+      const { error: updateError } = await sb.from("system_settings").upsert({
         key: "sabi_global_handoff",
         value: { enabled: body.enabled },
         updated_at: new Date().toISOString(),
       });
-      if (error) return response({ error: "Could not update global handoff" }, 500);
-      await sb.from("audit_logs").insert({
+      if (updateError) return response({ error: "Could not update global handoff." }, 500);
+      const { error: auditError } = await sb.from("audit_logs").insert({
         admin_user: authData.user.email || authData.user.id,
         action: "SABI_GLOBAL_HANDOFF_CHANGED",
         entity: "system_settings",
         entity_id: "sabi_global_handoff",
-        metadata: { enabled: body.enabled },
+        metadata: {
+          previous_enabled: previousEnabled,
+          new_enabled: body.enabled,
+          reason,
+          source: "SABI_SUPER_ADMIN",
+        },
       });
-      return response({ success: true, enabled: body.enabled });
+      if (auditError) {
+        await sb.from("system_settings").upsert({
+          key: "sabi_global_handoff",
+          value: { enabled: previousEnabled },
+          updated_at: new Date().toISOString(),
+        });
+        console.error("[Sabi Super Admin] Audit write failed; handoff change reverted.", auditError);
+        return response({ error: "The audit record could not be saved. The handoff change was reverted." }, 500);
+      }
+      return response({ success: true, enabled: body.enabled, audit_recorded: true });
     }
 
     if (body.action === "set-merchant-status") {
@@ -236,9 +261,21 @@ serve(async (req: Request) => {
         action: body.is_active ? "SABI_MERCHANT_REACTIVATED" : "SABI_MERCHANT_SUSPENDED",
         entity: "tenant",
         entity_id: tenantId,
-        metadata: { previous_is_active: tenant.is_active, new_is_active: body.is_active, reason },
+        metadata: {
+          previous_is_active: tenant.is_active,
+          new_is_active: body.is_active,
+          reason,
+          merchant_name: tenant.business_name || tenant.name || "Merchant",
+          source: "SABI_SUPER_ADMIN",
+        },
       });
-      return response({ success: true, is_active: body.is_active, audit_recorded: !auditError });
+      if (auditError) {
+        await sb.from("tenants").update({ is_active: tenant.is_active, updated_at: new Date().toISOString() })
+          .eq("id", tenantId).eq("is_system", false);
+        console.error("[Sabi Super Admin] Audit write failed; merchant status change reverted.", auditError);
+        return response({ error: "The audit record could not be saved. The merchant status change was reverted." }, 500);
+      }
+      return response({ success: true, is_active: body.is_active, audit_recorded: true });
     }
 
     return response({ error: "Unknown Super Admin action" }, 404);
