@@ -26,10 +26,8 @@ const corsHeaders = {
   "access-control-allow-methods": "GET, POST, OPTIONS",
 };
 
-const BASE_URL = (
-  Deno.env.get("ONBOARDING_BASE_URL") ||
-  "https://xtopbot.netlify.app"
-).replace(/\/+$/, "");
+const CONNECT_BASE_URL = "https://connect.sabibyxtop.com.ng";
+const DASHBOARD_BASE_URL = "https://app.sabibyxtop.com.ng";
 
 export function jsonResponse(body: any, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -68,7 +66,7 @@ export async function createOnboardingSession(
     return null;
   }
 
-  return `${BASE_URL}/connect-whatsapp.html?token=${encodeURIComponent(sessionToken)}`;
+  return `${CONNECT_BASE_URL}/?token=${encodeURIComponent(sessionToken)}`;
 }
 
 // =====================================================
@@ -172,7 +170,7 @@ export async function startMerchantRegistration(
       new Date(pendingSession.expires_at).getTime() > Date.now()
     ) {
       signupLink =
-        `${BASE_URL}/connect-whatsapp.html?token=` +
+        `${CONNECT_BASE_URL}/?token=` +
         encodeURIComponent(pendingSession.session_token);
     } else {
       signupLink = await createOnboardingSession(tenantId);
@@ -677,7 +675,7 @@ export async function handleOnboardingCallback(
       verified_name: metaAccount.verifiedName,
       session_token: sessionToken,
       dashboard_registration_required: true,
-      dashboard_url: `${BASE_URL}/?session_token=${encodeURIComponent(sessionToken)}`,
+      dashboard_url: `${DASHBOARD_BASE_URL}/?session_token=${encodeURIComponent(sessionToken)}`,
     });
   } catch (error) {
     if (claimedSessionId) {
