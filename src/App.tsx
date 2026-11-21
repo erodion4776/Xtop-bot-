@@ -28,7 +28,7 @@ const navigation = [
   { label: "Overview", icon: LayoutDashboard },
   { label: "Products", icon: Package },
   { label: "Orders", icon: ShoppingCart },
-  { label: "Inbox", icon: MessageSquare },
+  { label: "Customer Service", icon: MessageSquare },
   { label: "Analytics", icon: BarChart3 },
   { label: "Settings", icon: Settings }
 ];
@@ -507,7 +507,7 @@ function Dashboard({
             <Orders tenantId={tenantId} />
           ) : activePage === "Settings" ? (
             <SettingsPage tenantId={tenantId} />
-          ) : activePage === "Inbox" ? (
+          ) : activePage === "Customer Service" ? (
             <Inbox />
           ) : activePage === "Analytics" ? (
             <Analytics />
@@ -605,7 +605,7 @@ function Dashboard({
           ) : (
             <div className="panel placeholder-panel">
               <div className="placeholder-icon">
-                {activePage === "Inbox" && <MessageSquare size={28} />}
+                {activePage === "Customer Service" && <MessageSquare size={28} />}
                 {activePage === "Analytics" && <BarChart3 size={28} />}
               </div>
 
