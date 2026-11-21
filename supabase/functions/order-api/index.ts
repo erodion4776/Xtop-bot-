@@ -386,6 +386,8 @@ async function createCartOrder(body: Record<string, unknown>) {
         customer_email: customerEmail,
         status: "PENDING",
         metadata: {
+          // Preserve the original fee snapshot; Paystack initialization validates it.
+          ...((intent.metadata && typeof intent.metadata === "object") ? intent.metadata : {}),
           purpose: "SABI_PUBLIC_ORDER",
           order_number: order.order_number,
           payment_method: paymentMethod,
