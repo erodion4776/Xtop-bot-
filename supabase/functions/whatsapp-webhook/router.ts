@@ -408,7 +408,7 @@ async function handleTenantStoreMessage(
         supabase.from("tenant_order_payment_intents")
           .select("customer_email,reference")
           .eq("tenant_id", account.tenantId).eq("order_id", savedOrder.id)
-          .eq("payment_type", "ORDER").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+          .eq("payment_type", "ONLINE_ORDER").order("created_at", { ascending: false }).limit(1).maybeSingle(),
       ]);
       if (itemsError) safeErrorLog("tenantStore.restoreCheckoutItems", itemsError);
       if (intentError) safeErrorLog("tenantStore.restoreCheckoutIntent", intentError);
