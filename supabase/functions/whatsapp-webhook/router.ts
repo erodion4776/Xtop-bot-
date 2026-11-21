@@ -666,7 +666,11 @@ async function handleTenantStoreMessage(
           store_checkout: null,
           store_cart: [],
         });
-        await send(`✅ *Order created: ${result.order_number}*\n\nProducts: ${money(Number(result.subtotal))}\nDelivery: ${money(Number(result.delivery_fee))}\nPayment due now: ${money(Number(result.payment_amount))}\n\nComplete your secure Paystack payment here:\n${result.authorization_url}\n\nYour order will be confirmed after Paystack verifies the payment. We will send updates to this WhatsApp number and ${checkout.email}.`);
+        const orderTotal = Number(result.total || 0);
+        const paymentAmount = Number(result.payment_amount || 0);
+        const serviceFee = Number(result.sabi_service_fee || 0);
+        const commission = Math.max(0, paymentAmount - orderTotal - serviceFee);
+        await send(`✅ *Order created: ${result.order_number}*\n\nProducts: ${money(Number(result.subtotal))}\nDelivery: ${money(Number(result.delivery_fee))}\nSabi commission: ${money(commission)}\nSabi service fee: ${money(serviceFee)}\n*Total payment due: ${money(paymentAmount)}*\n\nComplete your secure Paystack payment here:\n${result.authorization_url}\n\nYour order will be confirmed after Paystack verifies the payment. We will send updates to this WhatsApp number and ${checkout.email}.`);
       } catch (error) {
         safeErrorLog("tenantStore.checkout", error);
         await send("The checkout service is temporarily unavailable. Your cart is saved. Please try *checkout* again shortly.");
