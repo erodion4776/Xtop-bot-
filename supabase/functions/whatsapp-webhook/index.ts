@@ -103,32 +103,13 @@ Deno.serve(async (req: Request) => {
   }
 
   if (action === "toggle-handoff" && req.method === "POST") {
-    try {
-      const body = await req.json();
-      const enabled = !!body.enabled;
-      const { error: settingError } = await sb.from("system_settings").upsert({
-        key: "sabi_global_handoff",
-        value: { enabled },
-        updated_at: new Date().toISOString(),
-      });
-      if (settingError) throw settingError;
-
-      const auth = await authorizeSuperAdminApi(req, sb);
-      const { error: auditError } = await sb.from("audit_logs").insert({
-        admin_user: auth.userId,
-        action: "SABI_GLOBAL_HANDOFF_CHANGED",
-        entity: "system_settings",
-        entity_id: "sabi_global_handoff",
-        metadata: { source: "LEGACY_SUPER_ADMIN_API", enabled, changed_at: new Date().toISOString() },
-      });
-      if (auditError) {
-        console.error("[Admin API] Global handoff changed but audit insert failed:", auditError.message);
-        return jsonResponse({ success: true, enabled, audit_logged: false, warning: "Activity log could not be saved" }, 200);
-      }
-      return jsonResponse({ success: true, enabled, audit_logged: true });
-    } catch (e: any) {
-      return jsonResponse({ error: e.message }, 400);
-    }
+    // Retired legacy mutation path. Keep the read-only GET endpoint for
+    // compatibility, but route all writes through sabi-super-admin where
+    // reason, expected state, audit logging and rollback are enforced.
+    return jsonResponse({
+      error: "This control has moved. Use the Sabi Super Admin Platform Controls page.",
+      code: "USE_SABI_SUPER_ADMIN",
+    }, 410);
   }
 
   // ── B. INDIVIDUAL CONVERSATION AGENT TAKEOVER ──
