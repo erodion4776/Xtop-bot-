@@ -401,19 +401,9 @@ async function refreshSubaccountStatus(
 
   const verified = subaccount.is_verified === true;
 
-  // Keep the Paystack subaccount name aligned with the verified bank account holder,
-  // not the merchant's storefront/business name in Sabi.
-  const verifiedAccountName = String(subaccount.account_name || "").trim();
-  if (verifiedAccountName) {
-    await paystackRequest(
-      `/subaccount/${encodeURIComponent(tenant.paystack_subaccount_code)}`,
-      "PUT",
-      { business_name: verifiedAccountName },
-    );
-  }
-
-  // Diagnostic: safely log Paystack's verification response.
-  // Never log the complete bank account number.
+  // A status refresh is read-only against Paystack. Never mutate the
+  // subaccount while checking verification; Paystack may return transient
+  // inconsistent verification flags between requests.
   console.log("PAYSTACK SUBACCOUNT VERIFICATION:", {
     subaccount_code: subaccount.subaccount_code,
     is_verified: subaccount.is_verified,
@@ -424,35 +414,69 @@ async function refreshSubaccountStatus(
     ).slice(-4),
   });
 
-  const status = verified
-    ? "VERIFIED"
-    : subaccount.active === false
-      ? "INACTIVE"
-      : "PENDING_VERIFICATION";
+  if (verified) {
+    const verifiedAt =
+      tenant.paystack_subaccount_verified_at ||
+      new Date().toISOString();
 
-  const verifiedAt = verified
-    ? tenant.paystack_subaccount_verified_at ||
-      new Date().toISOString()
-    : null;
+    const { error: updateError } = await db
+      .from("tenants")
+      .update({
+        paystack_subaccount_status: "VERIFIED",
+        paystack_subaccount_verified_at: verifiedAt,
+      })
+      .eq("id", tenantId);
 
-  const { error: updateError } = await db
+    if (updateError) {
+      console.error("Subaccount verification save failed:", updateError);
+      throw new Error("STATUS_UPDATE_FAILED");
+    }
+  } else if (tenant.paystack_subaccount_status !== "VERIFIED") {
+    // Conditional update makes VERIFIED monotonic: a stale/concurrent false
+    // response can never downgrade a row already confirmed as VERIFIED.
+    const pendingStatus =
+      subaccount.active === false ? "INACTIVE" : "PENDING_VERIFICATION";
+
+    const { error: updateError } = await db
+      .from("tenants")
+      .update({
+        paystack_subaccount_status: pendingStatus,
+        paystack_subaccount_verified_at: null,
+      })
+      .eq("id", tenantId)
+      .neq("paystack_subaccount_status", "VERIFIED");
+
+    if (updateError) {
+      console.error("Subaccount pending status save failed:", updateError);
+      throw new Error("STATUS_UPDATE_FAILED");
+    }
+  }
+
+  // Return the authoritative persisted status, not the potentially stale
+  // Paystack flag from this individual request.
+  const { data: persisted, error: persistedError } = await db
     .from("tenants")
-    .update({
-      paystack_subaccount_status: status,
-      paystack_subaccount_verified_at: verifiedAt,
-    })
-    .eq("id", tenantId);
+    .select("paystack_subaccount_status,paystack_subaccount_verified_at")
+    .eq("id", tenantId)
+    .maybeSingle();
 
-  if (updateError) {
-    console.error("Subaccount status update failed:", updateError);
+  if (persistedError || !persisted) {
+    console.error("Subaccount final status lookup failed:", persistedError);
     throw new Error("STATUS_UPDATE_FAILED");
   }
+
+  console.log("PAYSTACK SUBACCOUNT STATUS SAVED:", {
+    tenant_id: tenantId,
+    status: persisted.paystack_subaccount_status,
+    verified_at: persisted.paystack_subaccount_verified_at,
+  });
 
   return respond({
     success: true,
     configured: true,
-    status,
-    is_verified: verified,
+    status: persisted.paystack_subaccount_status,
+    is_verified: persisted.paystack_subaccount_status === "VERIFIED",
+    paystack_reported_verified: verified,
     active: subaccount.active,
     account_name: subaccount.account_name || null,
     bank_name: subaccount.settlement_bank || null,
