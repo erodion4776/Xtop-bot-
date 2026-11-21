@@ -436,7 +436,7 @@ async function handleTenantStoreMessage(
     Boolean(context.store_last_order) && cart.length > 0 &&
     Boolean(context.store_checkout?.email && context.store_checkout?.name && context.store_checkout?.address);
 
-  if (["agent", "human", "talk to human", "customer service", "speak to an agent", "store_support", "store_agent"].includes(message) || interactiveId === "store_support" || interactiveId === "store_agent") {
+  if (["agent", "human", "talk to human", "customer service", "speak to an agent", "store_support", "store_agent"].includes(message) || incoming.interactiveId === "store_support" || incoming.interactiveId === "store_agent") {
     await supabase.from("contacts").update({ agent_mode: true }).eq("tenant_id", account.tenantId).eq("id", contact.id);
     await updateConversation(conversation.id, {
       current_module: "TENANT_STORE",
