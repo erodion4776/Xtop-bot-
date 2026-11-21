@@ -92,9 +92,11 @@ export default function Inbox() {
     }
     const rows = Array.isArray(data?.data) ? data.data as Contact[] : [];
     setContacts(rows);
-    if (keepSelection && selected) {
-      const next = rows.find((item) => item.id === selected.id);
-      if (next) setSelected(next);
+    if (keepSelection) {
+      setSelected((current) => {
+        if (!current) return current;
+        return rows.find((item) => item.id === current.id) || current;
+      });
     }
     setLoading(false);
   }
@@ -158,7 +160,13 @@ export default function Inbox() {
       setError(data?.error || apiError?.message || "Message could not be sent.");
     } else {
       setDraft("");
-      await loadChat(selected);
+      const humanSelected = { ...selected, agent_mode: true };
+      setSelected(humanSelected);
+      setCustomer((current) => current ? { ...current, agent_mode: true } : current);
+      setContacts((items) => items.map((item) => item.id === selected.id
+        ? { ...item, agent_mode: true, service_status: "HUMAN" }
+        : item));
+      await loadChat(humanSelected);
       await loadInbox();
     }
     setSending(false);
@@ -273,7 +281,7 @@ export default function Inbox() {
                     {selected.service_status === "RESOLVED" ? <><RotateCcw size={15}/> Reopen</> : <><CheckCheck size={15}/> Resolve</>}
                   </button>
                   <button className={`takeover-button ${selected.agent_mode ? "enabled" : ""}`} onClick={() => void toggleTakeover()}>
-                    <Bot size={16}/>{selected.agent_mode ? "Bot paused" : "Pause bot"}
+                    <Bot size={16}/>{selected.agent_mode ? "Resume bot" : "Pause bot"}
                   </button>
                 </div>
               </div>
