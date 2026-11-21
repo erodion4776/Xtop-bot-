@@ -789,6 +789,43 @@ serve(async (req: Request) => {
 
       const now = new Date().toISOString();
 
+      // A merchant reply from the dashboard is an explicit human takeover.
+      // Pause automated replies for this customer so the bot and merchant
+      // cannot answer the same incoming message at the same time.
+      const { error: takeoverError } = await sb
+        .from("contacts")
+        .update({ agent_mode: true, updated_at: now })
+        .eq("id", contactId)
+        .eq("tenant_id", merchant.tenantId);
+      if (takeoverError) {
+        console.error("Could not activate human takeover after merchant reply:", takeoverError.message);
+      } else {
+        const { data: conversation } = await sb
+          .from("conversations")
+          .select("id, context_json")
+          .eq("tenant_id", merchant.tenantId)
+          .eq("contact_id", contactId)
+          .maybeSingle();
+        if (conversation) {
+          const context = conversation.context_json && typeof conversation.context_json === "object"
+            ? conversation.context_json
+            : {};
+          const { error: conversationUpdateError } = await sb
+            .from("conversations")
+            .update({
+              agent_mode: true,
+              current_state: "AGENT_TAKEOVER",
+              context_json: { ...context, agent_takeover: true, agent_mode: true },
+              updated_at: now,
+            })
+            .eq("id", conversation.id)
+            .eq("tenant_id", merchant.tenantId);
+          if (conversationUpdateError) {
+            console.error("Could not update human takeover conversation state:", conversationUpdateError.message);
+          }
+        }
+      }
+
       const { data: savedMessage, error: saveError } = await sb
         .from("messages")
         .insert({
@@ -831,6 +868,7 @@ serve(async (req: Request) => {
       return jsonResponse({
         success: true,
         stored: true,
+        agent_mode: true,
         message: savedMessage,
         messageId: whatsappMessageId,
       });
