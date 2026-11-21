@@ -728,11 +728,14 @@ async function handleTenantStoreMessage(
         });
         const result = await response.json();
         if (result.order_created && result.order_number) {
-          await save("ORDER_PAYMENT_PENDING", {
+          await save("CHECKOUT_PAYMENT", {
             store_last_order: result.order_number,
-            store_checkout: null,
+            store_last_payment_reference: null,
           });
-          await send(`Your order *${result.order_number}* has been recorded, but payment setup is not ready yet. The merchant needs to complete Paystack verification. Please contact the shop before making another order.`);
+          const paymentHelp = result.error === "MERCHANT_SUBACCOUNT_NOT_VERIFIED"
+            ? "The shop's Paystack account still needs verification."
+            : "The payment link could not be prepared.";
+          await send(`Your order *${result.order_number}* is safely recorded. ${paymentHelp}\n\nReply *ONLINE* to retry payment. Your existing order and reserved stock will be reused; you do not need to add the products again.`);
           return;
         }
         if (!response.ok || result.success !== true) {
