@@ -160,7 +160,7 @@ export default function Inbox() {
       setError(data?.error || apiError?.message || "Message could not be sent.");
     } else {
       setDraft("");
-      const humanSelected = { ...selected, agent_mode: true };
+      const humanSelected: Contact = { ...selected, agent_mode: true, service_status: "HUMAN" };
       setSelected(humanSelected);
       setCustomer((current) => current ? { ...current, agent_mode: true } : current);
       setContacts((items) => items.map((item) => item.id === selected.id
@@ -187,7 +187,7 @@ export default function Inbox() {
     setSelected(updated);
     setCustomer(updated);
     setContacts((items) => items.map((item) => item.id === updated.id
-      ? { ...item, agent_mode: enabled, service_status: enabled ? "HUMAN" : item.service_status }
+      ? { ...item, agent_mode: enabled, service_status: enabled ? ("HUMAN" as ServiceStatus) : item.service_status }
       : item));
   }
 
@@ -202,7 +202,7 @@ export default function Inbox() {
     if (apiError || data?.error || !data?.success) {
       setError(data?.error || apiError?.message || "Could not update conversation status.");
     } else {
-      const updated = { ...selected, service_status: status === "RESOLVED" ? "RESOLVED" : "OPEN" };
+      const updated: Contact = { ...selected, service_status: status };
       setSelected(updated);
       setContacts((items) => items.map((item) => item.id === updated.id
         ? { ...item, service_status: updated.service_status }
