@@ -92,35 +92,16 @@ serve(async (req: Request) => {
     }
 
     if (action === "toggle-handoff" && req.method === "POST") {
+      // Retired legacy mutation path. Global Sabi handoff must be changed
+      // through sabi-super-admin so expected state, reason and audit rollback
+      // are enforced in one trusted operation.
       if (!isSuperAdmin(user.id)) {
         return jsonResponse({ error: "Forbidden" }, 403);
       }
-
-      const body = await readJson(req);
-
-      if (!body || typeof body.enabled !== "boolean") {
-        return jsonResponse(
-          { error: "A boolean enabled value is required" },
-          400,
-        );
-      }
-
-      const { error } = await sb
-        .from("system_settings")
-        .upsert({
-          key: "sabi_global_handoff",
-          value: { enabled: body.enabled },
-          updated_at: new Date().toISOString(),
-        });
-
-      if (error) {
-        return jsonResponse({ error: error.message }, 500);
-      }
-
       return jsonResponse({
-        success: true,
-        enabled: body.enabled,
-      });
+        error: "This control has moved. Use the Sabi Super Admin Platform Controls page.",
+        code: "USE_SABI_SUPER_ADMIN",
+      }, 410);
     }
 
     // All remaining actions require an active merchant membership.
