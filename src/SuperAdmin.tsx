@@ -160,6 +160,14 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
 
   async function toggleGlobalHandoff() {
     const next = !(stats?.globalHandoff === true);
+    const reason = window.prompt(
+      next ? "Reason for enabling global human handoff:" : "Reason for disabling global human handoff:",
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+      setError("Please enter a reason of at least 3 characters.");
+      return;
+    }
     const confirmed = window.confirm(
       next
         ? "Enable global human handoff? This changes the platform-wide Sabi handoff behaviour."
@@ -168,7 +176,11 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
     if (!confirmed) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      await callAdmin("toggle-global-handoff", { enabled: next });
+      await callAdmin("toggle-global-handoff", {
+        enabled: next,
+        expected_enabled: !next,
+        reason: reason.trim(),
+      });
       setStats((current) => current ? { ...current, globalHandoff: next } : current);
       setNotice(next ? "Global human handoff enabled." : "Global human handoff disabled.");
     } catch (e) {
@@ -247,7 +259,7 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
               {page === "Activity Log" && (
                 <div className="sa-panel">
                   <div className="sa-panel-head"><div><h2>Administrative activity</h2><p>Recent platform-level changes and their recorded reasons.</p></div><span>{activity.length} records</span></div>
-                  <div className="sa-activity-list">{activity.map((item) => <div className="sa-activity-row" key={item.id}><div className="sa-activity-icon"><Activity size={17}/></div><div className="sa-activity-body"><strong>{item.action.replace(/_/g, " ")}</strong><span>{item.admin_user || "Admin"} · {item.entity || "Platform"} · {item.entity_id || "—"}</span>{item.metadata?.reason ? <p>Reason: {String(item.metadata.reason)}</p> : null}</div><time>{dateLabel(item.created_at)}</time></div>)}{activity.length === 0 && <div className="sa-empty">No administrative activity has been recorded yet.</div>}</div>
+                  <div className="sa-activity-list">{activity.map((item) => <div className="sa-activity-row" key={item.id}><div className="sa-activity-icon"><Activity size={17}/></div><div className="sa-activity-body"><strong>{item.action.replace(/_/g, " ")}</strong><span>{item.admin_user || "Admin"} · {item.entity || "Platform"} · {item.entity_id || "—"}</span>{item.metadata?.previous_enabled !== undefined || item.metadata?.new_enabled !== undefined ? <p>Global handoff: {item.metadata?.previous_enabled === true ? "Enabled" : "Disabled"} → {item.metadata?.new_enabled === true ? "Enabled" : "Disabled"}</p> : null}{item.metadata?.previous_is_active !== undefined || item.metadata?.new_is_active !== undefined ? <p>Merchant status: {item.metadata?.previous_is_active === true ? "Active" : "Suspended"} → {item.metadata?.new_is_active === true ? "Active" : "Suspended"}</p> : null}{item.metadata?.reason ? <p>Reason: {String(item.metadata.reason)}</p> : null}</div><time>{dateLabel(item.created_at)}</time></div>)}{activity.length === 0 && <div className="sa-empty">No administrative activity has been recorded yet.</div>}</div>
                 </div>
               )}
               {page === "WhatsApp Usage" && (
