@@ -6,6 +6,23 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+const collapseExactRepeats = (value: string): string => {
+  const words = value.trim().split(/\\s+/);
+  // Workers AI occasionally repeats its entire answer. Collapse only exact
+  // repeated copies; do not remove repeated phrases within a normal answer.
+  for (let unitLength = 1; unitLength <= Math.floor(words.length / 2); unitLength += 1) {
+    if (words.length % unitLength !== 0) continue;
+    const repetitions = words.length / unitLength;
+    if (repetitions < 2 || repetitions > 8) continue;
+    const unit = words.slice(0, unitLength).join(" ");
+    const matches = Array.from({ length: repetitions }, (_, index) =>
+      words.slice(index * unitLength, (index + 1) * unitLength).join(" ")
+    ).every((part) => part === unit);
+    if (matches) return unit;
+  }
+  return value.trim();
+};
+
 const respond = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { ...corsHeaders, "Content-Type": "application/json" },
 });
@@ -79,13 +96,29 @@ Deno.serve(async (req: Request) => {
       return respond({ success: true, conversation, reply: data || { sender_role: "assistant", content: waiting } });
     }
 
-    // Answer verified dashboard workflows deterministically instead of asking the
-    // language model to guess at buttons or invent screens.
-    const asksToAddProduct = /\\b(add|create|upload)\\b[\\s\\S]{0,50}\\b(products?|items?)\\b|\\b(products?|items?)\\b[\\s\\S]{0,50}\\b(add|create|upload)\\b/i.test(message);
+    // Answer documented product workflows deterministically. Do not ask the
+    // language model to invent or repeat instructions for these common tasks.
+    const normalizedMessage = message.toLowerCase();
+    const asksToAddProduct =
+      (normalizedMessage.includes("add") || normalizedMessage.includes("create") || normalizedMessage.includes("upload")) &&
+      (normalizedMessage.includes("product") || normalizedMessage.includes("item"));
+    const asksToUpdateStock =
+      normalizedMessage.includes("stock") &&
+      (normalizedMessage.includes("update") || normalizedMessage.includes("change") ||
+       normalizedMessage.includes("adjust") || normalizedMessage.includes("edit") ||
+       normalizedMessage.includes("quantity") || normalizedMessage.includes("increase") ||
+       normalizedMessage.includes("reduce") || normalizedMessage.includes("set"));
+
+    let verifiedGuide = "";
     if (asksToAddProduct) {
-      const productGuide = "To add a product:\\n1. Open *Products* in your merchant dashboard.\\n2. In *Product catalogue*, tap *Add product*. If your catalogue is empty, tap *Add your first product*.\\n3. Enter the product name, selling price and stock quantity. Description and category are optional. You can also add a JPG, PNG or WebP image (up to 5 MB).\\n4. Set the status to *Active* and tap *Create product*. The product will then be saved in your catalogue.";
+      verifiedGuide = "To add a product:\\n1. Open *Products* in your merchant dashboard.\\n2. In *Product catalogue*, tap *Add product*. If your catalogue is empty, tap *Add your first product*.\\n3. Enter the product name, selling price and stock quantity. Description and category are optional. You can also add a JPG, PNG or WebP image (up to 5 MB).\\n4. Set the status to *Active* if customers should be able to order it, then tap *Create product*.";
+    } else if (asksToUpdateStock) {
+      verifiedGuide = "To update a product's stock quantity:\\n1. Open *Products* in your merchant dashboard.\\n2. Find the product and tap its pencil-shaped *Edit product* icon in the Actions column.\\n3. Change the *Stock quantity* field to the new whole-number quantity (zero is allowed).\\n4. Tap *Save changes*. You should see *Product updated successfully*.";
+    }
+
+    if (verifiedGuide) {
       const { data: reply, error: replyError } = await admin.from("sabi_support_messages").insert({
-        conversation_id: conversation.id, tenant_id: tenantId, sender_role: "assistant", content: productGuide,
+        conversation_id: conversation.id, tenant_id: tenantId, sender_role: "assistant", content: verifiedGuide,
       }).select("id, sender_role, content, created_at").single();
       if (replyError || !reply) return respond({ error: "Your message was received, but the reply could not be saved." }, 500);
       const now = new Date().toISOString();
@@ -159,7 +192,7 @@ Now answer only the question, following every rule above.`;
       return respond({ error: "Sabi AI is temporarily unavailable. Your message was saved; please try again shortly." }, 502);
     }
 
-    let cleanAnswer = answer.trim();
+    let cleanAnswer = collapseExactRepeats(answer);
     // Never show model evaluation artifacts or an excessively long answer to merchants.
     if (/your response will be graded|incorrect\\.|correct\\.|the final answer is|response should be graded/i.test(cleanAnswer)) {
       cleanAnswer = "I want to make sure I guide you correctly. Please tell me which dashboard page you are on and what you can see, or share a screenshot.";
