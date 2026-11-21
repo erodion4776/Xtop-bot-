@@ -381,15 +381,60 @@ async function handleTenantStoreMessage(
   const products = await getActiveProducts(account.tenantId);
   const greeting = account.welcomeGreeting || `Welcome to *${account.businessName}*.`;
   const context = (conversation.context_json || {}) as Record<string, any>;
-  const cart: Array<{product_id:string;name:string;price:number;quantity:number}> =
+  let cart: Array<{product_id:string;name:string;price:number;quantity:number}> =
     Array.isArray(context.store_cart) ? context.store_cart : [];
   const state = String(conversation.current_state || "IDLE");
-  // Recover a lost checkout state when the customer retries ONLINE.
-  // The saved order number + cart are the recovery key; do not depend only
-  // on current_state because another router path may have changed it.
+
+  // Restore the exact saved order when a prior checkout cleared the cart but
+  // the customer later retries ONLINE. Never trust an order number alone:
+  // verify tenant, WhatsApp sender, order status and payment method first.
+  if (message === "online" && context.store_last_order && cart.length === 0) {
+    const { data: savedOrder, error: savedOrderError } = await supabase
+      .from("tenant_orders")
+      .select("id,order_number,customer_name,customer_phone,delivery_address,status,payment_status,payment_method,source")
+      .eq("tenant_id", account.tenantId)
+      .eq("order_number", String(context.store_last_order))
+      .eq("customer_phone", phone)
+      .maybeSingle();
+    if (savedOrderError) safeErrorLog("tenantStore.restoreCheckoutOrder", savedOrderError);
+
+    if (savedOrder && savedOrder.status === "PENDING" &&
+        savedOrder.payment_status === "UNPAID" &&
+        savedOrder.payment_method === "ONLINE" && savedOrder.source === "WHATSAPP") {
+      const [{ data: savedItems, error: itemsError }, { data: savedIntent, error: intentError }] = await Promise.all([
+        supabase.from("tenant_order_items")
+          .select("product_id,product_name,quantity,unit_price")
+          .eq("tenant_id", account.tenantId).eq("order_id", savedOrder.id),
+        supabase.from("tenant_order_payment_intents")
+          .select("customer_email,reference")
+          .eq("tenant_id", account.tenantId).eq("order_id", savedOrder.id)
+          .eq("payment_type", "ORDER").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      ]);
+      if (itemsError) safeErrorLog("tenantStore.restoreCheckoutItems", itemsError);
+      if (intentError) safeErrorLog("tenantStore.restoreCheckoutIntent", intentError);
+      if (!itemsError && !intentError && Array.isArray(savedItems) && savedItems.length && savedIntent?.customer_email) {
+        cart = savedItems.map((item: any) => ({
+          product_id: String(item.product_id),
+          name: String(item.product_name),
+          price: Number(item.unit_price),
+          quantity: Number(item.quantity),
+        }));
+        context.store_cart = cart;
+        context.store_checkout = {
+          name: String(savedOrder.customer_name || ""),
+          email: String(savedIntent.customer_email),
+          address: String(savedOrder.delivery_address || ""),
+          payment_method: "ONLINE",
+        };
+        context.store_last_payment_reference = String(savedIntent.reference || context.store_last_payment_reference || "");
+      }
+    }
+  }
+
+  // Retry is valid only when the saved order and its original cart were restored.
   const isPaymentRetry = message === "online" &&
-    Boolean(context.store_last_order) &&
-    cart.length > 0;
+    Boolean(context.store_last_order) && cart.length > 0 &&
+    Boolean(context.store_checkout?.email && context.store_checkout?.name && context.store_checkout?.address);
 
   if (message === "agent" || message === "human" || message === "talk to human" || message === "customer service") {
     await supabase.from("contacts").update({ agent_mode: true }).eq("tenant_id", account.tenantId).eq("id", contact.id);
