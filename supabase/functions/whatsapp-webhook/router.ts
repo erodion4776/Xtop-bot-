@@ -347,10 +347,10 @@ async function handleTenantStoreMessage(
   };
   const showShopPage = async (page=0, source:any[]=products) => {
     const size=7, pages=Math.max(1,Math.ceil(source.length/size)), current=Math.max(0,Math.min(page,pages-1));
-    const rows: Array<{id:string;title:string;description?:string}> = source.slice(current*size,(current+1)*size).map((p:any)=>({id:`store_product:${p.id}`,title:String(p.name||"Product").slice(0,24),description:money(productPrice(p)).slice(0,72)}));
+    const rows: Array<{id:string;title:string;description?:string}> = [{id:"store_agent",title:"💬 Speak to an Agent",description:"Talk directly to the shop team"}, ...source.slice(current*size,(current+1)*size).map((p:any)=>({id:`store_product:${p.id}`,title:String(p.name||"Product").slice(0,24),description:money(productPrice(p)).slice(0,72)}))];
     if(current>0) rows.push({id:"store_prev",title:"⬅️ Previous page"});
     if(current<pages-1) rows.push({id:"store_next",title:"Next page ➡️"});
-    rows.push({id:"store_categories",title:"Browse categories"},{id:"store_cart",title:"🛒 View cart"},{id:"store_support",title:"💬 Customer Service"},{id:"store_agent",title:"👤 Speak to an Agent"});
+    rows.push({id:"store_categories",title:"Browse categories"},{id:"store_cart",title:"🛒 View cart"});
     await save("IDLE",{store_page:current});
     await sendShopList(`Browse ${source.length} product(s). Page ${current+1} of ${pages}. Select a product to view its picture, details and price.`,rows);
   };
