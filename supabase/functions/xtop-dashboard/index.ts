@@ -883,47 +883,75 @@ serve(async (req: Request) => {
       req.method === "POST"
     ) {
       const body = await readJson(req);
-
-      if (
-        !body ||
-        !isUuid(String(body.contact_id || "")) ||
-        typeof body.enabled !== "boolean"
-      ) {
-        return jsonResponse(
-          {
-            error:
-              "A valid contact_id and boolean enabled value are required",
-          },
-          400,
-        );
+      if (!body || !isUuid(String(body.contact_id || "")) || typeof body.enabled !== "boolean") {
+        return jsonResponse({ error: "A valid contact_id and boolean enabled value are required" }, 400);
       }
 
       const contactId = String(body.contact_id);
+      const { data: contact, error: contactReadError } = await sb
+        .from("contacts")
+        .select("id")
+        .eq("id", contactId)
+        .eq("tenant_id", merchant.tenantId)
+        .maybeSingle();
+
+      if (contactReadError || !contact) {
+        return jsonResponse({ error: "Customer not found" }, 404);
+      }
+
+      const { data: conversation, error: conversationReadError } = await sb
+        .from("conversations")
+        .select("id, context_json")
+        .eq("tenant_id", merchant.tenantId)
+        .eq("contact_id", contactId)
+        .maybeSingle();
+
+      if (conversationReadError) {
+        return jsonResponse({ error: "Could not update this conversation's bot state." }, 500);
+      }
+
+      const now = new Date().toISOString();
+      if (conversation) {
+        const context = conversation.context_json && typeof conversation.context_json === "object"
+          ? { ...conversation.context_json }
+          : {};
+        if (body.enabled) {
+          context.agent_takeover = true;
+          context.agent_mode = true;
+        } else {
+          delete context.agent_takeover;
+          delete context.agent_mode;
+        }
+
+        const { error: conversationUpdateError } = await sb
+          .from("conversations")
+          .update({
+            agent_mode: body.enabled,
+            current_state: body.enabled ? "AGENT_TAKEOVER" : "IDLE",
+            context_json: context,
+            updated_at: now,
+          })
+          .eq("id", conversation.id)
+          .eq("tenant_id", merchant.tenantId);
+
+        if (conversationUpdateError) {
+          return jsonResponse({ error: "Could not update this conversation's bot state." }, 500);
+        }
+      }
 
       const { data, error } = await sb
         .from("contacts")
-        .update({ agent_mode: body.enabled })
+        .update({ agent_mode: body.enabled, updated_at: now })
         .eq("id", contactId)
         .eq("tenant_id", merchant.tenantId)
         .select("id, agent_mode")
         .maybeSingle();
 
-      if (error) {
-        return jsonResponse({ error: error.message }, 500);
+      if (error || !data) {
+        return jsonResponse({ error: error?.message || "Could not update customer bot state." }, 500);
       }
 
-      if (!data) {
-        return jsonResponse(
-          { error: "Customer not found" },
-          404,
-        );
-      }
-
-      return jsonResponse({
-        success: true,
-        contact_id: data.id,
-        agent_mode: data.agent_mode,
-      });
+      return jsonResponse({ success: true, contact_id: data.id, agent_mode: data.agent_mode });
     }
 
     // =================================================
