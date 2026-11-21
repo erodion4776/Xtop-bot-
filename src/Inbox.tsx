@@ -102,7 +102,7 @@ export default function Inbox() {
   }
 
   async function loadChat(contact: Contact, silent = false) {
-    setSelected(contact);
+    if (!silent) setSelected(contact);
     if (!silent) {
       setChatLoading(true);
       setError("");
@@ -195,11 +195,16 @@ export default function Inbox() {
       setError(data?.error || apiError?.message || "Could not update bot control.");
       return;
     }
-    const updated = { ...selected, agent_mode: enabled };
+    const nextStatus: ServiceStatus = enabled
+      ? "HUMAN"
+      : selected.last_message?.direction === "INBOUND"
+        ? "NEEDS_REPLY"
+        : "OPEN";
+    const updated: Contact = { ...selected, agent_mode: enabled, service_status: nextStatus };
     setSelected(updated);
     setCustomer(updated);
     setContacts((items) => items.map((item) => item.id === updated.id
-      ? { ...item, agent_mode: enabled, service_status: enabled ? ("HUMAN" as ServiceStatus) : item.service_status }
+      ? { ...item, agent_mode: enabled, service_status: nextStatus }
       : item));
   }
 
