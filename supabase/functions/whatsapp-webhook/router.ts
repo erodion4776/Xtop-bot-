@@ -426,6 +426,46 @@ async function handleTenantStoreMessage(
   const productPrice = (p: any) => Number(p.price ?? 0);
   const productStock = (p: any) => p.stock_quantity == null ? null : Number(p.stock_quantity);
 
+  const beginCheckoutReview = async () => {
+    if (!cart.length) {
+      await send("Your cart is empty. Browse products first.");
+      return;
+    }
+    const refreshed: Array<{product_id:string;name:string;price:number;quantity:number}> = [];
+    for (const item of cart) {
+      const product = products.find((p: any) => String(p.id) === item.product_id);
+      if (!product || product.is_active === false) {
+        await send(`⚠️ *${item.name}* is no longer available. Please remove it or start a new order.`);
+        return;
+      }
+      const stock = productStock(product);
+      if (stock !== null && stock < item.quantity) {
+        await send(`⚠️ Only *${stock}* unit(s) of *${product.name}* are currently available, but your cart has ${item.quantity}. Update your cart before checkout.`);
+        return;
+      }
+      refreshed.push({
+        product_id: String(product.id),
+        name: String(product.name),
+        price: productPrice(product),
+        quantity: item.quantity,
+      });
+    }
+    const subtotal = refreshed.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    await save("CHECKOUT_CONFIRM", {
+      store_cart: refreshed,
+      store_checkout: { name: "", email: "", address: "", payment_method: "" },
+    });
+    const lines = refreshed.map((item, index) =>
+      `${index + 1}. *${item.name}* × ${item.quantity} — ${money(item.price * item.quantity)}`
+    );
+    await send(`🧾 *Please review your order*\n\n${lines.join("\n")}\n\n*Products subtotal: ${money(subtotal)}*\nDelivery and Sabi checkout fees will be shown before payment.\n\nConfirm this exact cart to continue, or edit it first.`);
+    await sendShopButtons("Is this the cart you want to order?", [
+      { id: "store_confirm_checkout", title: "Confirm Cart" },
+      { id: "store_edit_cart", title: "Edit Cart" },
+      { id: "store_new_order", title: "Start New Order" },
+    ]);
+  };
+
 
   if(message==="store_categories"){
     const cats=[...new Set(products.map((p:any)=>String(p.category||"Other").trim()).filter(Boolean))];
@@ -462,10 +502,33 @@ async function handleTenantStoreMessage(
     await sendShopButtons("Choose an action:",[{id:"store_products",title:"Add More"},{id:"store_checkout",title:"Checkout"},{id:"store_clear",title:"Clear Cart"}]);return;
   }
   if(message==="store_clear"){await save("IDLE",{store_cart:[],store_checkout:null});await send("Your cart has been cleared.");await showShopPage(0);return;}
-  if(message==="store_checkout"){
-    if(!cart.length){await send("Your cart is empty. Browse products first.");return;}
-    await save("CHECKOUT_NAME",{store_checkout:{name:"",email:"",address:"",payment_method:""}});
-    await send("Let's complete your order. Please enter your *full name*.");return;
+  if (message === "store_checkout" || message === "checkout" || message === "buy now") {
+    await beginCheckoutReview();
+    return;
+  }
+  if (message === "store_confirm_checkout" || message === "confirm cart") {
+    if (state !== "CHECKOUT_CONFIRM" || !cart.length) {
+      await send("Please review your cart first. Reply *cart* and choose *Checkout*.");
+      return;
+    }
+    await save("CHECKOUT_NAME", { store_checkout: { name: "", email: "", address: "", payment_method: "" } });
+    await send("Confirmed. Let's complete your order. Please enter your *full name*.");
+    return;
+  }
+  if (message === "store_edit_cart" || message === "edit cart") {
+    await save("IDLE", { store_checkout: null });
+    if (!cart.length) await send("Your cart is empty.");
+    else {
+      const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      await send(`🛒 *Your cart*\n\n${cart.map((item, i) => `${i + 1}. ${item.name} × ${item.quantity} — ${money(item.price * item.quantity)}`).join("\n")}\n\n*Products subtotal: ${money(subtotal)}*\n\nReply *remove product name*, *clear cart*, or *checkout* when ready.`);
+    }
+    return;
+  }
+  if (message === "store_new_order" || message === "new order" || message === "start new order") {
+    await save("IDLE", { store_cart: [], store_checkout: null });
+    await send("🧹 Your previous cart has been cleared. Let's start a fresh order.");
+    await showShopPage(0);
+    return;
   }
   if(message.startsWith("search ")){
     const q=message.slice(7).trim(), terms=q.split(/\s+/).filter((x:string)=>x.length>1&&!/^\d/.test(x)&&!["under","below","less","than","up","to"].includes(x));
@@ -511,16 +574,6 @@ async function handleTenantStoreMessage(
       await save("IDLE", { store_cart: next });
       await send("Item removed. Reply *cart* to review your updated cart.");
     }
-    return;
-  }
-
-  if (message === "checkout" || message === "buy now") {
-    if (!cart.length) {
-      await send("Your cart is empty. Reply *menu* to choose products first.");
-      return;
-    }
-    await save("CHECKOUT_NAME", { store_checkout: { name: "", email: "", address: "", payment_method: "" } });
-    await send("Let's complete your order.\n\nPlease enter your *full name*.");
     return;
   }
 
