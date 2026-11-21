@@ -1,0 +1,1125 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/favicon.png_20261113_034814_0000.png?v=5" />
+<link rel="shortcut icon" type="image/png" href="/favicon.png_20261113_034814_0000.png?v=5" />
+<link rel="apple-touch-icon" href="/favicon.png_20261113_034814_0000.png?v=5" />
+<title>Connect Your Business WhatsApp | Sabi by XTOP</title>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+
+body{
+ font-family:Inter,Arial,sans-serif;
+ background:linear-gradient(145deg,#edf7f1,#f4f7fb);
+ color:#172b24;
+ min-height:100vh;
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ padding:24px 0;
+}
+
+.box{
+ max-width:560px;
+ width:calc(100% - 28px);
+ background:#fff;
+ border:1px solid #e2eee7;
+ border-radius:22px;
+ padding:28px 22px;
+ box-shadow:0 16px 45px rgba(15,50,35,.09);
+}
+
+.brand{text-align:center;margin-bottom:22px}
+
+.brand img{
+ width:100px;
+ height:100px;
+ object-fit:contain;
+ border-radius:18px;
+ margin-bottom:12px;
+}
+
+.brand h1{
+ font-size:26px;
+ color:#087443;
+ margin-bottom:8px;
+}
+
+.brand p{
+ color:#64756c;
+ font-size:14px;
+ line-height:1.6;
+}
+
+/* META AND WHATSAPP TRUST AREA */
+
+.trust{
+ background:#f7fbff;
+ border:1px solid #dce9f7;
+ border-radius:17px;
+ padding:19px 15px;
+ margin-bottom:22px;
+ text-align:center;
+}
+
+.trust-logos{
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ gap:22px;
+ margin-bottom:15px;
+}
+
+.trust-logos img{
+ width:54px;
+ height:54px;
+ object-fit:contain;
+}
+
+.trust-divider{
+ width:1px;
+ height:42px;
+ background:#d5e0eb;
+}
+
+.trust h2{
+ font-size:17px;
+ color:#173d2b;
+ margin-bottom:7px;
+}
+
+.trust-description{
+ font-size:13px;
+ line-height:1.6;
+ color:#526579;
+}
+
+.certification{
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ gap:8px;
+ margin-top:15px;
+ padding:12px;
+ background:#eaf4ff;
+ border:1px solid #cfe3fa;
+ border-radius:11px;
+ color:#174b83;
+ font-size:13px;
+ font-weight:bold;
+}
+
+.certification img{
+ width:21px;
+ height:21px;
+ object-fit:contain;
+}
+
+/* REGISTRATION GUIDE */
+
+.section-title{
+ font-size:19px;
+ color:#173d2b;
+ margin:23px 0 13px;
+}
+
+.steps{
+ display:grid;
+ gap:14px;
+ margin-bottom:22px;
+}
+
+.step{
+ display:flex;
+ align-items:center;
+ gap:14px;
+ padding:12px;
+ border:1px solid #e6eee9;
+ border-radius:15px;
+ background:#fbfdfb;
+ overflow:hidden;
+}
+
+.step-image{
+ width:116px;
+ height:116px;
+ flex-shrink:0;
+ object-fit:cover;
+ border-radius:12px;
+ background:#e8f7ee;
+}
+
+.step-content{
+ flex:1;
+ min-width:0;
+}
+
+.step-number{
+ display:inline-block;
+ color:#087c45;
+ font-size:11px;
+ font-weight:800;
+ letter-spacing:.7px;
+ margin-bottom:6px;
+}
+
+.step strong{
+ display:block;
+ color:#173d2b;
+ font-size:14px;
+ margin-bottom:6px;
+}
+
+.step p{
+ color:#66766d;
+ font-size:12px;
+ line-height:1.55;
+}
+
+/* INFORMATION BOXES */
+
+.warning,.info,.browser-help,.recovery,.diagnostics{
+ border-radius:13px;
+ padding:15px;
+ margin-bottom:18px;
+ font-size:14px;
+ line-height:1.55;
+}
+
+.warning{
+ background:#fff8ed;
+ border:1px solid #f4d8ae;
+}
+
+.warning h2{
+ font-size:16px;
+ color:#9a3412;
+ margin-bottom:9px;
+}
+
+.warning p,.warning li{color:#7c2d12}
+.warning ul,.info ul{padding-left:20px;margin-top:8px}
+
+.info{
+ background:#f1f6ff;
+ border:1px solid #d9e5fb;
+ color:#244b82;
+}
+
+.browser-help{
+ background:#effaf3;
+ border:1px solid #ccebd7;
+ color:#145c38;
+}
+
+.browser-help h2{
+ font-size:16px;
+ margin-bottom:7px;
+}
+
+.browser-btn{
+ display:block;
+ width:100%;
+ padding:13px;
+ margin-top:12px;
+ border:0;
+ border-radius:9px;
+ background:#087c45;
+ color:white;
+ font-size:15px;
+ font-weight:bold;
+ text-align:center;
+ text-decoration:none;
+}
+
+.recovery{
+ background:#fff8ed;
+ border:1px solid #f4d8ae;
+ color:#7c2d12;
+ margin-top:15px;
+}
+
+.recovery h2{
+ font-size:15px;
+ margin-bottom:7px;
+}
+
+.ack{
+ display:flex;
+ align-items:flex-start;
+ gap:10px;
+ margin:18px 0;
+ font-size:14px;
+ line-height:1.5;
+ color:#374151;
+}
+
+.ack input{
+ width:19px;
+ height:19px;
+ flex-shrink:0;
+ margin-top:1px;
+}
+
+.btn{
+ width:100%;
+ padding:17px;
+ border:0;
+ border-radius:12px;
+ font-size:16px;
+ font-weight:bold;
+ background:#087c45;
+ color:white;
+ cursor:pointer;
+ box-shadow:0 5px 14px rgba(8,124,69,.15);
+}
+
+.btn:disabled{
+ background:#9bb9a8;
+ box-shadow:none;
+ cursor:not-allowed;
+}
+
+.hidden{display:none!important}
+
+.error{
+ background:#fef2f2;
+ color:#b91c1c;
+ padding:12px;
+ border-radius:8px;
+ margin-top:15px;
+ font-size:14px;
+ line-height:1.5;
+ white-space:pre-wrap;
+ overflow-wrap:anywhere;
+}
+
+.success{
+ color:#15803d;
+ margin-top:18px;
+ line-height:1.7;
+ font-size:15px;
+ text-align:center;
+}
+
+.dashboard-link{
+ display:block;
+ margin-top:16px;
+ padding:14px;
+ border-radius:9px;
+ background:#16a34a;
+ color:white;
+ text-decoration:none;
+ font-weight:bold;
+}
+
+.diagnostics{
+ background:#f8fafc;
+ border:1px solid #cbd5e1;
+ margin-top:16px;
+ color:#334155;
+}
+
+.diagnostics h2{
+ font-size:16px;
+ margin-bottom:10px;
+}
+
+.diag-row{
+ display:flex;
+ justify-content:space-between;
+ gap:12px;
+ padding:7px 0;
+ border-bottom:1px solid #e2e8f0;
+ font-size:13px;
+}
+
+.diag-row:last-child{border-bottom:0}
+
+.diag-value{
+ font-weight:bold;
+ text-align:right;
+ overflow-wrap:anywhere;
+}
+
+.diag-log{
+ margin-top:10px;
+ padding:10px;
+ border-radius:7px;
+ background:#e2e8f0;
+ font-size:12px;
+ line-height:1.5;
+ white-space:pre-wrap;
+ overflow-wrap:anywhere;
+ max-height:180px;
+ overflow:auto;
+}
+
+.small{
+ font-size:12px;
+ color:#829087;
+ text-align:center;
+ margin-top:22px;
+ line-height:1.5;
+}
+
+@media(max-width:420px){
+ .box{padding:22px 15px}
+ .brand h1{font-size:23px}
+ .step{gap:10px;padding:10px}
+ .step-image{width:94px;height:105px}
+ .step strong{font-size:13px}
+ .step p{font-size:11px}
+}
+
+@media(max-width:340px){
+ .step-image{width:78px;height:95px}
+ .trust-logos img{width:45px;height:45px}
+}
+</style>
+</head>
+
+<body>
+<div id="fb-root"></div>
+
+<div class="box">
+
+<div class="brand">
+<img
+ src="https://i.ibb.co/N2b6rJnY/Untitled-design-20261030-044935-0000.png"
+ alt="Sabi by XTOP logo"
+>
+
+<h1>Connect your business to Sabi</h1>
+
+<p>
+Your business deserves a smarter way to serve customers.
+Connect your business WhatsApp and let Sabi help manage
+customer conversations and orders.
+</p>
+</div>
+
+<!-- META AND WHATSAPP TRUST -->
+
+<div class="trust">
+
+<div class="trust-logos">
+<img
+ src="https://cdn.simpleicons.org/meta/0866FF"
+ alt="Meta logo"
+>
+<span class="trust-divider"></span>
+<img
+ src="https://cdn.simpleicons.org/whatsapp/25D366"
+ alt="WhatsApp logo"
+>
+</div>
+
+<h2>Powered by the WhatsApp Business Platform</h2>
+
+<p class="trust-description">
+Sabi by XTOP connects your dedicated business number
+through Meta's official WhatsApp Embedded Signup process.
+</p>
+
+<div class="certification">
+<img
+ src="https://cdn.simpleicons.org/meta/0866FF"
+ alt="Meta"
+>
+<span>Meta Technology Provider Certified</span>
+</div>
+
+<p class="trust-description" style="margin-top:10px">
+XTOP Retail Technologies has been certified as a
+Meta Technology Provider. This certification confirms
+XTOP's technology-provider status; it does not mean
+Meta endorses Sabi.
+</p>
+
+</div>
+
+<!-- VISUAL REGISTRATION GUIDE -->
+
+<h2 class="section-title">How registration works</h2>
+
+<div class="steps">
+
+<div class="step">
+<img
+ class="step-image"
+ src="https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=500&h=500&fit=crop"
+ alt="Person using a smartphone"
+ loading="lazy"
+>
+<div class="step-content">
+<span class="step-number">STEP 1</span>
+<strong>Prepare your business number</strong>
+<p>
+Have a dedicated business WhatsApp number ready.
+You must be able to receive its verification code.
+</p>
+</div>
+</div>
+
+<div class="step">
+<img
+ class="step-image"
+ src="https://images.unsplash.com/photo-1551650975-87deedd944c3?w=500&h=500&fit=crop"
+ alt="Using a mobile application"
+ loading="lazy"
+>
+<div class="step-content">
+<span class="step-number">STEP 2</span>
+<strong>Connect securely through Meta</strong>
+<p>
+Tap Connect My Business WhatsApp and follow
+Meta's official WhatsApp Business setup instructions.
+</p>
+</div>
+</div>
+
+<div class="step">
+<img
+ class="step-image"
+ src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500&h=500&fit=crop"
+ alt="Working with a digital business dashboard"
+ loading="lazy"
+>
+<div class="step-content">
+<span class="step-number">STEP 3</span>
+<strong>Continue to your Sabi dashboard</strong>
+<p>
+After a successful connection, continue to create
+your merchant dashboard login.
+</p>
+</div>
+</div>
+
+</div>
+
+<div id="browserHelp" class="browser-help hidden">
+<h2>Open secure registration in Chrome</h2>
+For a more reliable Meta connection, open this same registration page in Chrome.
+
+<a id="openChrome" class="browser-btn" href="#">Open in Chrome</a>
+
+<p style="margin-top:9px;font-size:12px">
+Your registration link will be preserved.
+</p>
+</div>
+
+<div class="warning">
+<h2>Important: Choose the right number</h2>
+<p>Before continuing, understand how your WhatsApp number will be used.</p>
+<ul>
+<li>Use a spare or dedicated business WhatsApp number, not your main personal number.</li>
+<li>Sabi will use this connected number to receive and respond to your customers automatically.</li>
+<li>Depending on Meta's connection and migration options, normal WhatsApp mobile-app use may be affected.</li>
+<li>Keep the SIM active and accessible because Meta may require verification.</li>
+<li>Do not connect a number you cannot afford to dedicate to business automation.</li>
+</ul>
+</div>
+
+<div class="info">
+<strong>Don't have a dedicated business number yet?</strong><br>
+You can pause here and return when you have a separate number that you control and can verify by SMS or phone call. Meta may allow you to register a new number during setup, but you still need access to that number and its verification code.
+<ul>
+<li>Select Nigeria (+234) when choosing your country.</li>
+<li>Use a number dedicated to your business and available for verification.</li>
+<li>Do not enter the Sabi by XTOP platform number or a number used by another business.</li>
+<li>If Meta says the number is already registered, stop and review the migration or coexistence options before proceeding.</li>
+</ul>
+<strong>You do not need to connect a number just to read this page.</strong>
+</div>
+
+<div class="info">
+<strong>What about my personal WhatsApp?</strong><br>
+Your personal WhatsApp is optional. It will not be connected to Sabi's automation. You can continue using it separately.
+</div>
+
+<div class="info">
+<strong>Important: Your Meta WhatsApp charges belong to your business</strong><br>
+Connect a WhatsApp Business Account (WABA) that belongs to your own business portfolio. Any Meta/WhatsApp messaging charges, including charges that may apply after free allowances or for paid message templates, are your business's responsibility and are billed by Meta under your account's billing arrangement. Add or maintain your own payment method in WhatsApp Manager when Meta requires it. Sabi does not pay or reimburse these Meta charges. Sabi's own transaction-based service commission is separate.
+</div>
+
+<label class="ack">
+<input type="checkbox" id="acknowledge">
+<span>
+I confirm that I am connecting my business's own WhatsApp Business Account and understand that my business is responsible for Meta/WhatsApp messaging charges and must manage its own Meta billing method. I also understand that connecting this dedicated number may affect normal WhatsApp mobile-app use, depending on Meta's setup and migration options.
+</span>
+</label>
+
+<button class="btn" id="btnConnect" onclick="connectNow()" disabled>
+Connect My Business WhatsApp
+</button>
+
+<div id="errorMsg" class="error hidden"></div>
+<div id="successMsg" class="success hidden"></div>
+
+<div id="diagnostics" class="diagnostics hidden">
+<h2>Connection diagnostics</h2>
+
+<div class="diag-row">
+<span>Facebook SDK</span>
+<span class="diag-value" id="diagSdk">Loading</span>
+</div>
+
+<div class="diag-row">
+<span>Login launched</span>
+<span class="diag-value" id="diagLogin">No</span>
+</div>
+
+<div class="diag-row">
+<span>Login response</span>
+<span class="diag-value" id="diagResponse">Waiting</span>
+</div>
+
+<div class="diag-row">
+<span>Meta signup event</span>
+<span class="diag-value" id="diagEvent">Not received</span>
+</div>
+
+<div class="diag-row">
+<span>Authorization code</span>
+<span class="diag-value" id="diagCode">Not received</span>
+</div>
+
+<div class="diag-row">
+<span>WhatsApp account details</span>
+<span class="diag-value" id="diagAccount">Not received</span>
+</div>
+
+<div class="diag-row">
+<span>Current stage</span>
+<span class="diag-value" id="diagStage">Page loaded</span>
+</div>
+
+<div class="diag-log" id="diagLog">Waiting for connection attempt.</div>
+</div>
+
+<div class="recovery">
+<h2>Having trouble opening the Meta registration page?</h2>
+
+<p style="margin-bottom:10px">
+If Facebook opens a black screen, a blank page, or closes before registration finishes:
+</p>
+
+<ol style="padding-left:20px;line-height:1.8">
+<li>Close the blank Facebook window and return to this original Sabi registration page.</li>
+<li>If you opened this page inside WhatsApp, use the Open in Chrome button above.</li>
+<li>Make sure you reopen the original registration link. Do not remove the registration token.</li>
+<li>Wait for the page to load completely before tapping Connect My Business WhatsApp.</li>
+<li>If Facebook keeps intercepting the link, check Android Settings → Apps → Facebook → Open by default. Review its supported-link settings and retry in Chrome. The exact options vary by phone.</li>
+<li>If the problem continues, send Sabi support a screenshot and the connection diagnostics shown on this page.</li>
+</ol>
+
+<p style="margin-top:12px;font-size:12px">
+Never share your Facebook password or verification codes with anyone.
+</p>
+</div>
+
+<div id="androidRecovery" class="recovery hidden">
+<h2>Having trouble opening Meta?</h2>
+If Meta's page closes immediately on Android:
+<ol style="padding-left:19px;margin-top:7px">
+<li>Open your phone's Settings.</li>
+<li>Go to Apps, then Facebook.</li>
+<li>Open "Open by default" or "Set as default".</li>
+<li>If "Open supported links" is enabled, you can try turning it off.</li>
+<li>Return to Chrome and retry.</li>
+</ol>
+<p style="margin-top:8px">
+This is a troubleshooting option, not a requirement for every merchant.
+</p>
+</div>
+
+<p class="small">Secure connection powered by Meta Embedded Signup.</p>
+
+</div>
+
+<script>
+const API="https://mldywarnnwjitfvqpgis.supabase.co/functions/v1/whatsapp-webhook?action=onboard";
+const APP_ID="1947931015867084";
+const CONFIG_ID="1470585484884368";
+
+const params=new URLSearchParams(location.search);
+const SESSION_TOKEN=params.get("token")||"";
+let RETURN_TO="";
+try {
+ const requestedReturn=params.get("return_to")||"";
+ const parsedReturn=new URL(requestedReturn,location.origin);
+ if(parsedReturn.origin===location.origin) RETURN_TO=parsedReturn.href;
+} catch (_) {}
+
+
+let fbReady=false;
+let authCode=null;
+let signupInfo=null;
+let submitting=false;
+let cancelled=false;
+let loginStarted=false;
+let loginTimer=null;
+let eventReceived=false;
+
+const btn=document.getElementById("btnConnect");
+const acknowledgement=document.getElementById("acknowledge");
+
+function diagnosticLog(message){
+ const el=document.getElementById("diagLog");
+ const time=new Date().toLocaleTimeString();
+ el.textContent+="\n["+time+"] "+message;
+ el.scrollTop=el.scrollHeight;
+}
+
+function setDiagnostic(id,value){
+ const el=document.getElementById(id);
+ if(el)el.textContent=value;
+}
+
+function setStage(stage){
+ setDiagnostic("diagStage",stage);
+ diagnosticLog(stage);
+ document.getElementById("diagnostics").classList.remove("hidden");
+}
+
+function showError(message){
+ const el=document.getElementById("errorMsg");
+ el.textContent=message;
+ el.classList.remove("hidden");
+ document.getElementById("diagnostics").classList.remove("hidden");
+
+ if(isAndroid()){
+  document.getElementById("androidRecovery").classList.remove("hidden");
+ }
+}
+
+function hideError(){
+ document.getElementById("errorMsg").classList.add("hidden");
+}
+
+function resetButton(){
+ btn.disabled=!acknowledgement.checked;
+ btn.textContent="Connect My Business WhatsApp";
+}
+
+function isAndroid(){
+ return /Android/i.test(navigator.userAgent);
+}
+
+function isWhatsAppBrowser(){
+ return /WhatsApp/i.test(navigator.userAgent);
+}
+
+acknowledgement.addEventListener("change",function(){
+ btn.disabled=!this.checked;
+});
+
+function setupBrowserHandoff(){
+ if(!isAndroid() || !isWhatsAppBrowser())return;
+
+ document.getElementById("browserHelp").classList.remove("hidden");
+
+ const link=document.getElementById("openChrome");
+ const currentUrl=location.href;
+ const parsed=new URL(currentUrl);
+
+ link.href=
+  "intent://"+parsed.host+parsed.pathname+parsed.search+parsed.hash+
+  "#Intent;scheme=https;package=com.android.chrome;"+
+  "S.browser_fallback_url="+encodeURIComponent(currentUrl)+";end";
+
+ link.addEventListener("click",function(){
+  link.textContent="Opening Chrome...";
+ });
+}
+
+function validFacebookOrigin(origin){
+ try{
+  const u=new URL(origin);
+  return u.protocol==="https:" &&
+   (u.hostname==="facebook.com" || u.hostname.endsWith(".facebook.com"));
+ }catch(e){
+  return false;
+ }
+}
+
+window.fbAsyncInit=function(){
+ try{
+  FB.init({
+   appId:APP_ID,
+   autoLogAppEvents:true,
+   cookie:true,
+   xfbml:true,
+   version:"v26.0"
+  });
+
+  fbReady=true;
+  setDiagnostic("diagSdk","Loaded successfully");
+  diagnosticLog("Facebook SDK initialized using v26.0.");
+  setStage("Facebook SDK ready");
+
+ }catch(error){
+  setDiagnostic("diagSdk","Initialization failed");
+  setStage("Facebook SDK initialization failed");
+  showError("Facebook SDK initialization failed: "+error.message);
+ }
+};
+
+function facebookSdkFailed(){
+ setDiagnostic("diagSdk","Download failed");
+ setStage("Facebook SDK could not be downloaded");
+ showError("Facebook SDK could not be downloaded. Check your internet connection or browser restrictions, then refresh.");
+}
+
+window.addEventListener("message",function(event){
+
+ if(!validFacebookOrigin(event.origin))return;
+
+ let data=event.data;
+
+ try{
+  if(typeof data==="string")data=JSON.parse(data);
+ }catch(error){
+  return;
+ }
+
+ if(!data || data.type!=="WA_EMBEDDED_SIGNUP")return;
+
+ eventReceived=true;
+
+ setDiagnostic("diagEvent",data.event||"Unknown event");
+ setStage("Meta signup event received: "+(data.event||"Unknown"));
+
+ if(data.event==="FINISH"){
+
+  const d=data.data||{};
+
+  signupInfo={
+   waba_id:d.waba_id||"",
+   phone_number_id:d.phone_number_id||""
+  };
+
+  const valid=!!(signupInfo.waba_id && signupInfo.phone_number_id);
+
+  setDiagnostic("diagAccount",valid?"Received":"Incomplete");
+  diagnosticLog("Meta FINISH event received. WABA ID present: "+!!signupInfo.waba_id+". Phone number ID present: "+!!signupInfo.phone_number_id+".");
+
+  tryFinish();
+
+ }else if(data.event==="CANCEL"){
+
+  cancelled=true;
+  setStage("Merchant cancelled Meta signup");
+  showError("You cancelled the WhatsApp connection. You can try again.");
+  resetButton();
+
+ }else if(data.event==="ERROR"){
+
+  cancelled=true;
+
+  const details=data.error_message ||
+   (data.data && data.data.error_message) ||
+   "Meta did not provide an error description.";
+
+  setStage("Meta reported an Embedded Signup error");
+  diagnosticLog("Meta error details: "+details);
+  showError("Meta reported an error: "+details);
+  resetButton();
+
+ }else{
+  diagnosticLog("Additional Meta event received: "+data.event);
+ }
+
+});
+
+function connectNow(){
+
+ hideError();
+
+ if(submitting)return;
+
+ if(!acknowledgement.checked){
+  showError("Please confirm that you understand the dedicated-number requirement.");
+  return;
+ }
+
+ if(!SESSION_TOKEN){
+  setStage("Registration token missing");
+  showError("Your registration link is invalid. Request a new link through Sabi on WhatsApp.");
+  return;
+ }
+
+ if(!fbReady || typeof FB==="undefined"){
+  setDiagnostic("diagSdk","Not ready");
+  setStage("Facebook SDK is not ready");
+  showError("Facebook is still loading. Wait a few seconds and try again. If this continues, refresh the page.");
+  return;
+ }
+
+ authCode=null;
+ signupInfo=null;
+ cancelled=false;
+ loginStarted=true;
+ eventReceived=false;
+
+ setDiagnostic("diagLogin","Yes");
+ setDiagnostic("diagResponse","Waiting for callback");
+ setDiagnostic("diagEvent","Not received");
+ setDiagnostic("diagCode","Not received");
+ setDiagnostic("diagAccount","Not received");
+
+ document.getElementById("diagnostics").classList.remove("hidden");
+
+ btn.disabled=true;
+ btn.textContent="Opening Meta...";
+
+ setStage("Calling Facebook Login");
+
+ try{
+
+  FB.login(function(response){
+
+   if(loginTimer){
+    clearTimeout(loginTimer);
+    loginTimer=null;
+   }
+
+   setDiagnostic("diagResponse","Callback received");
+
+   if(cancelled)return;
+
+   diagnosticLog("Facebook Login callback received.");
+
+   if(response && response.authResponse && response.authResponse.code){
+
+    authCode=response.authResponse.code;
+
+    setDiagnostic("diagCode","Received");
+    setStage("Authorization code received");
+
+    btn.textContent="Verifying your business WhatsApp...";
+
+    tryFinish();
+
+   }else{
+
+    const status=response && response.status?
+     response.status:"No status returned";
+
+    setDiagnostic("diagResponse","Status: "+status);
+
+    const errorMessage=
+     response && (response.error_message || response.error_description)?
+     (response.error_message || response.error_description):
+     "No detailed error returned by Facebook.";
+
+    setStage("Facebook Login returned without an authorization code");
+
+    diagnosticLog("Facebook status: "+status);
+    diagnosticLog("Facebook error: "+errorMessage);
+
+    if(status==="unknown"){
+     showError(
+      "Meta did not complete the WhatsApp signup and no authorization code was returned. " +
+      "If you closed the Meta window or stopped at the phone-number screen, this is expected.\n\n"+
+      "No WhatsApp number was connected to Sabi. Your existing Sabi platform number has not been changed.\n\n"+
+      "You can return to this page and try again when you have a separate business number that you can verify."
+     );
+    }else{
+     showError(
+      "Meta did not return an authorization code.\n"+
+      "Status: "+status+"\n"+
+      "Details: "+errorMessage
+     );
+    }
+
+    resetButton();
+   }
+
+  },{
+   config_id:CONFIG_ID,
+   auth_type:"rerequest",
+   response_type:"code",
+   override_default_response_type:true,
+   extras:{}
+  });
+
+  setStage("Facebook Login called; waiting for Meta response");
+
+  loginTimer=setTimeout(function(){
+
+   if(!authCode && !cancelled){
+    setStage("No authorization code received after waiting");
+    diagnosticLog("No completed authorization response was available after 20 seconds.");
+    showError(
+     "Meta has not completed the login process.\n\n"+
+     "The diagnostic information below will help identify where it stopped."
+    );
+    resetButton();
+   }
+
+  },20000);
+
+ }catch(error){
+
+  if(loginTimer){
+   clearTimeout(loginTimer);
+   loginTimer=null;
+  }
+
+  setStage("Facebook Login could not be launched");
+  diagnosticLog("JavaScript error: "+error.message);
+
+  showError("Could not open Meta signup: "+(error.message||"Unknown browser error"));
+
+  resetButton();
+ }
+}
+
+async function tryFinish(){
+
+ if(submitting || cancelled || !authCode || !signupInfo)return;
+
+ if(!signupInfo.waba_id || !signupInfo.phone_number_id){
+  setStage("WhatsApp account details are incomplete");
+  showError("Meta did not return the WhatsApp account details. Please restart signup.");
+  resetButton();
+  return;
+ }
+
+ submitting=true;
+ btn.disabled=true;
+ btn.textContent="Securing your WhatsApp connection...";
+
+ setStage("Sending verified details to Sabi");
+
+ try{
+
+  const controller=new AbortController();
+
+  const timeout=setTimeout(function(){
+   controller.abort();
+  },30000);
+
+  let response;
+
+  try{
+
+   response=await fetch(API,{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+     session_token:SESSION_TOKEN,
+     auth_code:authCode,
+     waba_id:signupInfo.waba_id,
+     phone_number_id:signupInfo.phone_number_id,
+     billing_costs_acknowledged:acknowledgement.checked
+    }),
+    signal:controller.signal
+   });
+
+  }finally{
+   clearTimeout(timeout);
+  }
+
+  let result;
+
+  try{
+   result=await response.json();
+  }catch(error){
+   throw new Error("Sabi received an unreadable response from the registration server.");
+  }
+
+  if(!response.ok || !result.success){
+   throw new Error(result.error || "WhatsApp connection failed. Server response: "+response.status);
+  }
+
+  setStage("Sabi successfully connected your WhatsApp account");
+
+  btn.classList.add("hidden");
+  acknowledgement.parentElement.classList.add("hidden");
+  hideError();
+
+  const success=document.getElementById("successMsg");
+  success.classList.remove("hidden");
+
+  const heading=document.createElement("h2");
+  heading.textContent="WhatsApp Connected Successfully!";
+  success.appendChild(heading);
+
+  const details=document.createElement("p");
+  details.style.marginTop="12px";
+  details.textContent="Business number: "+(result.phone||"Connected")+
+   "\n\nYour business WhatsApp is now connected to Sabi by XTOP."+
+   "\n\nRemember: Meta messaging charges are your business's responsibility. Manage your payment method in your own WhatsApp Manager.";
+  success.appendChild(details);
+
+  const next=document.createElement("p");
+  next.style.marginTop="14px";
+  next.textContent=RETURN_TO
+   ? "Your business number is now linked to this merchant dashboard."
+   : "Next, create your merchant dashboard login using your email address and a password.";
+  success.appendChild(next);
+
+  const destination=RETURN_TO||result.dashboard_url||"";
+  if(destination){
+   const link=document.createElement("a");
+   link.href=destination;
+   link.className="dashboard-link";
+   link.textContent=RETURN_TO?"Return to Merchant Dashboard":"Continue to Create Dashboard Account";
+   success.appendChild(link);
+  }else{
+   const instruction=document.createElement("p");
+   instruction.style.marginTop="12px";
+   instruction.textContent="Return to your Sabi WhatsApp chat and follow the next registration instructions.";
+   success.appendChild(instruction);
+  }
+
+ }catch(error){
+
+  setStage("Sabi could not complete the connection");
+  diagnosticLog("Server error: "+(error.message||"Unknown error"));
+
+  showError(
+   error.name==="AbortError"?
+   "The request timed out. Check your internet connection and try again.":
+   error.message||"Something went wrong during WhatsApp registration."
+  );
+
+  resetButton();
+
+ }finally{
+  submitting=false;
+ }
+}
+
+window.addEventListener("load",function(){
+
+ setupBrowserHandoff();
+
+ setStage("Registration page loaded");
+
+ if(!SESSION_TOKEN){
+  setStage("Registration token missing");
+  showError("Your registration link is missing. Request a new link through Sabi on WhatsApp.");
+  btn.disabled=true;
+ }
+
+});
+</script>
+
+<script
+ async
+ defer
+ crossorigin="anonymous"
+ src="https://connect.facebook.net/en_US/sdk.js"
+ onerror="facebookSdkFailed()">
+</script>
+
+</body>
+</html>
