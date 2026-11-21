@@ -43,6 +43,11 @@ type Order = {
   created_at: string;
   items: OrderItem[];
   cancellation_reason?: string | null;
+  sabi_settlement?: {
+    settlement_status?: string | null;
+    settlement_id?: string | null;
+    settlement_date?: string | null;
+  } | null;
 };
 
 type Product = {
@@ -100,6 +105,7 @@ export default function Orders({ tenantId }: Props) {
   const [loading, setLoading] = useState(true);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [busyOrder, setBusyOrder] = useState("");
+  const [syncingSettlement, setSyncingSettlement] = useState(false);
   const [creatingOrder, setCreatingOrder] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
 
@@ -455,6 +461,51 @@ export default function Orders({ tenantId }: Props) {
     await loadOrders();
   }
 
+
+  async function refreshPayoutStatus() {
+    if (!tenantId || syncingSettlement) return;
+
+    setSyncingSettlement(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const { data, error: syncError } = await supabase.functions.invoke(
+        "merchant-paystack",
+        {
+          body: {
+            action: "sync_settlements",
+            tenant_id: tenantId
+          }
+        }
+      );
+
+      if (syncError) {
+        throw new Error(syncError.message || "Could not refresh payout status.");
+      }
+
+      if (!data?.success) {
+        throw new Error(
+          data?.error || data?.message || "Could not refresh payout status."
+        );
+      }
+
+      setNotice(
+        data.message ||
+        `Payout status refreshed. ${Number(data.updated || 0)} settlement record(s) updated.`
+      );
+      await loadOrders();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not refresh payout status."
+      );
+    } finally {
+      setSyncingSettlement(false);
+    }
+  }
+
   const filteredOrders = orders.filter((order) => {
     if (filter === "ALL") return true;
     return String(order.status).toUpperCase() === filter;
@@ -498,11 +549,21 @@ export default function Orders({ tenantId }: Props) {
 
           <button
             className="orders-refresh"
+            onClick={refreshPayoutStatus}
+            disabled={syncingSettlement || loading}
+            title="Check Paystack for confirmed merchant settlements"
+          >
+            <RefreshCw size={16} />
+            {syncingSettlement ? "Checking Paystack..." : "Refresh payout status"}
+          </button>
+
+          <button
+            className="orders-refresh"
             onClick={loadOrders}
             disabled={loading}
           >
             <RefreshCw size={16} />
-            Refresh
+            Refresh orders
           </button>
         </div>
       </div>
@@ -931,7 +992,35 @@ export default function Orders({ tenantId }: Props) {
 
                     {paidOrder && (
                       <span className="order-status success">
-                        Sabi charges collected through Paystack
+                        Customer payment successful
+                      </span>
+                    )}
+
+                    {paidOrder && order.sabi_settlement && (() => {
+                      const settlementStatus = String(
+                        order.sabi_settlement?.settlement_status || "RECORDED"
+                      ).toUpperCase();
+                      const settled = settlementStatus === "SETTLED";
+                      const failed = settlementStatus === "FAILED";
+                      const refunded = settlementStatus === "REFUNDED";
+                      return (
+                        <span className={statusClass(
+                          settled ? "COMPLETED" : failed ? "FAILED" : refunded ? "REFUNDED" : "PENDING"
+                        )}>
+                          {settled
+                            ? "Paystack settlement completed"
+                            : failed
+                              ? "Paystack settlement failed — contact Sabi support"
+                              : refunded
+                                ? "Payment refunded"
+                                : "Merchant settlement pending"}
+                        </span>
+                      );
+                    })()}
+
+                    {paidOrder && !order.sabi_settlement && (
+                      <span className="order-status warning">
+                        Settlement confirmation not yet available
                       </span>
                     )}
                   </div>
@@ -978,10 +1067,26 @@ export default function Orders({ tenantId }: Props) {
 
                       <div className="order-detail-row">
                         <span>Settlement method</span>
+                        <strong>Paystack split settlement</strong>
+                      </div>
+
+                      <div className="order-detail-row">
+                        <span>Merchant settlement status</span>
                         <strong>
-                          Paystack split settlement
+                          {String(order.sabi_settlement?.settlement_status || "RECORDED").toUpperCase() === "SETTLED"
+                            ? "Completed by Paystack"
+                            : String(order.sabi_settlement?.settlement_status || "RECORDED").toUpperCase() === "FAILED"
+                              ? "Failed — contact Sabi support"
+                              : "Pending confirmation"}
                         </strong>
                       </div>
+
+                      {order.sabi_settlement?.settlement_date && (
+                        <div className="order-detail-row">
+                          <span>Paystack settlement date</span>
+                          <strong>{dateTime(order.sabi_settlement.settlement_date)}</strong>
+                        </div>
+                      )}
 
                       <div className="order-detail-row">
                         <span>Sabi Service Fee</span>
