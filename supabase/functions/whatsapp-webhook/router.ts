@@ -1164,7 +1164,33 @@ export async function routeMessage(
           agent_mode: false,
         }, account.tenantId);
 
-        await send("✅ Human assistance has ended. Sabi's automated shop replies are active again. Reply *menu* to continue shopping.");
+        const resumeReply = "✅ Human assistance has ended. Sabi's automated shop replies are active again. Reply *menu* to continue shopping.";
+        const resumeMessageId = await sendTextMessage(
+          phone,
+          resumeReply,
+          account.credentials,
+        );
+        if (resumeMessageId) {
+          await storeMessage(
+            contact.id,
+            "OUTBOUND",
+            "text",
+            resumeReply,
+            resumeMessageId,
+            account.tenantId,
+          );
+          await logBotActivity(
+            phone,
+            "OUTBOUND",
+            "text",
+            "TENANT_STORE",
+            resumeReply,
+            contact.name || incoming.profileName || "",
+            "",
+            resumeMessageId,
+            account.tenantId,
+          );
+        }
         return;
       }
 
