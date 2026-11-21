@@ -181,23 +181,17 @@ export default function App() {
   }
 
   if (isConnectPortalHost) {
-    return (
-      <iframe
-        title="Sabi business connection portal"
-        src={`/connect-whatsapp.html${window.location.search}`}
-        style={{ position: "fixed", inset: 0, width: "100%", height: "100%", border: 0 }}
-      />
-    );
+    if (window.location.pathname !== "/connect-whatsapp.html") {
+      window.location.replace(`/connect-whatsapp.html${window.location.search}`);
+    }
+    return null;
   }
 
   if (isEngrPortalHost) {
-    return (
-      <iframe
-        title="Engr. Ero Learning Centre portal"
-        src={`/engr-ero-portal.html${window.location.search}`}
-        style={{ position: "fixed", inset: 0, width: "100%", height: "100%", border: 0 }}
-      />
-    );
+    if (window.location.pathname !== "/engr-ero-portal.html") {
+      window.location.replace(`/engr-ero-portal.html${window.location.search}`);
+    }
+    return null;
   }
 
   if (isPublicProductPage) {
