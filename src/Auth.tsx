@@ -7,11 +7,17 @@ type AuthProps = {
 };
 
 export default function Auth({ onAuthenticated }: AuthProps) {
-  const [mode, setMode] = useState<"login" | "signup">(() =>
-    new URLSearchParams(window.location.search).get("signup") === "1"
-      ? "signup"
-      : "login"
-  );
+  const [mode, setMode] = useState<"login" | "signup">(() => {
+    const params = new URLSearchParams(window.location.search);
+
+    // After Meta Embedded Signup, take new merchants straight to account
+    // creation. Email confirmation returns with login=1, so it opens login.
+    if (params.get("login") === "1") return "login";
+    if (params.get("session_token") || params.get("signup") === "1") {
+      return "signup";
+    }
+    return "login";
+  });
   const [ownerName, setOwnerName] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState("");
@@ -43,6 +49,8 @@ export default function Auth({ onAuthenticated }: AuthProps) {
           );
         }
 
+        // After email verification, return to the login screen while
+        // retaining the Meta onboarding token for workspace activation.
         const redirectUrl = new URL("/?login=1", window.location.origin);
         if (sessionToken) {
           redirectUrl.searchParams.set("session_token", sessionToken);
