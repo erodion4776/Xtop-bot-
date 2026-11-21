@@ -419,10 +419,10 @@ async function handleTenantStoreMessage(
   // The customer's text is never trusted as proof: order/payment state is read
   // from this tenant's database and matched to the sender's WhatsApp number.
   const paymentConfirmationIntent =
-    /\\b(payment\\s+(?:has\\s+been\\s+)?confirmed|payment\\s+(?:was\\s+)?successful|i\\s+(?:have\\s+)?paid|i\\s+made\\s+payment|paid\\s+for\\s+(?:my\\s+)?order)\\b/i.test(raw) ||
+    /\b(payment\s+(?:has\s+been\s+)?confirmed|payment\s+(?:was\s+)?successful|i\s+(?:have\s+)?paid|i\s+made\s+payment|paid\s+for\s+(?:my\s+)?order)\b/i.test(raw) ||
     /SABI-ORDER-[A-Z0-9-]+/i.test(raw);
   if (paymentConfirmationIntent) {
-    const orderNumberMatch = raw.match(/SABI-\\d{8}-[A-Z0-9]+/i);
+    const orderNumberMatch = raw.match(/SABI-\d{8}-[A-Z0-9]+/i);
     const paymentReferenceMatch = raw.match(/SABI-ORDER-[A-Z0-9-]+/i);
     const requestedOrder = (orderNumberMatch?.[0] || String(context.store_last_order || "")).trim().toUpperCase();
     const requestedReference = paymentReferenceMatch?.[0]?.trim();
@@ -484,12 +484,12 @@ async function handleTenantStoreMessage(
       ? "✅ *Payment: CONFIRMED*"
       : "⏳ *Payment: NOT YET CONFIRMED*";
     const referenceLine = paymentIntent?.reference
-      ? `\\nPayment reference: ${paymentIntent.reference}`
+      ? `\nPayment reference: ${paymentIntent.reference}`
       : "";
     const nextStep = isPaid
       ? "The shop can now process your order. You do not need to pay again."
       : "Please allow the payment verification process to complete. Do not pay again yet; contact the shop if the status does not update.";
-    await send(`📦 *Order: ${order.order_number}*\\n\\n${paymentLine}\\nOrder fulfilment: *${order.status}*\\nDelivery payment: *${order.shipping_payment_status || "Not applicable"}*${referenceLine}\\n\\n${nextStep}\\n\\nReply *track ${order.order_number}* to check again, or *agent* to contact the shop.`);
+    await send(`📦 *Order: ${order.order_number}*\n\n${paymentLine}\nOrder fulfilment: *${order.status}*\nDelivery payment: *${order.shipping_payment_status || "Not applicable"}*${referenceLine}\n\n${nextStep}\n\nReply *track ${order.order_number}* to check again, or *agent* to contact the shop.`);
     return;
   }
 
