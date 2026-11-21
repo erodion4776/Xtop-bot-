@@ -1075,6 +1075,46 @@ export async function routeMessage(
         return;
       }
 
+      // Allow the customer or shop team to end an individual handoff.
+      // Accept common variants/typos so the pause cannot trap the conversation.
+      const resumeCommand = String(incoming.text || incoming.interactiveId || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[.!?]/g, "")
+        .replace(/\\s+/g, " ");
+      const isResumeCommand = [
+        "end agent",
+        "end angent",
+        "end human",
+        "resume bot",
+        "start bot",
+        "bot on",
+        "resume automation",
+      ].includes(resumeCommand);
+
+      if (merchantAgentTakeover && isResumeCommand) {
+        const { error: contactResumeError } = await supabase
+          .from("contacts")
+          .update({ agent_mode: false })
+          .eq("tenant_id", account.tenantId)
+          .eq("id", contact.id);
+        if (contactResumeError) safeErrorLog("tenantStore.resumeContact", contactResumeError);
+
+        const resumedContext = { ...merchantContext };
+        delete resumedContext.agent_takeover;
+        delete resumedContext.agent_mode;
+
+        await updateConversation(conversation.id, {
+          current_module: "TENANT_STORE",
+          current_state: "IDLE",
+          context_json: resumedContext,
+          agent_mode: false,
+        }, account.tenantId);
+
+        await send("✅ Human assistance has ended. Sabi's automated shop replies are active again. Reply *menu* to continue shopping.");
+        return;
+      }
+
       // Individual takeover affects only this customer.
       if (merchantAgentTakeover) {
         console.log(
