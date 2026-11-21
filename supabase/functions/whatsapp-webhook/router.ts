@@ -384,6 +384,12 @@ async function handleTenantStoreMessage(
   const cart: Array<{product_id:string;name:string;price:number;quantity:number}> =
     Array.isArray(context.store_cart) ? context.store_cart : [];
   const state = String(conversation.current_state || "IDLE");
+  // Recover a lost checkout state when the customer retries ONLINE.
+  // The saved order number + cart are the recovery key; do not depend only
+  // on current_state because another router path may have changed it.
+  const isPaymentRetry = message === "online" &&
+    Boolean(context.store_last_order) &&
+    cart.length > 0;
 
   if (message === "agent" || message === "human" || message === "talk to human" || message === "customer service") {
     await supabase.from("contacts").update({ agent_mode: true }).eq("tenant_id", account.tenantId).eq("id", contact.id);
@@ -657,7 +663,7 @@ async function handleTenantStoreMessage(
   }
 
   // Continue the persisted checkout conversation.
-  if (state.startsWith("CHECKOUT_")) {
+  if (state.startsWith("CHECKOUT_") || isPaymentRetry) {
     const checkout = { ...(context.store_checkout || {}) };
     if (state === "CHECKOUT_NAME") {
       if (raw.length < 2 || raw.length > 100) {
@@ -695,7 +701,7 @@ async function handleTenantStoreMessage(
       await send(`Choose how you want to pay:\n\nReply *ONLINE* to pay for the products and delivery now.${podAvailable ? "\nReply *POD* to pay the delivery fee now and the product balance when your order arrives." : ""}\n\nYour WhatsApp number will be used for order updates.`);
       return;
     }
-    if (state === "CHECKOUT_PAYMENT") {
+    if (state === "CHECKOUT_PAYMENT" || isPaymentRetry) {
       const paymentMethod = message === "pod" || message === "pay on delivery" ? "POD"
         : message === "online" || message === "pay now" ? "ONLINE" : "";
       if (!paymentMethod) {
