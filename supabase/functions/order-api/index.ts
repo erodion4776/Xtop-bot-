@@ -57,6 +57,7 @@ async function initializePaystack(
     feeSnapshot.commission_basis_amount,
   );
   const serviceFee = Number(feeSnapshot.customer_service_fee);
+  const paystackProcessingFee = Number(feeSnapshot.paystack_processing_fee);
   const xtopTransactionCharge = Number(
     feeSnapshot.xtop_transaction_charge,
   );
@@ -68,11 +69,13 @@ async function initializePaystack(
     !Number.isFinite(commissionAmount) ||
     !Number.isFinite(commissionBasisAmount) ||
     !Number.isFinite(serviceFee) ||
+    !Number.isFinite(paystackProcessingFee) ||
     !Number.isFinite(xtopTransactionCharge) ||
     !Number.isFinite(expectedAmount) ||
     serviceFee !== 50 ||
     commissionAmount < 0 ||
-    xtopTransactionCharge !== commissionAmount + serviceFee ||
+    paystackProcessingFee < 0 ||
+    xtopTransactionCharge !== commissionAmount + serviceFee + paystackProcessingFee ||
     Math.round((basePaymentAmount + xtopTransactionCharge) * 100) !==
       Math.round(expectedAmount * 100)
   ) {
@@ -135,6 +138,7 @@ async function initializePaystack(
           order_number: orderNumber,
           merchant_commission_amount: commissionAmount,
           customer_service_fee: serviceFee,
+          paystack_processing_fee: paystackProcessingFee,
           xtop_transaction_charge: xtopTransactionCharge,
           commission_basis_amount: commissionBasisAmount,
         },
@@ -273,6 +277,8 @@ async function createOrder(body: Record<string, unknown>) {
     total: order.total,
     payment_amount: Number(intent.expected_amount),
     sabi_service_fee: Number(feeSnapshot.customer_service_fee),
+    sabi_commission: Number(feeSnapshot.merchant_commission_amount),
+    paystack_processing_fee: Number(feeSnapshot.paystack_processing_fee),
     currency: intent.currency,
     authorization_url: payment.authorization_url,
     access_code: payment.access_code,
@@ -322,6 +328,8 @@ async function createCartOrder(body: Record<string, unknown>) {
       payment_method: paymentMethod, subtotal: order.subtotal, delivery_fee: order.delivery_fee,
       total: order.total, payment_amount: Number(intent.expected_amount),
       sabi_service_fee: Number((intent.metadata || {}).customer_service_fee),
+      sabi_commission: Number((intent.metadata || {}).merchant_commission_amount),
+      paystack_processing_fee: Number((intent.metadata || {}).paystack_processing_fee),
       currency: intent.currency, authorization_url: payment.authorization_url,
       customer_confirmation_token: order.customer_confirmation_token,
     });
@@ -614,6 +622,7 @@ async function verifyOrderPayment(body: Record<string, unknown>) {
   const expectedTransactionCharge = Number(
     intentMetadata.xtop_transaction_charge,
   );
+  const expectedPaystackFee = Number(intentMetadata.paystack_processing_fee);
   const expectedBasis = Number(
     intentMetadata.commission_basis_amount,
   );
@@ -636,10 +645,12 @@ async function verifyOrderPayment(body: Record<string, unknown>) {
     Number(metadata.customer_service_fee) !== expectedServiceFee ||
     Number(metadata.xtop_transaction_charge) !==
       expectedTransactionCharge ||
+    Number(metadata.paystack_processing_fee) !== expectedPaystackFee ||
     Number(metadata.commission_basis_amount) !== expectedBasis ||
     expectedServiceFee !== 50 ||
+    !Number.isFinite(expectedPaystackFee) || expectedPaystackFee < 0 ||
     expectedTransactionCharge !==
-      expectedCommission + expectedServiceFee
+      expectedCommission + expectedServiceFee + expectedPaystackFee
   ) {
     console.error("Payment verification mismatch:", reference);
     throw new Error("PAYMENT_DETAILS_MISMATCH");
