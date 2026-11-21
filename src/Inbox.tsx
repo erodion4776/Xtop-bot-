@@ -78,8 +78,8 @@ export default function Inbox() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [error, setError] = useState("");
 
-  async function loadInbox(keepSelection = true) {
-    setLoading(true);
+  async function loadInbox(keepSelection = true, silent = false) {
+    if (!silent) setLoading(true);
     setError("");
     const { data, error: apiError } = await supabase.functions.invoke(
       "xtop-dashboard?action=inbox-list",
@@ -87,7 +87,7 @@ export default function Inbox() {
     );
     if (apiError || data?.error) {
       setError(data?.error || apiError?.message || "Could not load customer conversations.");
-      setLoading(false);
+      if (!silent) setLoading(false);
       return;
     }
     const rows = Array.isArray(data?.data) ? data.data as Contact[] : [];
@@ -98,13 +98,15 @@ export default function Inbox() {
         return rows.find((item) => item.id === current.id) || current;
       });
     }
-    setLoading(false);
+    if (!silent) setLoading(false);
   }
 
-  async function loadChat(contact: Contact) {
+  async function loadChat(contact: Contact, silent = false) {
     setSelected(contact);
-    setChatLoading(true);
-    setError("");
+    if (!silent) {
+      setChatLoading(true);
+      setError("");
+    }
     const { data, error: apiError } = await supabase.functions.invoke(
       `xtop-dashboard?action=chat&contact_id=${encodeURIComponent(contact.id)}`,
       { method: "GET" }
@@ -119,7 +121,7 @@ export default function Inbox() {
       setOrders(Array.isArray(data?.orders) ? data.orders as CustomerOrder[] : []);
       setCustomer(data?.customer || contact);
     }
-    setChatLoading(false);
+    if (!silent) setChatLoading(false);
   }
 
   useEffect(() => {
@@ -127,6 +129,16 @@ export default function Inbox() {
     // Load once when the Customer Service page is opened.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const refreshTimer = window.setInterval(() => {
+      void loadInbox(true, true);
+      if (selected) void loadChat(selected, true);
+    }, 20000);
+    return () => window.clearInterval(refreshTimer);
+    // The selected conversation is the only changing dependency needed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id]);
 
   const filteredContacts = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -219,7 +231,7 @@ export default function Inbox() {
           <h2>Customer Service</h2>
           <p>Read customer messages and reply from your Sabi dashboard. Replies are delivered to the customer's WhatsApp chat.</p>
         </div>
-        <button className="icon-action" onClick={() => void loadInbox()} title="Refresh conversations" aria-label="Refresh conversations">
+        <button className="icon-action" onClick={() => { void loadInbox(); if (selected) void loadChat(selected); }} title="Refresh conversations" aria-label="Refresh conversations">
           <RefreshCw size={17}/>
         </button>
       </div>
