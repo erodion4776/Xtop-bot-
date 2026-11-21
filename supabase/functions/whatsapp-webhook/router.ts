@@ -748,8 +748,9 @@ async function handleTenantStoreMessage(
         const orderTotal = Number(result.total || 0);
         const paymentAmount = Number(result.payment_amount || 0);
         const serviceFee = Number(result.sabi_service_fee || 0);
-        const commission = Math.max(0, paymentAmount - orderTotal - serviceFee);
-        await send(`✅ *Order created: ${result.order_number}*\n\nProducts: ${money(Number(result.subtotal))}\nDelivery: ${money(Number(result.delivery_fee))}\nSabi commission: ${money(commission)}\nSabi service fee: ${money(serviceFee)}\n*Total payment due: ${money(paymentAmount)}*\n\nComplete your secure Paystack payment here:\n${result.authorization_url}\n\nYour order will be confirmed after Paystack verifies the payment. We will send updates to this WhatsApp number and ${checkout.email}.`);
+        const commission = Number(result.sabi_commission || 0);
+        const paystackFee = Number(result.paystack_processing_fee || 0);
+        await send(`✅ *Order created: ${result.order_number}*\n\nProducts: ${money(Number(result.subtotal))}\nDelivery: ${money(Number(result.delivery_fee))}\nSabi commission: ${money(commission)}\nSabi service fee: ${money(serviceFee)}\nPaystack processing fee: ${money(paystackFee)}\n*Total payment due: ${money(paymentAmount)}*\n\nComplete your secure Paystack payment here:\n${result.authorization_url}\n\nYour order will be confirmed after Paystack verifies the payment. We will send updates to this WhatsApp number and ${checkout.email}.`);
       } catch (error) {
         safeErrorLog("tenantStore.checkout", error);
         await send("The checkout service is temporarily unavailable. Your cart is saved. Please try *checkout* again shortly.");
