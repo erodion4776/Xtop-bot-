@@ -341,13 +341,10 @@ function Dashboard({
           .select("id", { count: "exact", head: true })
           .eq("tenant_id", tenantId),
 
-        supabase
-          .from("tenant_whatsapp_accounts")
-          .select("id")
-          .eq("tenant_id", tenantId)
-          .eq("is_active", true)
-          .limit(1)
-          .maybeSingle()
+        supabase.functions.invoke(
+          "xtop-dashboard?action=whatsapp-status",
+          { body: {} }
+        )
       ]);
 
       if (cancelled) return;
@@ -355,8 +352,12 @@ function Dashboard({
       setOverviewStats({
         orders: ordersResult.error ? 0 : ordersResult.count || 0,
         products: productsResult.error ? 0 : productsResult.count || 0,
+        // WhatsApp account rows are intentionally protected by service-role-only
+        // RLS. Read connection status through the authenticated dashboard
+        // endpoint, just like the Settings page does.
         whatsappConnected:
-          !whatsappResult.error && !!whatsappResult.data
+          !whatsappResult.error &&
+          whatsappResult.data?.connected === true
       });
 
       setStatsLoading(false);
