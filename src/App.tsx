@@ -50,12 +50,24 @@ export default function App() {
   const query = new URLSearchParams(window.location.search);
   const hostname = window.location.hostname.toLowerCase();
   const isDashboardHost = hostname === "app.sabibyxtop.com.ng";
+  const isSuperAdminHost = hostname === "admin.sabibyxtop.com.ng";
   const isConnectPortalHost = hostname === "connect.sabibyxtop.com.ng";
   const isEngrPortalHost = hostname === "engr.sabibyxtop.com.ng";
   const isDedicatedPortalHost = isConnectPortalHost || isEngrPortalHost;
   const isPublicProductPage = query.has("product");
-  const isSuperAdminPage = window.location.pathname.replace(/\/+$/, "") === "/super-admin";
-  const isMarketingPage = !isDashboardHost && !isDedicatedPortalHost && window.location.pathname === "/" && !query.has("login") && !query.has("session_token") && !isPublicProductPage;
+  // The owner portal is available on its dedicated hostname and on the
+  // protected /super-admin path for setup and recovery.
+  const isSuperAdminPage =
+    isSuperAdminHost ||
+    window.location.pathname.replace(/\/+$/, "") === "/super-admin";
+  const isMarketingPage =
+    !isDashboardHost &&
+    !isSuperAdminHost &&
+    !isDedicatedPortalHost &&
+    window.location.pathname === "/" &&
+    !query.has("login") &&
+    !query.has("session_token") &&
+    !isPublicProductPage;
 
   const registrationToken = new URLSearchParams(
     window.location.search
