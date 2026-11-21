@@ -297,7 +297,7 @@ async function createCartOrder(body: Record<string, unknown>) {
 
   if (!items.length || items.length > 30) throw new Error("INVALID_ORDER_DETAILS");
   if (!customerName || !customerPhone || !customerEmail || !deliveryAddress) throw new Error("CUSTOMER_DETAILS_REQUIRED");
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(customerEmail)) throw new Error("INVALID_CUSTOMER_EMAIL");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) throw new Error("INVALID_CUSTOMER_EMAIL");
   if (!["ONLINE", "POD"].includes(paymentMethod)) throw new Error("INVALID_PAYMENT_METHOD");
 
   const normalizedItems = items.map((item: Record<string, unknown>) => ({
