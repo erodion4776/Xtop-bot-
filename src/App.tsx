@@ -10,7 +10,10 @@ import {
   Settings,
   Menu,
   X,
-  LogOut
+  LogOut,
+  Bot,
+  Send,
+  Headset
 } from "lucide-react";
 
 import Auth from "./Auth";
@@ -621,6 +624,88 @@ function Dashboard({
           )}
         </section>
       </main>
+      <SupportChat tenantId={tenantId} />
     </div>
+  );
+}
+
+
+function SupportChat({ tenantId }: { tenantId: string }) {
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState<Array<{ id?: string; sender_role: string; content: string; created_at?: string }>>([]);
+  const [draft, setDraft] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function loadHistory() {
+    setLoading(true);
+    setError("");
+    const { data, error: invokeError } = await supabase.functions.invoke("sabi-support", {
+      body: { action: "history", tenant_id: tenantId }
+    });
+    if (invokeError || !data?.success) {
+      setError(data?.error || invokeError?.message || "Unable to open Sabi Support.");
+    } else {
+      setMessages(data.messages || []);
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    if (open && tenantId) loadHistory();
+  }, [open, tenantId]);
+
+  async function sendMessage() {
+    const message = draft.trim();
+    if (!message || loading) return;
+    setDraft("");
+    setLoading(true);
+    setError("");
+    setMessages((current) => [...current, { sender_role: "merchant", content: message }]);
+    const { data, error: invokeError } = await supabase.functions.invoke("sabi-support", {
+      body: { action: "send", tenant_id: tenantId, message }
+    });
+    if (invokeError || !data?.success) {
+      setError(data?.error || invokeError?.message || "Message could not be sent.");
+    } else if (data.reply) {
+      setMessages((current) => [...current, data.reply]);
+    }
+    setLoading(false);
+  }
+
+  return (
+    <>
+      {open && (
+        <section style={{ position: "fixed", zIndex: 10000, right: 18, bottom: 88, width: "min(370px, calc(100vw - 28px))", height: "min(540px, calc(100vh - 120px))", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 18, boxShadow: "0 18px 55px rgba(15,23,42,.22)", display: "flex", flexDirection: "column", overflow: "hidden", color: "#172033" }} aria-label="Sabi Help and Support">
+          <header style={{ padding: "14px 16px", background: "#123d32", color: "#fff", display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ width: 36, height: 36, borderRadius: 12, background: "rgba(255,255,255,.15)", display: "grid", placeItems: "center" }}><Bot size={21} /></span>
+            <div style={{ flex: 1 }}>
+              <strong style={{ display: "block", fontSize: 14 }}>Sabi Help &amp; Support</strong>
+              <small style={{ opacity: .82 }}>AI assistant · Platform support</small>
+            </div>
+            <button onClick={() => setOpen(false)} aria-label="Close support" style={{ border: 0, background: "transparent", color: "#fff", padding: 6 }}><X size={20} /></button>
+          </header>
+          <div style={{ padding: 14, background: "#f8fafc", flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ alignSelf: "flex-start", maxWidth: "92%", background: "#fff", border: "1px solid #e5e7eb", borderRadius: "4px 14px 14px 14px", padding: "10px 12px", fontSize: 13, lineHeight: 1.5 }}>
+              Hello! I’m Sabi Support. Ask me about your merchant dashboard, products, orders, WhatsApp setup or payments. I’ll use your workspace information where available.
+            </div>
+            {messages.map((item, index) => (
+              <div key={item.id || index} style={{ alignSelf: item.sender_role === "merchant" ? "flex-end" : "flex-start", maxWidth: "92%", background: item.sender_role === "merchant" ? "#dff4e9" : "#fff", border: "1px solid #e5e7eb", borderRadius: item.sender_role === "merchant" ? "14px 4px 14px 14px" : "4px 14px 14px 14px", padding: "10px 12px", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                {item.content}
+              </div>
+            ))}
+            {loading && <small style={{ color: "#64748b" }}>Sabi Support is working…</small>}
+            {error && <div role="alert" style={{ color: "#b42318", fontSize: 12 }}>{error}</div>}
+          </div>
+          <form onSubmit={(event) => { event.preventDefault(); sendMessage(); }} style={{ display: "flex", gap: 8, padding: 12, borderTop: "1px solid #e5e7eb", background: "#fff" }}>
+            <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Type your message…" maxLength={3000} aria-label="Message Sabi Support" style={{ minWidth: 0, flex: 1, border: "1px solid #d1d5db", borderRadius: 12, padding: "11px 12px", fontSize: 13, outline: "none" }} />
+            <button type="submit" disabled={!draft.trim() || loading} aria-label="Send message" style={{ width: 42, border: 0, borderRadius: 12, background: "#123d32", color: "#fff", display: "grid", placeItems: "center", opacity: !draft.trim() || loading ? .5 : 1 }}><Send size={17} /></button>
+          </form>
+        </section>
+      )}
+      <button onClick={() => setOpen((value) => !value)} aria-label="Open Sabi Help and Support" title="Sabi Help & Support" style={{ position: "fixed", zIndex: 10001, right: 20, bottom: 20, width: 58, height: 58, borderRadius: 50, border: 0, background: "#123d32", color: "#fff", boxShadow: "0 8px 24px rgba(15,23,42,.25)", display: "grid", placeItems: "center", cursor: "pointer" }}>
+        {open ? <X size={24} /> : <Headset size={25} />}
+      </button>
+    </>
   );
 }
