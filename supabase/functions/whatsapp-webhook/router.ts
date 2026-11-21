@@ -350,7 +350,7 @@ async function handleTenantStoreMessage(
     const rows: Array<{id:string;title:string;description?:string}> = source.slice(current*size,(current+1)*size).map((p:any)=>({id:`store_product:${p.id}`,title:String(p.name||"Product").slice(0,24),description:money(productPrice(p)).slice(0,72)}));
     if(current>0) rows.push({id:"store_prev",title:"⬅️ Previous page"});
     if(current<pages-1) rows.push({id:"store_next",title:"Next page ➡️"});
-    rows.push({id:"store_categories",title:"Browse categories"},{id:"store_cart",title:"🛒 View cart"});
+    rows.push({id:"store_categories",title:"Browse categories"},{id:"store_cart",title:"🛒 View cart"},{id:"store_support",title:"💬 Customer Service"},{id:"store_agent",title:"👤 Speak to an Agent"});
     await save("IDLE",{store_page:current});
     await sendShopList(`Browse ${source.length} product(s). Page ${current+1} of ${pages}. Select a product to view its picture, details and price.`,rows);
   };
@@ -436,7 +436,7 @@ async function handleTenantStoreMessage(
     Boolean(context.store_last_order) && cart.length > 0 &&
     Boolean(context.store_checkout?.email && context.store_checkout?.name && context.store_checkout?.address);
 
-  if (message === "agent" || message === "human" || message === "talk to human" || message === "customer service") {
+  if (["agent", "human", "talk to human", "customer service", "speak to an agent", "store_support", "store_agent"].includes(message) || interactiveId === "store_support" || interactiveId === "store_agent") {
     await supabase.from("contacts").update({ agent_mode: true }).eq("tenant_id", account.tenantId).eq("id", contact.id);
     await updateConversation(conversation.id, {
       current_module: "TENANT_STORE",
@@ -444,7 +444,7 @@ async function handleTenantStoreMessage(
       context_json: { ...context, agent_takeover: true, agent_mode: true },
       agent_mode: true,
     }, account.tenantId);
-    await send("👤 Your request for human assistance has been recorded in the shop's Sabi Inbox. Automated replies are paused for this conversation so the shop team can take over.");
+    await send(`👤 *You have requested customer service*\n\nYour message has been added to ${account.businessName}’s Sabi Customer Service inbox. A member of the shop team can now take over this conversation.\n\nPlease type your question or describe the issue. Automated shop replies are paused until the team resumes the bot.\n\nType *resume bot* only if you want to return to automated assistance.`);
     return;
   }
 
