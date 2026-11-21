@@ -313,7 +313,7 @@ function Overview({ stats, onOpenMerchants, onOpenOrders }: {
     <div className="sa-overview-grid">
       <div className="sa-panel sa-finance-panel"><div className="sa-panel-head"><div><h2>Platform transaction snapshot</h2><p>Calculated from recorded paid orders; not a bank settlement statement.</p></div><CircleDollarSign size={21}/></div>
         <div className="sa-finance-main"><span>Paid order value</span><strong>{money(stats.paidOrderRevenue)}</strong></div>
-        <div className="sa-finance-sub"><div><span>Recorded Sabi sales fees</span><strong>{money(stats.recordedSalesFees)}</strong></div><div><span>Orders marked paid</span><strong>{stats.paidOrders}</strong></div></div>
+        <div className="sa-finance-sub"><div><span>Recorded Sabi platform charges</span><strong>{money(stats.recordedSalesFees)}</strong></div><div><span>Orders marked paid</span><strong>{stats.paidOrders}</strong></div></div>
         <button className="sa-link-button" onClick={onOpenOrders}>View orders and payments <ChevronRight size={16}/></button>
       </div>
       <div className="sa-panel sa-payout-panel"><div className="sa-panel-head"><div><h2>Merchant payout verification</h2><p>Paystack subaccount onboarding status.</p></div><Wallet size={21}/></div>
