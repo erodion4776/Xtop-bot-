@@ -401,7 +401,6 @@ export default function Products({ tenantId }: { tenantId: string }) {
         price,
         status: form.status,
         is_active: form.status === "ACTIVE",
-        stock_quantity: stock,
         image_url: imageUrl,
         tenant_id: tenantId,
         updated_at: new Date().toISOString()
@@ -415,6 +414,18 @@ export default function Products({ tenantId }: { tenantId: string }) {
           .eq("tenant_id", tenantId);
 
         if (updateError) throw updateError;
+
+        // Do not write the form's old stock snapshot when other product
+        // details are saved. WhatsApp orders may have reduced stock while
+        // this edit form was open. Only apply an explicit stock change.
+        if (stock !== Number(editingProduct.stock_quantity ?? 0)) {
+          const { error: stockError } = await supabase
+            .from("products")
+            .update({ stock_quantity: stock, updated_at: new Date().toISOString() })
+            .eq("id", editingProduct.id)
+            .eq("tenant_id", tenantId);
+          if (stockError) throw stockError;
+        }
 
         setSuccess("Product updated successfully.");
       } else {
