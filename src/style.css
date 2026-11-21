@@ -2220,3 +2220,49 @@ button {
     font-size: 13px;
   }
 }
+
+
+/* SABI MERCHANT CUSTOMER SERVICE */
+.customer-service-page{display:flex;flex-direction:column;gap:16px}
+.customer-service-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.customer-service-intro h2{font-size:21px;color:#203d30;margin:2px 0 6px}
+.customer-service-intro p:not(.eyebrow){font-size:13px;line-height:1.55;color:#75827b;max-width:620px}
+.customer-service-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.cs-stat{background:#fff;border:1px solid #e5ece7;border-radius:13px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.cs-stat span{font-size:12px;color:#78867e}
+.cs-stat strong{font-size:24px;color:#1c4d37}
+.customer-service-layout{grid-template-columns:minmax(270px,350px) minmax(0,1fr);min-height:680px}
+.customer-service-layout .inbox-list-panel{padding:16px}
+.cs-search{display:flex;align-items:center;gap:8px;border:1px solid #dce5e0;border-radius:10px;padding:0 11px;color:#819087;margin:8px 0 12px}
+.cs-search input{width:100%;min-width:0;border:0;outline:0;padding:11px 0;font:inherit;font-size:12px;background:transparent;color:#263a30}
+.cs-filter-tabs{display:flex;gap:6px;overflow-x:auto;padding:0 0 10px;margin-bottom:5px}
+.cs-filter-tabs button{flex:0 0 auto;border:1px solid #e0e8e3;border-radius:20px;background:#fff;padding:7px 10px;color:#63736a;font-size:11px;white-space:nowrap}
+.cs-filter-tabs button.active{background:#eaf3ed;border-color:#b9d3c2;color:#1d573b;font-weight:700}
+.cs-filter-tabs button span{margin-left:5px;background:#d9ebdf;border-radius:10px;padding:1px 5px}
+.customer-service-layout .conversation-list{max-height:510px}
+.customer-service-layout .conversation-item{align-items:flex-start}
+.cs-status{display:inline-flex;align-items:center;width:max-content;max-width:100%;border-radius:20px;padding:3px 7px;font-size:10px;font-weight:700;line-height:1.3;margin-top:3px}
+.cs-status-needs_reply{background:#fff1df;color:#995b13}
+.cs-status-human{background:#e9e9ff;color:#4e4b9a}
+.cs-status-resolved{background:#e8f4eb;color:#277147}
+.cs-status-open{background:#edf1ef;color:#66756c}
+.cs-customer-title{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0}
+.cs-chat-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.cs-resolve-button{display:flex;align-items:center;gap:5px;border:1px solid #d7e5dc;border-radius:9px;background:#f5faf6;color:#24583e;padding:8px 10px;font-size:11px;white-space:nowrap}
+.cs-resolve-button:disabled{opacity:.55}
+.cs-customer-context{border:1px solid #e5ece7;background:#fbfdfb;border-radius:11px;padding:11px 13px;margin-top:12px}
+.cs-context-heading{display:flex;align-items:center;gap:7px;color:#365b47;font-size:12px}
+.cs-context-heading strong{font-size:12px}
+.cs-customer-context>span{display:block;margin:5px 0 0 22px;color:#718078;font-size:11px}
+.cs-orders-heading{margin-top:10px}
+.cs-no-orders{display:block;color:#87938c;font-size:11px;margin:6px 0 0 22px}
+.cs-order-list{display:flex;flex-direction:column;gap:7px;margin:8px 0 0 22px}
+.cs-order-row{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;border-top:1px solid #edf1ee;padding-top:7px}
+.cs-order-row>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.cs-order-row strong{font-size:11px;color:#31483a}
+.cs-order-row small{font-size:10px;color:#7d8982;line-height:1.4}
+.cs-order-row>strong{white-space:nowrap}
+.customer-chat-panel .chat-messages{min-height:180px;max-height:330px}
+.customer-chat-panel .inbox-footnote{display:flex;align-items:flex-start;gap:5px}
+@media(max-width:900px){.customer-service-layout{grid-template-columns:minmax(230px,300px) minmax(0,1fr)}}
+@media(max-width:680px){.customer-service-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.cs-stat{padding:10px}.cs-stat span{font-size:10px}.cs-stat strong{font-size:20px}.customer-service-layout{grid-template-columns:1fr;min-height:0}.customer-service-layout .conversation-list{max-height:250px}.customer-service-layout .chat-panel{min-height:600px}.cs-chat-actions{justify-content:flex-start}.customer-service-layout .chat-header{align-items:flex-start;flex-direction:column}.customer-service-intro h2{font-size:19px}}
