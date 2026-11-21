@@ -1081,7 +1081,7 @@ export async function routeMessage(
         .trim()
         .toLowerCase()
         .replace(/[.!?]/g, "")
-        .replace(/\\s+/g, " ");
+        .replace(/\s+/g, " ");
       const isResumeCommand = [
         "end agent",
         "end angent",
