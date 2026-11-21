@@ -29,7 +29,9 @@ type Merchant = {
 type Order = {
   id: string; tenant_id: string; order_number: string | null; customer_name: string | null;
   status: string; payment_status: string; subtotal: number; delivery_fee: number; total: number;
-  sales_fee_amount: number | null; sales_fee_status: string | null; created_at: string; merchant_name: string;
+  sales_fee_amount: number | null; sales_fee_status: string | null;
+  sabi_fee_amount?: number; sabi_fee_status?: string; sabi_fee_source?: string;
+  created_at: string; merchant_name: string;
 };
 type ActivityItem = {
   id: string; admin_user: string | null; action: string; entity: string | null;
@@ -236,8 +238,8 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
               {page === "Orders & Payments" && (
                 <div className="sa-panel">
                   <div className="sa-panel-head"><div><h2>Platform orders</h2><p>Latest 100 orders across merchant workspaces. Delivery fees are displayed separately from sales fees.</p></div><span>{orders.length} records</span></div>
-                  <div className="sa-table-wrap"><table><thead><tr><th>Order</th><th>Merchant</th><th>Customer</th><th>Subtotal</th><th>Delivery</th><th>Total</th><th>Payment</th><th>Sabi fee</th><th>Date</th></tr></thead><tbody>
-                    {orders.map((o) => <tr key={o.id}><td><strong>{o.order_number || o.id.slice(0,8)}</strong><small>{o.status || "—"}</small></td><td>{o.merchant_name}</td><td>{o.customer_name || "—"}</td><td>{money(o.subtotal)}</td><td>{money(o.delivery_fee)}</td><td><strong>{money(o.total)}</strong></td><td><span className={o.payment_status === "PAID" ? "sa-pill good" : "sa-pill neutral"}>{o.payment_status || "Pending"}</span></td><td>{money(o.sales_fee_amount || 0)}<small>{o.sales_fee_status || "Not recorded"}</small></td><td>{dateLabel(o.created_at)}</td></tr>)}
+                  <div className="sa-table-wrap"><table><thead><tr><th>Order</th><th>Merchant</th><th>Customer</th><th>Subtotal</th><th>Delivery</th><th>Total</th><th>Payment</th><th>Sabi platform charge</th><th>Date</th></tr></thead><tbody>
+                    {orders.map((o) => <tr key={o.id}><td><strong>{o.order_number || o.id.slice(0,8)}</strong><small>{o.status || "—"}</small></td><td>{o.merchant_name}</td><td>{o.customer_name || "—"}</td><td>{money(o.subtotal)}</td><td>{money(o.delivery_fee)}</td><td><strong>{money(o.total)}</strong></td><td><span className={o.payment_status === "PAID" ? "sa-pill good" : "sa-pill neutral"}>{o.payment_status || "Pending"}</span></td><td>{money(o.sabi_fee_amount ?? o.sales_fee_amount ?? 0)}<small>{o.sabi_fee_source === "PAYSTACK_CHARGE_RECORD" ? `Recorded · ${o.sabi_fee_status || "RECORDED"} (settlement not confirmed)` : (o.sabi_fee_status || o.sales_fee_status || "NOT_CHARGED")}</small></td><td>{dateLabel(o.created_at)}</td></tr>)}
                     {orders.length === 0 && <tr><td colSpan={9} className="sa-empty">No orders have been recorded yet.</td></tr>}
                   </tbody></table></div>
                 </div>
