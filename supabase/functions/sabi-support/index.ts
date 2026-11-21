@@ -113,7 +113,11 @@ Deno.serve(async (req: Request) => {
     if (asksToAddProduct) {
       verifiedGuide = "To add a product:\n1. Open *Products* in your merchant dashboard.\n2. In *Product catalogue*, tap *Add product*. If your catalogue is empty, tap *Add your first product*.\n3. Enter the product name, selling price and stock quantity. Description and category are optional. You can also add a JPG, PNG or WebP image (up to 5 MB).\n4. Set the status to *Active* if customers should be able to order it, then tap *Create product*.";
     } else if (asksToUpdateStock) {
-      verifiedGuide = "To update a product's stock quantity:\n1. Open *Products* in your merchant dashboard.\n2. Find the product and tap its pencil-shaped *Edit product* icon in the Actions column.\n3. Change the *Stock quantity* field to the new whole-number quantity (zero is allowed).\n4. Tap *Save changes*. You should see *Product updated successfully*.";
+      verifiedGuide = `To update a product's stock quantity:
+1. Open Products in your merchant dashboard.
+2. Find the product and tap its pencil-shaped Edit product icon in the Actions column.
+3. Change the Stock quantity field to the new whole-number quantity (zero is allowed).
+4. Tap Save changes. You should see Product updated successfully.`;
     }
 
     if (verifiedGuide) {
