@@ -60,14 +60,38 @@ serve(async (req: Request) => {
         sb.from("tenant_whatsapp_accounts").select("id", { count: "exact", head: true }).eq("is_active", true),
         merchantQuery().in("paystack_subaccount_status", ["PENDING", "PENDING_VERIFICATION"]),
         merchantQuery().eq("paystack_subaccount_status", "VERIFIED"),
-        sb.from("tenant_orders").select("total,sales_fee_amount,sales_fee_status,payment_status").eq("payment_status", "PAID").limit(10000),
+        sb.from("tenant_orders").select("id,total,sales_fee_amount,sales_fee_status,payment_status").eq("payment_status", "PAID").limit(10000),
         sb.from("system_settings").select("value").eq("key", "sabi_global_handoff").maybeSingle(),
       ]);
       const errors = results.map((r: any) => r.error).filter(Boolean);
       if (errors.length) return response({ error: "Some platform metrics could not be loaded. Refresh to retry." }, 500);
       const paidRows = results[8].data || [];
       const revenue = paidRows.reduce((sum: number, row: any) => sum + (Number(row.total) || 0), 0);
-      const fees = paidRows.reduce((sum: number, row: any) => sum + (Number(row.sales_fee_amount) || 0), 0);
+      // Paystack charge records are the authoritative record of the platform
+      // fee split. tenant_orders.sales_fee_amount may remain zero for online
+      // orders whose fee was recorded in sabi_order_paystack_charges.
+      const paidOrderIds = paidRows.map((row: any) => row.id).filter(Boolean);
+      let fees = paidRows.reduce((sum: number, row: any) => sum + (Number(row.sales_fee_amount) || 0), 0);
+      if (paidOrderIds.length) {
+        const { data: chargeRows, error: chargeError } = await sb
+          .from("sabi_order_paystack_charges")
+          .select("order_id,xtop_transaction_charge,created_at,settlement_status")
+          .in("order_id", paidOrderIds)
+          .neq("settlement_status", "REFUNDED")
+          .order("created_at", { ascending: false })
+          .limit(10000);
+        if (chargeError) return response({ error: "Could not load recorded Paystack platform charges." }, 500);
+        const latestChargeByOrder = new Map<string, any>();
+        for (const charge of chargeRows || []) {
+          if (charge.order_id && !latestChargeByOrder.has(charge.order_id)) {
+            latestChargeByOrder.set(charge.order_id, charge);
+          }
+        }
+        fees = paidRows.reduce((sum: number, row: any) => {
+          const charge = latestChargeByOrder.get(row.id);
+          return sum + (charge ? Number(charge.xtop_transaction_charge) || 0 : Number(row.sales_fee_amount) || 0);
+        }, 0);
+      }
       return response({
         data: {
           activeMerchants: results[0].count || 0,
