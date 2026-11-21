@@ -140,13 +140,44 @@ serve(async (req: Request) => {
         .select("id,tenant_id,order_number,customer_name,status,payment_status,subtotal,delivery_fee,total,sales_fee_amount,sales_fee_status,created_at")
         .order("created_at", { ascending: false }).limit(100);
       if (error) return response({ error: "Could not load platform orders" }, 500);
+      const orderIds = (orders || []).map((o: any) => o.id).filter(Boolean);
       const tenantIds = [...new Set((orders || []).map((o: any) => o.tenant_id).filter(Boolean))];
-      const { data: tenants, error: tenantError } = tenantIds.length
-        ? await sb.from("tenants").select("id,name,business_name").in("id", tenantIds)
-        : { data: [], error: null };
-      if (tenantError) return response({ error: "Could not load merchant names for orders" }, 500);
-      const names = new Map((tenants || []).map((t: any) => [t.id, t.business_name || t.name || "Merchant"]));
-      return response({ data: (orders || []).map((o: any) => ({ ...o, merchant_name: names.get(o.tenant_id) || "Merchant" })) });
+      const [tenantResult, chargeResult] = await Promise.all([
+        tenantIds.length
+          ? sb.from("tenants").select("id,name,business_name").in("id", tenantIds)
+          : Promise.resolve({ data: [], error: null }),
+        orderIds.length
+          ? sb.from("sabi_order_paystack_charges")
+              .select("order_id,xtop_transaction_charge,settlement_status,created_at")
+              .in("order_id", orderIds)
+              .neq("settlement_status", "REFUNDED")
+              .order("created_at", { ascending: false })
+              .limit(10000)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (tenantResult.error) return response({ error: "Could not load merchant names for orders" }, 500);
+      if (chargeResult.error) return response({ error: "Could not load recorded Paystack charges for orders" }, 500);
+      const names = new Map((tenantResult.data || []).map((t: any) => [t.id, t.business_name || t.name || "Merchant"]));
+      const latestChargeByOrder = new Map<string, any>();
+      for (const charge of chargeResult.data || []) {
+        if (charge.order_id && !latestChargeByOrder.has(charge.order_id)) {
+          latestChargeByOrder.set(charge.order_id, charge);
+        }
+      }
+      return response({ data: (orders || []).map((o: any) => {
+        const charge = latestChargeByOrder.get(o.id);
+        return {
+          ...o,
+          merchant_name: names.get(o.tenant_id) || "Merchant",
+          sabi_fee_amount: charge
+            ? Number(charge.xtop_transaction_charge) || 0
+            : Number(o.sales_fee_amount) || 0,
+          sabi_fee_status: charge
+            ? (charge.settlement_status || "RECORDED")
+            : (o.sales_fee_status || "NOT_CHARGED"),
+          sabi_fee_source: charge ? "PAYSTACK_CHARGE_RECORD" : "ORDER_RECORD",
+        };
+      }) });
     }
 
     if (body.action === "activity") {
