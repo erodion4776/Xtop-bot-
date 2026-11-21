@@ -17,7 +17,7 @@ async function sha256(value: string): Promise<string> {
 }
 
 function portalUrl(token: string): string {
-  return `https://xtopbot.netlify.app/engr-ero-portal.html?token=${encodeURIComponent(token)}`;
+  return `https://engr.sabibyxtop.com.ng/?token=${encodeURIComponent(token)}`;
 }
 
 export async function issueLessonPortalLink(
