@@ -48,16 +48,21 @@ export default function App() {
   const authUserId = useRef("");
 
   const query = new URLSearchParams(window.location.search);
+  const hostname = window.location.hostname.toLowerCase();
+  const isDashboardHost = hostname === "app.sabibyxtop.com.ng";
+  const isConnectPortalHost = hostname === "connect.sabibyxtop.com.ng";
+  const isEngrPortalHost = hostname === "engr.sabibyxtop.com.ng";
+  const isDedicatedPortalHost = isConnectPortalHost || isEngrPortalHost;
   const isPublicProductPage = query.has("product");
   const isSuperAdminPage = window.location.pathname.replace(/\/+$/, "") === "/super-admin";
-  const isMarketingPage = window.location.pathname === "/" && !query.has("login") && !query.has("session_token") && !isPublicProductPage;
+  const isMarketingPage = !isDashboardHost && !isDedicatedPortalHost && window.location.pathname === "/" && !query.has("login") && !query.has("session_token") && !isPublicProductPage;
 
   const registrationToken = new URLSearchParams(
     window.location.search
   ).get("session_token")?.trim() || "";
 
   useEffect(() => {
-    if (isPublicProductPage || isMarketingPage) return;
+    if (isPublicProductPage || isMarketingPage || isDedicatedPortalHost) return;
 
     let mounted = true;
 
@@ -97,10 +102,10 @@ export default function App() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [isPublicProductPage, isMarketingPage]);
+  }, [isPublicProductPage, isMarketingPage, isDedicatedPortalHost]);
 
   useEffect(() => {
-    if (isPublicProductPage || isMarketingPage || isSuperAdminPage) return;
+    if (isPublicProductPage || isMarketingPage || isSuperAdminPage || isDedicatedPortalHost) return;
 
     if (!session?.user?.id) {
       setTenantId("");
@@ -158,6 +163,7 @@ export default function App() {
     isPublicProductPage,
     isMarketingPage,
     isSuperAdminPage,
+    isDedicatedPortalHost,
     registrationToken
   ]);
 
@@ -172,6 +178,26 @@ export default function App() {
     setTenantId("");
     setRegistrationError("");
     registeredUser.current = "";
+  }
+
+  if (isConnectPortalHost) {
+    return (
+      <iframe
+        title="Sabi business connection portal"
+        src={`/connect-whatsapp.html${window.location.search}`}
+        style={{ position: "fixed", inset: 0, width: "100%", height: "100%", border: 0 }}
+      />
+    );
+  }
+
+  if (isEngrPortalHost) {
+    return (
+      <iframe
+        title="Engr. Ero Learning Centre portal"
+        src={`/engr-ero-portal.html${window.location.search}`}
+        style={{ position: "fixed", inset: 0, width: "100%", height: "100%", border: 0 }}
+      />
+    );
   }
 
   if (isPublicProductPage) {
