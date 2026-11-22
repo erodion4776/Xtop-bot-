@@ -1061,17 +1061,17 @@ async function completeAndAdvanceLesson(
 
 You have completed all *${total}* published topics in *${ctx.courseCode} — ${ctx.courseName}*.
 
-🛠️ *System Maintenance Fee: ₦500*
+💳 *CBT Access Fee: ₦1,000*
 
-The ₦500 fee helps maintain the learning system and cover WhatsApp/Meta platform messaging charges. It is a system operating fee, not a personal payment to Engr. Ero.
+Select *Start CBT Exam*. Lizzy will send your secure Paystack payment link here on WhatsApp. After Paystack confirms your ₦1,000 payment, your personal CBT link will be sent to this same WhatsApp number.
 
 You may now proceed to the CBT examination for this course.`,
       [
-        makeButton("lsn_final_exam", "📝 Start CBT Exam"),
+        makeButton("lsn_final_exam", "📝 Get CBT Payment Link"),
         makeButton("lsn_menu", "📋 Course Menu")
       ],
       "Course Completed",
-      "System maintenance: ₦500"    );
+      "CBT access: ₦1,000"    );
     return;
   }
 
