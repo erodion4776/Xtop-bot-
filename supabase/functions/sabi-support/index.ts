@@ -288,6 +288,53 @@ Deno.serve(async (req: Request) => {
       };
     }
 
+    // Answer exact sales questions deterministically; do not expose internal JSON fields.
+    const asksSalesSummary =
+      /(sales?|revenue|turnover|sell|sold|earnings?)/i.test(message) &&
+      /(today|this month|month|yesterday|how much|business)/i.test(message);
+    if (asksSalesSummary) {
+      const money = (amount: number) => new Intl.NumberFormat("en-NG", {
+        style: "currency", currency: "NGN", maximumFractionDigits: 2,
+      }).format(amount);
+      const todayCount = todayPaidResult.count ?? todayPaid.length;
+      const monthCount = monthPaidResult.count ?? monthPaid.length;
+      const todayTotal = sumField(todayPaid, "total");
+      const todaySubtotal = sumField(todayPaid, "subtotal");
+      const todayDelivery = sumField(todayPaid, "delivery_fee");
+      const monthTotal = sumField(monthPaid, "total");
+      const monthSubtotal = sumField(monthPaid, "subtotal");
+      const monthDelivery = sumField(monthPaid, "delivery_fee");
+      const todayComplete = todayCount <= todayPaid.length;
+      const monthComplete = monthCount <= monthPaid.length;
+      const lines = [
+        "Paid sales summary for " + today + ":",
+        "",
+        "Today",
+        "• Paid orders: " + todayCount,
+        "• Product sales: " + money(todaySubtotal),
+        "• Delivery fees: " + money(todayDelivery),
+        "• Total collected: " + money(todayTotal),
+        "",
+        "This month (" + monthStart + " to " + today + ")",
+        "• Paid orders: " + monthCount,
+        "• Product sales: " + money(monthSubtotal),
+        "• Delivery fees: " + money(monthDelivery),
+        "• Total collected: " + money(monthTotal),
+      ];
+      if (!todayComplete || !monthComplete) {
+        lines.push("", "Note: One or more totals are based only on the records currently returned and may be incomplete.");
+      }
+      lines.push("", "These figures include paid orders only; unpaid and pending payments are excluded.");
+      const salesReply = lines.join("\n");
+      const { data: reply, error: replyError } = await admin.from("sabi_support_messages").insert({
+        conversation_id: conversation.id, tenant_id: tenantId, sender_role: "assistant", content: salesReply,
+      }).select("id, sender_role, content, created_at").single();
+      if (replyError || !reply) return respond({ error: "Your message was received, but the reply could not be saved." }, 500);
+      const now = new Date().toISOString();
+      await admin.from("sabi_support_conversations").update({ last_message_at: now, updated_at: now })
+        .eq("id", conversation.id).eq("tenant_id", tenantId);
+      return respond({ success: true, conversation, reply });
+    }
     const context = {
       business: tenant.business_name || tenant.name,
       industry: tenant.industry || "Not specified",
