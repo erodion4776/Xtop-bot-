@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const collapseExactRepeats = (value: string): string => {
-  const words = value.trim().split(/\\s+/);
+  const words = value.trim().split(/\s+/);
   // Workers AI occasionally repeats its entire answer. Collapse only exact
   // repeated copies; do not remove repeated phrases within a normal answer.
   for (let unitLength = 1; unitLength <= Math.floor(words.length / 2); unitLength += 1) {
@@ -313,58 +313,66 @@ Deno.serve(async (req: Request) => {
     }
 
     const asksPendingOrders = /\b(how many|number of|count|show|list|give me)\b/i.test(message) &&
-      /\b(pending orders?|orders? pending)\b/i.test(message);
+      /\b(pending|awaiting)\b/i.test(message) && /\border(s)?\b/i.test(message);
     const asksUnpaidAwaitingPayment = /\b(unpaid|awaiting payment|pending payment|not paid)\b/i.test(message) &&
-      /\b(order|orders)\b/i.test(message);
-    if (asksPendingOrders || asksUnpaidAwaitingPayment) {
+      /\border(s)?\b/i.test(message);
+
+    if (asksPendingOrders && !asksUnpaidAwaitingPayment) {
+      const { count, error } = await admin.from("tenant_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId).eq("status", "PENDING");
+      if (error || count === null) {
+        return respond({ error: "I could not verify the pending-order count right now. Please try again." }, 503);
+      }
+      const pendingReply = count === 0
+        ? "There are currently 0 orders with the order status PENDING."
+        : "There are currently " + count + " orders with the order status PENDING.";
+      const { data: reply, error: replyError } = await admin.from("sabi_support_messages").insert({
+        conversation_id: conversation.id, tenant_id: tenantId, sender_role: "assistant", content: pendingReply,
+      }).select("id, sender_role, content, created_at").single();
+      if (replyError || !reply) return respond({ error: "Your message was received, but the reply could not be saved." }, 500);
+      const now = new Date().toISOString();
+      await admin.from("sabi_support_conversations").update({ last_message_at: now, updated_at: now })
+        .eq("id", conversation.id).eq("tenant_id", tenantId);
+      return respond({ success: true, conversation, reply });
+    }
+
+    if (asksUnpaidAwaitingPayment) {
       const money = (amount: number) => new Intl.NumberFormat("en-NG", {
         style: "currency", currency: "NGN", maximumFractionDigits: 2,
       }).format(amount);
-      if (asksPendingOrders) {
-        const { count, error } = await admin.from("tenant_orders")
-          .select("id", { count: "exact", head: true })
-          .eq("tenant_id", tenantId).eq("status", "PENDING");
-        if (error || count === null) {
-          return respond({ error: "I could not verify the pending-order count right now. Please try again." }, 503);
-        }
-        const pendingReply = count === 0
-          ? "There are currently no orders with the order status PENDING."
-          : "There " + (count === 1 ? "is " : "are ") + count +
-            " order" + (count === 1 ? "" : "s") + " with the order status PENDING. This is the order status, not the payment status.";
-        const { data: reply, error: replyError } = await admin.from("sabi_support_messages").insert({
-          conversation_id: conversation.id, tenant_id: tenantId, sender_role: "assistant", content: pendingReply,
-        }).select("id, sender_role, content, created_at").single();
-        if (replyError || !reply) return respond({ error: "Your message was received, but the reply could not be saved." }, 500);
-        const now = new Date().toISOString();
-        await admin.from("sabi_support_conversations").update({ last_message_at: now, updated_at: now })
-          .eq("id", conversation.id).eq("tenant_id", tenantId);
-        return respond({ success: true, conversation, reply });
-      }
-
       const { data: unpaidOrders, count, error } = await admin.from("tenant_orders")
         .select("order_number,status,payment_status,total,created_at", { count: "exact" })
         .eq("tenant_id", tenantId).eq("payment_status", "UNPAID")
-        .eq("status", "PENDING")
         .order("created_at", { ascending: false }).limit(20);
-      if (error || count === null) {
-        return respond({ error: "I could not verify unpaid orders awaiting payment right now. Please try again." }, 503);
+      const { count: pendingCount, error: pendingError } = await admin.from("tenant_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId).eq("status", "PENDING");
+      if (error || count === null || pendingError || pendingCount === null) {
+        return respond({ error: "I could not verify unpaid orders right now. Please try again." }, 503);
       }
-      const lines = count === 0
-        ? ["There are currently no orders that are both PENDING and UNPAID."]
-        : ["There " + (count === 1 ? "is " : "are ") + count +
-          " order" + (count === 1 ? "" : "s") + " with status PENDING and payment status UNPAID."];
-      for (const order of unpaidOrders || []) {
+      const rows = unpaidOrders || [];
+      const cancelledUnpaid = rows.filter((order: any) => String(order.status).toUpperCase() === "CANCELLED").length;
+      const pendingUnpaid = rows.filter((order: any) => String(order.status).toUpperCase() === "PENDING").length;
+      const lines = [
+        "Unpaid orders: " + count + ".",
+        "Orders currently marked PENDING: " + pendingCount + ".",
+        "Unpaid orders that are also PENDING: " + pendingUnpaid + ".",
+      ];
+      if (cancelledUnpaid > 0) {
+        lines.push(cancelledUnpaid + " of the unpaid orders shown are CANCELLED. They are not active orders awaiting fulfilment.");
+      }
+      for (const order of rows) {
         lines.push(
-          "• " + (order.order_number || "Order number unavailable") +
-          " — " + money(Number(order.total) || 0) +
-          " — created " + new Date(order.created_at).toLocaleString("en-NG", { timeZone: "Africa/Lagos" })
+          (order.order_number || "Order number unavailable") +
+          " — Order status: " + String(order.status || "UNKNOWN") +
+          " — Payment: " + String(order.payment_status || "UNKNOWN") +
+          " — Total: " + money(Number(order.total) || 0)
         );
       }
-      if (count > (unpaidOrders || []).length) {
-        lines.push("Showing the latest " + (unpaidOrders || []).length + " of " + count + " matching orders.");
-      }
-      lines.push("Cancelled orders are not included.");
-      const unpaidReply = lines.join("\\n");
+      if (count > rows.length) lines.push("Showing the latest " + rows.length + " of " + count + " unpaid orders.");
+      if (count === 0) lines.push("There are no unpaid orders.");
+      const unpaidReply = lines.join("\n");
       const { data: reply, error: replyError } = await admin.from("sabi_support_messages").insert({
         conversation_id: conversation.id, tenant_id: tenantId, sender_role: "assistant", content: unpaidReply,
       }).select("id, sender_role, content, created_at").single();
@@ -538,7 +546,7 @@ Now answer only the question, following every rule above.`;
 
     let cleanAnswer = collapseExactRepeats(answer);
     // Never show model evaluation artifacts or an excessively long answer to merchants.
-    if (/your response will be graded|graded on (the )?accuracy|incorrect\\.|correct\\.|the final answer is|response should be graded|please share (the )?(screen|screenshot)|there is no verified|the solution is a step-by-step guide/i.test(cleanAnswer)) {
+    if (/your response will be graded|graded on (the )?accuracy|incorrect\.|correct\.|the final answer is|response should be graded|please share (the )?(screen|screenshot)|there is no verified|the solution is a step-by-step guide/i.test(cleanAnswer)) {
       cleanAnswer = "I want to make sure I guide you correctly. Please tell me which dashboard page you are on and what you can see, or share a screenshot.";
     }
     cleanAnswer = cleanAnswer.slice(0, 1200);
