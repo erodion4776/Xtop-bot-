@@ -15,7 +15,7 @@ function getHeaders(): Record<string, string> {
   };
 }
 
-/** Initializes a level-specific CBT checkout session with Paystack. */
+/** Initializes the standard ₦1,000 CBT checkout session with Paystack. */
 export async function initializeExamPayment(
   studentId: string,
   courseId: string,
@@ -23,7 +23,7 @@ export async function initializeExamPayment(
   phone: string,
   amountNaira: number
 ): Promise<{ paymentUrl: string; reference: string } | null> {
-  if (![500, 1000].includes(amountNaira)) {
+  if (amountNaira !== 1000) {
     throw new Error("Unsupported CBT fee amount");
   }
 
@@ -82,7 +82,7 @@ export async function verifyExamPayment(
   reference: string,
   expectedAmountNaira: number
 ): Promise<boolean> {
-  if (![500, 1000].includes(expectedAmountNaira)) return false;
+  if (expectedAmountNaira !== 1000) return false;
 
   try {
     const resp = await fetch(`${PAYSTACK_API_BASE}/transaction/verify/${reference}`, {
