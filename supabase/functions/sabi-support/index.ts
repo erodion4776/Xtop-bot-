@@ -290,6 +290,28 @@ Deno.serve(async (req: Request) => {
 
     // Answer order-status questions from exact tenant-scoped database counts.
     // Order status and payment status are separate fields and must never be conflated.
+    const asksCancelledOrders = /how many|count|number of|show|list/i.test(message) &&
+      /cancelled|canceled/i.test(message) && /orders?|order/i.test(message);
+    if (asksCancelledOrders) {
+      const { count, error } = await admin.from("tenant_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId).eq("status", "CANCELLED");
+      if (error || count === null) {
+        return respond({ error: "I could not verify the cancelled-order count right now. Please try again." }, 503);
+      }
+      const cancelledReply = count === 0
+        ? "There are currently no cancelled orders."
+        : "You currently have " + count + " cancelled order" + (count === 1 ? "." : "s.");
+      const { data: reply, error: replyError } = await admin.from("sabi_support_messages").insert({
+        conversation_id: conversation.id, tenant_id: tenantId, sender_role: "assistant", content: cancelledReply,
+      }).select("id, sender_role, content, created_at").single();
+      if (replyError || !reply) return respond({ error: "Your message was received, but the reply could not be saved." }, 500);
+      const now = new Date().toISOString();
+      await admin.from("sabi_support_conversations").update({ last_message_at: now, updated_at: now })
+        .eq("id", conversation.id).eq("tenant_id", tenantId);
+      return respond({ success: true, conversation, reply });
+    }
+
     const asksPendingOrders = /\\b(how many|number of|count|show|list|give me)\\b/i.test(message) &&
       /\\b(pending orders?|orders? pending)\\b/i.test(message);
     const asksUnpaidAwaitingPayment = /\\b(unpaid|awaiting payment|pending payment|not paid)\\b/i.test(message) &&
