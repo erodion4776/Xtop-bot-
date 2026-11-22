@@ -851,8 +851,10 @@ async function deliverLesson(
 
   // Lecture content now lives in the secure mobile classroom. WhatsApp remains
   // the authority for registration, course access and progress hand-off.
-  if (sections.length === 0) {
-    await sendTextMessage(phone, "This lecture has no published teaching sections yet. Please contact the Learning Centre administrator.");
+  // Video lessons are complete classroom units and do not use the legacy
+  // lesson_sections table. Published videos are delivered by the secure portal.
+  if (sections.length === 0 && !String(currentLesson.video_url || "").trim()) {
+    await sendTextMessage(phone, "This lecture has no published teaching sections or video yet. Please contact the Learning Centre administrator.");
     await showCourseMenu(phone, conversationId, ctx);
     return;
   }
