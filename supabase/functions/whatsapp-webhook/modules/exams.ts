@@ -77,11 +77,7 @@ export async function startExamEntry(
   const isEla401 = courseCode.toUpperCase() === "ELA401";
   const courseLevel = isEla401 ? "400 Level" : String(course.level);
   const levelDigits = courseLevel.match(/\d{3}/)?.[0];
-  const examFeeNaira = isEla401 ? 1000 : levelDigits === "400" ? 1000 : levelDigits === "300" ? 500 : 0;
-  if (!examFeeNaira) {
-    await sendTextMessage(phone, `❌ CBT payment is currently configured for 300 Level (₦500) and 400 Level (₦1,000). This course is recorded as *${courseLevel}*. Please contact the administrator.`);
-    return;
-  }
+  const examFeeNaira = 1000;
 
   // ELA401 uses the approved manual-based classroom and MTM simulation.
   // Other courses retain the existing published-module completion check.
@@ -288,13 +284,13 @@ async function handlePaywallGate(
     .eq("status", "SUCCESSFUL")
     .order("created_at", { ascending: true });
 
-  const examFeeNaira = ctx.examFeeNaira || 0;
+  const examFeeNaira = 1000;
   const eligiblePayments = (payments || []).filter((payment: any) => Number(payment.amount) === examFeeNaira);
   const paymentsCount = eligiblePayments.length;
 
   // If paymentsCount <= attemptsCount, a new payment is required for this attempt
   if (paymentsCount <= attemptsCount) {
-    const examFeeNaira = ctx.examFeeNaira || (String(ctx.studentLevel || "").includes("400") ? 1000 : 500);
+    const examFeeNaira = 1000;
     const payment = await initializeExamPayment(studentId, courseId, courseCode, phone, examFeeNaira);
 
     if (!payment) {
@@ -541,7 +537,7 @@ export async function handleExamPaymentRecovery(
     .limit(1)
     .maybeSingle();
 
-  if (paymentError || !payment || ![500, 1000].includes(Number(payment.amount))) {
+  if (paymentError || !payment || Number(payment.amount) !== 1000) {
     await sendTextMessage(phone, "⚠️ I could not find a valid CBT payment for this WhatsApp number. Please contact the Learning Centre administrator before making another payment.");
     return;
   }
