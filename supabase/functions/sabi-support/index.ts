@@ -157,6 +157,7 @@ Deno.serve(async (req: Request) => {
       recentOrdersResult,
       todayPaidResult,
       monthPaidResult,
+      monthPaidCustomersResult,
       todayCreatedResult,
       monthCreatedResult,
       monthChargesResult,
@@ -171,6 +172,9 @@ Deno.serve(async (req: Request) => {
         .eq("tenant_id", tenantId).eq("payment_status", "PAID")
         .gte("paid_at", dayStartIso).lt("paid_at", nextDayIso).limit(1000),
       admin.from("tenant_orders").select("subtotal,delivery_fee,total,currency,paid_at", { count: "exact" })
+        .eq("tenant_id", tenantId).eq("payment_status", "PAID")
+        .gte("paid_at", monthStartIso).lt("paid_at", nextDayIso).limit(1000),
+      admin.from("tenant_orders").select("contact_id,customer_phone,customer_name", { count: "exact" })
         .eq("tenant_id", tenantId).eq("payment_status", "PAID")
         .gte("paid_at", monthStartIso).lt("paid_at", nextDayIso).limit(1000),
       admin.from("tenant_orders").select("id", { count: "exact", head: true })
@@ -375,6 +379,37 @@ Deno.serve(async (req: Request) => {
       const unpaidReply = lines.join("\n");
       const { data: reply, error: replyError } = await admin.from("sabi_support_messages").insert({
         conversation_id: conversation.id, tenant_id: tenantId, sender_role: "assistant", content: unpaidReply,
+      }).select("id, sender_role, content, created_at").single();
+      if (replyError || !reply) return respond({ error: "Your message was received, but the reply could not be saved." }, 500);
+      const now = new Date().toISOString();
+      await admin.from("sabi_support_conversations").update({ last_message_at: now, updated_at: now })
+        .eq("id", conversation.id).eq("tenant_id", tenantId);
+      return respond({ success: true, conversation, reply });
+    }
+
+    const asksPaidPeopleThisMonth =
+      /(how many|number of|count)/i.test(message) &&
+      /(people|person|customers?)/i.test(message) &&
+      /(paid|pay)/i.test(message) &&
+      /(this month|month)/i.test(message);
+    if (asksPaidPeopleThisMonth) {
+      const paidRows = monthPaidCustomersResult.data || [];
+      const customerKeys = new Set(
+        paidRows.map((row: any) => row.contact_id || row.customer_phone || row.customer_name)
+          .filter((value: unknown) => typeof value === "string" && value.trim().length > 0)
+      );
+      const paidOrderCount = monthPaidCustomersResult.count ?? paidRows.length;
+      const uniquePeopleCount = customerKeys.size;
+      const isComplete = paidOrderCount <= paidRows.length;
+      const peopleReply = uniquePeopleCount > 0
+        ? uniquePeopleCount + " distinct customer" + (uniquePeopleCount === 1 ? "" : "s") +
+          " made paid order" + (uniquePeopleCount === 1 ? "" : "s") + " this month" +
+          (isComplete ? "." : " in the latest 1,000 paid orders. The full unique-customer count may be higher.")
+        : paidOrderCount === 0
+          ? "No paid orders have been recorded this month."
+          : "I can confirm " + paidOrderCount + " paid orders this month, but the available orders do not contain customer identifiers to count distinct people.";
+      const { data: reply, error: replyError } = await admin.from("sabi_support_messages").insert({
+        conversation_id: conversation.id, tenant_id: tenantId, sender_role: "assistant", content: peopleReply,
       }).select("id, sender_role, content, created_at").single();
       if (replyError || !reply) return respond({ error: "Your message was received, but the reply could not be saved." }, 500);
       const now = new Date().toISOString();
