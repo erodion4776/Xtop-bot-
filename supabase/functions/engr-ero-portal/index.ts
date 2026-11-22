@@ -396,9 +396,24 @@ Deno.serve(async (req: Request) => {
         sb.from("engr_ero_lecture_presentations").select("title,html_content").eq("lesson_id", lesson.id).maybeSingle(),
       ]);
       if (sectionError || mediaError || presentationError) throw sectionError || mediaError || presentationError;
+      let signedVideoUrl: string | null = null;
+      if (lesson.video_url) {
+        const { data: signedVideo, error: signedVideoError } = await sb.storage
+          .from("engr-ero-videos")
+          .createSignedUrl(String(lesson.video_url), 2 * 60 * 60);
+        if (signedVideoError) throw signedVideoError;
+        signedVideoUrl = signedVideo?.signedUrl || null;
+        if (!signedVideoUrl) throw new Error("The lecture video could not be prepared. Please refresh and try again.");
+      }
       return response({
         course, order, total: lessons.length,
-        lesson: { id: lesson.id, title: presentation?.title || lesson.title, objectives: lesson.objectives, duration: presentation ? "70 minutes" : lesson.duration, image_url: lesson.image_url, module_title: lesson.moduleTitle },
+        lesson: {
+          id: lesson.id, title: presentation?.title || lesson.title,
+          objectives: lesson.objectives, summary: lesson.content,
+          duration: presentation ? "70 minutes" : lesson.duration,
+          image_url: lesson.image_url, module_title: lesson.moduleTitle,
+          video_url: signedVideoUrl,
+        },
         sections: sections || [], media: media || [],
         ...(presentation ? { presentation_html: presentation.html_content } : {}),
         completed_count: highWater,
