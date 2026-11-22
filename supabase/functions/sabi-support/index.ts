@@ -312,10 +312,10 @@ Deno.serve(async (req: Request) => {
       return respond({ success: true, conversation, reply });
     }
 
-    const asksPendingOrders = /\\b(how many|number of|count|show|list|give me)\\b/i.test(message) &&
-      /\\b(pending orders?|orders? pending)\\b/i.test(message);
-    const asksUnpaidAwaitingPayment = /\\b(unpaid|awaiting payment|pending payment|not paid)\\b/i.test(message) &&
-      /\\b(order|orders)\\b/i.test(message);
+    const asksPendingOrders = /\b(how many|number of|count|show|list|give me)\b/i.test(message) &&
+      /\b(pending orders?|orders? pending)\b/i.test(message);
+    const asksUnpaidAwaitingPayment = /\b(unpaid|awaiting payment|pending payment|not paid)\b/i.test(message) &&
+      /\b(order|orders)\b/i.test(message);
     if (asksPendingOrders || asksUnpaidAwaitingPayment) {
       const money = (amount: number) => new Intl.NumberFormat("en-NG", {
         style: "currency", currency: "NGN", maximumFractionDigits: 2,
