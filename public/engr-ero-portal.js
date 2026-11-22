@@ -80,6 +80,34 @@
       }
       if (data.course_complete) return showCourseComplete();
       contentEl.classList.remove("hidden");
+      if (data.lesson?.video_url) {
+        contentEl.innerHTML = `
+          <article class="panel">
+            <p class="muted">${escapeHtml(data.course?.course_code)} · Video ${data.order} of ${data.total}</p>
+            <h2 class="lesson-title">${escapeHtml(data.lesson?.title)}</h2>
+            <p class="muted">Estimated viewing time: ${escapeHtml(data.lesson?.duration || "Video lesson")}</p>
+            <video id="courseVideo" controls playsinline preload="metadata" style="display:block;width:100%;max-height:72vh;background:#050d19;border-radius:14px;object-fit:contain" aria-label="${escapeHtml(data.lesson?.title)}">
+              <source src="${escapeHtml(data.lesson.video_url)}" type="video/mp4">
+              Your browser does not support HTML video.
+            </video>
+          </article>
+          <article class="panel">
+            <h3>What you will learn in this video</h3>
+            <p class="section-content">${escapeHtml(data.lesson?.summary || data.lesson?.objectives || "")}</p>
+            ${data.lesson?.objectives ? `<div class="section"><h3>Learning outcomes</h3><div class="section-content">${escapeHtml(data.lesson.objectives)}</div></div>` : ""}
+            <p class="muted">Watch the video to the end. The completion button will unlock when playback finishes. Your progress is saved to your student record.</p>
+            <button id="completeLesson" data-lesson-id="${escapeHtml(data.lesson.id)}" disabled>Finish watching to unlock next video</button>
+          </article>`;
+        const courseVideo = document.getElementById("courseVideo");
+        const completeButton = document.getElementById("completeLesson");
+        courseVideo.addEventListener("ended", () => {
+          completeButton.disabled = false;
+          completeButton.textContent = data.order < data.total ? "Video completed — continue to next part" : "Complete course videos and return to WhatsApp";
+        });
+        courseVideo.addEventListener("error", () => status("This video could not be loaded. Refresh the page to request a new secure video link.", true));
+        completeButton.addEventListener("click", () => completeCurrentLesson(data.lesson.id));
+        return;
+      }
       if (data.presentation_html) {
         contentEl.innerHTML = `
           <article class="panel">
