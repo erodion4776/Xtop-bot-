@@ -149,7 +149,7 @@
   function showCourseComplete() {
     if (activeCourseCode === "ELA401") return showMtmSimulation();
     contentEl.classList.remove("hidden");
-    contentEl.innerHTML = `<article class="panel"><h2>🎉 All course lectures completed</h2><p class="muted">Your lecture progress has been saved. You are being returned to WhatsApp. Choose Final CBT Exam there to pay and unlock your secure examination.</p><a id="backWhatsApp" href="https://wa.me/2348024988555?text=I%20have%20completed%20all%20my%20lectures.%20Please%20help%20me%20continue%20to%20the%20CBT%20payment." style="display:block;text-align:center;text-decoration:none;background:#146b4a;color:white;padding:14px 17px;border-radius:12px;font-weight:700;margin-top:16px">Return to WhatsApp and continue to CBT</a></article>`;
+    contentEl.innerHTML = `<article class="panel"><h2>🎉 All course lectures completed</h2><p class="muted">Your lecture progress has been saved. Returning to WhatsApp now. Lizzy will send your secure Paystack link for the ₦1,000 CBT access fee. After payment is confirmed, your personal CBT link will be sent to this WhatsApp chat.</p><a id="backWhatsApp" href="https://wa.me/2348024988555?text=I%20have%20completed%20all%20my%20lectures.%20Please%20help%20me%20continue%20to%20the%20CBT%20payment." style="display:block;text-align:center;text-decoration:none;background:#146b4a;color:white;padding:14px 17px;border-radius:12px;font-weight:700;margin-top:16px">Return to WhatsApp for ₦1,000 CBT payment</a></article>`;
     const backLink = document.getElementById("backWhatsApp");
     setTimeout(() => { if (backLink) window.location.href = backLink.href; }, 1800);
   }
