@@ -1,0 +1,109 @@
+{
+  "course_id": "history-of-automobile-and-vehicle-systems",
+  "course_title": "History of the Automobile and Fundamental Vehicle Systems",
+  "learning_centre": "ENGR ERO LEARNING CENTRE",
+  "total_duration_minutes": 70,
+  "lesson_count": 10,
+  "scene_count": 39,
+  "video_format": "9:16",
+  "video_parts": [
+    {
+      "part": "A",
+      "filename": "Automobile_Lecture_Part_A_9x16.mp4",
+      "sequence": 1
+    },
+    {
+      "part": "B",
+      "filename": "Automobile_Lecture_Part_B_9x16.mp4",
+      "sequence": 2
+    },
+    {
+      "part": "C",
+      "filename": "Automobile_Lecture_Part_C_9x16.mp4",
+      "sequence": 3
+    }
+  ],
+  "lessons": [
+    {
+      "number": 1,
+      "title": "Introduction to Automobiles",
+      "start": "00:00",
+      "end": "05:00",
+      "scenes": "1-3"
+    },
+    {
+      "number": 2,
+      "title": "History and Evolution of the Automobile",
+      "start": "05:00",
+      "end": "17:00",
+      "scenes": "4-9"
+    },
+    {
+      "number": 3,
+      "title": "Classification and General Construction",
+      "start": "17:00",
+      "end": "23:00",
+      "scenes": "10-12"
+    },
+    {
+      "number": 4,
+      "title": "The Engine System",
+      "start": "23:00",
+      "end": "33:00",
+      "scenes": "13-18"
+    },
+    {
+      "number": 5,
+      "title": "Transmission and Drivetrain",
+      "start": "33:00",
+      "end": "41:00",
+      "scenes": "19-23"
+    },
+    {
+      "number": 6,
+      "title": "Steering and Suspension",
+      "start": "41:00",
+      "end": "48:00",
+      "scenes": "24-27"
+    },
+    {
+      "number": 7,
+      "title": "Braking System and Tyres",
+      "start": "48:00",
+      "end": "54:00",
+      "scenes": "28-30"
+    },
+    {
+      "number": 8,
+      "title": "Electrical and Electronic Systems",
+      "start": "54:00",
+      "end": "60:00",
+      "scenes": "31-33"
+    },
+    {
+      "number": 9,
+      "title": "Fuel, Cooling, Lubrication and Exhaust",
+      "start": "60:00",
+      "end": "65:00",
+      "scenes": "34-36"
+    },
+    {
+      "number": 10,
+      "title": "Modern Technology and Conclusion",
+      "start": "65:00",
+      "end": "70:00",
+      "scenes": "37-39"
+    }
+  ],
+  "question_bank": {
+    "status": "awaiting_upload",
+    "expected_question_count": 1000,
+    "filename": null
+  },
+  "implementation_notes": [
+    "Upload the three MP4 files to the project's chosen video storage location.",
+    "Keep the filenames exactly as listed, or update this manifest if they change.",
+    "Question bank mapping will be added after the 1,000 questions are supplied.",
+    "Confirm the lesson-to-video-part boundaries before enabling per-lesson playback."
+  ]
+}
