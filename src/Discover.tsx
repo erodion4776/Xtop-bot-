@@ -351,7 +351,7 @@ export default function Discover() {
           <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Search products, categories and stores" aria-label="Search products and stores" />
           <button type="submit">Search</button>
         </form>
-        <a className="sd-cart-button" href="/?cart=1" aria-label={`Shopping cart with ${cartCount} items`}><ShoppingBag size={19}/><span>Cart</span>{cartCount > 0 && <b>{cartCount}</b>}</a>
+        <a className="sd-cart-button" href="https://discover.sabibyxtop.com.ng/?cart=1" aria-label={`Shopping cart with ${cartCount} items`}><ShoppingBag size={19}/><span>Cart</span>{cartCount > 0 && <b>{cartCount}</b>}</a>
         <button className="sd-account-button" onClick={() => { setAccountMode(session ? "profile" : "login"); setAccountOpen(true); }}>
           {session ? <CircleUserRound size={19} /> : <UserRound size={19} />}
           <span>{session ? (fullName.split(" ")[0] || "My account") : "Sign in"}<small>{session ? "My account" : "Customer account"}</small></span>
