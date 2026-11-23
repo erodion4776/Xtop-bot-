@@ -34,18 +34,6 @@
   force = true
 
 [[redirects]]
-  from = "/sitemap.xml"
-  to = "https://mldywarnnwjitfvqpgis.supabase.co/functions/v1/sabi-marketplace-seo"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/sitemap-:page.xml"
-  to = "https://mldywarnnwjitfvqpgis.supabase.co/functions/v1/sabi-marketplace-seo?page=:page"
-  status = 200
-  force = true
-
-[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
