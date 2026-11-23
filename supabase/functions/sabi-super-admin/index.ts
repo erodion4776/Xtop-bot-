@@ -201,6 +201,119 @@ serve(async (req: Request) => {
     }
 
     // =====================================================
+    // =====================================================
+    // UNIFIED SABI LIVE SUPPORT — DEMO + GENERAL CUSTOMER HANDOFFS
+    // =====================================================
+    if (body.action === "support-list") {
+      const systemTenantId = "00000000-0000-0000-0000-000000000001";
+      const { data: conversations, error: conversationError } = await sb
+        .from("conversations")
+        .select("id,contact_id,current_module,current_state,context_json,last_message_at,updated_at,agent_mode")
+        .eq("tenant_id", systemTenantId)
+        .order("last_message_at", { ascending: false })
+        .limit(200);
+      if (conversationError) return response({ error: "Could not load Sabi support conversations." }, 500);
+      const active = (conversations || []).filter((c: any) =>
+        (c.current_module === "SABI_SHOP_DEMO" && (c.agent_mode === true || c.context_json?.demo_agent_handoff === true)) ||
+        (c.current_module === "SABI_GATEWAY" && c.current_state === "SUPPORT")
+      );
+      const contactIds = [...new Set(active.map((c: any) => c.contact_id).filter(Boolean))];
+      if (!contactIds.length) return response({ data: [] });
+      const [{ data: contacts, error: contactError }, { data: messages, error: messageError }] = await Promise.all([
+        sb.from("contacts").select("id,phone,name,agent_mode,updated_at").eq("tenant_id", systemTenantId).in("id", contactIds),
+        sb.from("messages").select("id,contact_id,direction,message_type,message_text,body,created_at").eq("tenant_id", systemTenantId).in("contact_id", contactIds).order("created_at", { ascending: true }).limit(2000),
+      ]);
+      if (contactError || messageError) return response({ error: "Could not load Sabi support messages." }, 500);
+      const contactMap = new Map((contacts || []).map((c: any) => [c.id, c]));
+      return response({ data: active.map((c: any) => ({
+        conversation_id: c.id, contact_id: c.contact_id, state: c.current_state,
+        kind: c.current_module === "SABI_SHOP_DEMO" ? "DEMO" : "SABI",
+        last_message_at: c.last_message_at || c.updated_at,
+        contact: contactMap.get(c.contact_id) || null,
+        messages: (messages || []).filter((m: any) => m.contact_id === c.contact_id).map((m: any) => ({
+          id: m.id, direction: m.direction, type: m.message_type,
+          text: m.message_text || m.body || "", created_at: m.created_at,
+        })),
+      })).filter((c: any) => c.contact).sort((a: any, b: any) =>
+        new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
+      ) });
+    }
+
+    if (body.action === "support-reply") {
+      const contactId = String(body.contact_id || "");
+      const conversationId = String(body.conversation_id || "");
+      const message = String(body.message || "").trim();
+      if (!/^[0-9a-f-]{36}$/i.test(contactId) || !/^[0-9a-f-]{36}$/i.test(conversationId) || !message || message.length > 4000) {
+        return response({ error: "Select a customer and enter a message of up to 4,000 characters." }, 400);
+      }
+      const systemTenantId = "00000000-0000-0000-0000-000000000001";
+      const [{ data: contact, error: contactError }, { data: conversation, error: convError }] = await Promise.all([
+        sb.from("contacts").select("id,phone").eq("id", contactId).eq("tenant_id", systemTenantId).maybeSingle(),
+        sb.from("conversations").select("id,current_module,current_state,context_json").eq("id", conversationId).eq("contact_id", contactId).eq("tenant_id", systemTenantId).maybeSingle(),
+      ]);
+      const isDemo = conversation?.current_module === "SABI_SHOP_DEMO" && conversation?.context_json?.demo_agent_handoff === true;
+      const isGeneral = conversation?.current_module === "SABI_GATEWAY" && conversation?.current_state === "SUPPORT";
+      if (contactError || convError || !contact || !conversation || (!isDemo && !isGeneral)) {
+        return response({ error: "This customer no longer has an active Sabi support handoff. Refresh the inbox." }, 409);
+      }
+      const token = Deno.env.get("WHATSAPP_ACCESS_TOKEN") || "";
+      const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "";
+      if (!token || !phoneNumberId) return response({ error: "System WhatsApp sending credentials are not configured." }, 500);
+      const waResponse = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(phoneNumberId)}/messages`, {
+        method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: contact.phone, type: "text", text: { preview_url: false, body: message } }),
+      });
+      const waResult = await waResponse.json().catch(() => ({}));
+      if (!waResponse.ok) return response({ error: waResult?.error?.message || "WhatsApp could not send your reply." }, 502);
+      const messageId = waResult?.messages?.[0]?.id || null;
+      const { error: saveError } = await sb.from("messages").insert({
+        contact_id: contactId, tenant_id: systemTenantId, direction: "OUTBOUND",
+        message_type: "text", message_text: message, body: message, whatsapp_message_id: messageId,
+      });
+      if (saveError) return response({ error: "WhatsApp sent the reply, but conversation history could not be saved. Refresh before sending again." }, 500);
+      return response({ success: true, whatsapp_message_id: messageId });
+    }
+
+    if (body.action === "support-resume") {
+      const contactId = String(body.contact_id || "");
+      const conversationId = String(body.conversation_id || "");
+      if (!/^[0-9a-f-]{36}$/i.test(contactId) || !/^[0-9a-f-]{36}$/i.test(conversationId)) return response({ error: "Select a valid support conversation." }, 400);
+      const systemTenantId = "00000000-0000-0000-0000-000000000001";
+      const [{ data: contact, error: contactError }, { data: conversation, error: convError }] = await Promise.all([
+        sb.from("contacts").select("id,phone").eq("id", contactId).eq("tenant_id", systemTenantId).maybeSingle(),
+        sb.from("conversations").select("id,current_module,current_state,context_json").eq("id", conversationId).eq("contact_id", contactId).eq("tenant_id", systemTenantId).maybeSingle(),
+      ]);
+      const isDemo = conversation?.current_module === "SABI_SHOP_DEMO" && conversation?.context_json?.demo_agent_handoff === true;
+      const isGeneral = conversation?.current_module === "SABI_GATEWAY" && conversation?.current_state === "SUPPORT";
+      if (contactError || convError || !contact || !conversation || (!isDemo && !isGeneral)) return response({ error: "The active support handoff could not be found." }, 404);
+      const token = Deno.env.get("WHATSAPP_ACCESS_TOKEN") || "";
+      const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "";
+      if (!token || !phoneNumberId) return response({ error: "System WhatsApp sending credentials are not configured." }, 500);
+      const resumeText = isDemo
+        ? "🤖 Human support has ended. Welcome back to the Sabi Demo Shop! Your shopping session is saved. Reply *menu* to continue browsing, or tell me what product you are looking for."
+        : "🤖 Thank you for contacting Sabi Support. Your support session has ended. You can continue using Sabi by typing *menu*.";
+      const waResponse = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(phoneNumberId)}/messages`, {
+        method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: contact.phone, type: "text", text: { body: resumeText } }),
+      });
+      const waResult = await waResponse.json().catch(() => ({}));
+      if (!waResponse.ok) return response({ error: waResult?.error?.message || "WhatsApp could not send the return-to-bot message. The support session remains open." }, 502);
+      const nextContext = isDemo ? { ...(conversation.context_json || {}) } : { sabi_gateway: true };
+      delete nextContext.demo_agent_handoff;
+      delete nextContext.agent_mode;
+      const [{ error: contactUpdateError }, { error: conversationUpdateError }] = await Promise.all([
+        sb.from("contacts").update({ agent_mode: false, updated_at: new Date().toISOString() }).eq("id", contactId).eq("tenant_id", systemTenantId),
+        sb.from("conversations").update({
+          current_module: isDemo ? "SABI_SHOP_DEMO" : "SABI_GATEWAY",
+          current_state: isDemo ? "SHOPPING" : "MENU",
+          context_json: nextContext, agent_mode: false, updated_at: new Date().toISOString(),
+        }).eq("id", conversationId).eq("tenant_id", systemTenantId),
+      ]);
+      if (contactUpdateError || conversationUpdateError) return response({ error: "The customer received the message, but bot state could not be restored. Please refresh and check the conversation." }, 500);
+      await sb.from("messages").insert({ contact_id: contactId, tenant_id: systemTenantId, direction: "OUTBOUND", message_type: "text", message_text: resumeText, body: resumeText, whatsapp_message_id: waResult?.messages?.[0]?.id || null });
+      return response({ success: true, kind: isDemo ? "DEMO" : "SABI" });
+    }
+
     // SABI DEMO LIVE SUPPORT — SUPER ADMIN ONLY
     // =====================================================
     if (body.action === "demo-support-list") {
