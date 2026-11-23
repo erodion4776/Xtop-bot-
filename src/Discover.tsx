@@ -208,10 +208,11 @@ export default function Discover() {
       ["Baby, Kids & Toys", ["baby", "kids", "children", "toy", "maternity", "school"]],
       ["Sports & Outdoors", ["sport", "outdoor", "gym", "camping", "fitness gear"]],
       ["Automotive", ["auto", "car", "vehicle", "motor", "automotive", "spare part"]],
-      ["Books & Learning", ["book", "education", "learning", "stationery", "course"]]
+      ["Books & Learning", ["book", "education", "learning", "stationery", "course"]],
+      ["Real Estate", ["real estate", "property", "land", "building", "house for sale"]]
     ];
     const match = rules.find(([, words]) => words.some(word => value.includes(word)));
-    return match?.[0] || rawCategory.trim().replace(/\s+/g, " ").replace(/\b\w/g, letter => letter.toUpperCase());
+    return match?.[0] || "Other";
   }
 
   function submitSearch(event: React.FormEvent<HTMLFormElement>) {
