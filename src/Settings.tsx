@@ -83,6 +83,11 @@ export default function Settings({ tenantId }: { tenantId: string }) {
   const [whatsappPin, setWhatsappPin] = useState("");
   const [whatsappRegistering, setWhatsappRegistering] = useState(false);
   const [whatsappRegistrationSuccess, setWhatsappRegistrationSuccess] = useState("");
+  const [marketplacePublished, setMarketplacePublished] = useState(false);
+  const [marketplaceLoading, setMarketplaceLoading] = useState(true);
+  const [marketplaceSaving, setMarketplaceSaving] = useState(false);
+  const [marketplaceError, setMarketplaceError] = useState("");
+  const [marketplaceSuccess, setMarketplaceSuccess] = useState("");
 
   const card: React.CSSProperties = {
     background: "#fff",
@@ -237,7 +242,7 @@ export default function Settings({ tenantId }: { tenantId: string }) {
     }
   }
 
-  async function loadSettings() {
+  async function loadMarketplaceStatus() {\n    setMarketplaceLoading(true);\n    setMarketplaceError("");\n    const { data, error } = await supabase.rpc("sabi_get_merchant_marketplace_status", { p_tenant_id: tenantId });\n    if (error) {\n      setMarketplaceError("Unable to load Sabi Discover settings: " + error.message);\n    } else {\n      const result = Array.isArray(data) ? data[0] : data;\n      setMarketplacePublished(result?.is_published === true);\n    }\n    setMarketplaceLoading(false);\n  }\n\n  async function saveMarketplaceVisibility(enabled: boolean) {\n    setMarketplaceSaving(true);\n    setMarketplaceError("");\n    setMarketplaceSuccess("");\n    const { data, error } = await supabase.rpc("sabi_set_merchant_marketplace_visibility", { p_tenant_id: tenantId, p_is_published: enabled });\n    if (error) {\n      setMarketplaceError(error.message);\n    } else {\n      const result = Array.isArray(data) ? data[0] : data;\n      setMarketplacePublished(result?.is_published === true);\n      setMarketplaceSuccess(enabled ? "Your store is now visible on Sabi Discover." : "Your store has been hidden from Sabi Discover.");\n    }\n    setMarketplaceSaving(false);\n  }\n\n  async function loadSettings() {
     setLoading(true);
     setError("");
 
@@ -629,6 +634,24 @@ export default function Settings({ tenantId }: { tenantId: string }) {
           {businessNameSaving ? "Saving..." : "Save business name"}
         </button>
       </form>
+      <div style={{ ...card, marginTop: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+          <Building2 size={25} color="#0f766e" />
+          <div><h2 style={{ margin: 0 }}>Sabi Discover marketplace</h2><p style={{ color: "#64748b", margin: "5px 0 0" }}>Choose whether customers can discover your store and eligible products on the public Sabi marketplace.</p></div>
+        </div>
+        {marketplaceError && <div role="alert" style={{ color: "#b91c1c", marginBottom: 10 }}>{marketplaceError}</div>}
+        {marketplaceSuccess && <div role="status" style={{ color: "#047857", marginBottom: 10 }}>{marketplaceSuccess}</div>}
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 11, cursor: "pointer" }}>
+          <input type="checkbox" checked={marketplacePublished} disabled={marketplaceLoading || marketplaceSaving} onChange={e => saveMarketplaceVisibility(e.target.checked)} />
+          <span><strong>Show my store on Sabi Discover</strong><small style={{ display: "block", color: "#64748b", marginTop: 5 }}>When enabled, active products with available stock can appear in public search and category browsing. You can turn this off at any time.</small></span>
+        </label>
+        <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+          <span style={{ padding: "6px 10px", borderRadius: 20, background: marketplacePublished ? "#ecfdf5" : "#f1f5f9", color: marketplacePublished ? "#047857" : "#64748b", fontSize: 11, fontWeight: 700 }}>{marketplaceLoading ? "Checking status..." : marketplacePublished ? "Visible on Discover" : "Not listed publicly"}</span>
+          {marketplaceSaving && <small style={{ color: "#64748b" }}>Saving marketplace preference...</small>}
+          <a href="https://discover.sabibyxtop.com.ng" target="_blank" rel="noreferrer" style={{ color: "#0f766e", fontSize: 12, fontWeight: 700 }}>Preview Sabi Discover ↗</a>
+        </div>
+      </div>
+
       <div style={{ ...card, background: "#f8fafc" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Truck size={26} color="#0f766e" />
