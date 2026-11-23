@@ -1,8 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const db = createClient(URL, SERVICE, { auth: { persistSession: false, autoRefreshToken: false } });
+const db = createClient(SUPABASE_URL, SERVICE, { auth: { persistSession: false, autoRefreshToken: false } });
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
@@ -14,15 +14,15 @@ function reply(body: unknown, status = 200, contentType = "application/json") {
   });
 }
 function validEmail(value: string) {
-  return value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  return value.length <= 254 && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value);
 }
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
-  const url = new URL(req.url);
-  const action = url.searchParams.get("action") || "";
+  const requestUrl = new URL(req.url);
+  const action = requestUrl.searchParams.get("action") || "";
   try {
     if (req.method === "GET" && action === "unsubscribe") {
-      const token = url.searchParams.get("token") || "";
+      const token = requestUrl.searchParams.get("token") || "";
       if (!/^[0-9a-f-]{36}$/i.test(token)) return reply("<h2>Invalid unsubscribe link</h2>", 400, "text/html");
       const { data, error } = await db.from("sabi_newsletter_subscribers")
         .update({ status: "UNSUBSCRIBED", updated_at: new Date().toISOString() })
