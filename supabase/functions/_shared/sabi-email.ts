@@ -89,3 +89,24 @@ export async function sendPaymentReceiptEmail(db: any, d: {
   await sendSabiEmail(d.customerEmail, "Payment confirmed: " + order, html,
     "Your payment of " + amount + " for order " + order + " with " + store + " has been confirmed.");
 }
+
+
+export async function sendOrderStatusEmail(db: any, tenantId: string, orderId: string, status: "DISPATCHED" | "COMPLETED"): Promise<boolean> {
+  const { data: order } = await db.from("tenant_orders")
+    .select("order_number,customer_name,customer_email")
+    .eq("tenant_id", tenantId).eq("id", orderId).maybeSingle();
+  if (!order?.customer_email) return false;
+  const { data: tenant } = await db.from("tenants")
+    .select("business_name,name").eq("id", tenantId).maybeSingle();
+  const store = tenant?.business_name || tenant?.name || "the store";
+  const isReady = status === "DISPATCHED";
+  const title = isReady ? "Your order is on its way" : "Your order is complete";
+  const message = isReady
+    ? "Your order has been dispatched. Please contact the store if you need help with delivery or pickup."
+    : "Your order has been marked as delivered or collected. Thank you for shopping with us.";
+  const html = layout(title,
+    '<p>Hello ' + esc(order.customer_name || "there") + ',</p><p>' + esc(message) + '</p><p>Store: <strong>' + esc(store) + '</strong><br>Order: <strong>' + esc(order.order_number) + '</strong></p>',
+    "Visit Sabi", SITE);
+  return sendSabiEmail(order.customer_email, title + ": " + order.order_number, html,
+    message + " Store: " + store + ". Order: " + order.order_number);
+}
