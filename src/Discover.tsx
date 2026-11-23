@@ -30,6 +30,7 @@ const money = (value: number) => `₦${value.toLocaleString("en-NG", { maximumFr
 
 export default function Discover() {
   const [products, setProducts] = useState<MarketplaceProduct[]>([]);
+  const [categoryCounts, setCategoryCounts] = useState<{ name: string; count: number }[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
@@ -56,7 +57,7 @@ export default function Discover() {
     setError("");
     const { data, error: rpcError } = await supabase.rpc(
       "sabi_get_public_marketplace_products",
-      { p_search: null, p_category: null, p_limit: 100, p_offset: 0 }
+      { p_search: search || null, p_category: category || null, p_limit: 100, p_offset: 0 }
     );
     if (rpcError) {
       setError("We could not load the marketplace right now. Please try again.");
@@ -66,6 +67,24 @@ export default function Discover() {
     }
     setLoading(false);
   }
+
+  async function loadCategories() {
+    const { data, error: categoryError } = await supabase.rpc("sabi_get_public_marketplace_categories");
+    if (!categoryError) {
+      setCategoryCounts((data || []).map((item: { category_name: string; product_count: number }) => ({
+        name: item.category_name,
+        count: Number(item.product_count || 0)
+      })));
+    }
+  }
+
+  useEffect(() => {
+    loadCategories();
+  }, []);
+
+  useEffect(() => {
+    loadProducts();
+  }, [category, search]);
 
   useEffect(() => {
     document.title = "Sabi Discover | Shop Nigerian Businesses";
@@ -77,8 +96,6 @@ export default function Discover() {
       document.head.appendChild(meta);
     }
     meta.setAttribute("content", description);
-    loadProducts();
-
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       if (data.session?.user) {
@@ -172,16 +189,6 @@ export default function Discover() {
     () => products.filter(p => Number(p.sold_quantity || 0) > 0).sort((a, b) => Number(b.sold_quantity || 0) - Number(a.sold_quantity || 0)).slice(0, 4),
     [products]
   );
-
-  const categoryCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    products.forEach(product => {
-      const name = categoryFor(product.product_category);
-      counts.set(name, (counts.get(name) || 0) + 1);
-    });
-    return Array.from(counts, ([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-  }, [products]);
 
   const popularCategories = useMemo(() => categoryCounts.slice(0, 7), [categoryCounts]);
   const filteredCategories = useMemo(() => categoryCounts.filter(item =>
