@@ -77,7 +77,7 @@ export default function Newsletter({tenantId}:Props) {
     <label style={{display:"block",fontSize:13,fontWeight:700,marginTop:14}}>Newsletter message<textarea style={{...field,minHeight:150,resize:"vertical"}} value={content} onChange={e=>setContent(e.target.value)} maxLength={12000} placeholder="Write your update for subscribed customers…" required/></label>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",marginTop:14}}>
      <small style={{color:"#64748b"}}>{content.length.toLocaleString()} / 12,000 characters · {subscriberCount} recipients</small>
-     <button type="submit" disabled={sending||loading||subscriberCount===0||remainingCampaigns===0} style={{...button,opacity:sending||loading||subscriberCount===0||remainingCampaigns===0?.55:1}}>{sending?<RefreshCw size={16}/>:<Send size={16}/>} {sending?"Sending…":"Send newsletter"}</button>
+     <button type="submit" disabled={sending||loading||subscriberCount===0||remainingCampaigns===0} style={{...button,opacity:(sending||loading||subscriberCount===0||remainingCampaigns===0)?0.55:1}}>{sending?<RefreshCw size={16}/>:<Send size={16}/>} {sending?"Sending…":"Send newsletter"}</button>
     </div>
    </form>
    {sending&&<p style={{fontSize:13,color:"#145b3b",marginBottom:0}}>{progress}</p>}
