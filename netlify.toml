@@ -28,6 +28,12 @@
   status = 200
 
 [[redirects]]
+  from = "/share/:kind/:id"
+  to = "https://mldywarnnwjitfvqpgis.supabase.co/functions/v1/sabi-share-preview?kind=:kind&id=:id"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/sitemap.xml"
   to = "https://mldywarnnwjitfvqpgis.supabase.co/functions/v1/sabi-marketplace-seo"
   status = 200
