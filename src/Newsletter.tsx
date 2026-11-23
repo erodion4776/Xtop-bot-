@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Mail, RefreshCw, Send, Users, Megaphone, CheckCircle2, AlertCircle } from "lucide-react";
 import { supabase } from "./lib/supabase";
+import NewsletterDistribution from "./NewsletterDistribution";
 
 type Subscriber = { id:string; email:string; status:string; consent_at:string; created_at:string };
 type Campaign = { id:string; subject:string; status:string; recipient_count:number; sent_count:number; failed_count:number; created_at:string; completed_at:string|null };
@@ -87,6 +88,7 @@ export default function Newsletter({tenantId}:Props) {
    <div style={panel}><Megaphone size={20} color="#145b3b"/><div style={{fontSize:12,color:"#64748b",marginTop:8}}>Campaigns left this month</div><strong style={{fontSize:26}}>{loading?"…":remainingCampaigns}/2</strong></div>
    <div style={panel}><Mail size={20} color="#145b3b"/><div style={{fontSize:12,color:"#64748b",marginTop:8}}>Recipient allowance left</div><strong style={{fontSize:26}}>{loading?"…":money(remainingRecipients)}</strong></div>
   </div>
+  <NewsletterDistribution tenantId={tenantId}/>
   <div style={panel}>
    <h2 style={{margin:"0 0 6px",fontSize:18}}>Add an opted-in subscriber</h2>
    <p style={{margin:"0 0 12px",color:"#64748b",fontSize:13}}>For testing, add your own email address. Only add an address whose owner has agreed to receive store newsletters.</p>
