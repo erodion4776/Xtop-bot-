@@ -115,6 +115,13 @@ jobs:
             --no-verify-jwt \
             --yes
 
+      - name: Deploy Sabi marketplace SEO sitemap
+        run: |
+          npx --no-install supabase functions deploy sabi-marketplace-seo \
+            --project-ref "$SUPABASE_PROJECT_ID" \
+            --no-verify-jwt \
+            --yes
+
       - name: Deploy Sabi newsletter dashboard API
         run: |
           npx --no-install supabase functions deploy sabi-newsletter-api \
