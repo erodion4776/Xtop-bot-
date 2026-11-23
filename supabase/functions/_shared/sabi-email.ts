@@ -281,3 +281,37 @@ export async function sendMerchantSettlementEmail(db: any, d: {
       settlementDate + ". Check your bank account for the credit entry. Dashboard: " + DASHBOARD,
   );
 }
+
+
+export async function sendAbandonedCartEmail(d: {
+  email: string;
+  customerName?: string | null;
+  businessName?: string | null;
+  productName?: string | null;
+  productPrice?: number | string | null;
+  quantity: number;
+  checkoutUrl: string;
+}): Promise<boolean> {
+  const money = new Intl.NumberFormat("en-NG", {
+    style: "currency", currency: "NGN", maximumFractionDigits: 2,
+  }).format(Number(d.productPrice || 0));
+  const name = d.customerName || "there";
+  const store = d.businessName || "the store";
+  const product = d.productName || "the item you viewed";
+  const html = layout("You left something in your cart",
+    '<p>Hello ' + esc(name) + ',</p><p>You recently showed interest in <strong>' +
+    esc(product) + '</strong> at <strong>' + esc(store) +
+    '</strong>. Your checkout is still available if you would like to continue.</p>' +
+    '<p>Quantity: ' + esc(d.quantity) + '<br>Price per item: ' + money +
+    '</p><p>No order has been placed and no payment has been taken.</p>',
+    "Continue shopping", d.checkoutUrl);
+  return sendSabiEmail(
+    d.email,
+    "Your " + product + " is waiting at " + store,
+    html,
+    "Hello " + name + ", you recently viewed " + product + " at " + store +
+      ". Quantity: " + d.quantity + ". Price per item: " + money +
+      ". Continue shopping: " + d.checkoutUrl +
+      ". No order has been placed and no payment has been taken."
+  );
+}
