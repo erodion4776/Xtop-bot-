@@ -14,14 +14,13 @@ function reply(body: unknown, status = 200, contentType = "application/json") {
   });
 }
 function validEmail(value: string) {
-  return value.length <= 254 && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value);
+  return value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   const requestUrl = new URL(req.url);
-  const action = requestUrl.searchParams.get("action") || "";
   try {
-    if (req.method === "GET" && action === "unsubscribe") {
+    if (req.method === "GET" && requestUrl.searchParams.get("action") === "unsubscribe") {
       const token = requestUrl.searchParams.get("token") || "";
       if (!/^[0-9a-f-]{36}$/i.test(token)) return reply("<h2>Invalid unsubscribe link</h2>", 400, "text/html");
       const { data, error } = await db.from("sabi_newsletter_subscribers")
@@ -31,19 +30,20 @@ Deno.serve(async (req: Request) => {
       if (!data) return reply("<main style='font-family:Arial;padding:30px'><h2>Link not found</h2><p>This unsubscribe link may already have been used.</p></main>", 404, "text/html");
       return reply("<main style='font-family:Arial;max-width:520px;margin:60px auto;padding:24px'><h2>You have been unsubscribed</h2><p>You will no longer receive newsletters from this store.</p><p>Powered by Sabi by XTOP</p></main>", 200, "text/html");
     }
+    const body = req.method === "POST" ? await req.json() : {};
+    const action = body.action || requestUrl.searchParams.get("action") || "";
     if (req.method !== "POST" || action !== "subscribe") return reply({ success: false, error: "METHOD_OR_ACTION_NOT_ALLOWED" }, 405);
-    const body = await req.json();
     const tenantId = String(body.tenant_id || "").trim();
     const email = String(body.email || "").trim().toLowerCase();
     const consent = body.consent === true;
     const source = String(body.source || "STORE").slice(0, 40);
-    if (!/^[0-9a-f-]{36}$/i.test(tenantId)) return reply({ success: false, error: "INVALID_STORE" }, 400);
-    if (!validEmail(email)) return reply({ success: false, error: "ENTER_A_VALID_EMAIL" }, 400);
-    if (!consent) return reply({ success: false, error: "EXPLICIT_CONSENT_REQUIRED" }, 400);
+    if (!/^[0-9a-f-]{36}$/i.test(tenantId)) return reply({ success: false, error: "INVALID_STORE" }, 200);
+    if (!validEmail(email)) return reply({ success: false, error: "ENTER_A_VALID_EMAIL" }, 200);
+    if (!consent) return reply({ success: false, error: "EXPLICIT_CONSENT_REQUIRED" }, 200);
     const { data: tenant, error: tenantError } = await db.from("tenants")
       .select("id").eq("id", tenantId).eq("is_active", true).eq("is_system", false).maybeSingle();
     if (tenantError) throw tenantError;
-    if (!tenant) return reply({ success: false, error: "STORE_NOT_AVAILABLE" }, 404);
+    if (!tenant) return reply({ success: false, error: "STORE_NOT_AVAILABLE" }, 200);
     const { data, error } = await db.from("sabi_newsletter_subscribers").upsert({
       tenant_id: tenantId, email, status: "SUBSCRIBED", consent_at: new Date().toISOString(),
       source, updated_at: new Date().toISOString()
@@ -52,6 +52,6 @@ Deno.serve(async (req: Request) => {
     return reply({ success: true, message: "SUBSCRIBED", subscriber_id: data.id });
   } catch (error) {
     console.error("sabi-newsletter-public", error);
-    return reply({ success: false, error: "SUBSCRIPTION_FAILED" }, 500);
+    return reply({ success: false, error: "SUBSCRIPTION_FAILED" }, 200);
   }
 });
