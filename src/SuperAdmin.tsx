@@ -47,7 +47,8 @@ const pages: { label: Page; icon: any }[] = [
   { label: "Live Support", icon: MessageCircle },
   { label: "Activity Log", icon: Activity },
   { label: "WhatsApp Usage", icon: MessageSquare },
-  { label: "Platform Controls", icon: ShieldCheck },\n  { label: "Platform Email", icon: Mail },
+  { label: "Platform Controls", icon: ShieldCheck },
+  { label: "Platform Email", icon: Mail },
 ];
 
 const money = (value: number) => new Intl.NumberFormat("en-NG", {
@@ -68,7 +69,12 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
   const [selectedSupportId, setSelectedSupportId] = useState("");
   const [supportDraft, setSupportDraft] = useState("");
   const [whatsappUsage, setWhatsappUsage] = useState<WhatsAppUsageRow[]>([]);
-  const [usageSettings, setUsageSettings] = useState<any[]>([]);\n  const [emailCampaigns, setEmailCampaigns] = useState<any[]>([]);\n  const [emailAudience, setEmailAudience] = useState<"MERCHANTS" | "CUSTOMERS" | "ALL">("MERCHANTS");\n  const [emailSubject, setEmailSubject] = useState("");\n  const [emailContent, setEmailContent] = useState("");\n  const [emailCounts, setEmailCounts] = useState({ merchant_count: 0, customer_count: 0 });
+  const [usageSettings, setUsageSettings] = useState<any[]>([]);
+  const [emailCampaigns, setEmailCampaigns] = useState<any[]>([]);
+  const [emailAudience, setEmailAudience] = useState<"MERCHANTS" | "CUSTOMERS" | "ALL">("MERCHANTS");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailContent, setEmailContent] = useState("");
+  const [emailCounts, setEmailCounts] = useState({ merchant_count: 0, customer_count: 0 });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
