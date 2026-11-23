@@ -6,6 +6,7 @@ import {
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabase";
 import "./Discover.css";
+import { addToMarketplaceCart, getMarketplaceCart } from "./marketplaceCart";
 
 type ReviewableOrder = { order_id: string; order_number: string; business_name: string; ordered_at: string; rating: number | null; review_text: string | null; };
 
@@ -51,6 +52,7 @@ export default function Discover() {
   const [reviewOrders, setReviewOrders] = useState<ReviewableOrder[]>([]);
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, number>>({});
   const [reviewTexts, setReviewTexts] = useState<Record<string, string>>({});
+  const [cartCount, setCartCount] = useState(() => getMarketplaceCart().reduce((sum, item) => sum + item.quantity, 0));
 
   async function loadProducts() {
     setLoading(true);
@@ -80,6 +82,10 @@ export default function Discover() {
 
   useEffect(() => {
     loadCategories();
+    const updateCartCount = () => setCartCount(getMarketplaceCart().reduce((sum, item) => sum + item.quantity, 0));
+    window.addEventListener("sabi-cart-updated", updateCartCount);
+    window.addEventListener("storage", updateCartCount);
+    return () => { window.removeEventListener("sabi-cart-updated", updateCartCount); window.removeEventListener("storage", updateCartCount); };
   }, []);
 
   useEffect(() => {
@@ -329,6 +335,7 @@ export default function Discover() {
             {reviews > 0 ? <><span className="sd-stars"><Star size={12} fill="currentColor" /> {rating.toFixed(1)}</span><span>({reviews} seller {reviews === 1 ? "review" : "reviews"})</span></> : <span>New seller · Be the first to review</span>}
           </div>
           <span className="sd-view-product">View product <ArrowRight size={14} /></span>
+          <button className="sd-add-cart" type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); addToMarketplaceCart({ product_id: product.product_id, product_name: product.product_name, product_price: Number(product.product_price || 0), product_image_url: product.product_image_url, business_name: product.business_name, business_slug: product.business_slug, product_stock: Number(product.product_stock || 0) }, 1); }} disabled={Number(product.product_stock || 0) < 1}><ShoppingBag size={14}/> Add to cart</button>
         </div>
       </a>
     );
@@ -344,6 +351,7 @@ export default function Discover() {
           <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Search products, categories and stores" aria-label="Search products and stores" />
           <button type="submit">Search</button>
         </form>
+        <a className="sd-cart-button" href="/?cart=1" aria-label={`Shopping cart with ${cartCount} items`}><ShoppingBag size={19}/><span>Cart</span>{cartCount > 0 && <b>{cartCount}</b>}</a>
         <button className="sd-account-button" onClick={() => { setAccountMode(session ? "profile" : "login"); setAccountOpen(true); }}>
           {session ? <CircleUserRound size={19} /> : <UserRound size={19} />}
           <span>{session ? (fullName.split(" ")[0] || "My account") : "Sign in"}<small>{session ? "My account" : "Customer account"}</small></span>
