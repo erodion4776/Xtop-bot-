@@ -104,6 +104,10 @@ async function authenticateOwner(req: Request, tenantId: string) {
   return user;
 }
 
+function rawSettlementStatusIsSuccessful(value: unknown) {
+  return String(value || "").toLowerCase() === "success";
+}
+
 function normalizeName(value: string) {
   return value
     .trim()
@@ -686,9 +690,10 @@ async function syncSubaccountSettlements(
   const matchedChargeIds = new Set<string>();
 
   for (const settlement of settlements) {
-    // Transaction Export is a separate source from the transaction-list APIs.
-    // First run it in diagnostic-only mode: never infer settlement from amount
-    // alone, and do not change a charge until the exported identifiers match.
+    // Paystack's CSV export has transaction IDs and settlement dates, but no
+    // settlement ID. Accept only exact local transaction/reference matches
+    // whose exported settlement date equals this successful settlement day.
+    let exportSettlementTransactions: any[] = [];
     try {
       // Export the merchant's transactions for the settlement-date window.
       // Do not combine settlement ID with subaccount_code here: Paystack's
@@ -731,12 +736,38 @@ async function syncSubaccountSettlements(
         const settlementColumn = parsed.headers.find((header) =>
           ["settlement", "settlement_id", "settlementid"].includes(header)
         );
+        const settlementDateColumn = parsed.headers.find((header) =>
+          ["settlement_date", "settlementdate"].includes(header)
+        );
         const exactMatches = parsed.rows.filter((row) =>
           charges.some((charge: any) =>
             (idColumn && String(row[idColumn] || "").trim() === String(charge.paystack_transaction_id || "").trim()) ||
             (referenceColumn && String(row[referenceColumn] || "").trim() === String(charge.payment_reference || "").trim())
           )
         );
+        const settlementDayKey = settlement.settlement_date
+          ? new Date(settlement.settlement_date).toISOString().slice(0, 10)
+          : "";
+        if (rawSettlementStatusIsSuccessful(settlement.status) && settlementDayKey && settlementDateColumn) {
+          exportSettlementTransactions = exactMatches.flatMap((row) => {
+            const exportedDate = new Date(String(row[settlementDateColumn] || ""));
+            if (!Number.isFinite(exportedDate.getTime()) || exportedDate.toISOString().slice(0, 10) !== settlementDayKey) return [];
+            const charge = charges.find((item: any) =>
+              (idColumn && String(row[idColumn] || "").trim() === String(item.paystack_transaction_id || "").trim()) ||
+              (referenceColumn && String(row[referenceColumn] || "").trim() === String(item.payment_reference || "").trim())
+            );
+            if (!charge) return [];
+            return [{
+              id: String(charge.paystack_transaction_id || ""),
+              reference: String(charge.payment_reference || ""),
+              status: "success",
+              settlement: settlement.id,
+              subaccount_code: tenant.paystack_subaccount_code,
+              paid_at: charge.paid_at || null,
+              _sabi_export_settlement_date: String(row[settlementDateColumn]),
+            }];
+          });
+        }
         console.log("SABI TRANSACTION EXPORT CHECK:", {
           tenant_id: tenantId,
           settlement_id_context_only: String(settlement.id),
@@ -747,14 +778,17 @@ async function syncSubaccountSettlements(
           transaction_id_column: idColumn || null,
           reference_column: referenceColumn || null,
           settlement_column: settlementColumn || null,
+          settlement_date_column: settlementDateColumn || null,
           exact_local_charge_matches: exactMatches.length,
+          exact_settlement_day_matches: exportSettlementTransactions.length,
           matched_rows: exactMatches.map((row) => ({
             transaction_id: idColumn ? row[idColumn] : null,
             reference: referenceColumn ? row[referenceColumn] : null,
             settlement_id: settlementColumn ? row[settlementColumn] : null,
+            settlement_date: settlementDateColumn ? row[settlementDateColumn] : null,
             status: row.status || row.transaction_status || null,
           })),
-          note: "Diagnostic only; no charge status changed by export check.",
+          note: "Only exact transaction/reference matches with the exact successful settlement date are eligible.",
         });
       }
     } catch (exportError) {
@@ -779,6 +813,16 @@ async function syncSubaccountSettlements(
       });
       return `/settlement/${encodeURIComponent(String(settlement.id))}/transactions?${txParams.toString()}`;
     });
+
+    if (transactions.length === 0 && exportSettlementTransactions.length > 0) {
+      transactions = exportSettlementTransactions;
+      console.log("SABI SETTLEMENT CSV EXACT-DATE MATCH:", {
+        tenant_id: tenantId,
+        settlement_id: String(settlement.id),
+        settlement_date: settlement.settlement_date || null,
+        matched_transactions: transactions.map((item) => item.id),
+      });
+    }
 
     // Paystack can return an empty transaction list for a subaccount
     // settlement even when the settlement itself is present. Cross-check
