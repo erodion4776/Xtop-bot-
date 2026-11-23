@@ -567,7 +567,7 @@ async function syncSubaccountSettlements(
   }
 
   function parseCsv(text: string) {
-    const lines = text.replace(/^\\uFEFF/, "").split(/\\r?\\n/).filter((line) => line.trim());
+    const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim());
     if (lines.length < 2) return { headers: [] as string[], rows: [] as Record<string, string>[] };
     const headers = parseCsvLine(lines[0]).map((header) => header.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_"));
     const rows = lines.slice(1).map((line) => {
