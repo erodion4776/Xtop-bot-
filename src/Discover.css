@@ -183,3 +183,9 @@
  .sd-feature-copy h1{font-size:20px}
  .sd-feature-copy p{font-size:9px}
 }
+
+.sd-load-more-wrap{display:flex;justify-content:center;padding:25px 0 8px}
+.sd-load-more{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-width:190px;padding:13px 20px;border:1px solid #cbdccf;border-radius:6px;background:#fff;color:#176b4b;font-size:12px;font-weight:800}
+.sd-load-more:hover{background:#edf6ed;border-color:#9fc3a7}
+.sd-load-more:disabled{opacity:.6;cursor:wait}
+.sd-end-of-results{text-align:center;padding:18px 0;color:#87938b;font-size:10px}
