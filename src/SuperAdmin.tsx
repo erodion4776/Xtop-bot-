@@ -298,7 +298,7 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
                   <div style={{display:"grid",gridTemplateColumns:"minmax(220px,0.8fr) minmax(0,1.7fr)",gap:16,minHeight:420}}>
                     <div style={{border:"1px solid var(--sa-border, #e5e7eb)",borderRadius:12,overflowY:"auto",maxHeight:560}}>
                       {supportChats.map((chat) => <button key={chat.contact_id} onClick={() => setSelectedSupportId(chat.contact_id)} style={{display:"block",width:"100%",textAlign:"left",padding:14,border:0,borderBottom:"1px solid #e5e7eb",background:selectedSupportId===chat.contact_id?"#eff6ff":"transparent",color:"inherit",cursor:"pointer"}}>
-                        <strong>{chat.contact.name || "WhatsApp customer"}</strong><div style={{fontSize:12,opacity:.75,marginTop:4}}>{chat.contact.phone}</div><div style={{fontSize:12,opacity:.65,marginTop:4}}>{chat.messages.at(-1)?.text?.slice(0,70) || "Waiting for your reply"}</div>
+                        <strong>{chat.contact.name || "WhatsApp customer"}</strong><div style={{fontSize:12,opacity:.75,marginTop:4}}>{chat.contact.phone}</div><div style={{fontSize:12,opacity:.65,marginTop:4}}>{chat.messages[chat.messages.length - 1]?.text?.slice(0,70) || "Waiting for your reply"}</div>
                       </button>)}
                       {supportChats.length===0 && <div className="sa-empty" style={{padding:20}}>No customers are waiting right now. New demo handoffs will appear here.</div>}
                     </div>
