@@ -4,9 +4,10 @@ import { supabase } from "./lib/supabase";
 
 type AuthProps = {
   onAuthenticated: () => void;
+  isPasswordRecovery?: boolean;
 };
 
-export default function Auth({ onAuthenticated }: AuthProps) {
+export default function Auth({ onAuthenticated, isPasswordRecovery = false }: AuthProps) {
   const [mode, setMode] = useState<"login" | "signup">(() => {
     const params = new URLSearchParams(window.location.search);
 
@@ -36,6 +37,15 @@ export default function Auth({ onAuthenticated }: AuthProps) {
     setLoading(true);
 
     try {
+      if (isPasswordRecovery) {
+        const { error } = await supabase.auth.updateUser({ password });
+        if (error) throw error;
+        setMessage("Your password has been updated. You can now continue to your Sabi dashboard.");
+        window.history.replaceState({}, document.title, window.location.pathname);
+        onAuthenticated();
+        return;
+      }
+
       if (mode === "signup") {
         if (!ownerName.trim() || !businessName.trim()) {
           throw new Error("Please enter your name and business name.");
@@ -110,7 +120,7 @@ export default function Auth({ onAuthenticated }: AuthProps) {
     const { error } = await supabase.auth.resetPasswordForEmail(
       email.trim(),
       {
-        redirectTo: window.location.origin
+        redirectTo: `${window.location.origin}/?recovery=1`
       }
     );
 
@@ -135,11 +145,12 @@ export default function Auth({ onAuthenticated }: AuthProps) {
           <h1>
             Sabi <span>by XTOP</span>
           </h1>
+          {isPasswordRecovery && <p>Choose a new password for your account.</p>}
 
           <p>Your business. Your WhatsApp. One dashboard.</p>
         </div>
 
-        <div className="auth-tabs">
+        {!isPasswordRecovery && <div className="auth-tabs">
           <button
             type="button"
             className={mode === "login" ? "selected" : ""}
@@ -161,9 +172,9 @@ export default function Auth({ onAuthenticated }: AuthProps) {
           >
             Create account
           </button>
-        </div>
+        </div>}
 
-        {!sessionToken && mode === "login" && (
+        {!isPasswordRecovery && !sessionToken && mode === "login" && (
           <div className="auth-notice">
             <strong>New to Sabi?</strong>
             <p>
@@ -173,7 +184,7 @@ export default function Auth({ onAuthenticated }: AuthProps) {
           </div>
         )}
 
-        {mode === "signup" && (
+        {!isPasswordRecovery && mode === "signup" && (
           <div className="auth-notice">
             <strong>WhatsApp connection is optional at this stage.</strong>
             <p>
@@ -185,7 +196,7 @@ export default function Auth({ onAuthenticated }: AuthProps) {
         )}
 
         <form onSubmit={handleSubmit}>
-          {mode === "signup" && (
+          {!isPasswordRecovery && mode === "signup" && (
             <>
               <label>Owner's full name *</label>
               <input
@@ -216,7 +227,7 @@ export default function Auth({ onAuthenticated }: AuthProps) {
             required
           />
 
-          <label>Password *</label>
+          <label>{isPasswordRecovery ? "New password *" : "Password *"}</label>
           <input
             type="password"
             value={password}
@@ -265,13 +276,15 @@ export default function Auth({ onAuthenticated }: AuthProps) {
           >
             {loading
               ? "Please wait..."
-              : mode === "login"
-                ? "Login to dashboard"
-                : "Create merchant account"}
+              : isPasswordRecovery
+                ? "Update password"
+                : mode === "login"
+                  ? "Login to dashboard"
+                  : "Create merchant account"}
           </button>
         </form>
 
-        {mode === "login" && (
+        {!isPasswordRecovery && mode === "login" && (
           <button
             type="button"
             className="forgot-password"
