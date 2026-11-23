@@ -28,6 +28,7 @@ import PublicProduct from "./PublicProduct";
 import PublicNewsletter from "./PublicNewsletter";
 import Landing from "./Landing";
 import Discover from "./Discover";
+import MarketplaceCart from "./MarketplaceCart";
 import SuperAdmin from "./SuperAdmin";
 import { supabase } from "./lib/supabase";
 
@@ -59,6 +60,7 @@ export default function App() {
   const hostname = window.location.hostname.toLowerCase();
   const isDashboardHost = hostname === "app.sabibyxtop.com.ng";
   const isDiscoverPage = hostname === "discover.sabibyxtop.com.ng" || window.location.pathname === "/discover";
+  const isMarketplaceCartPage = isDiscoverPage && query.get("cart") === "1";
   const isSuperAdminHost = hostname === "admin.sabibyxtop.com.ng";
   const isConnectPortalHost = hostname === "connect.sabibyxtop.com.ng";
   const isEngrPortalHost = hostname === "engr.sabibyxtop.com.ng";
