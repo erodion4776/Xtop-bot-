@@ -27,3 +27,6 @@ verify_jwt = false
 
 [functions.engr-ero-portal]
 verify_jwt = false
+
+[functions.sabi-abandoned-cart]
+verify_jwt = false
