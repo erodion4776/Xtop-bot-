@@ -108,6 +108,19 @@ jobs:
             --project-ref "$SUPABASE_PROJECT_ID" \
             --yes
 
+      - name: Deploy Sabi newsletter public signup API
+        run: |
+          npx --no-install supabase functions deploy sabi-newsletter-public \
+            --project-ref "$SUPABASE_PROJECT_ID" \
+            --no-verify-jwt \
+            --yes
+
+      - name: Deploy Sabi newsletter dashboard API
+        run: |
+          npx --no-install supabase functions deploy sabi-newsletter-api \
+            --project-ref "$SUPABASE_PROJECT_ID" \
+            --yes
+
       - name: Deployment Summary
         run: |
           echo "WhatsApp webhook preserved."
