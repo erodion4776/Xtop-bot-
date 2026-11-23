@@ -70,6 +70,7 @@ export default function App() {
     !isDedicatedPortalHost &&
     window.location.pathname === "/" &&
     !query.has("login") &&
+    !query.has("signup") &&
     !isPasswordRecovery &&
     !query.has("session_token") &&
     !isPublicProductPage;
