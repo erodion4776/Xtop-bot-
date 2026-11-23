@@ -111,15 +111,35 @@ export default function Discover() {
   }, []);
 
   useEffect(() => {
-    document.title = "Sabi Discover | Shop Nigerian Businesses";
-    const description = "Discover products, best sellers and trusted Nigerian businesses on Sabi Discover.";
-    let meta = document.querySelector('meta[name="description"]');
-    if (!meta) {
-      meta = document.createElement("meta");
-      meta.setAttribute("name", "description");
-      document.head.appendChild(meta);
+    document.title = "Sabi Discover | Shop Products from Nigerian Businesses";
+    const description = "Discover products, best sellers and trusted Nigerian businesses across Nigeria. Shop fashion, electronics, home essentials and more on Sabi Discover.";
+    const setMeta = (selector: string, attribute: string, value: string) => {
+      let element = document.head.querySelector(selector) as HTMLMetaElement | null;
+      if (!element) {
+        element = document.createElement("meta");
+        if (selector.startsWith('meta[property=')) element.setAttribute("property", attribute);
+        else element.setAttribute("name", attribute);
+        document.head.appendChild(element);
+      }
+      element.setAttribute("content", value);
+    };
+    setMeta('meta[name="description"]', "description", description);
+    setMeta('meta[property="og:type"]', "og:type", "website");
+    setMeta('meta[property="og:title"]', "og:title", document.title);
+    setMeta('meta[property="og:description"]', "og:description", description);
+    setMeta('meta[property="og:url"]', "og:url", "https://discover.sabibyxtop.com.ng/");
+    setMeta('meta[property="og:site_name"]', "og:site_name", "Sabi Discover");
+    setMeta('meta[property="og:image"]', "og:image", LOGO_URL);
+    setMeta('meta[name="twitter:card"]', "twitter:card", "summary_large_image");
+    setMeta('meta[name="twitter:title"]', "twitter:title", document.title);
+    setMeta('meta[name="twitter:description"]', "twitter:description", description);
+    let canonical = document.head.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    if (!canonical) {
+      canonical = document.createElement("link");
+      canonical.rel = "canonical";
+      document.head.appendChild(canonical);
     }
-    meta.setAttribute("content", description);
+    canonical.href = "https://discover.sabibyxtop.com.ng/";
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       if (data.session?.user) {
