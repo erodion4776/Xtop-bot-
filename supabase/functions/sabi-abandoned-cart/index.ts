@@ -18,9 +18,19 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  const cronSecret = req.headers.get("x-sabi-cron-secret") || "";
   const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  const { data: authorized, error: authError } = await db.rpc(
+    "sabi_is_abandoned_cart_cron_secret",
+    { p_secret: cronSecret },
+  );
+  if (authError || authorized !== true) {
+    return new Response(JSON.stringify({ success: false, message: "Unauthorized." }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   const { data: carts, error: claimError } = await db.rpc(
     "sabi_claim_abandoned_cart_reminders",
