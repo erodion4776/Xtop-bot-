@@ -1,6 +1,6 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendNewOrderEmails, sendPaymentReceiptEmail } from "../_shared/sabi-email.ts";
+import { sendNewOrderEmails, sendPaymentReceiptEmail, sendOrderStatusEmail } from "../_shared/sabi-email.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -846,6 +846,38 @@ async function verifyOrderPayment(body: Record<string, unknown>) {
   return respond(confirmation);
 }
 
+// Send a customer status email only after an authenticated merchant changes their own order.
+async function notifyOrderStatus(req: Request, body: Record<string, unknown>) {
+  const authorization = req.headers.get("Authorization") || "";
+  if (!authorization.startsWith("Bearer ")) throw new Error("MERCHANT_AUTH_REQUIRED");
+  const accessToken = authorization.slice(7).trim();
+  const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+  });
+  const { data: { user }, error: authError } = await authClient.auth.getUser(accessToken);
+  if (authError || !user) throw new Error("MERCHANT_AUTH_REQUIRED");
+
+  const tenantId = String(body.tenant_id || "");
+  const orderId = String(body.order_id || "");
+  const status = String(body.status || "").toUpperCase();
+  if (!tenantId || !orderId || !["DISPATCHED", "COMPLETED"].includes(status)) {
+    throw new Error("MERCHANT_ORDER_DETAILS_REQUIRED");
+  }
+  const { data: membership } = await db.from("tenant_members").select("tenant_id")
+    .eq("tenant_id", tenantId).eq("user_id", user.id)
+    .eq("role", "OWNER").eq("is_active", true).maybeSingle();
+  if (!membership) throw new Error("MERCHANT_NOT_AUTHORIZED");
+
+  const { data: order } = await db.from("tenant_orders").select("status")
+    .eq("tenant_id", tenantId).eq("id", orderId).maybeSingle();
+  if (!order || String(order.status).toUpperCase() !== status) {
+    throw new Error("MERCHANT_ORDER_NOT_FOUND");
+  }
+  const sent = await sendOrderStatusEmail(db, tenantId, orderId, status as "DISPATCHED" | "COMPLETED");
+  return respond({ success: true, email_sent: sent });
+}
+
 // REQUEST ROUTER
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -888,6 +920,10 @@ Deno.serve(async (req: Request) => {
 
     if (action === "verify") {
       return await verifyOrderPayment(body);
+    }
+
+    if (action === "notify_status") {
+      return await notifyOrderStatus(req, body);
     }
 
     return fail("Unknown order action.", 404);
