@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Search, Share2, ShoppingBag, Store, Star, Zap } from "lucide-react";
+import { ArrowLeft, ArrowRight, Search, Share2, ShoppingBag, ShoppingCart, Store, Star, Zap, MessageCircle } from "lucide-react";
 import { supabase } from "./lib/supabase";
-import { addToMarketplaceCart } from "./marketplaceCart";
+import { addToMarketplaceCart, getMarketplaceCart } from "./marketplaceCart";
 
 type StorefrontRow = {
   store_id: string;
@@ -49,6 +49,17 @@ export default function PublicStorefront() {
   const [error, setError] = useState("");
   const [shareMessage, setShareMessage] = useState("");
   const [cartMessage, setCartMessage] = useState("");
+  const [cartCount, setCartCount] = useState(0);
+  const [category, setCategory] = useState("All");
+  const [sortBy, setSortBy] = useState("featured");
+
+  useEffect(() => {
+    const updateCartCount = () => setCartCount(getMarketplaceCart().reduce((sum, item) => sum + Number(item.quantity || 0), 0));
+    updateCartCount();
+    window.addEventListener("sabi-cart-updated", updateCartCount);
+    window.addEventListener("storage", updateCartCount);
+    return () => { window.removeEventListener("sabi-cart-updated", updateCartCount); window.removeEventListener("storage", updateCartCount); };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,15 +102,19 @@ export default function PublicStorefront() {
     return () => { cancelled = true; };
   }, [slug]);
 
+  const categories = useMemo(() => ["All", ...Array.from(new Set(products.map(product => product.product_category?.trim()).filter((value): value is string => Boolean(value))))], [products]);
   const visibleProducts = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return products;
-    return products.filter(product => [
-      product.product_name,
-      product.product_description || "",
-      product.product_category || ""
-    ].some(value => value.toLowerCase().includes(term)));
-  }, [products, search]);
+    const filtered = products.filter(product => {
+      const matchesSearch = !term || [product.product_name, product.product_description || "", product.product_category || ""].some(value => value.toLowerCase().includes(term));
+      return matchesSearch && (category === "All" || product.product_category?.trim() === category);
+    });
+    if (sortBy === "price-low") return [...filtered].sort((a,b) => a.product_price-b.product_price);
+    if (sortBy === "price-high") return [...filtered].sort((a,b) => b.product_price-a.product_price);
+    if (sortBy === "name") return [...filtered].sort((a,b) => a.product_name.localeCompare(b.product_name));
+    if (sortBy === "popular") return [...filtered].sort((a,b) => b.sold_quantity-a.sold_quantity);
+    return filtered;
+  }, [products, search, category, sortBy]);
 
   useEffect(() => {
     if (!store) return;
@@ -210,12 +225,18 @@ export default function PublicStorefront() {
   const brandColor = store.brand_color || "#176b4b";
   const rating = Number(store.seller_rating || 0);
   const reviewCount = Number(store.seller_review_count || 0);
+  const whatsappValue = (store as StorefrontRow & { business_whatsapp?: string | null; whatsapp_number?: string | null; whatsapp_phone?: string | null }).business_whatsapp || (store as StorefrontRow & { whatsapp_number?: string | null }).whatsapp_number || (store as StorefrontRow & { whatsapp_phone?: string | null }).whatsapp_phone || "";
+  const whatsappDigits = whatsappValue.replace(/\\D/g, "");
+  const whatsappLink = whatsappDigits ? `https://wa.me/${whatsappDigits.startsWith("0") ? "234" + whatsappDigits.slice(1) : whatsappDigits}` : "";
 
   return (
     <main style={styles.page}>
       <header style={styles.header}>
         <a href="/" style={styles.brand}><img src={LOGO_URL} alt="Sabi by XTOP"/><span><strong>Sabi</strong><small>DISCOVER</small></span></a>
-        <a href="/" style={styles.back}>Explore marketplace <ArrowRight size={15}/></a>
+        <div style={styles.headerRight}>
+          <a href="/" style={styles.back}><ArrowLeft size={15}/> Back to Discover</a>
+          <a href="/?cart=1" aria-label={`Open cart, ${cartCount} items`} style={styles.cartLink}><ShoppingCart size={19}/><span>Cart</span>{cartCount > 0 && <b style={styles.cartBadge}>{cartCount > 99 ? "99+" : cartCount}</b>}</a>
+        </div>
       </header>
 
       <section style={{...styles.storeHero, borderTop: `5px solid ${brandColor}`}}>
@@ -230,7 +251,10 @@ export default function PublicStorefront() {
         </div>
         <div style={styles.storeActions}>
           <span>{products.length} {products.length === 1 ? "product" : "products"}</span>
-          <button onClick={shareStore} style={{...styles.shareButton, borderColor: brandColor, color: brandColor}}><Share2 size={17}/> Share store</button>
+          <div style={styles.actionButtons}>
+            {whatsappLink && <a href={whatsappLink} target="_blank" rel="noopener noreferrer" style={styles.chatButton}><MessageCircle size={16}/> Chat on WhatsApp</a>}
+            <button onClick={shareStore} style={{...styles.shareButton, borderColor: "#fff", color: "#176b4b"}}><Share2 size={17}/> Share store</button>
+          </div>
         </div>
         {shareMessage && <p role="status" style={styles.status}>{shareMessage}</p>}
       </section>
@@ -238,13 +262,17 @@ export default function PublicStorefront() {
       <section style={styles.catalogue}>
         <div style={styles.catalogueHeading}>
           <div><span style={styles.eyebrow}>SHOP THIS BUSINESS</span><h2>Products from {store.business_name}</h2><p>Browse available products from this Sabi merchant.</p></div>
-          <label style={styles.search}><Search size={17}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search this store"/></label>
+          <div style={styles.catalogueTools}>
+            <label style={styles.search}><Search size={17}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search this store"/></label>
+            <select aria-label="Filter by category" value={category} onChange={event => setCategory(event.target.value)} style={styles.filterSelect}>{categories.map(item => <option key={item} value={item}>{item === "All" ? "All categories" : item}</option>)}</select>
+            <select aria-label="Sort products" value={sortBy} onChange={event => setSortBy(event.target.value)} style={styles.filterSelect}><option value="featured">Featured</option><option value="popular">Best sellers</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option><option value="name">Name: A–Z</option></select>
+          </div>
         </div>
         {visibleProducts.length > 0 ? <div style={styles.grid}>
           {visibleProducts.map(product => <article key={product.product_id} style={styles.productCard}>
             <a href={`/?product=${encodeURIComponent(product.product_id)}`} style={styles.productLink}>
               <div style={styles.productImage}>
-                {product.product_image_url ? <img src={product.product_image_url} alt={product.product_name} loading="lazy"/> : <ShoppingBag size={35} color="#94a3b8"/>}
+                {product.product_image_url ? <img src={product.product_image_url} alt={product.product_name} loading="lazy" style={styles.productImageElement}/> : <ShoppingBag size={35} color="#94a3b8"/>}
                 {product.sold_quantity > 0 && <span style={styles.bestSeller}><Zap size={11}/> BEST SELLER</span>}
               </div>
               <div style={styles.productInfo}>
@@ -260,7 +288,7 @@ export default function PublicStorefront() {
         {cartMessage && <p role="status" style={styles.status}>{cartMessage} <a href="/?cart=1">View cart</a></p>}
       </section>
 
-      <footer style={styles.footer}>Store powered by <strong>Sabi by XTOP</strong> · <a href="/">Discover more Nigerian businesses</a></footer>
+      <footer style={styles.footer}>Store powered by <strong>Sabi by XTOP</strong> · <a href="/" style={styles.footerLink}>Discover more Nigerian businesses</a></footer>
     </main>
   );
 }
@@ -269,33 +297,42 @@ const styles: Record<string, React.CSSProperties> = {
   page:{minHeight:"100vh",background:"#f5f7f6",color:"#14231b",fontFamily:"Inter,system-ui,sans-serif",padding:"0 16px 40px"},
   center:{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,color:"#64748b",fontFamily:"system-ui,sans-serif",padding:24,textAlign:"center"},
   spinner:{width:30,height:30,border:"3px solid #dce8df",borderTopColor:"#176b4b",borderRadius:"50%",animation:"sabi-store-spin 1s linear infinite"},
-  header:{maxWidth:1180,margin:"0 auto",height:74,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16},
+  header:{maxWidth:1180,margin:"0 auto",height:74,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16,position:"sticky",top:0,zIndex:20,background:"#f5f7f6"},
+  headerRight:{display:"flex",alignItems:"center",gap:12},
+  cartLink:{position:"relative",display:"inline-flex",alignItems:"center",gap:6,padding:"9px 11px",border:"1px solid #dce7df",borderRadius:9,color:"#176b4b",fontWeight:750,fontSize:13,textDecoration:"none",whiteSpace:"nowrap"},
+  cartBadge:{position:"absolute",top:-7,right:-7,minWidth:18,height:18,padding:"0 4px",borderRadius:99,background:"#dc2626",color:"#fff",fontSize:10,display:"grid",placeItems:"center"},
   brand:{display:"flex",alignItems:"center",gap:9,textDecoration:"none",color:"#14231b"},
   brandImg:{width:42,height:42,objectFit:"contain"},
   back:{display:"inline-flex",alignItems:"center",gap:7,color:"#176b4b",fontWeight:700,textDecoration:"none",fontSize:13},
-  storeHero:{maxWidth:1180,margin:"14px auto 26px",background:"#fff",borderRadius:18,padding:"24px",boxShadow:"0 8px 28px rgba(20,35,27,.06)"},
+  storeHero:{maxWidth:1180,margin:"14px auto 26px",background:"#0D3B26",color:"#fff",borderRadius:18,padding:"26px 24px",boxShadow:"0 8px 28px rgba(20,35,27,.08)"},
   storeIdentity:{display:"flex",alignItems:"center",gap:18},
-  storeLogo:{width:86,height:86,borderRadius:18,objectFit:"cover",background:"#f0f4f1"},
+  storeLogo:{width:86,height:86,borderRadius:18,objectFit:"contain",background:"#fff"},
   storeLogoPlaceholder:{width:86,height:86,borderRadius:18,display:"grid",placeItems:"center"},
-  eyebrow:{fontSize:10,letterSpacing:1.3,fontWeight:800,color:"#718278"},
-  industry:{margin:"5px 0",color:"#64756b",fontSize:13},
-  rating:{display:"flex",alignItems:"center",gap:5,color:"#66756c",fontSize:12,marginTop:8},
-  storeActions:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginTop:20,paddingTop:16,borderTop:"1px solid #edf1ee",color:"#64756b",fontSize:13},
+  eyebrow:{fontSize:10,letterSpacing:1.3,fontWeight:800,color:"#c6e6d2"},
+  industry:{margin:"5px 0",color:"#e0eee5",fontSize:13},
+  rating:{display:"flex",alignItems:"center",gap:5,color:"#e0eee5",fontSize:12,marginTop:8},
+  storeActions:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginTop:20,paddingTop:16,borderTop:"1px solid rgba(255,255,255,.2)",color:"#e0eee5",fontSize:13},
+  actionButtons:{display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"},
+  chatButton:{display:"inline-flex",alignItems:"center",gap:7,background:"#fff",border:"1px solid #fff",borderRadius:9,padding:"10px 13px",fontWeight:750,color:"#176b4b",textDecoration:"none",fontSize:13,whiteSpace:"nowrap"},
   shareButton:{display:"inline-flex",alignItems:"center",gap:8,background:"#fff",border:"1px solid",borderRadius:9,padding:"10px 14px",fontWeight:750,cursor:"pointer"},
   status:{color:"#176b4b",fontSize:13,margin:"12px 0 0"},
   catalogue:{maxWidth:1180,margin:"0 auto"},
-  catalogueHeading:{display:"flex",alignItems:"end",justifyContent:"space-between",gap:18,flexWrap:"wrap",marginBottom:18},
-  search:{display:"flex",alignItems:"center",gap:9,background:"#fff",border:"1px solid #dfe7e1",borderRadius:10,padding:"0 12px",height:44,minWidth:250,color:"#718278"},
-  grid:{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(205px,1fr))",gap:16},
+  catalogueHeading:{display:"flex",alignItems:"end",justifyContent:"space-between",gap:18,flexWrap:"wrap",marginBottom:18,paddingTop:8},
+  catalogueTools:{display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"},
+  search:{display:"flex",alignItems:"center",gap:9,background:"#fff",border:"1px solid #dfe7e1",borderRadius:10,padding:"0 12px",height:44,minWidth:250,color:"#718278",boxSizing:"border-box"},
+  filterSelect:{height:44,minWidth:132,maxWidth:"100%",padding:"0 10px",border:"1px solid #dfe7e1",borderRadius:10,background:"#fff",color:"#334155",fontSize:13},
+  grid:{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:12,alignItems:"stretch"},
   productCard:{background:"#fff",borderRadius:14,overflow:"hidden",boxShadow:"0 5px 18px rgba(20,35,27,.05)",display:"flex",flexDirection:"column"},
-  productLink:{textDecoration:"none",color:"inherit"},
-  productImage:{height:190,background:"#f0f4f1",display:"grid",placeItems:"center",position:"relative",overflow:"hidden"},
+  productLink:{textDecoration:"none",color:"inherit",display:"flex",flexDirection:"column",flex:1,minWidth:0},
+  productImage:{width:"100%",aspectRatio:"1 / 1",background:"#f0f4f1",display:"grid",placeItems:"center",position:"relative",overflow:"hidden"},
+  productImageElement:{display:"block",width:"100%",height:"100%",maxWidth:"100%",maxHeight:"100%",objectFit:"contain",objectPosition:"center"},
   bestSeller:{position:"absolute",left:9,top:9,display:"flex",alignItems:"center",gap:4,background:"#176b4b",color:"#fff",fontSize:9,fontWeight:800,padding:"5px 7px",borderRadius:5},
-  productInfo:{padding:"13px 13px 7px",display:"flex",flexDirection:"column",gap:7},
+  productInfo:{padding:"11px 11px 7px",display:"flex",flexDirection:"column",gap:7,flex:1,minWidth:0},
   category:{fontSize:10,color:"#718278",textTransform:"uppercase",letterSpacing:.5},
   price:{fontSize:17},
   productRating:{fontSize:11,color:"#718278"},
-  addButton:{border:0,color:"#fff",borderRadius:8,padding:"11px 12px",fontWeight:750,display:"flex",alignItems:"center",justifyContent:"center",gap:7,margin:"10px 12px 12px",cursor:"pointer"},
+  addButton:{border:0,color:"#fff",borderRadius:8,padding:"10px 8px",fontWeight:750,display:"flex",alignItems:"center",justifyContent:"center",gap:7,margin:"auto 10px 10px",cursor:"pointer",fontSize:12,whiteSpace:"nowrap"},
   empty:{background:"#fff",borderRadius:14,padding:35,textAlign:"center",color:"#718278"},
-  footer:{maxWidth:1180,margin:"38px auto 0",paddingTop:18,borderTop:"1px solid #e2e9e4",fontSize:12,color:"#718278",textAlign:"center"}
+  footer:{maxWidth:1180,margin:"38px auto 0",paddingTop:18,borderTop:"1px solid #e2e9e4",fontSize:12,color:"#718278",textAlign:"center"},
+  footerLink:{color:"#176b4b",textDecoration:"none"}
 };
