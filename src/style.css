@@ -2266,3 +2266,49 @@ button {
 .customer-chat-panel .inbox-footnote{display:flex;align-items:flex-start;gap:5px}
 @media(max-width:900px){.customer-service-layout{grid-template-columns:minmax(230px,300px) minmax(0,1fr)}}
 @media(max-width:680px){.customer-service-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.cs-stat{padding:10px}.cs-stat span{font-size:10px}.cs-stat strong{font-size:20px}.customer-service-layout{grid-template-columns:1fr;min-height:0}.customer-service-layout .conversation-list{max-height:250px}.customer-service-layout .chat-panel{min-height:600px}.cs-chat-actions{justify-content:flex-start}.customer-service-layout .chat-header{align-items:flex-start;flex-direction:column}.customer-service-intro h2{font-size:19px}}
+
+
+/* CLEAR PASSWORD REQUIREMENTS ON SIGNUP AND PASSWORD RESET */
+.password-guidance {
+  margin-top: 5px;
+  padding: 14px;
+  border: 1px solid #dce9dd;
+  border-radius: 10px;
+  background: #f6faf6;
+  color: #344b3c;
+}
+.password-guidance > strong {
+  display: block;
+  margin-bottom: 9px;
+  font-size: 12px;
+}
+.password-guidance ul {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+}
+.password-guidance .password-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #765b37;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.password-guidance .password-check span {
+  flex: 0 0 17px;
+  font-weight: 800;
+  color: #b27b32;
+}
+.password-guidance .password-check.valid {
+  color: #23623d;
+}
+.password-guidance .password-check.valid span {
+  color: #23834b;
+}
+.password-guidance p {
+  margin-top: 11px;
+  color: #718078;
+  font-size: 11px;
+  line-height: 1.5;
+}
