@@ -458,6 +458,21 @@ export default function Orders({ tenantId }: Props) {
 
     setNotice(result?.message || successMessages[action]);
 
+    if (action === "dispatch" || action === "confirm") {
+      const status = action === "dispatch" ? "DISPATCHED" : "COMPLETED";
+      const { error: emailError } = await supabase.functions.invoke("order-api", {
+        body: {
+          action: "notify_status",
+          tenant_id: tenantId,
+          order_id: orderId,
+          status
+        }
+      });
+      if (emailError) {
+        console.warn("Order updated, but customer email notification could not be sent:", emailError);
+      }
+    }
+
     await loadOrders();
   }
 
