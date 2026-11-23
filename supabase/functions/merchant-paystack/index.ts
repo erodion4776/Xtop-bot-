@@ -507,35 +507,63 @@ async function syncSubaccountSettlements(
     return respond({ success: true, configured: false, updated: 0 });
   }
 
+  // Load a generous, ordered window so older/unrefreshed charges are not
+  // accidentally omitted by an unordered database limit.
   const { data: charges, error: chargesError } = await db
     .from("sabi_order_paystack_charges")
     .select("id,order_id,paystack_transaction_id,payment_reference,settlement_status,metadata,created_at")
     .eq("tenant_id", tenantId)
     .neq("settlement_status", "REFUNDED")
-    .limit(100);
+    .order("created_at", { ascending: false })
+    .limit(500);
 
   if (chargesError) {
     console.error("Settlement records lookup failed:", chargesError);
     throw new Error("SETTLEMENT_LOOKUP_FAILED");
   }
   if (!charges || charges.length === 0) {
-    return respond({ success: true, configured: true, updated: 0, matched: 0 });
+    return respond({ success: true, configured: true, updated: 0, matched: 0, checked: 0 });
+  }
+
+  // Paystack's endpoints are paginated. Fetch subsequent pages instead of
+  // silently checking only page 1. A short look-back protects against a
+  // settlement record timestamp that precedes the local charge insert time.
+  const PAGE_SIZE = 100;
+  const MAX_PAGES = 10;
+  async function fetchPaystackPages(pathForPage: (page: number) => string) {
+    const rows: any[] = [];
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const pageRows = await paystackRequest(pathForPage(page));
+      if (!Array.isArray(pageRows)) break;
+      rows.push(...pageRows);
+      if (pageRows.length < PAGE_SIZE) break;
+    }
+    return rows;
   }
 
   const earliest = charges.reduce((value: string, row: any) =>
     !value || row.created_at < value ? row.created_at : value, "");
+  const fromDate = earliest ? new Date(earliest) : new Date();
+  if (Number.isFinite(fromDate.getTime())) fromDate.setUTCDate(fromDate.getUTCDate() - 7);
+
   const params = new URLSearchParams({
     subaccount: String(tenant.paystack_subaccount_code),
-    perPage: "100",
-    page: "1",
+    perPage: String(PAGE_SIZE),
   });
-  if (earliest) params.set("from", new Date(earliest).toISOString());
+  if (Number.isFinite(fromDate.getTime())) params.set("from", fromDate.toISOString());
 
-  const settlements = await paystackRequest(`/settlement?${params.toString()}`);
+  const settlements = await fetchPaystackPages((page) => {
+    const pageParams = new URLSearchParams(params);
+    pageParams.set("page", String(page));
+    return `/settlement?${pageParams.toString()}`;
+  });
+
   let updated = 0;
   let matched = 0;
+  let transactionsChecked = 0;
+  const matchedChargeIds = new Set<string>();
 
-  for (const settlement of (Array.isArray(settlements) ? settlements : [])) {
+  for (const settlement of settlements) {
     const rawStatus = String(settlement.status || "").toLowerCase();
     const nextStatus =
       rawStatus === "success" ? "SETTLED" :
@@ -543,18 +571,30 @@ async function syncSubaccountSettlements(
       rawStatus === "failed" ? "FAILED" : "";
     if (!nextStatus || !settlement.id) continue;
 
-    const txParams = new URLSearchParams({ perPage: "100", page: "1" });
-    const transactions = await paystackRequest(
-      `/settlement/${encodeURIComponent(String(settlement.id))}/transactions?${txParams.toString()}`,
-    );
+    const transactions = await fetchPaystackPages((page) => {
+      const txParams = new URLSearchParams({
+        perPage: String(PAGE_SIZE),
+        page: String(page),
+      });
+      return `/settlement/${encodeURIComponent(String(settlement.id))}/transactions?${txParams.toString()}`;
+    });
+    transactionsChecked += transactions.length;
 
-    for (const transaction of (Array.isArray(transactions) ? transactions : [])) {
+    for (const transaction of transactions) {
+      const transactionId = String(transaction.id ?? transaction.transaction_id ?? "");
+      const transactionReference = String(transaction.reference ?? "").trim();
       const charge = charges.find((row: any) =>
-        String(row.paystack_transaction_id) === String(transaction.id) ||
-        String(row.payment_reference) === String(transaction.reference)
+        (transactionId && String(row.paystack_transaction_id || "") === transactionId) ||
+        (transactionReference && String(row.payment_reference || "").trim() === transactionReference)
       );
       if (!charge) continue;
-      matched++;
+
+      matchedChargeIds.add(String(charge.id));
+      matched = matchedChargeIds.size;
+
+      // A later/stale pending or failed response must never downgrade a
+      // transaction that Sabi has already confirmed as settled.
+      if (charge.settlement_status === "SETTLED" && nextStatus !== "SETTLED") continue;
 
       const metadata = {
         ...(charge.metadata && typeof charge.metadata === "object" ? charge.metadata : {}),
@@ -588,8 +628,8 @@ async function syncSubaccountSettlements(
       charge.metadata = metadata;
       updated++;
 
-      // Send one notification only after Paystack reports a successful settlement.
-      // If Resend fails, leave the sent marker empty so a later sync can retry.
+      // Notify once, and only when the transaction appears in a successful
+      // Paystack settlement. Failed email delivery remains eligible for retry.
       if (nextStatus === "SETTLED" && !metadata.payout_email_sent_at) {
         const emailSent = await sendMerchantSettlementEmail(db, {
           tenantId,
@@ -619,12 +659,23 @@ async function syncSubaccountSettlements(
     }
   }
 
+  console.log("SABI SUBACCOUNT SETTLEMENT SYNC:", {
+    tenant_id: tenantId,
+    settlements_checked: settlements.length,
+    settlement_transactions_checked: transactionsChecked,
+    charges_checked: charges.length,
+    matched_charges: matched,
+    updated,
+  });
+
   return respond({
     success: true,
     configured: true,
     updated,
     matched,
     checked: charges.length,
+    settlement_records_checked: settlements.length,
+    settlement_transactions_checked: transactionsChecked,
     message: matched
       ? "Paystack settlement records were checked."
       : "Paystack has not yet reported a matching subaccount settlement. The payment remains awaiting settlement confirmation.",
