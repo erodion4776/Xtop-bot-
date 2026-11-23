@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "src/**"
+      - "public/**"
       - "package.json"
       - "tsconfig.json"
       - "vite.config.ts"
@@ -14,6 +15,7 @@ on:
     branches: [main]
     paths:
       - "src/**"
+      - "public/**"
       - "package.json"
       - "tsconfig.json"
       - "vite.config.ts"
