@@ -8,6 +8,8 @@ import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabase";
 import "./Discover.css";
 
+type ReviewableOrder = { order_id: string; order_number: string; business_name: string; ordered_at: string; rating: number | null; review_text: string | null; };
+
 type MarketplaceProduct = {
   product_id: string;
   product_name: string;
@@ -44,6 +46,9 @@ export default function Discover() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [emailConsent, setEmailConsent] = useState(false);
+  const [reviewOrders, setReviewOrders] = useState<ReviewableOrder[]>([]);
+  const [reviewDrafts, setReviewDrafts] = useState<Record<string, number>>({});
+  const [reviewTexts, setReviewTexts] = useState<Record<string, string>>({});
 
   async function loadProducts() {
     setLoading(true);
@@ -79,6 +84,8 @@ export default function Discover() {
         setEmail(data.session.user.email || "");
         setFullName(String(data.session.user.user_metadata?.full_name || ""));
         loadCustomerProfile(data.session);
+        finishPendingCustomerSetup(data.session);
+        loadReviewableOrders();
       }
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
@@ -86,15 +93,59 @@ export default function Discover() {
       if (nextSession?.user) {
         setEmail(nextSession.user.email || "");
         setFullName(String(nextSession.user.user_metadata?.full_name || ""));
-        window.setTimeout(() => loadCustomerProfile(nextSession), 0);
+        window.setTimeout(() => {
+          loadCustomerProfile(nextSession);
+          finishPendingCustomerSetup(nextSession);
+          loadReviewableOrders();
+        }, 0);
       } else {
         setFullName("");
         setPhone("");
         setEmailConsent(false);
+        setReviewOrders([]);
       }
     });
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  async function loadReviewableOrders() {
+    const { data } = await supabase.rpc("sabi_get_my_reviewable_orders");
+    setReviewOrders((data || []) as ReviewableOrder[]);
+  }
+
+  async function finishPendingCustomerSetup(activeSession: Session) {
+    const pending = window.localStorage.getItem("sabi_discover_pending_consent");
+    if (pending === null) return;
+    const name = window.localStorage.getItem("sabi_discover_pending_name") || String(activeSession.user.user_metadata?.full_name || "");
+    const mobile = window.localStorage.getItem("sabi_discover_pending_phone") || "";
+    try {
+      await saveCustomerProfile(activeSession, name, mobile, pending === "yes");
+      window.localStorage.removeItem("sabi_discover_pending_consent");
+      window.localStorage.removeItem("sabi_discover_pending_name");
+      window.localStorage.removeItem("sabi_discover_pending_phone");
+    } catch (error) {
+      console.warn("Sabi customer profile setup could not be completed yet.", error);
+    }
+  }
+
+  async function submitSellerReview(orderId: string) {
+    const rating = reviewDrafts[orderId] || 5;
+    const reviewText = reviewTexts[orderId] || "";
+    setAuthBusy(true);
+    setAuthMessage("");
+    const { error: reviewError } = await supabase.rpc("sabi_submit_seller_review", {
+      p_order_id: orderId,
+      p_rating: rating,
+      p_review_text: reviewText
+    });
+    setAuthBusy(false);
+    if (reviewError) setAuthMessage(reviewError.message);
+    else {
+      setAuthMessage("Thank you. Your verified seller review has been saved.");
+      await loadReviewableOrders();
+      await loadProducts();
+    }
+  }
 
   async function loadCustomerProfile(activeSession: Session) {
     const { data } = await supabase
@@ -306,7 +357,7 @@ export default function Discover() {
           <button className="sd-modal-close" onClick={() => setAccountOpen(false)} aria-label="Close"><X size={20} /></button>
           <div className="sd-modal-brand"><img src={LOGO_URL} alt="" /><strong>Sabi <span>Discover</span></strong></div>
           {session ? <>
-            <h2>Your customer account</h2><p>Manage your details and email preferences.</p>
+            <h2>Your customer account</h2><p>Manage your details, email preferences and seller reviews.</p>
             <form onSubmit={saveProfile} className="sd-account-form">
               <label>Full name<input value={fullName} onChange={e => setFullName(e.target.value)} required /></label>
               <label>Email address<input value={session.user.email || ""} disabled /></label>
@@ -314,6 +365,20 @@ export default function Discover() {
               <label className="sd-consent"><input type="checkbox" checked={emailConsent} onChange={e => setEmailConsent(e.target.checked)} /><span><strong>Email updates (optional)</strong><small>Send me Sabi news, marketplace highlights and promotional offers. I can unsubscribe at any time.</small></span></label>
               <button className="sd-auth-submit" disabled={authBusy}>{authBusy ? "Saving..." : "Save my preferences"}</button>
             </form>
+            <div className="sd-review-orders">
+              <h3>Rate a seller</h3>
+              <p>Reviews are available after a completed, paid order linked to your account email.</p>
+              {reviewOrders.length === 0 ? <small className="sd-no-review-orders">No completed orders are linked to this email yet.</small> : reviewOrders.map(order => (
+                <div className="sd-review-order" key={order.order_id}>
+                  <div><strong>{order.business_name}</strong><small>Order {order.order_number}</small></div>
+                  <div className="sd-rating-picker" aria-label="Choose seller rating">
+                    {[1,2,3,4,5].map(star => <button type="button" key={star} className={(reviewDrafts[order.order_id] || order.rating || 5) >= star ? "chosen" : ""} onClick={() => setReviewDrafts(current => ({ ...current, [order.order_id]: star }))} aria-label={`Rate ${star} stars`}><Star size={17} fill="currentColor" /></button>)}
+                  </div>
+                  <textarea value={reviewTexts[order.order_id] ?? order.review_text ?? ""} onChange={event => setReviewTexts(current => ({ ...current, [order.order_id]: event.target.value }))} placeholder="Share your experience (optional)" rows={2} />
+                  <button type="button" className="sd-submit-review" disabled={authBusy} onClick={() => submitSellerReview(order.order_id)}>{order.rating ? "Update review" : "Submit review"}</button>
+                </div>
+              ))}
+            </div>
             <button className="sd-signout" onClick={logout}><LogOut size={15} /> Sign out</button>
           </> : <>
             <h2>{accountMode === "signup" ? "Create your customer account" : "Welcome back"}</h2>
