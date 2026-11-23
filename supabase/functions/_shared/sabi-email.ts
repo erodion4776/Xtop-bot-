@@ -369,3 +369,51 @@ export async function sendWeeklyMerchantSalesReportEmail(d: {
     ". Unpaid order value: " + money(d.pendingValue) + ". Dashboard: " + DASHBOARD;
   return sendSabiEmail(d.email, "Your weekly Sabi sales report: " + d.weekLabel, html, textBody);
 }
+
+
+export async function sendMonthlyMerchantSalesReportEmail(d: {
+  email: string;
+  ownerName?: string | null;
+  businessName: string;
+  monthLabel: string;
+  orderCount: number;
+  paidOrderCount: number;
+  unpaidOrderCount: number;
+  cancelledOrderCount: number;
+  paidRevenue: number;
+  pendingValue: number;
+  topProducts: Array<{ name: string; quantity: number; revenue: number }>;
+}): Promise<boolean> {
+  const money = (n: number) => new Intl.NumberFormat("en-NG", {
+    style: "currency", currency: "NGN", maximumFractionDigits: 2,
+  }).format(Number(n || 0));
+  const rows = d.topProducts.slice(0, 5).map((p) =>
+    '<tr><td style="padding:9px 6px;border-bottom:1px solid #e8eee9">' + esc(p.name) +
+    '</td><td align="center" style="padding:9px 6px;border-bottom:1px solid #e8eee9">' +
+    esc(p.quantity) + '</td><td align="right" style="padding:9px 6px;border-bottom:1px solid #e8eee9">' +
+    money(p.revenue) + '</td></tr>'
+  ).join("");
+  const products = '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0">' +
+    '<thead><tr><th align="left">Product</th><th>Units sold</th><th align="right">Sales</th></tr></thead>' +
+    '<tbody>' + (rows || '<tr><td colspan="3" style="padding:10px 6px">No product sales recorded this month.</td></tr>') +
+    '</tbody></table>';
+  const html = layout("Your monthly sales report",
+    '<p>Hello ' + esc(d.ownerName || "there") + ',</p><p>Here is the monthly performance summary for <strong>' +
+    esc(d.businessName) + '</strong> for <strong>' + esc(d.monthLabel) + '</strong>.</p>' +
+    '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:18px 0">' +
+    '<tr><td style="padding:10px;background:#f3f7f4">Orders received</td><td align="right" style="padding:10px;background:#f3f7f4"><strong>' + esc(d.orderCount) + '</strong></td></tr>' +
+    '<tr><td style="padding:10px">Paid orders</td><td align="right" style="padding:10px"><strong>' + esc(d.paidOrderCount) + '</strong></td></tr>' +
+    '<tr><td style="padding:10px;background:#f3f7f4">Unpaid orders</td><td align="right" style="padding:10px;background:#f3f7f4"><strong>' + esc(d.unpaidOrderCount) + '</strong></td></tr>' +
+    '<tr><td style="padding:10px">Cancelled orders</td><td align="right" style="padding:10px"><strong>' + esc(d.cancelledOrderCount) + '</strong></td></tr>' +
+    '<tr><td style="padding:10px;background:#f3f7f4">Confirmed paid revenue</td><td align="right" style="padding:10px;background:#f3f7f4"><strong>' + money(d.paidRevenue) + '</strong></td></tr>' +
+    '<tr><td style="padding:10px">Value of unpaid orders</td><td align="right" style="padding:10px"><strong>' + money(d.pendingValue) + '</strong></td></tr></table>' +
+    '<h2 style="font-size:17px;color:#183d2b">Top five products</h2>' + products +
+    '<p>Only orders with confirmed payment are counted as revenue. Unpaid and cancelled orders are listed separately and are not included in paid revenue.</p>' +
+    '<p>Thank you for growing your business with Sabi by XTOP.</p>',
+    "Open your Sabi dashboard", DASHBOARD);
+  const textBody = "Monthly sales report for " + d.businessName + " (" + d.monthLabel + "). Orders: " +
+    d.orderCount + ". Paid: " + d.paidOrderCount + ". Unpaid: " + d.unpaidOrderCount +
+    ". Cancelled: " + d.cancelledOrderCount + ". Confirmed paid revenue: " + money(d.paidRevenue) +
+    ". Unpaid order value: " + money(d.pendingValue) + ". Dashboard: " + DASHBOARD;
+  return sendSabiEmail(d.email, "Your monthly Sabi sales report: " + d.monthLabel, html, textBody);
+}
