@@ -115,6 +115,9 @@ jobs:
             --no-verify-jwt \
             --yes
 
+      - name: Deploy Sabi share preview renderer
+        run: npx --no-install supabase functions deploy sabi-share-preview --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt --yes
+
       - name: Deploy Sabi marketplace SEO sitemap
         run: |
           npx --no-install supabase functions deploy sabi-marketplace-seo \
