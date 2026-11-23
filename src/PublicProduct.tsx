@@ -223,8 +223,16 @@ export default function PublicProduct() {
   useEffect(() => {
     if (!product) return;
     const pageUrl = `https://discover.sabibyxtop.com.ng/?product=${encodeURIComponent(product.product_id)}`;
-    const description = (product.product_description || `Buy ${product.product_name} from ${product.business_name} on Sabi Discover.`).replace(/\s+/g, " ").slice(0, 300);
-    const title = `${product.product_name} | Buy from ${product.business_name} on Sabi`;
+    const productSummary = (product.product_description || "").replace(/\s+/g, " ").trim();
+    const productPrice = money(Number(product.product_price || 0));
+    const stockSummary = Number(product.product_stock || 0) > 0 ? "In stock and available to order." : "Currently out of stock.";
+    const description = [
+      `Shop ${product.product_name} from ${product.business_name} on Sabi Discover.`,
+      productSummary,
+      `Price: ${productPrice}.`,
+      stockSummary
+    ].filter(Boolean).join(" ").slice(0, 300);
+    const title = `${product.product_name} | ${productPrice} | ${product.business_name} on Sabi`;
     document.title = title;
     const setMeta = (selector: string, attribute: string, value: string) => {
       let element = document.head.querySelector(selector) as HTMLMetaElement | null;
@@ -242,6 +250,8 @@ export default function PublicProduct() {
     setMeta('meta[property="og:description"]', "og:description", description);
     setMeta('meta[property="og:url"]', "og:url", pageUrl);
     setMeta('meta[property="og:site_name"]', "og:site_name", "Sabi Discover");
+    setMeta('meta[property="product:price:amount"]', "product:price:amount", Number(product.product_price || 0).toFixed(2));
+    setMeta('meta[property="product:price:currency"]', "product:price:currency", "NGN");
     setMeta('meta[property="og:image"]', "og:image", product.product_image_url || "https://i.ibb.co/N2b6rJnY/Untitled-design-20261030-044935-0000.png");
     setMeta('meta[name="twitter:card"]', "twitter:card", "summary_large_image");
     setMeta('meta[name="twitter:title"]', "twitter:title", title);
