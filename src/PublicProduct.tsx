@@ -11,10 +11,11 @@ import {
   Truck,
   CheckCircle,
   AlertCircle,
-  Share2
+  Share2,
+  ShoppingCart
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
-import { addToMarketplaceCart } from "./marketplaceCart";
+import { addToMarketplaceCart, getMarketplaceCart } from "./marketplaceCart";
 
 type PublicProductData = {
   product_id: string;
@@ -62,8 +63,21 @@ export default function PublicProduct() {
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [paymentWarning, setPaymentWarning] = useState(false);
   const [cartAdded, setCartAdded] = useState(false);
+  const [cartCount, setCartCount] = useState(0);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [shareMessage, setShareMessage] = useState("");
   const verificationStarted = useRef(false);
+
+  useEffect(() => {
+    const updateCartCount = () => setCartCount(getMarketplaceCart().reduce((total, item) => total + Number(item.quantity || 0), 0));
+    updateCartCount();
+    window.addEventListener("sabi-cart-updated", updateCartCount);
+    window.addEventListener("storage", updateCartCount);
+    return () => {
+      window.removeEventListener("sabi-cart-updated", updateCartCount);
+      window.removeEventListener("storage", updateCartCount);
+    };
+  }, []);
 
   const productId = new URLSearchParams(
     window.location.search
@@ -318,6 +332,12 @@ export default function PublicProduct() {
   }
 
   const brandColor = product?.business_brand_color || "#25D366";
+  const maxQuantity = Math.max(1, Math.min(100, Number(product?.product_stock || 1)));
+  const displayDescription = (product?.product_description || "")
+    .split(/\r?\n/)
+    .filter(line => !/(super\s*admin|paystack.{0,30}debug|debug.{0,30}paystack|internal.{0,20}(test|debug)|test.{0,20}(admin|paystack))/i.test(line))
+    .join("\n")
+    .trim();
 
   const whatsappNumber = product?.business_whatsapp
     ? product.business_whatsapp.replace(/\D/g, "")
@@ -495,14 +515,20 @@ export default function PublicProduct() {
           <strong>{product.business_name}</strong>
         </a>
 
-        <span style={styles.powered}>Powered by Sabi</span>
+        <div style={styles.headerActions}>
+          <a href="/?cart=1" aria-label={`Open cart, ${cartCount} items`} style={styles.headerCart}>
+            <ShoppingCart size={21} /> <span>Cart</span>
+            {cartCount > 0 && <span style={styles.cartBadge}>{cartCount > 99 ? "99+" : cartCount}</span>}
+          </a>
+          <span style={styles.powered}>Powered by Sabi</span>
+        </div>
       </header>
 
       <nav aria-label="Breadcrumb" style={{maxWidth:1200,margin:"18px auto 12px",fontSize:12,color:"#64748b",display:"flex",gap:8,flexWrap:"wrap"}}>
         <a href="/" style={{color:"#176b4b",textDecoration:"none",fontWeight:600}}>Sabi Discover</a>
         <span>›</span>
         <a href={`/?store=${encodeURIComponent(product.business_slug)}`} style={{color:"#176b4b",textDecoration:"none",fontWeight:600}}>{product.business_name}</a>
-        {product.product_category && <><span>›</span><span>{product.product_category}</span></>}
+        {product.product_category && product.product_category.trim().toLowerCase() !== product.product_name.trim().toLowerCase() && <><span>›</span><span>{product.product_category}</span></>}
         <span>›</span><span style={{color:"#334155"}}>{product.product_name}</span>
       </nav>
 
@@ -553,10 +579,26 @@ export default function PublicProduct() {
               : "Currently out of stock"}
           </div>
 
-          {product.product_description && (
-            <div style={styles.description}>
-              <h3>Product details</h3>
-              <p>{product.product_description}</p>
+          {product.product_stock > 0 && (
+            <div style={styles.purchaseActions}>
+              <div style={styles.quantityStepper} aria-label="Choose quantity">
+                <span style={styles.quantityLabel}>Quantity</span>
+                <button type="button" aria-label="Decrease quantity" onClick={() => setQuantity(value => Math.max(1, value - 1))} disabled={quantity <= 1} style={styles.stepperButton}>−</button>
+                <strong style={styles.quantityValue}>{quantity}</strong>
+                <button type="button" aria-label="Increase quantity" onClick={() => setQuantity(value => Math.min(maxQuantity, value + 1))} disabled={quantity >= maxQuantity} style={styles.stepperButton}>+</button>
+              </div>
+              <button type="button" onClick={() => {
+                const updated = addToMarketplaceCart({ product_id: product.product_id, product_name: product.product_name, product_price: unitPrice, product_image_url: product.product_image_url, business_name: product.business_name, business_slug: product.business_slug, product_stock: Number(product.product_stock || 0) }, quantity);
+                setCartCount(updated.reduce((total, item) => total + Number(item.quantity || 0), 0));
+                setCartAdded(true);
+              }} style={styles.addCartButton}>
+                <ShoppingBag size={18} /> {cartAdded ? "Added to cart" : "Add to cart"}
+              </button>
+              <button type="button" onClick={() => setCheckoutOpen(true)} style={{...styles.buyNowButton, background: brandColor}}>
+                <CreditCard size={18} /> Buy now
+              </button>
+              {whatsappNumber && <a href={whatsappLink} target="_blank" rel="noopener noreferrer" style={styles.whatsappButton}><MessageCircle size={18} /> Chat on WhatsApp</a>}
+              {cartAdded && <a href="/?cart=1" style={styles.viewCartLink}>View cart and checkout</a>}
             </div>
           )}
 
@@ -593,30 +635,13 @@ export default function PublicProduct() {
           )}
 
           {product.product_stock > 0 && (
-            <section style={styles.checkout}>
+            <section style={styles.checkout} id="product-checkout" hidden={!checkoutOpen}>
               <h2 style={styles.sectionTitle}>
                 <ShoppingBag size={21} />
                 Place your order
               </h2>
 
               <form onSubmit={submitOrder} style={styles.form}>
-                <label style={styles.label}>
-                  Quantity
-                  <input
-                    style={styles.input}
-                    type="number"
-                    min="1"
-                    max={Math.min(100, product.product_stock)}
-                    value={quantity}
-                    onChange={(e) =>
-                      setQuantity(
-                        Math.max(1, Number(e.target.value) || 1)
-                      )
-                    }
-                    required
-                  />
-                </label>
-
                 <label style={styles.label}>
                   Your full name
                   <input
@@ -689,8 +714,8 @@ export default function PublicProduct() {
                       onChange={() => setPaymentMethod("ONLINE")}
                     />
                     <span>
-                      <strong>Pay online</strong>
-                      <small>
+                      <strong style={{display:"block",lineHeight:1.35,marginBottom:4}}>Pay online</strong>
+                      <small style={{display:"block",lineHeight:1.5,color:"#64748b"}}>
                         Pay for your product and delivery (if applicable) now.
                       </small>
                     </span>
@@ -766,29 +791,8 @@ export default function PublicProduct() {
                   <CreditCard size={19} />
                   {submitting
                     ? "Preparing your payment..."
-                    : `Continue to Paystack — ${money(paymentAmount)}`}
+                    : `Pay ${money(paymentAmount)} now`}
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    addToMarketplaceCart({
-                      product_id: product.product_id,
-                      product_name: product.product_name,
-                      product_price: unitPrice,
-                      product_image_url: product.product_image_url,
-                      business_name: product.business_name,
-                      business_slug: product.business_slug,
-                      product_stock: Number(product.product_stock || 0)
-                    }, quantity);
-                    setCartAdded(true);
-                  }}
-                  disabled={product.product_stock < 1}
-                  style={{ width: "100%", minHeight: 48, marginTop: 10, border: "1px solid #cbd9cf", borderRadius: 9, background: "#fff", color: "#176b4b", fontWeight: 750, display: "flex", alignItems: "center", justifyContent: "center", gap: 9, cursor: "pointer" }}
-                >
-                  <ShoppingBag size={18} /> {cartAdded ? "Added to cart" : "Add to Sabi marketplace cart"}
-                </button>
-                {cartAdded && <a href="/?cart=1" style={{ display: "block", textAlign: "center", marginTop: 9, color: "#176b4b", fontSize: 13, fontWeight: 700 }}>View cart and checkout</a>}
 
                 <div style={styles.paymentTrust}>
                   <div style={styles.paymentTrustIcon}><CreditCard size={18} /></div>
@@ -804,22 +808,10 @@ export default function PublicProduct() {
             </section>
           )}
 
-          {whatsappNumber && (
-            <a
-              href={whatsappLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={styles.whatsappButton}
-            >
-              <MessageCircle size={19} />
-              Contact merchant on WhatsApp
-            </a>
-          )}
-
           {!whatsappNumber && (
             <p style={styles.notice}>
               This merchant has not connected a business WhatsApp number yet.
-              You can still place an order using the checkout form above.
+              You can still place an order using Buy now.
             </p>
           )}
 
@@ -840,7 +832,7 @@ export default function PublicProduct() {
 
       <section style={{width:"min(100% - 32px,1200px)",margin:"0 auto 28px",background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,padding:20,boxSizing:"border-box"}}>
         <h2 style={{fontSize:18,margin:"0 0 12px"}}>About this product</h2>
-        <p style={{fontSize:14,lineHeight:1.7,color:"#526b5d",margin:0}}>{product.product_description || `Buy ${product.product_name} from ${product.business_name} on Sabi Discover.`}</p>
+        <p style={{fontSize:14,lineHeight:1.7,color:"#526b5d",margin:0,whiteSpace:"pre-line"}}>{displayDescription || `Buy ${product.product_name} from ${product.business_name} on Sabi Discover.`}</p>
         <p style={{fontSize:12,color:"#64748b",margin:"12px 0 0"}}>Product information provided by the seller. Contact the merchant for more details.</p>
       </section>
 
@@ -893,6 +885,17 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "center"
   },
   powered: { color: "#64748b", fontSize: 12 },
+  headerActions: { display: "flex", alignItems: "center", gap: 16 },
+  headerCart: { position: "relative", display: "inline-flex", alignItems: "center", gap: 6, color: "#176b4b", textDecoration: "none", fontWeight: 700, fontSize: 13, padding: "9px 11px", border: "1px solid #dbe7df", borderRadius: 9, whiteSpace: "nowrap" },
+  cartBadge: { position: "absolute", top: -7, right: -7, minWidth: 18, height: 18, padding: "0 4px", borderRadius: 99, background: "#dc2626", color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" },
+  purchaseActions: { width: "100%", display: "flex", flexDirection: "column", gap: 10, marginTop: 18 },
+  quantityStepper: { display: "flex", alignItems: "center", gap: 0, alignSelf: "flex-start", border: "1px solid #cbd5e1", borderRadius: 9, overflow: "hidden", background: "#fff" },
+  quantityLabel: { fontSize: 12, color: "#64748b", fontWeight: 600, padding: "0 12px" },
+  stepperButton: { width: 42, height: 42, border: 0, borderLeft: "1px solid #e2e8f0", background: "#f8fafc", color: "#176b4b", fontSize: 22, fontWeight: 700, cursor: "pointer" },
+  quantityValue: { minWidth: 38, textAlign: "center", fontSize: 15, color: "#17211d" },
+  addCartButton: { width: "100%", minHeight: 48, padding: "0 12px", border: "1px solid #cbd9cf", borderRadius: 9, background: "#fff", color: "#176b4b", fontWeight: 750, display: "flex", alignItems: "center", justifyContent: "center", gap: 9, cursor: "pointer", whiteSpace: "nowrap", fontSize: 14 },
+  buyNowButton: { width: "100%", minHeight: 48, padding: "0 12px", border: 0, borderRadius: 9, color: "#fff", fontWeight: 750, display: "flex", alignItems: "center", justifyContent: "center", gap: 9, cursor: "pointer", whiteSpace: "nowrap", fontSize: 14 },
+  viewCartLink: { display: "block", textAlign: "center", color: "#176b4b", fontSize: 13, fontWeight: 700, textDecoration: "none" },
   productCard: {
     width: "min(100% - 32px, 1200px)",
     margin: "0 auto 28px",
@@ -904,12 +907,12 @@ const styles: Record<string, React.CSSProperties> = {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))"
   },
-  imageContainer: { minHeight: 440, background: "#fff",padding:24,display:"flex",alignItems:"center",justifyContent:"center",borderRight:"1px solid #edf0f2" },
+  imageContainer: { minHeight: 320, background: "#fff", padding: 12, display: "flex", alignItems: "center", justifyContent: "center", borderRight: "1px solid #edf0f2" },
   productImage: {
     width: "100%",
     height: "100%",
-    minHeight: 300,
-    maxHeight: 560,
+    minHeight: 240,
+    maxHeight: 480,
     objectFit: "contain",
     display: "block"
   },
@@ -956,7 +959,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#475569"
   },
   checkout: {
-    marginTop: 24,
+    marginTop: 18,
     width: "100%",
     border: "1px solid #e2e8f0",
     borderRadius: 10,
@@ -1082,7 +1085,8 @@ const styles: Record<string, React.CSSProperties> = {
     boxSizing: "border-box",
     fontWeight: 700,
     fontSize: 14,
-    textDecoration: "none"
+    textDecoration: "none",
+    whiteSpace: "nowrap"
   },
   paymentTrust: {
     display: "flex",
