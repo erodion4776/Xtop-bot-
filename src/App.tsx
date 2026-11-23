@@ -25,6 +25,7 @@ import Inbox from "./Inbox";
 import Analytics from "./Analytics";
 import Newsletter from "./Newsletter";
 import PublicProduct from "./PublicProduct";
+import PublicStorefront from "./PublicStorefront";
 import PublicNewsletter from "./PublicNewsletter";
 import Landing from "./Landing";
 import Discover from "./Discover";
@@ -66,6 +67,7 @@ export default function App() {
   const isEngrPortalHost = hostname === "engr.sabibyxtop.com.ng";
   const isDedicatedPortalHost = isConnectPortalHost || isEngrPortalHost;
   const isPublicProductPage = query.has("product");
+  const isPublicStorefrontPage = query.has("store");
   const isPublicNewsletterPage = query.has("newsletter");
   // The owner portal is available on its dedicated hostname and on the
   // protected /super-admin path for setup and recovery.
@@ -91,7 +93,7 @@ export default function App() {
   ).get("session_token")?.trim() || "";
 
   useEffect(() => {
-    if (isPublicProductPage || isPublicNewsletterPage || isMarketingPage || isDiscoverPage || isDedicatedPortalHost) return;
+    if (isPublicProductPage || isPublicStorefrontPage || isPublicNewsletterPage || isMarketingPage || isDiscoverPage || isDedicatedPortalHost) return;
 
     let mounted = true;
 
@@ -131,10 +133,10 @@ export default function App() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [isPublicProductPage, isPublicNewsletterPage, isMarketingPage, isDiscoverPage, isDedicatedPortalHost, isPasswordRecovery]);
+  }, [isPublicProductPage, isPublicStorefrontPage, isPublicNewsletterPage, isMarketingPage, isDiscoverPage, isDedicatedPortalHost, isPasswordRecovery]);
 
   useEffect(() => {
-    if (isPublicProductPage || isPublicNewsletterPage || isMarketingPage || isDiscoverPage || isSuperAdminPage || isDedicatedPortalHost || isPasswordRecovery) return;
+    if (isPublicProductPage || isPublicStorefrontPage || isPublicNewsletterPage || isMarketingPage || isDiscoverPage || isSuperAdminPage || isDedicatedPortalHost || isPasswordRecovery) return;
 
     if (!session?.user?.id) {
       setTenantId("");
@@ -207,6 +209,7 @@ export default function App() {
     session?.user?.id,
     registrationRetry,
     isPublicProductPage,
+    isPublicStorefrontPage,
     isPublicNewsletterPage,
     isMarketingPage,
     isDiscoverPage,
@@ -245,6 +248,10 @@ export default function App() {
 
   if (isPublicProductPage) {
     return <PublicProduct />;
+  }
+
+  if (isPublicStorefrontPage) {
+    return <PublicStorefront />;
   }
 
   if (isPublicNewsletterPage) {
