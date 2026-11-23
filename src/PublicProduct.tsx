@@ -464,7 +464,7 @@ export default function PublicProduct() {
   return (
     <main style={styles.page}>
       <header style={styles.header}>
-        <a href="/" style={styles.brand}>
+        <a href={`/?store=${encodeURIComponent(product.business_slug)}`} style={styles.brand}>
           {product.business_logo ? (
             <img
               src={product.business_logo}
