@@ -902,7 +902,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #e5e7eb",
     boxShadow: "0 3px 14px rgba(0,0,0,.045)",
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)"
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))"
   },
   imageContainer: { minHeight: 440, background: "#fff",padding:24,display:"flex",alignItems:"center",justifyContent:"center",borderRight:"1px solid #edf0f2" },
   productImage: {
