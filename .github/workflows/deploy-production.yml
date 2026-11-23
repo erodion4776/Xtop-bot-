@@ -64,6 +64,13 @@ jobs:
             --no-verify-jwt \
             --yes
 
+      - name: Deploy Sabi abandoned cart reminder
+        run: |
+          npx --no-install supabase functions deploy sabi-abandoned-cart \
+            --project-ref "$SUPABASE_PROJECT_ID" \
+            --no-verify-jwt \
+            --yes
+
       - name: Deploy merchant Paystack API
         run: |
           npx --no-install supabase functions deploy merchant-paystack \
