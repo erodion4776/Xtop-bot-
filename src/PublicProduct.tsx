@@ -10,7 +10,8 @@ import {
   CreditCard,
   Truck,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Share2
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import { addToMarketplaceCart } from "./marketplaceCart";
@@ -61,6 +62,7 @@ export default function PublicProduct() {
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [paymentWarning, setPaymentWarning] = useState(false);
   const [cartAdded, setCartAdded] = useState(false);
+  const [shareMessage, setShareMessage] = useState("");
   const verificationStarted = useRef(false);
 
   const productId = new URLSearchParams(
@@ -217,6 +219,93 @@ export default function PublicProduct() {
 
     verifyPayment();
   }, []);
+
+  useEffect(() => {
+    if (!product) return;
+    const pageUrl = `https://discover.sabibyxtop.com.ng/?product=${encodeURIComponent(product.product_id)}`;
+    const description = (product.product_description || `Buy ${product.product_name} from ${product.business_name} on Sabi Discover.`).replace(/\s+/g, " ").slice(0, 300);
+    const title = `${product.product_name} | Buy from ${product.business_name} on Sabi`;
+    document.title = title;
+    const setMeta = (selector: string, attribute: string, value: string) => {
+      let element = document.head.querySelector(selector) as HTMLMetaElement | null;
+      if (!element) {
+        element = document.createElement("meta");
+        if (selector.startsWith('meta[property=')) element.setAttribute("property", attribute);
+        else element.setAttribute("name", attribute);
+        document.head.appendChild(element);
+      }
+      element.setAttribute("content", value);
+    };
+    setMeta('meta[name="description"]', "description", description);
+    setMeta('meta[property="og:type"]', "og:type", "product");
+    setMeta('meta[property="og:title"]', "og:title", title);
+    setMeta('meta[property="og:description"]', "og:description", description);
+    setMeta('meta[property="og:url"]', "og:url", pageUrl);
+    setMeta('meta[property="og:site_name"]', "og:site_name", "Sabi Discover");
+    setMeta('meta[property="og:image"]', "og:image", product.product_image_url || "https://i.ibb.co/N2b6rJnY/Untitled-design-20261030-044935-0000.png");
+    setMeta('meta[name="twitter:card"]', "twitter:card", "summary_large_image");
+    setMeta('meta[name="twitter:title"]', "twitter:title", title);
+    setMeta('meta[name="twitter:description"]', "twitter:description", description);
+    let canonical = document.head.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    if (!canonical) {
+      canonical = document.createElement("link");
+      canonical.rel = "canonical";
+      document.head.appendChild(canonical);
+    }
+    canonical.href = pageUrl;
+    document.getElementById("sabi-product-jsonld")?.remove();
+    const structuredData = {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      name: product.product_name,
+      description,
+      image: product.product_image_url ? [product.product_image_url] : undefined,
+      sku: product.product_id,
+      category: product.product_category || undefined,
+      brand: { "@type": "Brand", name: product.business_name },
+      offers: {
+        "@type": "Offer",
+        url: pageUrl,
+        priceCurrency: "NGN",
+        price: Number(product.product_price || 0).toFixed(2),
+        availability: product.product_stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+        seller: { "@type": "Organization", name: product.business_name }
+      }
+    };
+    const schema = document.createElement("script");
+    schema.id = "sabi-product-jsonld";
+    schema.type = "application/ld+json";
+    schema.textContent = JSON.stringify(structuredData);
+    document.head.appendChild(schema);
+    return () => document.getElementById("sabi-product-jsonld")?.remove();
+  }, [product]);
+
+  async function shareProduct() {
+    if (!product) return;
+    const url = `https://discover.sabibyxtop.com.ng/?product=${encodeURIComponent(product.product_id)}`;
+    const shareData = {
+      title: product.product_name,
+      text: `Check out ${product.product_name} from ${product.business_name} on Sabi Discover.`,
+      url
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+        setShareMessage("Product shared.");
+      } else {
+        await navigator.clipboard.writeText(url);
+        setShareMessage("Product link copied. Share it on WhatsApp or social media.");
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return;
+      try {
+        await navigator.clipboard.writeText(url);
+        setShareMessage("Product link copied. Share it on WhatsApp or social media.");
+      } catch {
+        setShareMessage("Copy the product link from your browser address bar to share it.");
+      }
+    }
+  }
 
   const brandColor = product?.business_brand_color || "#25D366";
 
@@ -704,6 +793,15 @@ export default function PublicProduct() {
               You can still place an order using the checkout form above.
             </p>
           )}
+
+          <button
+            type="button"
+            onClick={shareProduct}
+            style={{ width: "100%", minHeight: 46, marginTop: 12, border: "1px solid #cbd9cf", borderRadius: 9, background: "#f5faf6", color: "#176b4b", fontWeight: 750, display: "flex", alignItems: "center", justifyContent: "center", gap: 9, cursor: "pointer" }}
+          >
+            <Share2 size={18} /> Share this product
+          </button>
+          {shareMessage && <p role="status" style={{ textAlign: "center", color: "#176b4b", fontSize: 12 }}>{shareMessage}</p>}
 
           <p style={styles.footerText}>
             Secure product information provided by {product.business_name}.
