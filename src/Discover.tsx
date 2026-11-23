@@ -55,6 +55,7 @@ export default function Discover() {
   const [reviewTexts, setReviewTexts] = useState<Record<string, string>>({});
   const [cartCount, setCartCount] = useState(() => getMarketplaceCart().reduce((sum, item) => sum + item.quantity, 0));
   const [sortBy, setSortBy] = useState<"featured" | "price-asc" | "price-desc">("featured");
+  const [heroSlide, setHeroSlide] = useState(0);
 
   async function loadProducts() {
     setLoading(true);
@@ -93,6 +94,11 @@ export default function Discover() {
   useEffect(() => {
     loadProducts();
   }, [category, search]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setHeroSlide(current => (current + 1) % 6), 5600);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     document.title = "Sabi Discover | Shop Nigerian Businesses";
@@ -205,10 +211,15 @@ export default function Discover() {
     return items;
   }, [visibleProducts, sortBy]);
 
-  const popularCategories = useMemo(() => categoryCounts.slice(0, 7), [categoryCounts]);
-  const filteredCategories = useMemo(() => categoryCounts.filter(item =>
+  const sortedCategories = useMemo(() => [...categoryCounts].sort((a, b) => {
+    if (a.name.trim().toLowerCase() === "other") return 1;
+    if (b.name.trim().toLowerCase() === "other") return -1;
+    return a.name.localeCompare(b.name);
+  }), [categoryCounts]);
+  const popularCategories = useMemo(() => sortedCategories.slice(0, 7), [sortedCategories]);
+  const filteredCategories = useMemo(() => sortedCategories.filter(item =>
     item.name.toLowerCase().includes(categorySearch.trim().toLowerCase())
-  ), [categoryCounts, categorySearch]);
+  ), [sortedCategories, categorySearch]);
 
   function categoryFor(rawCategory: string | null): string {
     const value = (rawCategory || "").trim().toLowerCase();
@@ -381,14 +392,36 @@ export default function Discover() {
         </div>
       </section>}
 
-      <section className="sd-hero">
-        <div className="sd-hero-content">
-          <span className="sd-eyebrow"><Sparkles size={14} /> WELCOME TO SABI DISCOVER</span>
-          <h1>Everything you love.<br /><em>All in one place.</em></h1>
-          <p>Discover products from Nigerian businesses, compare sellers and find your next favourite thing.</p>
-          <div className="sd-hero-perks"><span><ShieldCheck size={16} /> Seller ratings</span><span><ShoppingBag size={16} /> Real best sellers</span><span><Truck size={16} /> Shop local</span></div>
+      <section className="sd-feature-slider" aria-label="Sabi features">
+        <div className="sd-feature-slide" key={heroSlide}>
+          <div className="sd-feature-copy">
+            <div className="sd-feature-meta"><span className="sd-feature-tag">{["DISCOVER MORE","FOR BUSINESSES","SHOP SMART","EASY SHOPPING","SHOP WITH CONFIDENCE","MERCHANT TOOLS"][heroSlide]}</span><span className="sd-feature-pill">{["Fresh finds daily","Sell on Sabi","Verified rankings","All in one cart","Buyer protection","Store operations"][heroSlide]}</span></div>
+            <h1>{["Find your next favourite.","Run your store & reach more buyers.","Compare sellers & real ratings.","Shop across stores in one cart.","Protected orders & clear returns.","Manage products, orders & fulfilment."][heroSlide]}</h1>
+            <p>{[
+              "Search products, categories, and verified Nigerian stores all in one marketplace.",
+              "Manage products and stock, run your storefront, and choose which items to publish straight to Sabi Discover. Share product links with customers.",
+              "Check seller ratings and review counts, compare product options across local businesses, and explore best sellers ranked by completed sales.",
+              "Add products from different Nigerian businesses to one cart, then complete one combined checkout with separate seller orders and delivery arrangements.",
+              "Shop with clear seller information, transparent returns guidance, and dedicated Sabi customer support when you need help.",
+              "Set delivery fees, enable supported online or pay-on-delivery options, track order statuses, and manage your business payout settings."
+            ][heroSlide]}</p>
+            <div className="sd-feature-actions">
+              {heroSlide === 0 && <button onClick={() => document.getElementById("discover-products")?.scrollIntoView({ behavior: "smooth" })}>Explore products ↓</button>}
+              {heroSlide === 1 && <a href="https://app.sabibyxtop.com.ng">Start selling on Sabi <ArrowRight size={15}/></a>}
+              {heroSlide === 4 && <button onClick={() => document.getElementById("buyer-protection")?.scrollIntoView({ behavior: "smooth" })}>How it works <ArrowRight size={15}/></button>}
+              {heroSlide === 5 && <a href="https://app.sabibyxtop.com.ng">Open merchant workspace <ArrowRight size={15}/></a>}
+            </div>
+          </div>
+          <div className="sd-feature-art" aria-hidden="true">
+            <div className="sd-feature-art-icon">{[<ShoppingBag size={48}/>,<Store size={48}/>,<Star size={48}/>,<ShoppingBag size={48}/>,<ShieldCheck size={48}/>,<Truck size={48}/>][heroSlide]}</div>
+            <span>SABI <b>BY XTOP</b></span>
+            <small>{["Discover Nigerian businesses","Your store, your customers","Shop with more information","One cart, many sellers","Support when you need it","Tools for growing businesses"][heroSlide]}</small>
+          </div>
         </div>
-        <div className="sd-hero-art"><div className="sd-promo-panel"><span>DISCOVER MORE</span><strong>Find your<br />next favourite.</strong><small>Shop from businesses across Nigeria.</small><ShoppingBag size={43} /></div><div className="sd-promo-tag"><Zap size={15} /> Fresh finds daily</div></div>
+        <div className="sd-feature-controls">
+          <div className="sd-feature-dots">{Array.from({ length: 6 }, (_, index) => <button key={index} className={heroSlide === index ? "active" : ""} onClick={() => setHeroSlide(index)} aria-label={"Show slide " + (index + 1)} />)}</div>
+          <div className="sd-feature-arrows"><button onClick={() => setHeroSlide(current => (current + 5) % 6)} aria-label="Previous feature"><ArrowRight className="sd-arrow-back" size={16}/></button><button onClick={() => setHeroSlide(current => (current + 1) % 6)} aria-label="Next feature"><ArrowRight size={16}/></button></div>
+        </div>
       </section>
 
       <section className="sd-market" id="discover-products">
@@ -412,13 +445,8 @@ export default function Discover() {
         ) : <div className="sd-product-grid">{sortedProducts.map(product => <ProductCard product={product} key={product.product_id} />)}</div>}
       </section>
 
-      <section className="sd-merchant-cta"><div><span className="sd-eyebrow">OWN A BUSINESS?</span><h2>Reach more customers with Sabi Discover.</h2><p>Manage your store with Sabi and choose which products you want customers to discover.</p></div><a href="https://app.sabibyxtop.com.ng">Start selling on Sabi <ArrowRight size={17} /></a></section>
       <footer className="sd-footer">
-        <div className="sd-footer-top">
-          <div className="sd-footer-about"><a href="/" className="sd-footer-brand"><img src={LOGO_URL} alt="" /> Sabi by XTOP</a><p>Discover Nigerian businesses and products.</p></div>
-          <div className="sd-footer-links"><strong>For buyers</strong><a href="#buyer-protection">Buyer protection</a><a href="#returns-refunds">Returns &amp; refunds</a><a href="#customer-support">Customer support</a></div>
-          <div className="sd-footer-links"><strong>Information</strong><a href="#terms">Terms of service</a><a href="#privacy">Privacy policy</a><a href="#seller-guide">How selling works</a></div>
-        </div>
+        <div className="sd-footer-about"><a href="/" className="sd-footer-brand"><img src={LOGO_URL} alt="" /> Sabi by XTOP</a><p>Discover Nigerian businesses and products.</p></div>
         <div className="sd-footer-legal">
           <details id="buyer-protection"><summary>Buyer protection</summary><p>Shop through Sabi Discover and review the seller's store information before ordering. Keep your order confirmation and payment receipt. If an order has a problem, contact the seller using the details provided with your order.</p></details>
           <details id="returns-refunds"><summary>Returns &amp; refunds</summary><p>Return eligibility, delivery arrangements and refund handling may vary by seller and product. Contact the seller promptly using the contact details on your order confirmation and keep your proof of purchase.</p></details>
@@ -434,6 +462,7 @@ export default function Discover() {
         <section className="sd-account-modal" role="dialog" aria-modal="true" aria-label="Sabi customer account" onClick={event => event.stopPropagation()}>
           <button className="sd-modal-close" onClick={() => setAccountOpen(false)} aria-label="Close"><X size={20} /></button>
           <div className="sd-modal-brand"><img src={LOGO_URL} alt="" /><strong>Sabi <span>Discover</span></strong></div>
+          <a className="sd-account-sell-link" href="https://app.sabibyxtop.com.ng">Own a business? Sell on Sabi <ArrowRight size={15}/></a>
           {session ? <>
             <h2>Your customer account</h2><p>Manage your details, email preferences and seller reviews.</p>
             <form onSubmit={saveProfile} className="sd-account-form">
