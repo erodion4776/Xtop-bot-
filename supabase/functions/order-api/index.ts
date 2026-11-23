@@ -1,6 +1,6 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendNewOrderEmails, sendPaymentReceiptEmail, sendOrderStatusEmail } from "../_shared/sabi-email.ts";
+import { sendNewOrderEmails, sendPaymentReceiptEmail, sendOrderStatusEmail, sendLowStockAlertEmail } from "../_shared/sabi-email.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -30,6 +30,55 @@ function respond(data: unknown, status = 200): Response {
 
 function fail(message: string, status = 400): Response {
   return respond({ success: false, error: message }, status);
+}
+
+
+
+// Notify the merchant only when a product crosses into the low-stock band
+// (5 or fewer) or becomes completely out of stock. Stock reservation remains
+// inside the existing database order RPC; this function only reads its result.
+async function notifyLowStockAfterOrder(tenantId: string, orderId: string): Promise<void> {
+  try {
+    const { data: items, error: itemsError } = await db.from("tenant_order_items")
+      .select("product_id,product_name,quantity")
+      .eq("tenant_id", tenantId)
+      .eq("order_id", orderId);
+
+    if (itemsError || !items?.length) {
+      if (itemsError) console.warn("Low-stock alert item lookup failed.", itemsError);
+      return;
+    }
+
+    const alerts: Array<{ name: string; remaining: number; alertType: "LOW_STOCK" | "OUT_OF_STOCK" }> = [];
+    for (const item of items) {
+      if (!item.product_id) continue;
+      const { data: product, error: productError } = await db.from("products")
+        .select("name,stock_quantity")
+        .eq("tenant_id", tenantId)
+        .eq("id", item.product_id)
+        .maybeSingle();
+
+      if (productError || !product || product.stock_quantity == null) {
+        if (productError) console.warn("Low-stock alert product lookup failed.", productError);
+        continue;
+      }
+
+      const remaining = Number(product.stock_quantity);
+      const beforeReservation = remaining + Number(item.quantity || 0);
+      if (remaining === 0 && beforeReservation > 0) {
+        alerts.push({ name: product.name || item.product_name || "Product", remaining, alertType: "OUT_OF_STOCK" });
+      } else if (remaining > 0 && remaining <= 5 && beforeReservation > 5) {
+        alerts.push({ name: product.name || item.product_name || "Product", remaining, alertType: "LOW_STOCK" });
+      }
+    }
+
+    if (alerts.length) {
+      await sendLowStockAlertEmail(db, { tenantId, products: alerts });
+    }
+  } catch (error) {
+    // Inventory email delivery must never interrupt checkout or payment setup.
+    console.warn("Low-stock notification failed; order processing will continue.", error);
+  }
 }
 
 function getPaymentCallback(orderId: string): string {
@@ -222,6 +271,8 @@ async function createOrder(body: Record<string, unknown>) {
     console.error("Order creation failed:", orderError);
     throw new Error("ORDER_CREATION_FAILED");
   }
+
+  await notifyLowStockAfterOrder(String(order.tenant_id || ""), String(order.order_id));
 
   // Metadata is required for the fee and split-settlement calculation.
   const { data: intent, error: intentError } = await db
@@ -446,6 +497,8 @@ async function createCartOrder(body: Record<string, unknown>) {
       console.error("WhatsApp cart order creation failed:", orderError);
       throw new Error("ORDER_CREATION_FAILED");
     }
+
+    await notifyLowStockAfterOrder(String(createdOrder.tenant_id || ""), String(createdOrder.order_id));
     order = {
       id: createdOrder.order_id,
       tenant_id: createdOrder.tenant_id,
