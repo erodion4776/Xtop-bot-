@@ -281,6 +281,7 @@ export default function PublicProduct() {
     setPaymentWarning(false);
 
     try {
+      await saveAbandonedCart();
       const { data, error: orderError } =
         await supabase.functions.invoke("order-api", {
           body: {
