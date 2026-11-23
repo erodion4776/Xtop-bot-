@@ -217,15 +217,19 @@ export default function Auth({ onAuthenticated, isPasswordRecovery = false }: Au
             </>
           )}
 
-          <label>Email address *</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            autoComplete="email"
-            required
-          />
+          {!isPasswordRecovery && (
+            <>
+              <label>Email address *</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+                required
+              />
+            </>
+          )}
 
           <label>{isPasswordRecovery ? "New password *" : "Password *"}</label>
           <input
@@ -240,7 +244,7 @@ export default function Auth({ onAuthenticated, isPasswordRecovery = false }: Au
             required
           />
 
-          {mode === "signup" && (
+          {!isPasswordRecovery && mode === "signup" && (
             <>
               <label>Personal WhatsApp number (optional)</label>
 
