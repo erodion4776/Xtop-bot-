@@ -282,7 +282,7 @@ export default function PublicProduct() {
 
   async function shareProduct() {
     if (!product) return;
-    const url = `https://discover.sabibyxtop.com.ng/?product=${encodeURIComponent(product.product_id)}`;
+    const url = `https://discover.sabibyxtop.com.ng/share/product/${encodeURIComponent(product.product_id)}`;
     const shareData = {
       title: product.product_name,
       text: `Check out ${product.product_name} from ${product.business_name} on Sabi Discover.`,
