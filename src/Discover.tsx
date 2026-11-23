@@ -349,11 +349,13 @@ export default function Discover() {
         <div className="sd-product-info">
           <small className="sd-store-name"><Store size={12} /> {product.business_name}</small>
           <h3 title={product.product_name}>{product.product_name}</h3>
-          <strong className="sd-price">{money(Number(product.product_price || 0))}</strong>
-          <div className="sd-seller-rating">
-            {reviews > 0 ? <><span className="sd-stars"><Star size={12} fill="currentColor" /> {rating.toFixed(1)}</span><span>({reviews} seller {reviews === 1 ? "review" : "reviews"})</span></> : <span>New seller · Be the first to review</span>}
+          <div className="sd-product-bottom">
+            <strong className="sd-price">{money(Number(product.product_price || 0))}</strong>
+            <div className="sd-seller-rating">
+              {reviews > 0 ? <><span className="sd-stars"><Star size={12} fill="currentColor" /> {rating.toFixed(1)}</span><span>({reviews} seller {reviews === 1 ? "review" : "reviews"})</span></> : <span>New seller · Be the first to review</span>}
+            </div>
+            <button className="sd-add-cart" type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); addToMarketplaceCart({ product_id: product.product_id, product_name: product.product_name, product_price: Number(product.product_price || 0), product_image_url: product.product_image_url, business_name: product.business_name, business_slug: product.business_slug, product_stock: Number(product.product_stock || 0) }, 1); }} disabled={Number(product.product_stock || 0) < 1}><ShoppingBag size={14}/> Add to cart</button>
           </div>
-          <button className="sd-add-cart" type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); addToMarketplaceCart({ product_id: product.product_id, product_name: product.product_name, product_price: Number(product.product_price || 0), product_image_url: product.product_image_url, business_name: product.business_name, business_slug: product.business_slug, product_stock: Number(product.product_stock || 0) }, 1); }} disabled={Number(product.product_stock || 0) < 1}><ShoppingBag size={14}/> Add to cart</button>
         </div>
       </a>
     );
