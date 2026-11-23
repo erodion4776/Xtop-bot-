@@ -72,18 +72,10 @@ jobs:
             --yes
 
       - name: Deploy Sabi weekly merchant report
-        run: |
-          npx --no-install supabase functions deploy sabi-weekly-merchant-report \
-            --project-ref "$SUPABASE_PROJECT_ID" \
-            --no-verify-jwt \
-            --yes
+        run: npx --no-install supabase functions deploy sabi-weekly-merchant-report --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt --yes
 
       - name: Deploy Sabi monthly merchant report
-        run: |
-          npx --no-install supabase functions deploy sabi-monthly-merchant-report \
-            --project-ref "$SUPABASE_PROJECT_ID" \
-            --no-verify-jwt \
-            --yes
+        run: npx --no-install supabase functions deploy sabi-monthly-merchant-report --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt --yes
 
       - name: Deploy merchant Paystack API
         run: |
