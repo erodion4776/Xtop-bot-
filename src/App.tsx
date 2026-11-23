@@ -190,6 +190,7 @@ export default function App() {
     isPublicProductPage,
     isPublicNewsletterPage,
     isMarketingPage,
+    isDiscoverPage,
     isSuperAdminPage,
     isDedicatedPortalHost,
     registrationToken,
