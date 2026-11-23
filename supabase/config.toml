@@ -33,3 +33,6 @@ verify_jwt = false
 
 [functions.sabi-weekly-merchant-report]
 verify_jwt = false
+
+[functions.sabi-monthly-merchant-report]
+verify_jwt = false
