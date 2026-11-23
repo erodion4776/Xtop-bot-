@@ -186,7 +186,7 @@ export async function sendOrderStatusEmail(
   db: any,
   tenantId: string,
   orderId: string,
-  status: "DISPATCHED" | "COMPLETED",
+  status: "DISPATCHED" | "COMPLETED" | "CANCELLED",
 ): Promise<boolean> {
   // Customer email is stored on the tenant contact, not tenant_orders.
   const { data: order, error: orderError } = await db.from("tenant_orders")
@@ -221,20 +221,25 @@ export async function sendOrderStatusEmail(
   const store = tenant?.business_name || tenant?.name || "the store";
 
   const isCompleted = status === "COMPLETED";
+  const isCancelled = status === "CANCELLED";
   const requiresShipping = order.shipping_required === true;
-  const title = isCompleted
-    ? "Your order is complete"
-    : requiresShipping
-      ? "Your order has been dispatched"
-      : "Your order is ready for pickup";
+  const title = isCancelled
+    ? "Your order has been cancelled"
+    : isCompleted
+      ? "Your order is complete"
+      : requiresShipping
+        ? "Your order has been dispatched"
+        : "Your order is ready for pickup";
 
-  const message = isCompleted
-    ? (requiresShipping
-      ? "Your order has been marked as delivered. Thank you for shopping with us."
-      : "Your order has been marked as collected. Thank you for shopping with us.")
-    : requiresShipping
-      ? "Good news! Your order has been dispatched and is on its way to you. Please contact the store if you need help with delivery."
-      : "Good news! Your order is ready for pickup. Please contact the store to arrange collection.";
+  const message = isCancelled
+    ? "The store has cancelled this unpaid order. No payment was taken for this order. If you need help or would like to place a new order, please contact the store."
+    : isCompleted
+      ? (requiresShipping
+        ? "Your order has been marked as delivered. Thank you for shopping with us."
+        : "Your order has been marked as collected. Thank you for shopping with us.")
+      : requiresShipping
+        ? "Good news! Your order has been dispatched and is on its way to you. Please contact the store if you need help with delivery."
+        : "Good news! Your order is ready for pickup. Please contact the store to arrange collection.";
 
   const html = layout(title,
     '<p>Hello ' + esc(order.customer_name || "there") + ',</p><p>' + esc(message) +
