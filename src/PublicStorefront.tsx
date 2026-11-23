@@ -104,8 +104,18 @@ export default function PublicStorefront() {
   useEffect(() => {
     if (!store) return;
     const storeUrl = `https://discover.sabibyxtop.com.ng/?store=${encodeURIComponent(store.business_slug)}`;
-    const description = `Shop ${store.business_name} on Sabi Discover. Browse ${products.length} products from this Nigerian business.`.slice(0, 300);
-    const title = `${store.business_name} Store | Shop on Sabi Discover`;
+    const industryText = (store.industry || "").replace(/\\s+/g, " ").trim();
+    const productNames = products.slice(0, 5).map(product => product.product_name).filter(Boolean);
+    const catalogueText = productNames.length
+      ? `Featured products include ${productNames.join(", ")}.`
+      : "Discover products from this Sabi merchant.";
+    const description = [
+      `Shop ${store.business_name}`,
+      industryText ? `(${industryText})` : "",
+      `on Sabi Discover. Browse ${products.length} available ${products.length === 1 ? "product" : "products"}.`,
+      catalogueText
+    ].filter(Boolean).join(" ").slice(0, 300);
+    const title = `${store.business_name} Store | Shop ${industryText || "products"} on Sabi Discover`;
     document.title = title;
     const setMeta = (selector: string, attribute: string, value: string) => {
       let element = document.head.querySelector(selector) as HTMLMetaElement | null;
@@ -124,9 +134,11 @@ export default function PublicStorefront() {
     setMeta('meta[property="og:url"]', "og:url", storeUrl);
     setMeta('meta[property="og:site_name"]', "og:site_name", "Sabi Discover");
     setMeta('meta[property="og:image"]', "og:image", store.business_logo || LOGO_URL);
+    setMeta('meta[property="og:image:alt"]', "og:image:alt", `${store.business_name} store on Sabi Discover`);
     setMeta('meta[name="twitter:card"]', "twitter:card", "summary_large_image");
     setMeta('meta[name="twitter:title"]', "twitter:title", title);
     setMeta('meta[name="twitter:description"]', "twitter:description", description);
+    setMeta('meta[name="twitter:image"]', "twitter:image", store.business_logo || LOGO_URL);
     let canonical = document.head.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
     if (!canonical) {
       canonical = document.createElement("link");
@@ -154,13 +166,18 @@ export default function PublicStorefront() {
           item: {
             "@type": "Product",
             name: product.product_name,
+            description: product.product_description || undefined,
+            category: product.product_category || undefined,
             url: `https://discover.sabibyxtop.com.ng/?product=${encodeURIComponent(product.product_id)}`,
             image: product.product_image_url || undefined,
+            brand: { "@type": "Brand", name: store.business_name },
             offers: {
               "@type": "Offer",
+              url: `https://discover.sabibyxtop.com.ng/?product=${encodeURIComponent(product.product_id)}`,
               priceCurrency: "NGN",
               price: product.product_price.toFixed(2),
-              availability: "https://schema.org/InStock"
+              availability: product.product_stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+              seller: { "@type": "Organization", name: store.business_name }
             }
           }
         }))
