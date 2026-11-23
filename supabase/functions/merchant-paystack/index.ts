@@ -661,8 +661,25 @@ async function syncSubaccountSettlements(
           console.log("SABI SUBACCOUNT DATE-WINDOW FALLBACK CHECK:", {
             tenant_id: tenantId,
             settlement_id: String(settlement.id),
+            settlement_total_amount: settlement.total_amount ?? null,
+            settlement_effective_amount: settlement.effective_amount ?? null,
             merchant_transactions_found: merchantTransactions.length,
             exact_settlement_matches: exactSettlementTransactions.length,
+            merchant_transactions: merchantTransactions.map((transaction: any) => ({
+              id: String(transaction.id ?? ""),
+              reference: String(transaction.reference ?? ""),
+              amount: transaction.amount ?? null,
+              status: transaction.status ?? null,
+              settlement: transaction.settlement ?? null,
+              subaccount_code: transaction.subaccount?.subaccount_code ?? transaction.subaccount_code ?? null,
+              paid_at: transaction.paid_at ?? transaction.paidAt ?? null,
+              currency: transaction.currency ?? null,
+            })),
+            local_charges: charges.map((charge: any) => ({
+              transaction_id: String(charge.paystack_transaction_id ?? ""),
+              reference: String(charge.payment_reference ?? ""),
+              settlement_status: charge.settlement_status,
+            })),
           });
           if (exactSettlementTransactions.length > 0) {
             transactions = exactSettlementTransactions;
