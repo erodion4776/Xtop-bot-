@@ -13,6 +13,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
+import { addToMarketplaceCart } from "./marketplaceCart";
 
 type PublicProductData = {
   product_id: string;
@@ -59,6 +60,7 @@ export default function PublicProduct() {
   const [paymentMessage, setPaymentMessage] = useState("");
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [paymentWarning, setPaymentWarning] = useState(false);
+  const [cartAdded, setCartAdded] = useState(false);
   const verificationStarted = useRef(false);
 
   const productId = new URLSearchParams(
@@ -648,6 +650,27 @@ export default function PublicProduct() {
                     ? "Preparing your payment..."
                     : `Continue to Paystack — ${money(paymentAmount)}`}
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    addToMarketplaceCart({
+                      product_id: product.product_id,
+                      product_name: product.product_name,
+                      product_price: unitPrice,
+                      product_image_url: product.product_image_url,
+                      business_name: product.business_name,
+                      business_slug: product.business_slug,
+                      product_stock: Number(product.product_stock || 0)
+                    }, quantity);
+                    setCartAdded(true);
+                  }}
+                  disabled={product.product_stock < 1}
+                  style={{ width: "100%", minHeight: 48, marginTop: 10, border: "1px solid #cbd9cf", borderRadius: 9, background: "#fff", color: "#176b4b", fontWeight: 750, display: "flex", alignItems: "center", justifyContent: "center", gap: 9, cursor: "pointer" }}
+                >
+                  <ShoppingBag size={18} /> {cartAdded ? "Added to cart" : "Add to Sabi marketplace cart"}
+                </button>
+                {cartAdded && <a href="/?cart=1" style={{ display: "block", textAlign: "center", marginTop: 9, color: "#176b4b", fontSize: 13, fontWeight: 700 }}>View cart and checkout</a>}
 
                 <div style={styles.paymentTrust}>
                   <div style={styles.paymentTrustIcon}><CreditCard size={18} /></div>
