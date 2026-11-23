@@ -1,6 +1,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendMerchantWelcomeEmail } from "../_shared/sabi-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -138,6 +139,13 @@ serve(async (req: Request) => {
           "Unable to complete your merchant registration. Please try again.",
       }, 400);
     }
+
+    // Welcome email is best-effort: email delivery must never block account creation.
+    await sendMerchantWelcomeEmail(
+      user.email,
+      ownerName,
+      businessName,
+    );
 
     return jsonResponse({
       success: true,
