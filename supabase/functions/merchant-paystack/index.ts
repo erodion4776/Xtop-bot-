@@ -546,11 +546,35 @@ async function syncSubaccountSettlements(
   const fromDate = earliest ? new Date(earliest) : new Date();
   if (Number.isFinite(fromDate.getTime())) fromDate.setUTCDate(fromDate.getUTCDate() - 7);
 
+  // Paystack's settlement list expects the numeric subaccount ID,
+  // not the ACCT_* subaccount code used by transaction initialization.
+  // Resolve the code first so settlement queries target the merchant's
+  // actual settlement account rather than silently returning no matches.
+  const paystackSubaccount = await paystackRequest(
+    `/subaccount/${encodeURIComponent(String(tenant.paystack_subaccount_code))}`,
+  );
+  const paystackSubaccountId = Number(paystackSubaccount.id);
+  if (!Number.isSafeInteger(paystackSubaccountId) || paystackSubaccountId <= 0) {
+    console.error("Paystack subaccount response did not include a valid numeric ID:", {
+      tenant_id: tenantId,
+      subaccount_code: tenant.paystack_subaccount_code,
+      subaccount_id: paystackSubaccount.id ?? null,
+    });
+    throw new Error("PAYSTACK_SUBACCOUNT_ID_MISSING");
+  }
+
   const params = new URLSearchParams({
-    subaccount: String(tenant.paystack_subaccount_code),
+    subaccount: String(paystackSubaccountId),
     perPage: String(PAGE_SIZE),
   });
   if (Number.isFinite(fromDate.getTime())) params.set("from", fromDate.toISOString());
+
+  console.log("SABI SETTLEMENT LOOKUP TARGET:", {
+    tenant_id: tenantId,
+    subaccount_code: tenant.paystack_subaccount_code,
+    paystack_subaccount_id: paystackSubaccountId,
+    from: params.get("from"),
+  });
 
   const settlements = await fetchPaystackPages((page) => {
     const pageParams = new URLSearchParams(params);
@@ -757,6 +781,10 @@ Deno.serve(async (req: Request) => {
         "Could not update the Paystack verification status.",
       SETTLEMENT_LOOKUP_FAILED:
         "Could not load merchant settlement records.",
+      SETTLEMENT_UPDATE_FAILED:
+        "Could not update merchant settlement status.",
+      PAYSTACK_SUBACCOUNT_ID_MISSING:
+        "Paystack did not return the merchant's numeric subaccount ID. Please try again or contact support.",
       SETTLEMENT_UPDATE_FAILED:
         "Paystack returned settlement information, but Sabi could not save the status.",
       PAYSTACK_REQUEST_FAILED:
