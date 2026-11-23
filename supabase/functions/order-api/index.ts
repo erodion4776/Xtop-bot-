@@ -1,5 +1,6 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendNewOrderEmails, sendPaymentReceiptEmail } from "../_shared/sabi-email.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -236,6 +237,18 @@ async function createOrder(body: Record<string, unknown>) {
     throw new Error("PAYMENT_INTENT_NOT_FOUND");
   }
 
+  // Best-effort branded emails; order creation must not fail if email delivery is unavailable.
+  await sendNewOrderEmails(db, {
+    tenantId: intent.tenant_id,
+    orderNumber: order.order_number,
+    customerName,
+    customerEmail,
+    subtotal: Number(order.subtotal || 0),
+    deliveryFee: Number(order.delivery_fee || 0),
+    total: Number(order.total || 0),
+    paymentMethod,
+  });
+
   let payment;
 
   try {
@@ -330,6 +343,7 @@ async function createCartOrder(body: Record<string, unknown>) {
   let order: any = null;
   let intent: any = null;
   let previousReference = "";
+  let isNewOrder = false;
 
   for (const candidate of recentIntents || []) {
     const { data: candidateOrder } = await db
@@ -424,6 +438,7 @@ async function createCartOrder(body: Record<string, unknown>) {
       delivery_fee: createdOrder.delivery_fee,
       total: createdOrder.total,
     };
+    isNewOrder = true;
     const { data: createdIntent, error: intentError } = await db
       .from("tenant_order_payment_intents")
       .select("tenant_id,order_id,payment_type,reference,expected_amount,currency,customer_email,metadata")
@@ -431,6 +446,19 @@ async function createCartOrder(body: Record<string, unknown>) {
       .single();
     if (intentError || !createdIntent) throw new Error("PAYMENT_INTENT_NOT_FOUND");
     intent = createdIntent;
+  }
+
+  if (isNewOrder) {
+    await sendNewOrderEmails(db, {
+      tenantId: intent.tenant_id,
+      orderNumber: order.order_number,
+      customerName,
+      customerEmail,
+      subtotal: Number(order.subtotal || 0),
+      deliveryFee: Number(order.delivery_fee || 0),
+      total: Number(order.total || 0),
+      paymentMethod,
+    });
   }
 
   try {
@@ -796,6 +824,23 @@ async function verifyOrderPayment(body: Record<string, unknown>) {
       confirmation,
     );
     throw new Error("ORDER_PAYMENT_CONFIRMATION_FAILED");
+  }
+
+  const { data: paidOrder } = await db.from("tenant_orders")
+    .select("order_number,customer_name,customer_email")
+    .eq("id", intent.order_id)
+    .eq("tenant_id", intent.tenant_id)
+    .maybeSingle();
+
+  if (paidOrder?.customer_email) {
+    await sendPaymentReceiptEmail(db, {
+      tenantId: intent.tenant_id,
+      orderId: intent.order_id,
+      orderNumber: paidOrder.order_number,
+      customerEmail: paidOrder.customer_email,
+      customerName: paidOrder.customer_name || "",
+      amount: Number(intent.expected_amount),
+    });
   }
 
   return respond(confirmation);
