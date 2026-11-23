@@ -932,7 +932,7 @@ async function notifyOrderStatus(req: Request, body: Record<string, unknown>) {
   const tenantId = String(body.tenant_id || "");
   const orderId = String(body.order_id || "");
   const status = String(body.status || "").toUpperCase();
-  if (!tenantId || !orderId || !["DISPATCHED", "COMPLETED"].includes(status)) {
+  if (!tenantId || !orderId || !["DISPATCHED", "COMPLETED", "CANCELLED"].includes(status)) {
     throw new Error("MERCHANT_ORDER_DETAILS_REQUIRED");
   }
   const { data: membership } = await db.from("tenant_members").select("tenant_id")
@@ -945,7 +945,7 @@ async function notifyOrderStatus(req: Request, body: Record<string, unknown>) {
   if (!order || String(order.status).toUpperCase() !== status) {
     throw new Error("MERCHANT_ORDER_NOT_FOUND");
   }
-  const sent = await sendOrderStatusEmail(db, tenantId, orderId, status as "DISPATCHED" | "COMPLETED");
+  const sent = await sendOrderStatusEmail(db, tenantId, orderId, status as "DISPATCHED" | "COMPLETED" | "CANCELLED");
   return respond({ success: true, email_sent: sent });
 }
 
