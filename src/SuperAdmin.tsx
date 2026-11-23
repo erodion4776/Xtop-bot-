@@ -3,12 +3,12 @@ import {
   Activity, AlertCircle, BadgeCheck, MessageCircle, Send,
   CheckCircle2, ChevronRight, CircleDollarSign, CreditCard, LayoutDashboard,
   LogOut, Menu, MessageSquare, Package, RefreshCw, Search, ShieldCheck,
-  ShoppingBag, Store, Users, Wallet, X, Ban, PlayCircle
+  ShoppingBag, Store, Users, Wallet, X, Ban, PlayCircle, Mail
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import "./SuperAdmin.css";
 
-type Page = "Overview" | "Merchants" | "Orders & Payments" | "Live Support" | "Activity Log" | "WhatsApp Usage" | "Platform Controls";
+type Page = "Overview" | "Merchants" | "Orders & Payments" | "Live Support" | "Activity Log" | "WhatsApp Usage" | "Platform Controls" | "Platform Email";
 type WhatsAppUsageRow = {
   phone_number_id: string; billing_month: string; source_app: string;
   outbound_messages: number; inbound_messages: number; delivered_messages: number;
@@ -47,7 +47,7 @@ const pages: { label: Page; icon: any }[] = [
   { label: "Live Support", icon: MessageCircle },
   { label: "Activity Log", icon: Activity },
   { label: "WhatsApp Usage", icon: MessageSquare },
-  { label: "Platform Controls", icon: ShieldCheck },
+  { label: "Platform Controls", icon: ShieldCheck },\n  { label: "Platform Email", icon: Mail },
 ];
 
 const money = (value: number) => new Intl.NumberFormat("en-NG", {
@@ -68,7 +68,7 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
   const [selectedSupportId, setSelectedSupportId] = useState("");
   const [supportDraft, setSupportDraft] = useState("");
   const [whatsappUsage, setWhatsappUsage] = useState<WhatsAppUsageRow[]>([]);
-  const [usageSettings, setUsageSettings] = useState<any[]>([]);
+  const [usageSettings, setUsageSettings] = useState<any[]>([]);\n  const [emailCampaigns, setEmailCampaigns] = useState<any[]>([]);\n  const [emailAudience, setEmailAudience] = useState<"MERCHANTS" | "CUSTOMERS" | "ALL">("MERCHANTS");\n  const [emailSubject, setEmailSubject] = useState("");\n  const [emailContent, setEmailContent] = useState("");\n  const [emailCounts, setEmailCounts] = useState({ merchant_count: 0, customer_count: 0 });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -163,6 +163,32 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
       setNotice("Customer returned to the Sabi demo bot.");
       await loadPage("Live Support");
     } catch (e) { setError(e instanceof Error ? e.message : "Could not resume the demo bot."); }
+    finally { setBusy(false); }
+  }
+
+
+  async function sendPlatformEmail() {
+    if (!emailSubject.trim() || emailContent.trim().length < 10) {
+      setError("Enter an email subject and message of at least 10 characters.");
+      return;
+    }
+    const counts = emailAudience === "MERCHANTS" ? emailCounts.merchant_count
+      : emailAudience === "CUSTOMERS" ? emailCounts.customer_count
+      : emailCounts.merchant_count + emailCounts.customer_count;
+    if (!counts) {
+      setError("There are no eligible recipients in this audience yet. Customer recipients must explicitly subscribe to Sabi platform updates.");
+      return;
+    }
+    if (!window.confirm("Send this Sabi-branded email to up to " + counts + " eligible recipients? This action cannot be undone.")) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await callAdmin("email-campaign-send", {
+        audience: emailAudience, subject: emailSubject.trim(), content: emailContent.trim(),
+      });
+      setNotice("Campaign completed: " + result.sent_count + " sent, " + result.failed_count + " failed, out of " + result.recipient_count + " recipients.");
+      setEmailSubject(""); setEmailContent("");
+      await loadPage("Platform Email");
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not send platform email campaign."); }
     finally { setBusy(false); }
   }
 
@@ -353,6 +379,35 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
                       <td>{row.billable_messages}</td><td>{row.non_billable_messages}</td><td>{row.estimated_cost > 0 ? "$" + Number(row.estimated_cost).toFixed(2) : "See Meta invoice"}</td>
                     </tr>)}
                     {whatsappUsage.length === 0 && <tr><td colSpan={10} className="sa-empty">No new WhatsApp delivery-status events have been collected yet. New events will appear after Meta sends webhook status updates.</td></tr>}
+                  </tbody></table></div>
+                </div>
+              )}
+
+              {page === "Platform Email" && (
+                <div className="sa-panel">
+                  <div className="sa-panel-head"><div><h2>Platform email campaigns</h2><p>Send official Sabi announcements to merchant owners and customers who explicitly subscribed to Sabi platform updates.</p></div><span>Owner only</span></div>
+                  <div className="sa-email-audience-grid">
+                    <div><span>Active merchant owner emails</span><strong>{emailCounts.merchant_count}</strong></div>
+                    <div><span>Opted-in Sabi customers</span><strong>{emailCounts.customer_count}</strong></div>
+                  </div>
+                  <div className="sa-email-notice">Customer marketing emails are sent only to people who explicitly subscribed to Sabi platform updates. Checkout emails and merchant-specific store newsletter subscribers are not automatically included.</div>
+                  <div className="sa-email-form">
+                    <label>Recipients</label>
+                    <select value={emailAudience} onChange={(e)=>setEmailAudience(e.target.value as "MERCHANTS"|"CUSTOMERS"|"ALL")}>
+                      <option value="MERCHANTS">All active merchants ({emailCounts.merchant_count})</option>
+                      <option value="CUSTOMERS">Subscribed Sabi customers ({emailCounts.customer_count})</option>
+                      <option value="ALL">Merchants and subscribed customers ({emailCounts.merchant_count + emailCounts.customer_count})</option>
+                    </select>
+                    <label>Email subject</label>
+                    <input value={emailSubject} onChange={(e)=>setEmailSubject(e.target.value)} maxLength={120} placeholder="e.g. Important update from Sabi by XTOP"/>
+                    <label>Message</label>
+                    <textarea value={emailContent} onChange={(e)=>setEmailContent(e.target.value)} rows={8} maxLength={12000} placeholder="Write your announcement here…"/>
+                    <div className="sa-email-foot"><span>Sent as Sabi by XTOP · noreply@mail.sabibyxtop.com.ng</span><button className="sa-action good" disabled={busy || !emailSubject.trim() || emailContent.trim().length<10} onClick={()=>void sendPlatformEmail()}><Send size={15}/> Send campaign</button></div>
+                  </div>
+                  <div className="sa-panel-head" style={{marginTop:28}}><div><h2>Campaign history</h2><p>Latest platform-wide email activity and delivery submission results.</p></div><span>{emailCampaigns.length} campaigns</span></div>
+                  <div className="sa-table-wrap"><table><thead><tr><th>Subject</th><th>Audience</th><th>Recipients</th><th>Sent</th><th>Failed</th><th>Status</th><th>Date</th></tr></thead><tbody>
+                    {emailCampaigns.map((campaign:any)=><tr key={campaign.id}><td><strong>{campaign.subject}</strong></td><td>{campaign.audience}</td><td>{campaign.recipient_count}</td><td>{campaign.sent_count}</td><td>{campaign.failed_count}</td><td><span className={campaign.status==="SENT"?"sa-pill good":campaign.status==="FAILED"?"sa-pill danger":"sa-pill neutral"}>{campaign.status}</span></td><td>{dateLabel(campaign.created_at)}</td></tr>)}
+                    {emailCampaigns.length===0 && <tr><td colSpan={7} className="sa-empty">No platform email campaigns have been sent yet.</td></tr>}
                   </tbody></table></div>
                 </div>
               )}
