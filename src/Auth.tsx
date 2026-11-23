@@ -27,6 +27,14 @@ export default function Auth({ onAuthenticated, isPasswordRecovery = false }: Au
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const passwordChecks = [
+    { label: "At least one small letter (a–z)", valid: /[a-z]/.test(password) },
+    { label: "At least one CAPITAL letter (A–Z)", valid: /[A-Z]/.test(password) },
+    { label: "At least one number (0–9)", valid: /[0-9]/.test(password) },
+    { label: "At least one symbol, such as @, #, $, or !", valid: /[!@#$%^&*()_+\\-=\\[\\]{};':"\\|<>?,./\\`~]/.test(password) }
+  ];
+  const passwordIsValid = passwordChecks.every((item) => item.valid);
+
   const sessionToken = new URLSearchParams(
     window.location.search
   ).get("session_token")?.trim() || "";
@@ -34,6 +42,12 @@ export default function Auth({ onAuthenticated, isPasswordRecovery = false }: Au
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setMessage("");
+
+    if ((isPasswordRecovery || mode === "signup") && !passwordIsValid) {
+      setMessage("Your password is not ready yet. Please follow the four password tips shown below the password box.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -100,9 +114,13 @@ export default function Auth({ onAuthenticated, isPasswordRecovery = false }: Au
         onAuthenticated();
       }
     } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : "Something went wrong."
-      );
+      const errorMessage =
+        error instanceof Error ? error.message : "Something went wrong.";
+      if (/password should contain|password does not meet|password.*character/i.test(errorMessage)) {
+        setMessage("Your password needs a small letter, a CAPITAL letter, a number and a symbol. Please check the four tips below and try again.");
+      } else {
+        setMessage(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -235,14 +253,32 @@ export default function Auth({ onAuthenticated, isPasswordRecovery = false }: Au
           <input
             type="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              setMessage("");
+            }}
             placeholder="Enter your password"
             autoComplete={
-              mode === "login" ? "current-password" : "new-password"
+              mode === "login" && !isPasswordRecovery ? "current-password" : "new-password"
             }
             minLength={6}
             required
           />
+
+          {(isPasswordRecovery || mode === "signup") && (
+            <div className="password-guidance" aria-live="polite">
+              <strong>Your password must include all 4:</strong>
+              <ul>
+                {passwordChecks.map((item) => (
+                  <li key={item.label} className={item.valid ? "password-check valid" : "password-check"}>
+                    <span aria-hidden="true">{item.valid ? "✓" : "○"}</span>
+                    {item.label}
+                  </li>
+                ))}
+              </ul>
+              <p>Example: <strong>Sabi@2026</strong> (please create your own password).</p>
+            </div>
+          )}
 
           {!isPasswordRecovery && mode === "signup" && (
             <>
