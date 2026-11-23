@@ -215,3 +215,69 @@ export async function sendOrderStatusEmail(
     message + " Store: " + store + ". Order: " + order.order_number,
   );
 }
+
+
+export async function sendMerchantSettlementEmail(db: any, d: {
+  tenantId: string;
+  orderId: string;
+  orderNumber?: string;
+  paymentReference?: string;
+  settlementId?: string;
+  settlementDate?: string | null;
+}): Promise<boolean> {
+  const { data: tenant } = await db.from("tenants")
+    .select("business_name,name").eq("id", d.tenantId).maybeSingle();
+  const store = tenant?.business_name || tenant?.name || "your store";
+
+  const { data: membership } = await db.from("tenant_members")
+    .select("user_id")
+    .eq("tenant_id", d.tenantId)
+    .eq("role", "OWNER")
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+
+  if (!membership?.user_id) {
+    console.warn("Settlement email skipped: active merchant owner not found.");
+    return false;
+  }
+
+  const { data: userData, error: userError } = await db.auth.admin
+    .getUserById(membership.user_id);
+  const merchantEmail = userData?.user?.email;
+  if (userError || !merchantEmail) {
+    console.warn("Settlement email skipped: merchant email unavailable.", userError);
+    return false;
+  }
+
+  const { data: order } = await db.from("tenant_orders")
+    .select("order_number")
+    .eq("tenant_id", d.tenantId)
+    .eq("id", d.orderId)
+    .maybeSingle();
+
+  const orderNumber = d.orderNumber || order?.order_number || d.orderId;
+  const settlementDate = d.settlementDate
+    ? new Date(d.settlementDate).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })
+    : "Not provided by Paystack";
+
+  const html = layout("Your merchant settlement is confirmed",
+    '<p>Hello,</p><p>Paystack has reported a successful settlement containing the payment for an order in <strong>' +
+    esc(store) + '</strong>.</p><p>Order: <strong>' + esc(orderNumber) +
+    '</strong><br>Payment reference: ' + esc(d.paymentReference || "Not available") +
+    '<br>Paystack settlement ID: ' + esc(d.settlementId || "Not available") +
+    '<br>Settlement date: ' + esc(settlementDate) +
+    '</p><p>This confirms Paystack reported the settlement as successful. Please check your bank account for the credit entry.</p>',
+    "Open merchant dashboard", DASHBOARD);
+
+  return sendSabiEmail(
+    merchantEmail,
+    "Paystack settlement confirmed: " + orderNumber,
+    html,
+    "Paystack reported a successful settlement containing payment for order " +
+      orderNumber + " at " + store + ". Payment reference: " +
+      (d.paymentReference || "Not available") + ". Settlement ID: " +
+      (d.settlementId || "Not available") + ". Settlement date: " +
+      settlementDate + ". Check your bank account for the credit entry. Dashboard: " + DASHBOARD,
+  );
+}
