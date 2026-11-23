@@ -30,3 +30,6 @@ verify_jwt = false
 
 [functions.sabi-abandoned-cart]
 verify_jwt = false
+
+[functions.sabi-weekly-merchant-report]
+verify_jwt = false
