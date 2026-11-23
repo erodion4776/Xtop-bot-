@@ -25,3 +25,23 @@
 .sa-historical-grid strong{display:block;font-size:20px;color:#1d2b3d;margin-top:6px}
 .sa-historical-footnote{margin-top:12px}
 @media(max-width:900px){.sa-historical-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+/* Live support responsive conversation layout */
+.sa-support-layout,.sa-support-list,.sa-support-chat{min-width:0;max-width:100%}
+.sa-support-chat{overflow:hidden}
+.sa-support-back{display:none;border:1px solid #dce5ed;background:#f8fafc;color:#31516b;border-radius:8px;padding:7px 9px;font-size:11px;font-weight:700;white-space:nowrap}
+.sa-support-chat textarea{min-width:0;max-width:100%;box-sizing:border-box}
+@media(max-width:760px){
+  .sa-support-layout{grid-template-columns:minmax(0,1fr)!important;min-height:0!important}
+  .sa-support-list{max-height:65vh!important}
+  .sa-support-layout.has-selection .sa-support-list{display:none}
+  .sa-support-layout:not(.has-selection) .sa-support-chat{display:none!important}
+  .sa-support-chat{min-height:65vh!important;padding:11px!important}
+  .sa-support-chat>div:first-child{flex-wrap:wrap!important;align-items:flex-start!important}
+  .sa-support-back{display:inline-flex;align-items:center}
+  .sa-support-chat>div:nth-child(2){max-height:52vh!important;min-height:220px}
+  .sa-support-chat>div:last-child{align-items:stretch!important}
+  .sa-support-chat>div:last-child textarea{width:100%;font-size:14px}
+  .sa-support-chat>div:last-child button{flex:0 0 auto;min-height:42px}
+}
