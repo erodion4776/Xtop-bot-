@@ -690,9 +690,13 @@ async function syncSubaccountSettlements(
     // First run it in diagnostic-only mode: never infer settlement from amount
     // alone, and do not change a charge until the exported identifiers match.
     try {
+      // Export the merchant's transactions for the settlement-date window.
+      // Do not combine settlement ID with subaccount_code here: Paystack's
+      // subaccount payout records may not populate transaction.settlement,
+      // so that intersection can incorrectly produce an empty export.
       const exportParams = new URLSearchParams({
-        settlement: String(settlement.id),
         subaccount_code: String(tenant.paystack_subaccount_code),
+        status: "success",
       });
       if (settlement.settlement_date) {
         const settlementDay = new Date(settlement.settlement_date);
@@ -735,8 +739,9 @@ async function syncSubaccountSettlements(
         );
         console.log("SABI TRANSACTION EXPORT CHECK:", {
           tenant_id: tenantId,
-          settlement_id: String(settlement.id),
-          settlement_status: String(settlement.status || ""),
+          settlement_id_context_only: String(settlement.id),
+          settlement_status_context_only: String(settlement.status || ""),
+          export_filter: "subaccount_code + success + settlement date window (no settlement ID filter)",
           csv_rows: parsed.rows.length,
           csv_headers: parsed.headers,
           transaction_id_column: idColumn || null,
