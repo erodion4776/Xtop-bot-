@@ -57,9 +57,16 @@ export default function Discover() {
     }
     meta.setAttribute("content", description);
     loadProducts();
-  }, [search, category]);
+  }, []);
 
-  const visibleProducts = useMemo(() => products.filter(product => {\n    const matchesCategory = !category || (product.product_category || "").toLowerCase() === category.toLowerCase();\n    const term = search.toLowerCase();\n    const matchesSearch = !term || [product.product_name, product.product_description || "", product.product_category || "", product.business_name].some(value => value.toLowerCase().includes(term));\n    return matchesCategory && matchesSearch;\n  }), [products, category, search]);\n\n  const categories = useMemo(() => {
+  const visibleProducts = useMemo(() => products.filter(product => {
+    const matchesCategory = !category || (product.product_category || "").toLowerCase() === category.toLowerCase();
+    const term = search.toLowerCase();
+    const matchesSearch = !term || [product.product_name, product.product_description || "", product.product_category || "", product.business_name].some(value => value.toLowerCase().includes(term));
+    return matchesCategory && matchesSearch;
+  }), [products, category, search]);
+
+  const categories = useMemo(() => {
     const values = products.map(p => p.product_category?.trim()).filter(Boolean) as string[];
     return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
   }, [products]);
