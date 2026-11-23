@@ -897,18 +897,25 @@ async function verifyOrderPayment(body: Record<string, unknown>) {
     throw new Error("ORDER_PAYMENT_CONFIRMATION_FAILED");
   }
 
-  const { data: paidOrder } = await db.from("tenant_orders")
-    .select("order_number,customer_name,customer_email")
+  // The verified customer email is stored on the payment intent, not tenant_orders.
+  // Do not select customer_email from tenant_orders: that column does not exist.
+  const { data: paidOrder, error: paidOrderError } = await db.from("tenant_orders")
+    .select("order_number,customer_name")
     .eq("id", intent.order_id)
     .eq("tenant_id", intent.tenant_id)
     .maybeSingle();
 
-  if (paidOrder?.customer_email) {
+  if (paidOrderError) {
+    console.error("Could not load paid order details for receipt email:", paidOrderError);
+  }
+
+  const receiptEmail = String(intent.customer_email || "").trim();
+  if (paidOrder && receiptEmail) {
     await sendPaymentReceiptEmail(db, {
       tenantId: intent.tenant_id,
       orderId: intent.order_id,
       orderNumber: paidOrder.order_number,
-      customerEmail: paidOrder.customer_email,
+      customerEmail: receiptEmail,
       customerName: paidOrder.customer_name || "",
       amount: Number(intent.expected_amount),
     });
