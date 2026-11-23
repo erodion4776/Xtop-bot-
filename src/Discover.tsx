@@ -85,7 +85,7 @@ export default function Discover() {
         </a>
         <nav className="sd-nav">
           <a href="#discover-products">Explore products</a>
-          <a href="https://sabibyxtop.com">About Sabi</a>
+          <a href="https://sabibyxtop.com.ng">About Sabi</a>
         </nav>
         <a className="sd-merchant-link" href="https://app.sabibyxtop.com.ng">Merchant login <ArrowRight size={15} /></a>
       </header>
