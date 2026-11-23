@@ -54,7 +54,7 @@ export default function Discover() {
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, number>>({});
   const [reviewTexts, setReviewTexts] = useState<Record<string, string>>({});
   const [cartCount, setCartCount] = useState(() => getMarketplaceCart().reduce((sum, item) => sum + item.quantity, 0));
-  const [sortBy, setSortBy] = useState<"featured" | "newest" | "price-asc" | "price-desc">("featured");
+  const [sortBy, setSortBy] = useState<"featured" | "price-asc" | "price-desc">("featured");
 
   async function loadProducts() {
     setLoading(true);
@@ -202,7 +202,6 @@ export default function Discover() {
     const items = [...visibleProducts];
     if (sortBy === "price-asc") return items.sort((a, b) => Number(a.product_price || 0) - Number(b.product_price || 0));
     if (sortBy === "price-desc") return items.sort((a, b) => Number(b.product_price || 0) - Number(a.product_price || 0));
-    if (sortBy === "newest") return items.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
     return items;
   }, [visibleProducts, sortBy]);
 
@@ -402,7 +401,7 @@ export default function Discover() {
 
         <div className="sd-section-heading sd-all-heading">
           <div><span className="sd-eyebrow">THE SABI MARKETPLACE</span><h2>{search ? "Search results" : category || "Explore all products"}</h2><p>Products from stores that have chosen to publish on Sabi Discover.</p></div>
-          <label className="sd-sort-control">Sort by <select value={sortBy} onChange={event => setSortBy(event.target.value as typeof sortBy)}><option value="featured">Featured</option><option value="newest">Newest</option><option value="price-asc">Price: low to high</option><option value="price-desc">Price: high to low</option></select></label>
+          <label className="sd-sort-control">Sort by <select value={sortBy} onChange={event => setSortBy(event.target.value as typeof sortBy)}><option value="featured">Featured</option><option value="price-asc">Price: low to high</option><option value="price-desc">Price: high to low</option></select></label>
         </div>
 
         {category && <div className="sd-active-category">Showing <strong>{category}</strong><button onClick={() => setCategory("")}>Clear category</button></div>}
