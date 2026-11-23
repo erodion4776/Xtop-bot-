@@ -10,8 +10,22 @@ export type SabiMarketplaceCartItem = {
 };
 
 const CART_KEY = "sabi_marketplace_cart";
+const CART_COOKIE = "sabi_marketplace_cart";
 
-export function getMarketplaceCart(): SabiMarketplaceCartItem[] {
+function readCookieCart(): SabiMarketplaceCartItem[] | null {
+  try {
+    const entry = document.cookie.split("; ").find((part) => part.startsWith(CART_COOKIE + "="));
+    if (!entry) return null;
+    const raw = decodeURIComponent(entry.slice(CART_COOKIE.length + 1));
+    const value = JSON.parse(raw);
+    if (!Array.isArray(value)) return null;
+    return value.filter((item) => item && typeof item.product_id === "string" && Number(item.quantity) > 0);
+  } catch {
+    return null;
+  }
+}
+
+function readLocalCart(): SabiMarketplaceCartItem[] {
   try {
     const value = JSON.parse(window.localStorage.getItem(CART_KEY) || "[]");
     if (!Array.isArray(value)) return [];
@@ -21,13 +35,28 @@ export function getMarketplaceCart(): SabiMarketplaceCartItem[] {
   }
 }
 
+export function getMarketplaceCart(): SabiMarketplaceCartItem[] {
+  // The public product page and Discover checkout use different subdomains.
+  // A parent-domain cookie keeps the same cart available across both origins.
+  const sharedCart = readCookieCart();
+  if (sharedCart !== null) return sharedCart;
+  return readLocalCart();
+}
+
 export function saveMarketplaceCart(items: SabiMarketplaceCartItem[]) {
+  const serialized = JSON.stringify(items);
   try {
-    window.localStorage.setItem(CART_KEY, JSON.stringify(items));
-    window.dispatchEvent(new Event("sabi-cart-updated"));
+    window.localStorage.setItem(CART_KEY, serialized);
   } catch {
-    // The cart remains usable in memory if browser storage is unavailable.
+    // The shared cookie below may still be available.
   }
+  try {
+    const secure = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `${CART_COOKIE}=${encodeURIComponent(serialized)}; Domain=.sabibyxtop.com.ng; Path=/; Max-Age=2592000; SameSite=Lax${secure}`;
+  } catch {
+    // Local storage remains available on this origin if cookies are blocked.
+  }
+  window.dispatchEvent(new Event("sabi-cart-updated"));
 }
 
 export function addToMarketplaceCart(item: Omit<SabiMarketplaceCartItem, "quantity">, quantity = 1) {
