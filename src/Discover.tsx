@@ -451,7 +451,7 @@ export default function Discover() {
 
         {category && <div className="sd-active-category">Showing <strong>{category}</strong><button onClick={() => setCategory("")}>Clear category</button></div>}
         {search && <div className="sd-filter-note"><Search size={14} /> Results for “{search}” <button onClick={() => { setSearch(""); setSearchInput(""); }}>Clear</button></div>}
-        {error && <div className="sd-error" role="alert">{error} <button onClick={loadProducts}>Try again</button></div>}
+        {error && <div className="sd-error" role="alert">{error} <button onClick={() => loadProducts()}>Try again</button></div>}
         {loading ? <div className="sd-state"><RefreshCw size={26} className="sd-spin" /><p>Finding products for you...</p></div> : visibleProducts.length === 0 ? (
           <div className="sd-empty"><span><ShoppingBag size={30} /></span><h3>{search || category ? "No matching products yet" : "Sabi Discover is getting ready"}</h3><p>{search || category ? "Try another search or choose a different category." : "As merchants publish their products, their stores and products will appear here."}</p>{(search || category) && <button onClick={() => { setSearch(""); setSearchInput(""); setCategory(""); }}>View all products</button>}</div>
         ) : <>
