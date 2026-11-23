@@ -112,7 +112,7 @@ function parsePaystackExportDate(value: unknown): Date {
   // Paystack CSV exports dates like "Nov 22nd, 2026 12:00:00 AM".
   // JavaScript's Date parser rejects ordinal suffixes, so strip them first.
   const normalized = String(value || "").trim()
-    .replace(/(\\d{1,2})(st|nd|rd|th)\\b/gi, "$1");
+    .replace(/(\d{1,2})(st|nd|rd|th)\b/gi, "$1");
   return new Date(normalized);
 }
 
