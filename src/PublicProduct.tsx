@@ -69,6 +69,12 @@ export default function PublicProduct() {
   const verificationStarted = useRef(false);
 
   useEffect(() => {
+    if (checkoutOpen) {
+      document.getElementById("product-checkout")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [checkoutOpen]);
+
+  useEffect(() => {
     const updateCartCount = () => setCartCount(getMarketplaceCart().reduce((total, item) => total + Number(item.quantity || 0), 0));
     updateCartCount();
     window.addEventListener("sabi-cart-updated", updateCartCount);
@@ -237,7 +243,7 @@ export default function PublicProduct() {
   useEffect(() => {
     if (!product) return;
     const pageUrl = `https://discover.sabibyxtop.com.ng/?product=${encodeURIComponent(product.product_id)}`;
-    const productSummary = (product.product_description || "").replace(/\s+/g, " ").trim();
+    const productSummary = (product.product_description || "").split(/\r?\n/).filter(line => !/(super\s*admin|paystack.{0,30}debug|debug.{0,30}paystack|internal.{0,20}(test|debug)|test.{0,20}(admin|paystack))/i.test(line)).join(" ").replace(/\s+/g, " ").trim();
     const productPrice = money(Number(product.product_price || 0));
     const stockSummary = Number(product.product_stock || 0) > 0 ? "In stock and available to order." : "Currently out of stock.";
     const description = [
