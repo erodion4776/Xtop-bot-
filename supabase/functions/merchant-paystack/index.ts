@@ -595,13 +595,39 @@ async function syncSubaccountSettlements(
       rawStatus === "failed" ? "FAILED" : "";
     if (!nextStatus || !settlement.id) continue;
 
-    const transactions = await fetchPaystackPages((page) => {
+    let transactions = await fetchPaystackPages((page) => {
       const txParams = new URLSearchParams({
         perPage: String(PAGE_SIZE),
         page: String(page),
       });
       return `/settlement/${encodeURIComponent(String(settlement.id))}/transactions?${txParams.toString()}`;
     });
+
+    // Paystack can return an empty transaction list for a subaccount
+    // settlement even when the settlement itself is present. Cross-check
+    // through the Transaction API using BOTH the merchant subaccount code
+    // and the settlement ID. This is an official Paystack filter and gives
+    // us the actual transactions credited through this subaccount.
+    if (transactions.length === 0) {
+      const fallbackTransactions = await fetchPaystackPages((page) => {
+        const txParams = new URLSearchParams({
+          subaccount_code: String(tenant.paystack_subaccount_code),
+          settlement: String(settlement.id),
+          perPage: String(PAGE_SIZE),
+          page: String(page),
+        });
+        return `/transaction?${txParams.toString()}`;
+      });
+      if (fallbackTransactions.length > 0) {
+        console.log("SABI SETTLEMENT TRANSACTION API FALLBACK MATCH:", {
+          tenant_id: tenantId,
+          settlement_id: String(settlement.id),
+          transactions_found: fallbackTransactions.length,
+        });
+        transactions = fallbackTransactions;
+      }
+    }
+
     transactionsChecked += transactions.length;
 
     for (const transaction of transactions) {
