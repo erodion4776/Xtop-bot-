@@ -240,6 +240,7 @@ async function createOrder(body: Record<string, unknown>) {
   // Best-effort branded emails; order creation must not fail if email delivery is unavailable.
   await sendNewOrderEmails(db, {
     tenantId: intent.tenant_id,
+    orderId: String(order.order_id),
     orderNumber: order.order_number,
     customerName,
     customerEmail,
@@ -451,6 +452,7 @@ async function createCartOrder(body: Record<string, unknown>) {
   if (isNewOrder) {
     await sendNewOrderEmails(db, {
       tenantId: intent.tenant_id,
+      orderId: String(order.id),
       orderNumber: order.order_number,
       customerName,
       customerEmail,
