@@ -108,6 +108,14 @@ function rawSettlementStatusIsSuccessful(value: unknown) {
   return String(value || "").toLowerCase() === "success";
 }
 
+function parsePaystackExportDate(value: unknown): Date {
+  // Paystack CSV exports dates like "Nov 22nd, 2026 12:00:00 AM".
+  // JavaScript's Date parser rejects ordinal suffixes, so strip them first.
+  const normalized = String(value || "").trim()
+    .replace(/(\\d{1,2})(st|nd|rd|th)\\b/gi, "$1");
+  return new Date(normalized);
+}
+
 function normalizeName(value: string) {
   return value
     .trim()
@@ -750,7 +758,7 @@ async function syncSubaccountSettlements(
           : "";
         if (rawSettlementStatusIsSuccessful(settlement.status) && settlementDayKey && settlementDateColumn) {
           exportSettlementTransactions = exactMatches.flatMap((row) => {
-            const exportedDate = new Date(String(row[settlementDateColumn] || ""));
+            const exportedDate = parsePaystackExportDate(row[settlementDateColumn]);
             if (!Number.isFinite(exportedDate.getTime()) || exportedDate.toISOString().slice(0, 10) !== settlementDayKey) return [];
             const charge = charges.find((item: any) =>
               (idColumn && String(row[idColumn] || "").trim() === String(item.paystack_transaction_id || "").trim()) ||
