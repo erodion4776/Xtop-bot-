@@ -398,7 +398,7 @@ export default function Discover() {
         <div className="sd-category-browser-head"><div><strong>Browse categories</strong><small>Explore products from all published Sabi stores.</small></div><button onClick={() => setShowAllCategories(false)} aria-label="Close categories"><X size={18} /></button></div>
         <label className="sd-category-search"><Search size={16} /><input value={categorySearch} onChange={event => setCategorySearch(event.target.value)} placeholder="Find a category..." /></label>
         <div className="sd-category-browser-grid">
-          <button className={!category ? "selected" : ""} onClick={() => { setCategory(""); setShowAllCategories(false); }}><span>All products</span><small>{products.length} products</small></button>
+          <button className={!category ? "selected" : ""} onClick={() => { setCategory(""); setShowAllCategories(false); }}><span>All products</span><small>{categoryCounts.reduce((total, item) => total + item.count, 0).toLocaleString("en-NG")} products</small></button>
           {filteredCategories.map(item => <button key={item.name} className={category === item.name ? "selected" : ""} onClick={() => { setCategory(item.name); setShowAllCategories(false); document.getElementById("discover-products")?.scrollIntoView({ behavior: "smooth" }); }}><span>{item.name}</span><small>{item.count} {item.count === 1 ? "product" : "products"}</small></button>)}
           {filteredCategories.length === 0 && <p className="sd-category-no-results">No category matches that search.</p>}
         </div>
