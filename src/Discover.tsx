@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search, ShoppingBag, Store, ArrowRight, RefreshCw, ShieldCheck,
   Star, UserRound, LogOut, X, Heart, Zap, Truck, Headphones, CircleUserRound
@@ -56,6 +56,7 @@ export default function Discover() {
   const [cartCount, setCartCount] = useState(() => getMarketplaceCart().reduce((sum, item) => sum + item.quantity, 0));
   const [sortBy, setSortBy] = useState<"featured" | "price-asc" | "price-desc">("featured");
   const [heroSlide, setHeroSlide] = useState(0);
+  const touchStartX = useRef<number | null>(null);
 
   async function loadProducts() {
     setLoading(true);
@@ -395,7 +396,7 @@ export default function Discover() {
       </section>}
 
       <section className="sd-feature-slider" aria-label="Sabi features">
-        <div className="sd-feature-slide" key={heroSlide}>
+        <div className="sd-feature-slide" key={heroSlide} onTouchStart={event => { touchStartX.current = event.touches[0]?.clientX ?? null; }} onTouchEnd={event => { const start = touchStartX.current; const end = event.changedTouches[0]?.clientX; touchStartX.current = null; if (start !== null && end !== undefined && Math.abs(end - start) > 45) setHeroSlide(current => (current + (end < start ? 1 : 5)) % 6); }}>
           <div className="sd-feature-copy">
             <div className="sd-feature-meta"><span className="sd-feature-tag">{["DISCOVER MORE","FOR BUSINESSES","SHOP SMART","EASY SHOPPING","SHOP WITH CONFIDENCE","MERCHANT TOOLS"][heroSlide]}</span><span className="sd-feature-pill">{["Fresh finds daily","Sell on Sabi","Verified rankings","All in one cart","Buyer protection","Store operations"][heroSlide]}</span></div>
             <h1>{["Find your next favourite.","Run your store & reach more buyers.","Compare sellers & real ratings.","Shop across stores in one cart.","Protected orders & clear returns.","Manage products, orders & fulfilment."][heroSlide]}</h1>
