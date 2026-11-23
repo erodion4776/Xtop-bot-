@@ -263,7 +263,7 @@ export default function PublicStorefront() {
         <div style={styles.catalogueHeading}>
           <div><span style={styles.eyebrow}>SHOP THIS BUSINESS</span><h2>Products from {store.business_name}</h2><p>Browse available products from this Sabi merchant.</p></div>
           <div style={styles.catalogueTools}>
-            <label style={styles.search}><Search size={17}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search this store"/></label>
+            <label style={styles.search}><Search size={17}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search this store" style={styles.searchInput}/></label>
             <select aria-label="Filter by category" value={category} onChange={event => setCategory(event.target.value)} style={styles.filterSelect}>{categories.map(item => <option key={item} value={item}>{item === "All" ? "All categories" : item}</option>)}</select>
             <select aria-label="Sort products" value={sortBy} onChange={event => setSortBy(event.target.value)} style={styles.filterSelect}><option value="featured">Featured</option><option value="popular">Best sellers</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option><option value="name">Name: A–Z</option></select>
           </div>
@@ -320,6 +320,7 @@ const styles: Record<string, React.CSSProperties> = {
   catalogueHeading:{display:"flex",alignItems:"end",justifyContent:"space-between",gap:18,flexWrap:"wrap",marginBottom:18,paddingTop:8},
   catalogueTools:{display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"},
   search:{display:"flex",alignItems:"center",gap:9,background:"#fff",border:"1px solid #dfe7e1",borderRadius:10,padding:"0 12px",height:44,minWidth:250,color:"#718278",boxSizing:"border-box"},
+  searchInput:{flex:1,minWidth:0,width:"100%",height:"100%",border:0,outline:"none",boxShadow:"none",background:"transparent",fontSize:14,color:"#14231b"},
   filterSelect:{height:44,minWidth:132,maxWidth:"100%",padding:"0 10px",border:"1px solid #dfe7e1",borderRadius:10,background:"#fff",color:"#334155",fontSize:13},
   grid:{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:12,alignItems:"stretch"},
   productCard:{background:"#fff",borderRadius:14,overflow:"hidden",boxShadow:"0 5px 18px rgba(20,35,27,.05)",display:"flex",flexDirection:"column"},
