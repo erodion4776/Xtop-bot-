@@ -790,53 +790,22 @@ async function showAgentHandoffDemo(
   conversationId: string,
   context: DemoContext,
 ): Promise<void> {
-  await saveDemoState(conversationId, "AGENT_HANDOFF_DEMO", context);
+  await updateConversation(conversationId, {
+    current_module: "SABI_SHOP_DEMO",
+    current_state: "DEMO_AGENT_LIVE",
+    context_json: {
+      sabi_shop_demo: true,
+      ...context,
+      demo_agent_handoff: true,
+      agent_mode: true,
+      demo_agent_requested_at: new Date().toISOString(),
+    },
+    agent_mode: true,
+  });
 
   await sendTextMessage(
     phone,
-    "👨‍💼 *Sabi Human Agent Handoff Demonstration*\n\nYou selected Speak to an Agent.\n\nThis sample shows how Sabi can transfer a customer conversation from the AI assistant to a human support agent.",
-  );
-
-  await sendTextMessage(
-    phone,
-    "🤖 *Sabi AI Assistant:*\n\nI understand you would like to speak with a human support agent. I will now hand over this sample conversation.",
-  );
-
-  await sendTextMessage(
-    phone,
-    "⏸️ *AI assistant paused*\n\nIn a real merchant setup, the automated assistant can pause while an authorised human agent handles the conversation.",
-  );
-
-  await sendTextMessage(
-    phone,
-    "👨‍💼 *Sample Human Agent:*\n\nHello! Welcome to our store. My name is Daniel, and I will be assisting you today. How may I help you?",
-  );
-
-  await sendTextMessage(
-    phone,
-    "👤 *Sample Customer:*\n\nI would like to know when my order will be delivered.",
-  );
-
-  await sendTextMessage(
-    phone,
-    "👨‍💼 *Sample Human Agent:*\n\nThank you for contacting us. I have checked your sample order. It is currently being prepared. We appreciate your patience!",
-  );
-
-  await sendTextMessage(
-    phone,
-    "🤖 *Sabi Handoff Demonstration Complete*\n\nThe conversation has been handled by the sample human agent.\n\nIn the real Sabi system, an authorised merchant or staff member can take over customer conversations and return them to the AI assistant when finished.\n\n*This demonstration does not contact a real agent or change your actual WhatsApp handoff settings.*",
-  );
-
-  await sendButtonMessage(
-    phone,
-    "Would you like to return to the Sabi AI shopping assistant?",
-    [
-      makeButton("demo_agent_return", "Return to Sabi AI"),
-      makeButton("demo_products", "Browse Products"),
-      makeButton("demo_exit", "Exit Demo"),
-    ],
-    "Sample Agent Handoff",
-    "Simulation only — no real agent connected",
+    "👋 *You're speaking to Sabi Support*\n\nYour request has reached our support team. A real Sabi representative will reply here shortly. You can continue sending messages in this WhatsApp chat.\n\nYour shopping demo is safely paused while our agent assists you.",
   );
 }
 
@@ -1295,24 +1264,12 @@ export async function handleSabiShopDemo(
     return true;
   }
 
-  if (currentState === "AGENT_HANDOFF_DEMO") {
-    await sendTextMessage(
-      phone,
-      "The sample human agent is handling this demonstration. Select *Return to Sabi AI* to continue with the automated assistant.",
-    );
-
-    await sendButtonMessage(
-      phone,
-      "Would you like to return to Sabi AI?",
-      [
-        makeButton("demo_agent_return", "Return to Sabi AI"),
-        makeButton("demo_exit", "Exit Demo"),
-      ],
-      "Sample Agent Handoff",
-      "No real agent is connected",
-    );
+  if (currentState === "DEMO_AGENT_LIVE") {
+    // The Super Admin is handling this conversation. Keep the demo paused
+    // and do not send automated replies until an admin resumes it.
     return true;
   }
+
 
   if (currentState === "DEMO_ORDER_PLACED") {
     await sendButtonMessage(
