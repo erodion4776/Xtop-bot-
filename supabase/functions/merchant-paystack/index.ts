@@ -582,6 +582,38 @@ async function syncSubaccountSettlements(
     return `/settlement?${pageParams.toString()}`;
   });
 
+  // Fetch each known charge directly by Paystack transaction ID. The list
+  // endpoint can omit settlement metadata for subaccount transactions, while
+  // the single-transaction endpoint may expose the authoritative association.
+  const directTransactionDetails: any[] = [];
+  for (const charge of charges) {
+    const transactionId = String(charge.paystack_transaction_id || "").trim();
+    if (!transactionId) continue;
+    try {
+      const detail = await paystackRequest(`/transaction/${encodeURIComponent(transactionId)}`);
+      directTransactionDetails.push(detail);
+      console.log("SABI DIRECT TRANSACTION DETAIL CHECK:", {
+        tenant_id: tenantId,
+        local_charge_id: charge.id,
+        transaction_id: String(detail.id ?? ""),
+        reference: String(detail.reference ?? ""),
+        status: detail.status ?? null,
+        amount: detail.amount ?? null,
+        currency: detail.currency ?? null,
+        settlement: detail.settlement ?? null,
+        subaccount_code: detail.subaccount?.subaccount_code ?? detail.subaccount_code ?? null,
+        paid_at: detail.paid_at ?? null,
+        fees: detail.fees ?? null,
+      });
+    } catch (detailError) {
+      console.error("SABI DIRECT TRANSACTION DETAIL LOOKUP FAILED:", {
+        tenant_id: tenantId,
+        transaction_id: transactionId,
+        error: detailError instanceof Error ? detailError.message : "UNKNOWN",
+      });
+    }
+  }
+
   let updated = 0;
   let matched = 0;
   let transactionsChecked = 0;
