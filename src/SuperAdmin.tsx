@@ -34,7 +34,7 @@ type Order = {
   created_at: string; merchant_name: string;
 };
 type DemoSupportMessage = { id: string; direction: string; type: string; text: string; created_at: string };
-type DemoSupportChat = { conversation_id: string; contact_id: string; state: string; last_message_at: string; contact: { id: string; phone: string; name: string | null }; messages: DemoSupportMessage[] };
+type DemoSupportChat = { conversation_id: string; contact_id: string; state: string; kind: "DEMO" | "SABI"; last_message_at: string; contact: { id: string; phone: string; name: string | null }; messages: DemoSupportMessage[] };
 type ActivityItem = {
   id: string; admin_user: string | null; action: string; entity: string | null;
   entity_id: string | null; metadata: Record<string, unknown> | null; created_at: string;
@@ -109,7 +109,7 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
         const result = await callAdmin("orders");
         setOrders(result.data || []);
       } else if (target === "Live Support") {
-        const result = await callAdmin("demo-support-list");
+        const result = await callAdmin("support-list");
         setSupportChats(result.data || []);
         setSelectedSupportId((current) => current && (result.data || []).some((x: DemoSupportChat) => x.contact_id === current) ? current : (result.data?.[0]?.contact_id || ""));
       } else if (target === "Activity Log") {
@@ -146,7 +146,7 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
     if (!chat || !message) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      await callAdmin("demo-support-reply", { contact_id: chat.contact_id, message });
+      await callAdmin("support-reply", { contact_id: chat.contact_id, conversation_id: chat.conversation_id, message });
       setSupportDraft("");
       setNotice("Reply sent to the customer's WhatsApp.");
       await loadPage("Live Support");
@@ -159,7 +159,7 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
     if (!chat || !window.confirm("End live support and return this customer to the Sabi demo bot?")) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      await callAdmin("demo-support-resume", { contact_id: chat.contact_id });
+      await callAdmin("support-resume", { contact_id: chat.contact_id, conversation_id: chat.conversation_id });
       setNotice("Customer returned to the Sabi demo bot.");
       await loadPage("Live Support");
     } catch (e) { setError(e instanceof Error ? e.message : "Could not resume the demo bot."); }
@@ -294,17 +294,17 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
               )}
               {page === "Live Support" && (
                 <div className="sa-panel">
-                  <div className="sa-panel-head"><div><h2>Sabi Demo · Live WhatsApp Support</h2><p>Customers who tapped “Speak to an Agent” in the public shop demo. Replies are sent to their real WhatsApp chat.</p></div><span>{supportChats.length} waiting</span></div>
+                  <div className="sa-panel-head"><div><h2>Live WhatsApp Support</h2><p>Manage Sabi customer requests and shop-demo handoffs. Replies go directly to each customer’s real WhatsApp chat.</p></div><span>{supportChats.length} waiting</span></div>
                   <div style={{display:"grid",gridTemplateColumns:"minmax(220px,0.8fr) minmax(0,1.7fr)",gap:16,minHeight:420}}>
                     <div style={{border:"1px solid var(--sa-border, #e5e7eb)",borderRadius:12,overflowY:"auto",maxHeight:560}}>
                       {supportChats.map((chat) => <button key={chat.contact_id} onClick={() => setSelectedSupportId(chat.contact_id)} style={{display:"block",width:"100%",textAlign:"left",padding:14,border:0,borderBottom:"1px solid #e5e7eb",background:selectedSupportId===chat.contact_id?"#eff6ff":"transparent",color:"inherit",cursor:"pointer"}}>
-                        <strong>{chat.contact.name || "WhatsApp customer"}</strong><div style={{fontSize:12,opacity:.75,marginTop:4}}>{chat.contact.phone}</div><div style={{fontSize:12,opacity:.65,marginTop:4}}>{chat.messages[chat.messages.length - 1]?.text?.slice(0,70) || "Waiting for your reply"}</div>
+                        <strong>{chat.contact.name || "WhatsApp customer"}</strong><div style={{fontSize:12,opacity:.75,marginTop:4}}>{chat.contact.phone}</div><div style={{fontSize:11,marginTop:5,opacity:.7}}>{chat.kind === "DEMO" ? "Shop demo" : "Sabi customer support"}</div><div style={{fontSize:12,opacity:.65,marginTop:4}}>{chat.messages[chat.messages.length - 1]?.text?.slice(0,70) || "Waiting for your reply"}</div>
                       </button>)}
-                      {supportChats.length===0 && <div className="sa-empty" style={{padding:20}}>No customers are waiting right now. New demo handoffs will appear here.</div>}
+                      {supportChats.length===0 && <div className="sa-empty" style={{padding:20}}>No customers are waiting right now. New Sabi support requests and demo handoffs will appear here.</div>}
                     </div>
                     <div style={{border:"1px solid #e5e7eb",borderRadius:12,padding:14,display:"flex",flexDirection:"column",minHeight:420}}>
                       {(() => { const chat=supportChats.find((x)=>x.contact_id===selectedSupportId); return chat ? <>
-                        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",paddingBottom:12,borderBottom:"1px solid #e5e7eb"}}><div><strong>{chat.contact.name || "WhatsApp customer"}</strong><div style={{fontSize:12,opacity:.7}}>{chat.contact.phone}</div></div><button className="sa-action good" disabled={busy} onClick={()=>void resumeDemoBot()}>Return to bot</button></div>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",paddingBottom:12,borderBottom:"1px solid #e5e7eb"}}><div><strong>{chat.contact.name || "WhatsApp customer"}</strong><div style={{fontSize:12,opacity:.7}}>{chat.contact.phone}</div><div style={{fontSize:11,opacity:.7,marginTop:4}}>{chat.kind === "DEMO" ? "Shop demo handoff" : "Sabi customer support"}</div></div><button className="sa-action good" disabled={busy} onClick={()=>void resumeDemoBot()}>Return to bot</button></div>
                         <div style={{flex:1,overflowY:"auto",padding:"14px 2px",display:"flex",flexDirection:"column",gap:9,maxHeight:390}}>
                           {chat.messages.map((m)=> <div key={m.id} style={{alignSelf:m.direction==="OUTBOUND"?"flex-end":"flex-start",maxWidth:"85%",padding:"9px 12px",borderRadius:12,background:m.direction==="OUTBOUND"?"#dcfce7":"#f3f4f6",color:"#111827",whiteSpace:"pre-wrap",fontSize:14}}>{m.text || (m.type==="image"?"[Image]":"[Message]")}<div style={{fontSize:10,opacity:.6,marginTop:5}}>{m.direction==="OUTBOUND"?"You":"Customer"} · {dateLabel(m.created_at)}</div></div>)}
                         </div>
@@ -312,7 +312,7 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
                       </> : <div className="sa-empty" style={{margin:"auto"}}>Select a waiting customer to open the WhatsApp conversation.</div>; })()}
                     </div>
                   </div>
-                  <p style={{fontSize:12,opacity:.7,marginTop:12}}>This inbox refreshes when you tap Refresh. Keep this page open while handling the customer. The demo remains paused until you select Return to bot.</p>
+                  <p style={{fontSize:12,opacity:.7,marginTop:12}}>This inbox refreshes when you tap Refresh. Keep this page open while handling the customer. The customer’s automated experience remains paused until you select Return to bot.</p>
                 </div>
               )}
               {page === "Activity Log" && (
