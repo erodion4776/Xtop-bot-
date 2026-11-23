@@ -246,8 +246,8 @@ export async function sendOrderStatusEmail(
     ? "The store has cancelled this unpaid order. No payment was taken for this order. If you need help or would like to place a new order, please contact the store."
     : isCompleted
       ? (requiresShipping
-        ? "Your order has been marked as delivered. Thank you for shopping with us."
-        : "Your order has been marked as collected. Thank you for shopping with us.")
+        ? "Your order has been delivered successfully. Thank you for choosing " + store + ". We appreciate your business and look forward to serving you again."
+        : "Your order has been collected successfully. Thank you for choosing " + store + ". We appreciate your business and look forward to serving you again.")
       : requiresShipping
         ? "Good news! Your order has been dispatched and is on its way to you. Please contact the store if you need help with delivery."
         : "Good news! Your order is ready for pickup. Please contact the store to arrange collection.";
