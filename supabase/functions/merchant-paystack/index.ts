@@ -585,13 +585,11 @@ async function syncSubaccountSettlements(
   // Fetch each known charge directly by Paystack transaction ID. The list
   // endpoint can omit settlement metadata for subaccount transactions, while
   // the single-transaction endpoint may expose the authoritative association.
-  const directTransactionDetails: any[] = [];
   for (const charge of charges) {
     const transactionId = String(charge.paystack_transaction_id || "").trim();
     if (!transactionId) continue;
     try {
       const detail = await paystackRequest(`/transaction/${encodeURIComponent(transactionId)}`);
-      directTransactionDetails.push(detail);
       console.log("SABI DIRECT TRANSACTION DETAIL CHECK:", {
         tenant_id: tenantId,
         local_charge_id: charge.id,
