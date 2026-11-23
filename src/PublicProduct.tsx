@@ -308,6 +308,22 @@ export default function PublicProduct() {
         );
       }
 
+      // Link this public-store order to the signed-in Discover account only
+      // when the verified account email matches the checkout email. This is
+      // best-effort so a customer can still complete checkout if not signed in.
+      const { data: authData } = await supabase.auth.getUser();
+      if (
+        authData.user &&
+        authData.user.email?.toLowerCase() === customerEmail.trim().toLowerCase() &&
+        data.order_id
+      ) {
+        const { error: linkError } = await supabase.rpc(
+          "sabi_link_discover_customer_order",
+          { p_order_id: data.order_id }
+        );
+        if (linkError) console.warn("Could not link this order to the Discover account for later seller review.", linkError);
+      }
+
       window.location.href = data.authorization_url;
     } catch (err) {
       setPaymentWarning(true);
