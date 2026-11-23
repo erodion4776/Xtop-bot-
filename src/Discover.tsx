@@ -280,7 +280,7 @@ export default function Discover() {
           {product.product_image_url ? <img src={product.product_image_url} alt={product.product_name} loading="lazy" /> : <div className="sd-no-image"><ShoppingBag size={32} /></div>}
           {sold > 0 && <span className="sd-product-ribbon"><Zap size={11} /> BEST SELLER</span>}
           {product.product_category && <span className="sd-product-category">{product.product_category}</span>}
-          <button className="sd-wishlist" type="button" aria-label="Sign in to save favourites" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setAccountMode(session ? "profile" : "login"); setAccountOpen(true); }}><Heart size={17} /></button>
+          <button className="sd-wishlist" type="button" aria-label="Sign in to save favourites" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setAccountMode(session ? "profile" : "login"); if (session) loadReviewableOrders(); setAccountOpen(true); }}><Heart size={17} /></button>
         </div>
         <div className="sd-product-info">
           <small className="sd-store-name"><Store size={12} /> {product.business_name}</small>
