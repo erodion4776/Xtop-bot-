@@ -63,12 +63,14 @@ export default function App() {
   const isSuperAdminPage =
     isSuperAdminHost ||
     window.location.pathname.replace(/\/+$/, "") === "/super-admin";
+  const isPasswordRecovery = query.get("recovery") === "1";
   const isMarketingPage =
     !isDashboardHost &&
     !isSuperAdminHost &&
     !isDedicatedPortalHost &&
     window.location.pathname === "/" &&
     !query.has("login") &&
+    !isPasswordRecovery &&
     !query.has("session_token") &&
     !isPublicProductPage;
 
@@ -77,7 +79,7 @@ export default function App() {
   ).get("session_token")?.trim() || "";
 
   useEffect(() => {
-    if (isPublicProductPage || isMarketingPage || isDedicatedPortalHost) return;
+    if (isPublicProductPage || isMarketingPage || isDedicatedPortalHost || isPasswordRecovery) return;
 
     let mounted = true;
 
@@ -117,10 +119,10 @@ export default function App() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [isPublicProductPage, isMarketingPage, isDedicatedPortalHost]);
+  }, [isPublicProductPage, isMarketingPage, isDedicatedPortalHost, isPasswordRecovery]);
 
   useEffect(() => {
-    if (isPublicProductPage || isMarketingPage || isSuperAdminPage || isDedicatedPortalHost) return;
+    if (isPublicProductPage || isMarketingPage || isSuperAdminPage || isDedicatedPortalHost || isPasswordRecovery) return;
 
     if (!session?.user?.id) {
       setTenantId("");
@@ -179,7 +181,8 @@ export default function App() {
     isMarketingPage,
     isSuperAdminPage,
     isDedicatedPortalHost,
-    registrationToken
+    registrationToken,
+    isPasswordRecovery
   ]);
 
   async function refreshSession() {
@@ -226,6 +229,10 @@ export default function App() {
         </div>
       </div>
     );
+  }
+
+  if (isPasswordRecovery) {
+    return <Auth onAuthenticated={refreshSession} isPasswordRecovery />;
   }
 
   if (!session) {
