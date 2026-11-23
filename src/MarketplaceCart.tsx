@@ -17,6 +17,9 @@ export default function MarketplaceCart() {
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [quote, setQuote] = useState<any>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState("");
 
   useEffect(() => {
     const sync = () => setItems(getMarketplaceCart());
@@ -32,6 +35,35 @@ export default function MarketplaceCart() {
       window.removeEventListener("storage", sync);
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!items.length) {
+      setQuote(null);
+      setQuoteError("");
+      return;
+    }
+    async function loadQuote() {
+      setQuoteLoading(true);
+      setQuoteError("");
+      const { data, error: quoteInvokeError } = await supabase.functions.invoke("order-api", {
+        body: {
+          action: "quote_marketplace_checkout",
+          items: items.map(item => ({ product_id: item.product_id, quantity: item.quantity }))
+        }
+      });
+      if (cancelled) return;
+      if (quoteInvokeError || !data?.success) {
+        setQuote(null);
+        setQuoteError(data?.error || quoteInvokeError?.message || "We could not calculate delivery and checkout fees.");
+      } else {
+        setQuote(data);
+      }
+      setQuoteLoading(false);
+    }
+    loadQuote();
+    return () => { cancelled = true; };
+  }, [items]);
 
   const subtotal = useMemo(() => items.reduce((sum, item) => sum + Number(item.product_price) * item.quantity, 0), [items]);
   const sellers = useMemo(() => {
@@ -134,13 +166,17 @@ export default function MarketplaceCart() {
             </div>
             <aside className="sabi-cart-summary">
               <h2>Order summary</h2>
-              <div className="sabi-cart-summary-line"><span>Items ({items.reduce((n,item)=>n+item.quantity,0)})</span><strong>{money(subtotal)}</strong></div>
-              <div className="sabi-cart-summary-line"><span>Delivery</span><strong>Calculated per seller</strong></div>
-              <div className="sabi-cart-summary-note">Each seller's delivery fee is calculated securely from their store settings before payment.</div>
-              <div className="sabi-cart-summary-total"><span>Items subtotal</span><strong>{money(subtotal)}</strong></div>
+              <div className="sabi-cart-summary-line"><span>Items ({items.reduce((n,item)=>n+item.quantity,0)})</span><strong>{quote ? money(Number(quote.item_subtotal)) : money(subtotal)}</strong></div>
+              <div className="sabi-cart-summary-line"><span>Delivery</span><strong>{quote ? money(Number(quote.delivery_total)) : quoteLoading ? "Calculating..." : "—"}</strong></div>
+              {quote?.sellers?.map((seller: any) => <div className="sabi-cart-seller-fee" key={seller.tenant_id}><span>{seller.merchant_name} delivery</span><strong>{money(Number(seller.delivery_fee))}</strong></div>)}
+              {quote && <div className="sabi-cart-summary-line"><span>Sabi marketplace fees</span><strong>{money(Number(quote.marketplace_fee_total))}</strong></div>}
+              {quote && <div className="sabi-cart-summary-line"><span>Payment processing</span><strong>{money(Number(quote.paystack_processing_fee))}</strong></div>}
+              <div className="sabi-cart-summary-note">Each seller's delivery fee is calculated separately. Stock and final prices are checked again when you place the order.</div>
+              <div className="sabi-cart-summary-total"><span>Total payable</span><strong>{quote ? money(Number(quote.expected_amount)) : quoteLoading ? "Calculating..." : "—"}</strong></div>
               <div className="sabi-cart-protection"><ShieldCheck size={18}/><span>Secure Paystack payment. Sabi confirms every seller order after payment verification.</span></div>
+              {quoteError && <div className="sabi-cart-error" role="alert">{quoteError}</div>}
               {error && <div className="sabi-cart-error" role="alert">{error}</div>}
-              <button className="sabi-cart-pay" form="sabi-marketplace-checkout" disabled={busy || items.length===0}><CreditCard size={18}/>{busy ? "Preparing secure checkout..." : "Continue to secure payment"}</button>
+              <button className="sabi-cart-pay" form="sabi-marketplace-checkout" disabled={busy || items.length===0 || quoteLoading || !quote}><CreditCard size={18}/>{busy ? "Preparing secure checkout..." : "Continue to secure payment"}</button>
               <small className="sabi-cart-payment-note"><CheckCircle2 size={13}/> One payment for {sellers.length} {sellers.length===1?"seller":"sellers"} · Online payment only</small>
             </aside>
           </div>
