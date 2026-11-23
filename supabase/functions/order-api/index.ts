@@ -237,10 +237,10 @@ async function createOrder(body: Record<string, unknown>) {
     throw new Error("PAYMENT_INTENT_NOT_FOUND");
   }
 
-  // Convert a matching saved cart into an order so it cannot receive a reminder.
-  const { error: cartCloseError } = await db.from("sabi_abandoned_carts")
+  // Link the saved cart to this order, but keep it active until payment
+  // is confirmed. The reminder worker checks the live order payment status.
+  const { error: cartLinkError } = await db.from("sabi_abandoned_carts")
     .update({
-      status: "ORDERED",
       order_id: String(order.order_id),
       updated_at: new Date().toISOString()
     })
@@ -248,8 +248,8 @@ async function createOrder(body: Record<string, unknown>) {
     .eq("product_id", productId)
     .eq("customer_email", customerEmail)
     .eq("status", "ACTIVE");
-  if (cartCloseError) {
-    console.warn("Could not close the abandoned-cart record for this order.", cartCloseError);
+  if (cartLinkError) {
+    console.warn("Could not link the abandoned-cart record to this order.", cartLinkError);
   }
 
   // Best-effort branded emails; order creation must not fail if email delivery is unavailable.
