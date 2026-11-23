@@ -13,7 +13,8 @@ import {
   LogOut,
   Bot,
   Send,
-  Headset
+  Headset,
+  Mail
 } from "lucide-react";
 
 import Auth from "./Auth";
@@ -22,6 +23,7 @@ import Orders from "./Orders";
 import SettingsPage from "./Settings";
 import Inbox from "./Inbox";
 import Analytics from "./Analytics";
+import Newsletter from "./Newsletter";
 import PublicProduct from "./PublicProduct";
 import Landing from "./Landing";
 import SuperAdmin from "./SuperAdmin";
@@ -33,6 +35,7 @@ const navigation = [
   { label: "Orders", icon: ShoppingCart },
   { label: "Customer Service", icon: MessageSquare },
   { label: "Analytics", icon: BarChart3 },
+  { label: "Newsletter", icon: Mail },
   { label: "Settings", icon: Settings }
 ];
 
@@ -522,6 +525,8 @@ function Dashboard({
             <Inbox />
           ) : activePage === "Analytics" ? (
             <Analytics />
+          ) : activePage === "Newsletter" ? (
+            <Newsletter tenantId={tenantId} />
           ) : activePage === "Overview" ? (
             <>
               <div className="stats-grid">
