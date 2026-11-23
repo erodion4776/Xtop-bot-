@@ -20,10 +20,11 @@ export default function PublicNewsletter() {
     if (!consent) { setError("Please confirm that you want to receive this store's email updates."); return; }
     setBusy(true);
     try {
-      const { data, error: callError } = await supabase.functions.invoke("sabi-newsletter-public?action=subscribe", {
-        body: { tenant_id: tenantId, email: email.trim().toLowerCase(), consent: true, source: "STORE_WEBSITE" }
+      const { data, error: callError } = await supabase.functions.invoke("sabi-newsletter-public", {
+        body: { action: "subscribe", tenant_id: tenantId, email: email.trim().toLowerCase(), consent: true, source: "STORE_WEBSITE" }
       });
-      if (callError || !data?.success) throw new Error(data?.error || callError?.message || "Subscription could not be saved.");
+      if (callError) throw new Error(callError.message || "The subscription request could not reach Sabi.");
+      if (!data?.success) throw new Error(data?.error || "Subscription could not be saved.");
       setEmail("");
       setConsent(false);
       setSuccess("You're subscribed! You can unsubscribe from any newsletter email.");
