@@ -242,7 +242,35 @@ export default function Settings({ tenantId }: { tenantId: string }) {
     }
   }
 
-  async function loadMarketplaceStatus() {\n    setMarketplaceLoading(true);\n    setMarketplaceError("");\n    const { data, error } = await supabase.rpc("sabi_get_merchant_marketplace_status", { p_tenant_id: tenantId });\n    if (error) {\n      setMarketplaceError("Unable to load Sabi Discover settings: " + error.message);\n    } else {\n      const result = Array.isArray(data) ? data[0] : data;\n      setMarketplacePublished(result?.is_published === true);\n    }\n    setMarketplaceLoading(false);\n  }\n\n  async function saveMarketplaceVisibility(enabled: boolean) {\n    setMarketplaceSaving(true);\n    setMarketplaceError("");\n    setMarketplaceSuccess("");\n    const { data, error } = await supabase.rpc("sabi_set_merchant_marketplace_visibility", { p_tenant_id: tenantId, p_is_published: enabled });\n    if (error) {\n      setMarketplaceError(error.message);\n    } else {\n      const result = Array.isArray(data) ? data[0] : data;\n      setMarketplacePublished(result?.is_published === true);\n      setMarketplaceSuccess(enabled ? "Your store is now visible on Sabi Discover." : "Your store has been hidden from Sabi Discover.");\n    }\n    setMarketplaceSaving(false);\n  }\n\n  async function loadSettings() {
+  async function loadMarketplaceStatus() {
+    setMarketplaceLoading(true);
+    setMarketplaceError("");
+    const { data, error } = await supabase.rpc("sabi_get_merchant_marketplace_status", { p_tenant_id: tenantId });
+    if (error) {
+      setMarketplaceError("Unable to load Sabi Discover settings: " + error.message);
+    } else {
+      const result = Array.isArray(data) ? data[0] : data;
+      setMarketplacePublished(result?.is_published === true);
+    }
+    setMarketplaceLoading(false);
+  }
+
+  async function saveMarketplaceVisibility(enabled: boolean) {
+    setMarketplaceSaving(true);
+    setMarketplaceError("");
+    setMarketplaceSuccess("");
+    const { data, error } = await supabase.rpc("sabi_set_merchant_marketplace_visibility", { p_tenant_id: tenantId, p_is_published: enabled });
+    if (error) {
+      setMarketplaceError(error.message);
+    } else {
+      const result = Array.isArray(data) ? data[0] : data;
+      setMarketplacePublished(result?.is_published === true);
+      setMarketplaceSuccess(enabled ? "Your store is now visible on Sabi Discover." : "Your store has been hidden from Sabi Discover.");
+    }
+    setMarketplaceSaving(false);
+  }
+
+  async function loadSettings() {
     setLoading(true);
     setError("");
 
@@ -389,6 +417,7 @@ export default function Settings({ tenantId }: { tenantId: string }) {
 
     loadBusinessProfile();
     loadSettings();
+    loadMarketplaceStatus();
     loadWhatsAppStatus();
     loadBanks();
     loadPayoutStatus();
