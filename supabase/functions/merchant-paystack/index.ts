@@ -1,5 +1,6 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendMerchantSettlementEmail } from "../_shared/sabi-email.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -508,7 +509,7 @@ async function syncSubaccountSettlements(
 
   const { data: charges, error: chargesError } = await db
     .from("sabi_order_paystack_charges")
-    .select("id,paystack_transaction_id,payment_reference,settlement_status,metadata,created_at")
+    .select("id,order_id,paystack_transaction_id,payment_reference,settlement_status,metadata,created_at")
     .eq("tenant_id", tenantId)
     .neq("settlement_status", "REFUNDED")
     .limit(100);
@@ -586,6 +587,35 @@ async function syncSubaccountSettlements(
       charge.settlement_status = nextStatus;
       charge.metadata = metadata;
       updated++;
+
+      // Send one notification only after Paystack reports a successful settlement.
+      // If Resend fails, leave the sent marker empty so a later sync can retry.
+      if (nextStatus === "SETTLED" && !metadata.payout_email_sent_at) {
+        const emailSent = await sendMerchantSettlementEmail(db, {
+          tenantId,
+          orderId: String(charge.order_id),
+          paymentReference: String(charge.payment_reference || ""),
+          settlementId: String(settlement.id),
+          settlementDate: settlement.settlement_date || null,
+        });
+
+        if (emailSent) {
+          const sentMetadata = {
+            ...metadata,
+            payout_email_sent_at: new Date().toISOString(),
+          };
+          const { error: emailMarkerError } = await db
+            .from("sabi_order_paystack_charges")
+            .update({ metadata: sentMetadata, updated_at: new Date().toISOString() })
+            .eq("id", charge.id)
+            .eq("tenant_id", tenantId);
+          if (emailMarkerError) {
+            console.error("Settlement email sent but marker save failed:", emailMarkerError);
+          } else {
+            charge.metadata = sentMetadata;
+          }
+        }
+      }
     }
   }
 
