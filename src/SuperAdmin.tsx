@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Activity, AlertCircle, BadgeCheck,
+  Activity, AlertCircle, BadgeCheck, MessageCircle, Send,
   CheckCircle2, ChevronRight, CircleDollarSign, CreditCard, LayoutDashboard,
   LogOut, Menu, MessageSquare, Package, RefreshCw, Search, ShieldCheck,
   ShoppingBag, Store, Users, Wallet, X, Ban, PlayCircle
@@ -8,7 +8,7 @@ import {
 import { supabase } from "./lib/supabase";
 import "./SuperAdmin.css";
 
-type Page = "Overview" | "Merchants" | "Orders & Payments" | "Activity Log" | "WhatsApp Usage" | "Platform Controls";
+type Page = "Overview" | "Merchants" | "Orders & Payments" | "Live Support" | "Activity Log" | "WhatsApp Usage" | "Platform Controls";
 type WhatsAppUsageRow = {
   phone_number_id: string; billing_month: string; source_app: string;
   outbound_messages: number; inbound_messages: number; delivered_messages: number;
@@ -33,6 +33,8 @@ type Order = {
   sabi_fee_amount?: number; sabi_fee_status?: string; sabi_fee_source?: string;
   created_at: string; merchant_name: string;
 };
+type DemoSupportMessage = { id: string; direction: string; type: string; text: string; created_at: string };
+type DemoSupportChat = { conversation_id: string; contact_id: string; state: string; last_message_at: string; contact: { id: string; phone: string; name: string | null }; messages: DemoSupportMessage[] };
 type ActivityItem = {
   id: string; admin_user: string | null; action: string; entity: string | null;
   entity_id: string | null; metadata: Record<string, unknown> | null; created_at: string;
@@ -42,6 +44,7 @@ const pages: { label: Page; icon: any }[] = [
   { label: "Overview", icon: LayoutDashboard },
   { label: "Merchants", icon: Store },
   { label: "Orders & Payments", icon: CreditCard },
+  { label: "Live Support", icon: MessageCircle },
   { label: "Activity Log", icon: Activity },
   { label: "WhatsApp Usage", icon: MessageSquare },
   { label: "Platform Controls", icon: ShieldCheck },
@@ -61,6 +64,9 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
+  const [supportChats, setSupportChats] = useState<DemoSupportChat[]>([]);
+  const [selectedSupportId, setSelectedSupportId] = useState("");
+  const [supportDraft, setSupportDraft] = useState("");
   const [whatsappUsage, setWhatsappUsage] = useState<WhatsAppUsageRow[]>([]);
   const [usageSettings, setUsageSettings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,6 +108,10 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
       } else if (target === "Orders & Payments") {
         const result = await callAdmin("orders");
         setOrders(result.data || []);
+      } else if (target === "Live Support") {
+        const result = await callAdmin("demo-support-list");
+        setSupportChats(result.data || []);
+        setSelectedSupportId((current) => current && (result.data || []).some((x: DemoSupportChat) => x.contact_id === current) ? current : (result.data?.[0]?.contact_id || ""));
       } else if (target === "Activity Log") {
         const result = await callAdmin("activity");
         setActivity(result.data || []);
@@ -129,6 +139,32 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
       m.business_name, m.name, m.contact_name, m.contact_email, m.contact_phone, m.industry,
     ].some((value) => String(value || "").toLowerCase().includes(term)));
   }, [merchants, search]);
+
+  async function sendSupportReply() {
+    const chat = supportChats.find((x) => x.contact_id === selectedSupportId);
+    const message = supportDraft.trim();
+    if (!chat || !message) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await callAdmin("demo-support-reply", { contact_id: chat.contact_id, message });
+      setSupportDraft("");
+      setNotice("Reply sent to the customer's WhatsApp.");
+      await loadPage("Live Support");
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not send WhatsApp reply."); }
+    finally { setBusy(false); }
+  }
+
+  async function resumeDemoBot() {
+    const chat = supportChats.find((x) => x.contact_id === selectedSupportId);
+    if (!chat || !window.confirm("End live support and return this customer to the Sabi demo bot?")) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await callAdmin("demo-support-resume", { contact_id: chat.contact_id });
+      setNotice("Customer returned to the Sabi demo bot.");
+      await loadPage("Live Support");
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not resume the demo bot."); }
+    finally { setBusy(false); }
+  }
 
   async function changeMerchantStatus(merchant: Merchant) {
     const next = !merchant.is_active;
@@ -254,6 +290,29 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
                     {orders.map((o) => <tr key={o.id}><td><strong>{o.order_number || o.id.slice(0,8)}</strong><small>{o.status || "—"}</small></td><td>{o.merchant_name}</td><td>{o.customer_name || "—"}</td><td>{money(o.subtotal)}</td><td>{money(o.delivery_fee)}</td><td><strong>{money(o.total)}</strong></td><td><span className={o.payment_status === "PAID" ? "sa-pill good" : "sa-pill neutral"}>{o.payment_status || "Pending"}</span></td><td>{money(o.sabi_fee_amount ?? o.sales_fee_amount ?? 0)}<small>{o.sabi_fee_source === "PAYSTACK_CHARGE_RECORD" ? `Recorded · ${o.sabi_fee_status || "RECORDED"} (settlement not confirmed)` : (o.sabi_fee_status || o.sales_fee_status || "NOT_CHARGED")}</small></td><td>{dateLabel(o.created_at)}</td></tr>)}
                     {orders.length === 0 && <tr><td colSpan={9} className="sa-empty">No orders have been recorded yet.</td></tr>}
                   </tbody></table></div>
+                </div>
+              )}
+              {page === "Live Support" && (
+                <div className="sa-panel">
+                  <div className="sa-panel-head"><div><h2>Sabi Demo · Live WhatsApp Support</h2><p>Customers who tapped “Speak to an Agent” in the public shop demo. Replies are sent to their real WhatsApp chat.</p></div><span>{supportChats.length} waiting</span></div>
+                  <div style={{display:"grid",gridTemplateColumns:"minmax(220px,0.8fr) minmax(0,1.7fr)",gap:16,minHeight:420}}>
+                    <div style={{border:"1px solid var(--sa-border, #e5e7eb)",borderRadius:12,overflowY:"auto",maxHeight:560}}>
+                      {supportChats.map((chat) => <button key={chat.contact_id} onClick={() => setSelectedSupportId(chat.contact_id)} style={{display:"block",width:"100%",textAlign:"left",padding:14,border:0,borderBottom:"1px solid #e5e7eb",background:selectedSupportId===chat.contact_id?"#eff6ff":"transparent",color:"inherit",cursor:"pointer"}}>
+                        <strong>{chat.contact.name || "WhatsApp customer"}</strong><div style={{fontSize:12,opacity:.75,marginTop:4}}>{chat.contact.phone}</div><div style={{fontSize:12,opacity:.65,marginTop:4}}>{chat.messages.at(-1)?.text?.slice(0,70) || "Waiting for your reply"}</div>
+                      </button>)}
+                      {supportChats.length===0 && <div className="sa-empty" style={{padding:20}}>No customers are waiting right now. New demo handoffs will appear here.</div>}
+                    </div>
+                    <div style={{border:"1px solid #e5e7eb",borderRadius:12,padding:14,display:"flex",flexDirection:"column",minHeight:420}}>
+                      {(() => { const chat=supportChats.find((x)=>x.contact_id===selectedSupportId); return chat ? <>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",paddingBottom:12,borderBottom:"1px solid #e5e7eb"}}><div><strong>{chat.contact.name || "WhatsApp customer"}</strong><div style={{fontSize:12,opacity:.7}}>{chat.contact.phone}</div></div><button className="sa-action good" disabled={busy} onClick={()=>void resumeDemoBot()}>Return to bot</button></div>
+                        <div style={{flex:1,overflowY:"auto",padding:"14px 2px",display:"flex",flexDirection:"column",gap:9,maxHeight:390}}>
+                          {chat.messages.map((m)=> <div key={m.id} style={{alignSelf:m.direction==="OUTBOUND"?"flex-end":"flex-start",maxWidth:"85%",padding:"9px 12px",borderRadius:12,background:m.direction==="OUTBOUND"?"#dcfce7":"#f3f4f6",color:"#111827",whiteSpace:"pre-wrap",fontSize:14}}>{m.text || (m.type==="image"?"[Image]":"[Message]")}<div style={{fontSize:10,opacity:.6,marginTop:5}}>{m.direction==="OUTBOUND"?"You":"Customer"} · {dateLabel(m.created_at)}</div></div>)}
+                        </div>
+                        <div style={{display:"flex",gap:8,alignItems:"end",paddingTop:10,borderTop:"1px solid #e5e7eb"}}><textarea value={supportDraft} onChange={(e)=>setSupportDraft(e.target.value)} placeholder="Write your WhatsApp reply…" rows={2} style={{flex:1,resize:"vertical",border:"1px solid #d1d5db",borderRadius:9,padding:10,font:"inherit"}}/><button className="sa-action good" disabled={busy||!supportDraft.trim()} onClick={()=>void sendSupportReply()}><Send size={15}/> Send</button></div>
+                      </> : <div className="sa-empty" style={{margin:"auto"}}>Select a waiting customer to open the WhatsApp conversation.</div>; })()}
+                    </div>
+                  </div>
+                  <p style={{fontSize:12,opacity:.7,marginTop:12}}>This inbox refreshes when you tap Refresh. Keep this page open while handling the customer. The demo remains paused until you select Return to bot.</p>
                 </div>
               )}
               {page === "Activity Log" && (
