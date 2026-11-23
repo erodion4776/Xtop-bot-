@@ -177,7 +177,7 @@ export async function sendOrderStatusEmail(
 ): Promise<boolean> {
   // Customer email is stored on the tenant contact, not tenant_orders.
   const { data: order, error: orderError } = await db.from("tenant_orders")
-    .select("order_number,customer_name,contact_id,shipping_required")
+    .select("order_number,customer_name,customer_email,contact_id,shipping_required")
     .eq("tenant_id", tenantId).eq("id", orderId).maybeSingle();
 
   if (orderError || !order) {
@@ -185,14 +185,21 @@ export async function sendOrderStatusEmail(
     return false;
   }
 
-  const { data: contact, error: contactError } = await db.from("contacts")
-    .select("email")
-    .eq("tenant_id", tenantId)
-    .eq("id", order.contact_id)
-    .maybeSingle();
+  let customerEmail = String(order.customer_email || "").trim();
+  if (!customerEmail && order.contact_id) {
+    const { data: contact, error: contactError } = await db.from("contacts")
+      .select("email")
+      .eq("tenant_id", tenantId)
+      .eq("id", order.contact_id)
+      .maybeSingle();
+    if (contactError) {
+      console.warn("Order status email contact lookup failed.", contactError);
+    }
+    customerEmail = String(contact?.email || "").trim();
+  }
 
-  if (contactError || !contact?.email) {
-    console.warn("Order status email skipped: customer email is unavailable.", contactError);
+  if (!customerEmail) {
+    console.warn("Order status email skipped: customer email is unavailable.");
     return false;
   }
 
@@ -223,7 +230,7 @@ export async function sendOrderStatusEmail(
     "Visit Sabi", SITE);
 
   return sendSabiEmail(
-    contact.email,
+    customerEmail,
     title + ": " + order.order_number,
     html,
     message + " Store: " + store + ". Order: " + order.order_number,
