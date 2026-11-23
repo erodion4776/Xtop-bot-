@@ -200,6 +200,115 @@ serve(async (req: Request) => {
       return response({ data: { monthly: usageResult.data || [], settings: settingsResult.data || [] } });
     }
 
+    // =====================================================
+    // SABI DEMO LIVE SUPPORT — SUPER ADMIN ONLY
+    // =====================================================
+    if (body.action === "demo-support-list") {
+      const systemTenantId = "00000000-0000-0000-0000-000000000001";
+      const { data: conversations, error: conversationError } = await sb
+        .from("conversations")
+        .select("id,contact_id,current_module,current_state,context_json,last_message_at,agent_mode")
+        .eq("tenant_id", systemTenantId)
+        .eq("current_module", "SABI_SHOP_DEMO")
+        .order("last_message_at", { ascending: false })
+        .limit(100);
+      if (conversationError) return response({ error: "Could not load demo conversations." }, 500);
+      const active = (conversations || []).filter((c: any) =>
+        c.agent_mode === true || c.context_json?.demo_agent_handoff === true
+      );
+      const contactIds = active.map((c: any) => c.contact_id).filter(Boolean);
+      if (!contactIds.length) return response({ data: [] });
+      const [{ data: contacts, error: contactError }, { data: messages, error: messageError }] = await Promise.all([
+        sb.from("contacts").select("id,phone,name,agent_mode,updated_at").eq("tenant_id", systemTenantId).in("id", contactIds),
+        sb.from("messages").select("id,contact_id,direction,message_type,message_text,body,created_at").eq("tenant_id", systemTenantId).in("contact_id", contactIds).order("created_at", { ascending: true }).limit(1000),
+      ]);
+      if (contactError || messageError) return response({ error: "Could not load demo support messages." }, 500);
+      const contactMap = new Map((contacts || []).map((c: any) => [c.id, c]));
+      return response({ data: active.map((c: any) => ({
+        conversation_id: c.id, contact_id: c.contact_id, state: c.current_state,
+        last_message_at: c.last_message_at, contact: contactMap.get(c.contact_id) || null,
+        messages: (messages || []).filter((m: any) => m.contact_id === c.contact_id).map((m: any) => ({
+          id: m.id, direction: m.direction, type: m.message_type,
+          text: m.message_text || m.body || "", created_at: m.created_at,
+        })),
+      })).filter((c: any) => c.contact) });
+    }
+
+    if (body.action === "demo-support-reply") {
+      const contactId = String(body.contact_id || "");
+      const message = String(body.message || "").trim();
+      if (!/^[0-9a-f-]{36}$/i.test(contactId) || !message || message.length > 4000) {
+        return response({ error: "Select a customer and enter a message of up to 4,000 characters." }, 400);
+      }
+      const systemTenantId = "00000000-0000-0000-0000-000000000001";
+      const { data: contact, error: contactError } = await sb.from("contacts")
+        .select("id,phone,agent_mode").eq("id", contactId).eq("tenant_id", systemTenantId).maybeSingle();
+      if (contactError || !contact) return response({ error: "Demo customer not found." }, 404);
+      const { data: conversation, error: convError } = await sb.from("conversations")
+        .select("id,current_module,context_json,agent_mode").eq("contact_id", contactId)
+        .eq("tenant_id", systemTenantId).eq("current_module", "SABI_SHOP_DEMO").maybeSingle();
+      if (convError || !conversation || conversation.context_json?.demo_agent_handoff !== true) {
+        return response({ error: "This customer is not currently waiting for a live demo agent." }, 409);
+      }
+      const token = Deno.env.get("WHATSAPP_ACCESS_TOKEN") || "";
+      const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "";
+      if (!token || !phoneNumberId) return response({ error: "System WhatsApp sending credentials are not configured." }, 500);
+      const waResponse = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(phoneNumberId)}/messages`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: contact.phone, type: "text", text: { preview_url: false, body: message } }),
+      });
+      const waResult = await waResponse.json().catch(() => ({}));
+      if (!waResponse.ok) {
+        console.error("[Sabi demo support send]", waResponse.status, waResult);
+        return response({ error: waResult?.error?.message || "WhatsApp could not send your reply." }, 502);
+      }
+      const messageId = waResult?.messages?.[0]?.id || null;
+      const { error: saveError } = await sb.from("messages").insert({
+        contact_id: contactId, tenant_id: systemTenantId, direction: "OUTBOUND",
+        message_type: "text", message_text: message, body: message, whatsapp_message_id: messageId,
+      });
+      if (saveError) {
+        console.error("[Sabi demo support message save]", saveError);
+        return response({ error: "WhatsApp sent the reply, but the conversation history could not be saved. Refresh before sending again." }, 500);
+      }
+      return response({ success: true, whatsapp_message_id: messageId });
+    }
+
+    if (body.action === "demo-support-resume") {
+      const contactId = String(body.contact_id || "");
+      if (!/^[0-9a-f-]{36}$/i.test(contactId)) return response({ error: "Select a valid demo customer." }, 400);
+      const systemTenantId = "00000000-0000-0000-0000-000000000001";
+      const { data: contact, error: contactError } = await sb.from("contacts")
+        .select("id,phone").eq("id", contactId).eq("tenant_id", systemTenantId).maybeSingle();
+      const { data: conversation, error: convError } = await sb.from("conversations")
+        .select("id,current_state,context_json").eq("contact_id", contactId).eq("tenant_id", systemTenantId)
+        .eq("current_module", "SABI_SHOP_DEMO").maybeSingle();
+      if (contactError || convError || !contact || !conversation || conversation.context_json?.demo_agent_handoff !== true) {
+        return response({ error: "The live demo handoff could not be found." }, 404);
+      }
+      const nextContext = { ...(conversation.context_json || {}) };
+      delete nextContext.demo_agent_handoff;
+      delete nextContext.agent_mode;
+      const [{ error: contactUpdateError }, { error: conversationUpdateError }] = await Promise.all([
+        sb.from("contacts").update({ agent_mode: false, updated_at: new Date().toISOString() }).eq("id", contactId).eq("tenant_id", systemTenantId),
+        sb.from("conversations").update({ current_module: "SABI_SHOP_DEMO", current_state: "SHOPPING", context_json: nextContext, agent_mode: false, updated_at: new Date().toISOString() }).eq("id", conversation.id).eq("tenant_id", systemTenantId),
+      ]);
+      if (contactUpdateError || conversationUpdateError) return response({ error: "Could not restore the demo bot. Please retry." }, 500);
+      const token = Deno.env.get("WHATSAPP_ACCESS_TOKEN") || "";
+      const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "";
+      if (!token || !phoneNumberId) return response({ error: "System WhatsApp sending credentials are not configured." }, 500);
+      const resumeText = "🤖 Human support has ended. Welcome back to the Sabi Demo Shop! Your shopping session is saved. Reply *menu* to continue browsing, or tell me what product you are looking for.";
+      const waResponse = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(phoneNumberId)}/messages`, {
+        method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: contact.phone, type: "text", text: { body: resumeText } }),
+      });
+      const waResult = await waResponse.json().catch(() => ({}));
+      if (!waResponse.ok) return response({ error: waResult?.error?.message || "Bot mode was restored, but WhatsApp could not send the confirmation." }, 502);
+      await sb.from("messages").insert({ contact_id: contactId, tenant_id: systemTenantId, direction: "OUTBOUND", message_type: "text", message_text: resumeText, body: resumeText, whatsapp_message_id: waResult?.messages?.[0]?.id || null });
+      return response({ success: true });
+    }
+
     if (body.action === "toggle-global-handoff") {
       const reason = String(body.reason || "").trim().slice(0, 500);
       if (typeof body.enabled !== "boolean" || typeof body.expected_enabled !== "boolean" || reason.length < 3) {
