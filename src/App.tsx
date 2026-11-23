@@ -59,7 +59,7 @@ export default function App() {
   const query = new URLSearchParams(window.location.search);
   const hostname = window.location.hostname.toLowerCase();
   const isDashboardHost = hostname === "app.sabibyxtop.com.ng";
-  const isDiscoverPage = hostname === "discover.sabibyxtop.com.ng" || window.location.pathname === "/discover";
+  const isDiscoverPage = hostname === "discover.sabibyxtop.com.ng" || window.location.pathname === "/discover" || query.get("cart") === "1";
   const isMarketplaceCartPage = isDiscoverPage && query.get("cart") === "1";
   const isSuperAdminHost = hostname === "admin.sabibyxtop.com.ng";
   const isConnectPortalHost = hostname === "connect.sabibyxtop.com.ng";
