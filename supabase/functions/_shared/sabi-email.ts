@@ -62,6 +62,20 @@ export async function sendNewOrderEmails(db: any, d: {
   const { data: orderDetails } = await db.from("tenant_orders")
     .select("customer_phone,delivery_address,payment_status")
     .eq("tenant_id", d.tenantId).eq("id", d.orderId).maybeSingle();
+
+  // An ONLINE checkout is only an order request until Paystack confirms payment.
+  // Do not send an "order received" email to the customer or a "new order"
+  // email to the merchant while it remains unpaid. The abandoned-cart reminder
+  // handles unpaid checkouts; payment confirmation sends the receipt later.
+  const paymentStatus = String(orderDetails?.payment_status || "UNPAID").toUpperCase();
+  const isUnpaidOnlineCheckout =
+    String(d.paymentMethod || "").toUpperCase() === "ONLINE" &&
+    paymentStatus !== "PAID";
+  if (isUnpaidOnlineCheckout) {
+    console.log("Order emails suppressed: online checkout has not been paid.", d.orderNumber);
+    return;
+  }
+
   const { data: items } = await db.from("tenant_order_items")
     .select("product_name,quantity,unit_price,line_total")
     .eq("tenant_id", d.tenantId).eq("order_id", d.orderId)
