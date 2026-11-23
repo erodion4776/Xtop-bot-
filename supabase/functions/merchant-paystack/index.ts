@@ -541,6 +541,44 @@ async function syncSubaccountSettlements(
     return rows;
   }
 
+  // Parse Paystack's signed CSV export without exposing customer details in logs.
+  function parseCsvLine(line: string): string[] {
+    const values: string[] = [];
+    let value = "";
+    let quoted = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        if (quoted && line[i + 1] === '"') {
+          value += '"';
+          i++;
+        } else {
+          quoted = !quoted;
+        }
+      } else if (char === "," && !quoted) {
+        values.push(value);
+        value = "";
+      } else {
+        value += char;
+      }
+    }
+    values.push(value);
+    return values;
+  }
+
+  function parseCsv(text: string) {
+    const lines = text.replace(/^\\uFEFF/, "").split(/\\r?\\n/).filter((line) => line.trim());
+    if (lines.length < 2) return { headers: [] as string[], rows: [] as Record<string, string>[] };
+    const headers = parseCsvLine(lines[0]).map((header) => header.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_"));
+    const rows = lines.slice(1).map((line) => {
+      const values = parseCsvLine(line);
+      const row: Record<string, string> = {};
+      headers.forEach((header, index) => { row[header] = values[index] ?? ""; });
+      return row;
+    });
+    return { headers, rows };
+  }
+
   const earliest = charges.reduce((value: string, row: any) =>
     !value || row.created_at < value ? row.created_at : value, "");
   const fromDate = earliest ? new Date(earliest) : new Date();
@@ -648,6 +686,80 @@ async function syncSubaccountSettlements(
   const matchedChargeIds = new Set<string>();
 
   for (const settlement of settlements) {
+    // Transaction Export is a separate source from the transaction-list APIs.
+    // First run it in diagnostic-only mode: never infer settlement from amount
+    // alone, and do not change a charge until the exported identifiers match.
+    try {
+      const exportParams = new URLSearchParams({
+        settlement: String(settlement.id),
+        subaccount_code: String(tenant.paystack_subaccount_code),
+      });
+      if (settlement.settlement_date) {
+        const settlementDay = new Date(settlement.settlement_date);
+        if (Number.isFinite(settlementDay.getTime())) {
+          const exportFrom = new Date(settlementDay);
+          const exportTo = new Date(settlementDay);
+          exportFrom.setUTCDate(exportFrom.getUTCDate() - 2);
+          exportTo.setUTCDate(exportTo.getUTCDate() + 2);
+          exportParams.set("from", exportFrom.toISOString());
+          exportParams.set("to", exportTo.toISOString());
+        }
+      }
+      const exportData = await paystackRequest(`/transaction/export?${exportParams.toString()}`);
+      const exportPath = String(exportData?.path || "");
+      if (!exportPath) {
+        console.log("SABI TRANSACTION EXPORT CHECK:", {
+          tenant_id: tenantId,
+          settlement_id: String(settlement.id),
+          export_path_returned: false,
+        });
+      } else {
+        const exportResponse = await fetch(exportPath);
+        if (!exportResponse.ok) throw new Error("EXPORT_DOWNLOAD_FAILED");
+        const csvText = await exportResponse.text();
+        const parsed = parseCsv(csvText);
+        const idColumn = parsed.headers.find((header) =>
+          ["id", "transaction_id", "transactionid"].includes(header)
+        );
+        const referenceColumn = parsed.headers.find((header) =>
+          ["reference", "transaction_reference", "transactionreference"].includes(header)
+        );
+        const settlementColumn = parsed.headers.find((header) =>
+          ["settlement", "settlement_id", "settlementid"].includes(header)
+        );
+        const exactMatches = parsed.rows.filter((row) =>
+          charges.some((charge: any) =>
+            (idColumn && String(row[idColumn] || "").trim() === String(charge.paystack_transaction_id || "").trim()) ||
+            (referenceColumn && String(row[referenceColumn] || "").trim() === String(charge.payment_reference || "").trim())
+          )
+        );
+        console.log("SABI TRANSACTION EXPORT CHECK:", {
+          tenant_id: tenantId,
+          settlement_id: String(settlement.id),
+          settlement_status: String(settlement.status || ""),
+          csv_rows: parsed.rows.length,
+          csv_headers: parsed.headers,
+          transaction_id_column: idColumn || null,
+          reference_column: referenceColumn || null,
+          settlement_column: settlementColumn || null,
+          exact_local_charge_matches: exactMatches.length,
+          matched_rows: exactMatches.map((row) => ({
+            transaction_id: idColumn ? row[idColumn] : null,
+            reference: referenceColumn ? row[referenceColumn] : null,
+            settlement_id: settlementColumn ? row[settlementColumn] : null,
+            status: row.status || row.transaction_status || null,
+          })),
+          note: "Diagnostic only; no charge status changed by export check.",
+        });
+      }
+    } catch (exportError) {
+      console.error("SABI TRANSACTION EXPORT LOOKUP FAILED:", {
+        tenant_id: tenantId,
+        settlement_id: String(settlement.id),
+        error: exportError instanceof Error ? exportError.message : "UNKNOWN",
+      });
+    }
+
     const rawStatus = String(settlement.status || "").toLowerCase();
     const nextStatus =
       rawStatus === "success" ? "SETTLED" :
