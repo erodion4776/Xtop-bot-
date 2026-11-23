@@ -241,6 +241,24 @@ export default function PublicProduct() {
   const paymentAmount =
     paymentMethod === "POD" ? deliveryFee : onlinePaymentAmount;
 
+  async function saveAbandonedCart() {
+    const email = customerEmail.trim().toLowerCase();
+    if (!product || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) return;
+    try {
+      const { error: cartError } = await supabase.rpc("sabi_capture_abandoned_cart", {
+        p_product_id: product.product_id,
+        p_customer_email: email,
+        p_customer_name: customerName.trim(),
+        p_customer_phone: customerPhone.trim(),
+        p_quantity: quantity,
+        p_checkout_url: window.location.href
+      });
+      if (cartError) console.warn("Sabi cart reminder tracking was not saved.", cartError);
+    } catch (cartError) {
+      console.warn("Sabi cart reminder tracking was not saved.", cartError);
+    }
+  }
+
   async function submitOrder(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -482,6 +500,7 @@ export default function PublicProduct() {
                     type="email"
                     value={customerEmail}
                     onChange={(e) => setCustomerEmail(e.target.value)}
+                    onBlur={saveAbandonedCart}
                     placeholder="you@example.com"
                     required
                   />
