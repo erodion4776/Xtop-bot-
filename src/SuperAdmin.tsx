@@ -129,6 +129,11 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
         const result = await callAdmin("overview");
         setStats(result.data);
       }
+      } else if (target === "Platform Email") {
+        const result = await callAdmin("email-campaign-data");
+        setEmailCampaigns(result.data?.campaigns || []);
+        setEmailCounts({ merchant_count: result.data?.merchant_count || 0, customer_count: result.data?.customer_count || 0 });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load Super Admin data.");
     } finally {
