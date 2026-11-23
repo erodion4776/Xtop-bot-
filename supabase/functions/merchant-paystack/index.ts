@@ -603,6 +603,36 @@ async function syncSubaccountSettlements(
         paid_at: detail.paid_at ?? null,
         fees: detail.fees ?? null,
       });
+
+      const reference = String(charge.paystack_reference || detail.reference || "").trim();
+      if (reference) {
+        try {
+          const verified = await paystackRequest(
+            `/transaction/verify/${encodeURIComponent(reference)}`,
+          );
+          console.log("SABI VERIFY TRANSACTION SETTLEMENT CHECK:", {
+            tenant_id: tenantId,
+            local_charge_id: charge.id,
+            transaction_id: String(verified.id ?? ""),
+            reference: String(verified.reference ?? ""),
+            status: verified.status ?? null,
+            amount: verified.amount ?? null,
+            currency: verified.currency ?? null,
+            settlement: verified.settlement ?? null,
+            subaccount_code: verified.subaccount?.subaccount_code ?? verified.subaccount_code ?? null,
+            paid_at: verified.paid_at ?? null,
+            fees: verified.fees ?? null,
+            gateway_response: verified.gateway_response ?? null,
+          });
+        } catch (verifyError) {
+          console.error("SABI VERIFY TRANSACTION LOOKUP FAILED:", {
+            tenant_id: tenantId,
+            local_charge_id: charge.id,
+            reference,
+            error: verifyError instanceof Error ? verifyError.message : "UNKNOWN",
+          });
+        }
+      }
     } catch (detailError) {
       console.error("SABI DIRECT TRANSACTION DETAIL LOOKUP FAILED:", {
         tenant_id: tenantId,
