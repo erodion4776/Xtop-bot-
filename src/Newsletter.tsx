@@ -23,6 +23,9 @@ export default function Newsletter({tenantId}:Props) {
  const [notice,setNotice]=useState("");
  const [progress,setProgress]=useState("");
  const [showSubscribers,setShowSubscribers]=useState(false);
+ const [subscriberEmail,setSubscriberEmail]=useState("");
+ const [subscriberConsent,setSubscriberConsent]=useState(false);
+ const [addingSubscriber,setAddingSubscriber]=useState(false);
 
  const load=useCallback(async()=>{
   if(!tenantId)return;
@@ -32,6 +35,21 @@ export default function Newsletter({tenantId}:Props) {
   setSubscribers(data.subscribers||[]);setCampaigns(data.campaigns||[]);setSubscriberCount(data.subscriber_count||0);setUsage(data.usage||{campaign_count:0,recipient_count:0});setLoading(false);
  },[tenantId]);
  useEffect(()=>{load();},[load]);
+
+ async function addSubscriber(){
+  setError("");setNotice("");
+  if(!subscriberEmail.trim()){setError("Enter your own email address first.");return;}
+  if(!subscriberConsent){setError("Please confirm that the email owner has agreed to receive newsletters.");return;}
+  setAddingSubscriber(true);
+  try{
+   const {data,error:subscribeError}=await supabase.functions.invoke("sabi-newsletter-public?action=subscribe",{body:{tenant_id:tenantId,email:subscriberEmail.trim(),consent:true}});
+   if(subscribeError||!data?.success)throw new Error(data?.error||subscribeError?.message||"Could not add subscriber.");
+   setSubscriberEmail("");setSubscriberConsent(false);
+   setNotice("Email added as an opted-in subscriber. The subscriber count has been refreshed.");
+   await load();
+  }catch(e){setError(e instanceof Error?e.message:"Could not add subscriber.");}
+  finally{setAddingSubscriber(false);}
+ }
 
  async function createAndSend(event:React.FormEvent<HTMLFormElement>){
   event.preventDefault();setError("");setNotice("");
@@ -68,6 +86,18 @@ export default function Newsletter({tenantId}:Props) {
    <div style={panel}><Users size={20} color="#145b3b"/><div style={{fontSize:12,color:"#64748b",marginTop:8}}>Subscribed customers</div><strong style={{fontSize:26}}>{loading?"…":money(subscriberCount)}</strong></div>
    <div style={panel}><Megaphone size={20} color="#145b3b"/><div style={{fontSize:12,color:"#64748b",marginTop:8}}>Campaigns left this month</div><strong style={{fontSize:26}}>{loading?"…":remainingCampaigns}/2</strong></div>
    <div style={panel}><Mail size={20} color="#145b3b"/><div style={{fontSize:12,color:"#64748b",marginTop:8}}>Recipient allowance left</div><strong style={{fontSize:26}}>{loading?"…":money(remainingRecipients)}</strong></div>
+  </div>
+  <div style={panel}>
+   <h2 style={{margin:"0 0 6px",fontSize:18}}>Add an opted-in subscriber</h2>
+   <p style={{margin:"0 0 12px",color:"#64748b",fontSize:13}}>For testing, add your own email address. Only add an address whose owner has agreed to receive store newsletters.</p>
+   <input type="email" style={field} value={subscriberEmail} onChange={e=>setSubscriberEmail(e.target.value)} placeholder="Your email address" aria-label="Subscriber email address"/>
+   <label style={{display:"flex",gap:9,alignItems:"flex-start",fontSize:13,marginTop:12}}>
+    <input type="checkbox" checked={subscriberConsent} onChange={e=>setSubscriberConsent(e.target.checked)}/>
+    I confirm this email address belongs to me or its owner has explicitly agreed to receive newsletters.
+   </label>
+   <button type="button" onClick={addSubscriber} disabled={addingSubscriber||loading||!subscriberEmail.trim()||!subscriberConsent} style={{...button,marginTop:12,opacity:(addingSubscriber||loading||!subscriberEmail.trim()||!subscriberConsent)?0.55:1}}>
+    {addingSubscriber?"Adding…":"Add subscriber"}
+   </button>
   </div>
   <div style={panel}>
    <h2 style={{margin:"0 0 6px",fontSize:18}}>Create a newsletter</h2>
