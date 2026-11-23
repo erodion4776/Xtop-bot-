@@ -705,6 +705,24 @@ async function createMarketplaceCheckout(body: Record<string, unknown>) {
   });
 }
 
+async function quoteMarketplaceCheckout(body: Record<string, unknown>) {
+  const items = Array.isArray(body.items) ? body.items : [];
+  if (!items.length || items.length > 30) throw new Error("INVALID_ORDER_DETAILS");
+  const normalizedItems = items.map((item: Record<string, unknown>) => ({
+    product_id: String(item.product_id || ""),
+    quantity: Number(item.quantity),
+  }));
+  if (normalizedItems.some((item: {product_id:string;quantity:number}) =>
+    !item.product_id || !Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 100
+  )) throw new Error("INVALID_ORDER_DETAILS");
+  const { data, error } = await db.rpc("sabi_quote_marketplace_checkout", { p_items: normalizedItems });
+  if (error || !data?.success) {
+    console.warn("Marketplace checkout quote failed:", error);
+    throw new Error(error?.message || "MARKETPLACE_QUOTE_FAILED");
+  }
+  return respond(data);
+}
+
 async function verifyMarketplaceCheckout(reference: string) {
   const { data: checkout, error: checkoutError } = await db.from("sabi_marketplace_checkouts")
     .select("id,reference,customer_email,currency,status,payment_status,expected_amount,item_subtotal,delivery_total,commission_total,customer_service_fee,paystack_processing_fee")
@@ -1221,6 +1239,10 @@ Deno.serve(async (req: Request) => {
 
     if (action === "create_marketplace_checkout") {
       return await createMarketplaceCheckout(body);
+    }
+
+    if (action === "quote_marketplace_checkout") {
+      return await quoteMarketplaceCheckout(body);
     }
 
     if (action === "initialize_merchant") {
