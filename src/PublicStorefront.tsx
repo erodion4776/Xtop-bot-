@@ -11,6 +11,7 @@ type StorefrontRow = {
   brand_color: string | null;
   industry: string | null;
   welcome_greeting: string | null;
+  contact_phone: string | null;
   product_id: string | null;
   product_name: string | null;
   product_description: string | null;
@@ -69,7 +70,7 @@ export default function PublicStorefront() {
         setLoading(false);
         return;
       }
-      const { data, error: lookupError } = await supabase.rpc("sabi_get_public_storefront", { p_slug: slug });
+      const { data, error: lookupError } = await supabase.rpc("sabi_get_public_storefront_v2", { p_slug: slug });
       if (cancelled) return;
       if (lookupError) {
         setError("We could not load this store right now. Please try again.");
@@ -225,9 +226,10 @@ export default function PublicStorefront() {
   const brandColor = store.brand_color || "#176b4b";
   const rating = Number(store.seller_rating || 0);
   const reviewCount = Number(store.seller_review_count || 0);
-  const whatsappValue = (store as StorefrontRow & { business_whatsapp?: string | null; whatsapp_number?: string | null; whatsapp_phone?: string | null }).business_whatsapp || (store as StorefrontRow & { whatsapp_number?: string | null }).whatsapp_number || (store as StorefrontRow & { whatsapp_phone?: string | null }).whatsapp_phone || "";
+  const whatsappValue = store.contact_phone || "";
   const whatsappDigits = whatsappValue.replace(/\\D/g, "");
-  const whatsappLink = whatsappDigits ? `https://wa.me/${whatsappDigits.startsWith("0") ? "234" + whatsappDigits.slice(1) : whatsappDigits}` : "";
+  const normalizedWhatsapp = whatsappDigits.startsWith("0") ? `234${whatsappDigits.slice(1)}` : whatsappDigits.startsWith("234") ? whatsappDigits : whatsappDigits.length === 10 ? `234${whatsappDigits}` : whatsappDigits;
+  const whatsappLink = normalizedWhatsapp.length >= 12 ? `https://wa.me/${normalizedWhatsapp}` : "";
 
   return (
     <main style={styles.page}>
@@ -294,17 +296,17 @@ export default function PublicStorefront() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  page:{minHeight:"100vh",background:"#f5f7f6",color:"#14231b",fontFamily:"Inter,system-ui,sans-serif",padding:"0 16px 40px"},
+  page:{minHeight:"100vh",width:"100vw",maxWidth:"none",position:"relative",left:"50%",marginLeft:"-50vw",boxSizing:"border-box",overflowX:"hidden",background:"#f5f7f6",color:"#14231b",fontFamily:"Inter,system-ui,sans-serif",padding:"0 16px 40px"},
   center:{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,color:"#64748b",fontFamily:"system-ui,sans-serif",padding:24,textAlign:"center"},
   spinner:{width:30,height:30,border:"3px solid #dce8df",borderTopColor:"#176b4b",borderRadius:"50%",animation:"sabi-store-spin 1s linear infinite"},
-  header:{maxWidth:1180,margin:"0 auto",height:74,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16,position:"sticky",top:0,zIndex:20,background:"#f5f7f6"},
+  header:{width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"0 auto",height:74,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,position:"sticky",top:0,zIndex:20,background:"#f5f7f6"},
   headerRight:{display:"flex",alignItems:"center",gap:12},
   cartLink:{position:"relative",display:"inline-flex",alignItems:"center",gap:6,padding:"9px 11px",border:"1px solid #dce7df",borderRadius:9,color:"#176b4b",fontWeight:750,fontSize:13,textDecoration:"none",whiteSpace:"nowrap"},
   cartBadge:{position:"absolute",top:-7,right:-7,minWidth:18,height:18,padding:"0 4px",borderRadius:99,background:"#dc2626",color:"#fff",fontSize:10,display:"grid",placeItems:"center"},
   brand:{display:"flex",alignItems:"center",gap:9,textDecoration:"none",color:"#14231b"},
   brandImg:{width:42,height:42,objectFit:"contain"},
   back:{display:"inline-flex",alignItems:"center",gap:7,color:"#176b4b",fontWeight:700,textDecoration:"none",fontSize:13},
-  storeHero:{maxWidth:1180,margin:"14px auto 26px",background:"#0D3B26",color:"#fff",borderRadius:18,padding:"26px 24px",boxShadow:"0 8px 28px rgba(20,35,27,.08)"},
+  storeHero:{width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"14px auto 26px",background:"#0D3B26",color:"#fff",borderRadius:18,padding:"clamp(16px,3vw,26px)",overflow:"hidden",boxShadow:"0 8px 28px rgba(20,35,27,.08)"},
   storeIdentity:{display:"flex",alignItems:"center",gap:18},
   storeLogo:{width:86,height:86,borderRadius:18,objectFit:"contain",background:"#fff"},
   storeLogoPlaceholder:{width:86,height:86,borderRadius:18,display:"grid",placeItems:"center"},
@@ -316,7 +318,7 @@ const styles: Record<string, React.CSSProperties> = {
   chatButton:{display:"inline-flex",alignItems:"center",gap:7,background:"#fff",border:"1px solid #fff",borderRadius:9,padding:"10px 13px",fontWeight:750,color:"#176b4b",textDecoration:"none",fontSize:13,whiteSpace:"nowrap"},
   shareButton:{display:"inline-flex",alignItems:"center",gap:8,background:"#fff",border:"1px solid",borderRadius:9,padding:"10px 14px",fontWeight:750,cursor:"pointer"},
   status:{color:"#176b4b",fontSize:13,margin:"12px 0 0"},
-  catalogue:{maxWidth:1180,margin:"0 auto"},
+  catalogue:{width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"0 auto"},
   catalogueHeading:{display:"flex",alignItems:"end",justifyContent:"space-between",gap:18,flexWrap:"wrap",marginBottom:18,paddingTop:8},
   catalogueTools:{display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"},
   search:{display:"flex",alignItems:"center",gap:9,background:"#fff",border:"1px solid #dfe7e1",borderRadius:10,padding:"0 12px",height:44,minWidth:250,color:"#718278",boxSizing:"border-box"},
@@ -334,6 +336,6 @@ const styles: Record<string, React.CSSProperties> = {
   productRating:{fontSize:11,color:"#718278"},
   addButton:{border:0,color:"#fff",borderRadius:8,padding:"10px 8px",fontWeight:750,display:"flex",alignItems:"center",justifyContent:"center",gap:7,margin:"auto 10px 10px",cursor:"pointer",fontSize:12,whiteSpace:"nowrap"},
   empty:{background:"#fff",borderRadius:14,padding:35,textAlign:"center",color:"#718278"},
-  footer:{maxWidth:1180,margin:"38px auto 0",paddingTop:18,borderTop:"1px solid #e2e9e4",fontSize:12,color:"#718278",textAlign:"center"},
+  footer:{width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"38px auto 0",paddingTop:18,borderTop:"1px solid #e2e9e4",fontSize:12,color:"#718278",textAlign:"center"},
   footerLink:{color:"#176b4b",textDecoration:"none"}
 };
