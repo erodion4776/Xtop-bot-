@@ -78,6 +78,13 @@ jobs:
             --no-verify-jwt \\
             --yes
 
+      - name: Deploy Sabi monthly merchant report
+        run: |
+          npx --no-install supabase functions deploy sabi-monthly-merchant-report \\
+            --project-ref "$SUPABASE_PROJECT_ID" \\
+            --no-verify-jwt \\
+            --yes
+
       - name: Deploy merchant Paystack API
         run: |
           npx --no-install supabase functions deploy merchant-paystack \
