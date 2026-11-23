@@ -67,6 +67,17 @@ export default function PublicProduct() {
 
   useEffect(() => {
     let cancelled = false;
+    supabase.auth.getUser().then(({ data }) => {
+      if (cancelled || !data.user) return;
+      if (data.user.email) setCustomerEmail(current => current || data.user!.email || "");
+      const savedName = String(data.user.user_metadata?.full_name || "");
+      if (savedName) setCustomerName(current => current || savedName);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
 
     async function loadProduct() {
       if (!productId) {
