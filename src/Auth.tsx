@@ -120,7 +120,7 @@ export default function Auth({ onAuthenticated, isPasswordRecovery = false }: Au
     const { error } = await supabase.auth.resetPasswordForEmail(
       email.trim(),
       {
-        redirectTo: `${window.location.origin}/?recovery=1`
+        redirectTo: "https://sabibyxtop.com.ng/?recovery=1"
       }
     );
 
