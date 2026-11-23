@@ -39,6 +39,8 @@ export default function Discover() {
   const [showAllCategories, setShowAllCategories] = useState(false);
   const [categorySearch, setCategorySearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState("");
   const [session, setSession] = useState<Session | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -58,20 +60,27 @@ export default function Discover() {
   const [heroSlide, setHeroSlide] = useState(0);
   const touchStartX = useRef<number | null>(null);
 
-  async function loadProducts() {
-    setLoading(true);
+  const PAGE_SIZE = 24;
+
+  async function loadProducts(reset = true) {
+    if (reset) setLoading(true);
+    else setLoadingMore(true);
     setError("");
+    const offset = reset ? 0 : products.length;
     const { data, error: rpcError } = await supabase.rpc(
       "sabi_get_public_marketplace_products",
-      { p_search: search || null, p_category: category || null, p_limit: 100, p_offset: 0 }
+      { p_search: search || null, p_category: category || null, p_limit: PAGE_SIZE, p_offset: offset }
     );
     if (rpcError) {
       setError("We could not load the marketplace right now. Please try again.");
-      setProducts([]);
+      if (reset) setProducts([]);
     } else {
-      setProducts((data || []) as MarketplaceProduct[]);
+      const page = (data || []) as MarketplaceProduct[];
+      setProducts(current => reset ? page : [...current, ...page]);
+      setHasMore(page.length === PAGE_SIZE);
     }
     setLoading(false);
+    setLoadingMore(false);
   }
 
   async function loadCategories() {
@@ -445,7 +454,11 @@ export default function Discover() {
         {error && <div className="sd-error" role="alert">{error} <button onClick={loadProducts}>Try again</button></div>}
         {loading ? <div className="sd-state"><RefreshCw size={26} className="sd-spin" /><p>Finding products for you...</p></div> : visibleProducts.length === 0 ? (
           <div className="sd-empty"><span><ShoppingBag size={30} /></span><h3>{search || category ? "No matching products yet" : "Sabi Discover is getting ready"}</h3><p>{search || category ? "Try another search or choose a different category." : "As merchants publish their products, their stores and products will appear here."}</p>{(search || category) && <button onClick={() => { setSearch(""); setSearchInput(""); setCategory(""); }}>View all products</button>}</div>
-        ) : <div className="sd-product-grid">{sortedProducts.map(product => <ProductCard product={product} key={product.product_id} />)}</div>}
+        ) : <>
+          <div className="sd-product-grid">{sortedProducts.map(product => <ProductCard product={product} key={product.product_id} />)}</div>
+          {hasMore && <div className="sd-load-more-wrap"><button className="sd-load-more" onClick={() => loadProducts(false)} disabled={loadingMore}>{loadingMore ? "Loading more products..." : "Load more products"} <ArrowRight size={15}/></button></div>}
+          {!hasMore && products.length > 0 && <p className="sd-end-of-results">You’re all caught up. Showing {products.length} products.</p>}
+        </>}
       </section>
 
       <footer className="sd-footer">
