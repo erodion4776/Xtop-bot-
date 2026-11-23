@@ -33,6 +33,8 @@ export default function Discover() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
+  const [showAllCategories, setShowAllCategories] = useState(false);
+  const [categorySearch, setCategorySearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [session, setSession] = useState<Session | null>(null);
@@ -160,7 +162,7 @@ export default function Discover() {
   }
 
   const visibleProducts = useMemo(() => products.filter(product => {
-    const matchesCategory = !category || (product.product_category || "").toLowerCase() === category.toLowerCase();
+    const matchesCategory = !category || categoryFor(product.product_category) === category;
     const term = search.toLowerCase();
     const matchesSearch = !term || [product.product_name, product.product_description || "", product.product_category || "", product.business_name].some(value => value.toLowerCase().includes(term));
     return matchesCategory && matchesSearch;
@@ -171,10 +173,40 @@ export default function Discover() {
     [products]
   );
 
-  const categories = useMemo(() => {
-    const values = products.map(p => p.product_category?.trim()).filter(Boolean) as string[];
-    return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    products.forEach(product => {
+      const name = categoryFor(product.product_category);
+      counts.set(name, (counts.get(name) || 0) + 1);
+    });
+    return Array.from(counts, ([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   }, [products]);
+
+  const categories = useMemo(() => categoryCounts.map(item => item.name), [categoryCounts]);
+  const popularCategories = useMemo(() => categoryCounts.slice(0, 7), [categoryCounts]);
+  const filteredCategories = useMemo(() => categoryCounts.filter(item =>
+    item.name.toLowerCase().includes(categorySearch.trim().toLowerCase())
+  ), [categoryCounts, categorySearch]);
+
+  function categoryFor(rawCategory: string | null): string {
+    const value = (rawCategory || "").trim().toLowerCase();
+    if (!value) return "Other";
+    const rules: [string, string[]][] = [
+      ["Fashion", ["fashion", "cloth", "clothing", "wear", "shoe", "footwear", "bag", "jewel", "accessor", "textile"]],
+      ["Phones & Electronics", ["phone", "mobile", "electronic", "computer", "laptop", "tablet", "camera", "audio", "tv", "gadget"]],
+      ["Home & Living", ["home", "furniture", "kitchen", "bedding", "decor", "appliance", "household", "garden"]],
+      ["Beauty & Personal Care", ["beauty", "cosmetic", "makeup", "skin", "hair", "personal care", "perfume", "fragrance"]],
+      ["Food & Groceries", ["food", "grocery", "drink", "beverage", "snack", "farm", "produce", "fruit", "vegetable"]],
+      ["Health & Wellness", ["health", "wellness", "medical", "fitness", "supplement", "pharmacy"]],
+      ["Baby, Kids & Toys", ["baby", "kids", "children", "toy", "maternity", "school"]],
+      ["Sports & Outdoors", ["sport", "outdoor", "gym", "camping", "fitness gear"]],
+      ["Automotive", ["auto", "car", "vehicle", "motor", "automotive", "spare part"]],
+      ["Books & Learning", ["book", "education", "learning", "stationery", "course"]]
+    ];
+    const match = rules.find(([, words]) => words.some(word => value.includes(word)));
+    return match?.[0] || rawCategory.trim().replace(/\\s+/g, " ").replace(/\\b\\w/g, letter => letter.toUpperCase());
+  }
 
   function submitSearch(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -279,7 +311,7 @@ export default function Discover() {
         <div className="sd-product-image">
           {product.product_image_url ? <img src={product.product_image_url} alt={product.product_name} loading="lazy" /> : <div className="sd-no-image"><ShoppingBag size={32} /></div>}
           {sold > 0 && <span className="sd-product-ribbon"><Zap size={11} /> BEST SELLER</span>}
-          {product.product_category && <span className="sd-product-category">{product.product_category}</span>}
+          {product.product_category && <span className="sd-product-category">{categoryFor(product.product_category)}</span>}
           <button className="sd-wishlist" type="button" aria-label="Sign in to save favourites" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setAccountMode(session ? "profile" : "login"); if (session) loadReviewableOrders(); setAccountOpen(true); }}><Heart size={17} /></button>
         </div>
         <div className="sd-product-info">
@@ -312,10 +344,20 @@ export default function Discover() {
         <a className="sd-merchant-link" href="https://app.sabibyxtop.com.ng">Sell on Sabi <ArrowRight size={15} /></a>
       </header>
 
-      <nav className="sd-category-nav">
-        <button className={!category ? "active" : ""} onClick={() => { setCategory(""); document.getElementById("discover-products")?.scrollIntoView({ behavior: "smooth" }); }}>All categories</button>
-        {categories.slice(0, 8).map(item => <button key={item} className={category === item ? "active" : ""} onClick={() => { setCategory(item); document.getElementById("discover-products")?.scrollIntoView({ behavior: "smooth" }); }}>{item}</button>)}
+      <nav className="sd-category-nav" aria-label="Marketplace categories">
+        <button className={!category ? "active" : ""} onClick={() => { setCategory(""); setShowAllCategories(false); document.getElementById("discover-products")?.scrollIntoView({ behavior: "smooth" }); }}>All products</button>
+        {popularCategories.map(item => <button key={item.name} className={category === item.name ? "active" : ""} onClick={() => { setCategory(item.name); setShowAllCategories(false); document.getElementById("discover-products")?.scrollIntoView({ behavior: "smooth" }); }}>{item.name}</button>)}
+        <button className={showAllCategories ? "active sd-browse-trigger" : "sd-browse-trigger"} onClick={() => setShowAllCategories(value => !value)}>Browse all categories <span>({categoryCounts.length})</span></button>
       </nav>
+      {showAllCategories && <section className="sd-category-browser" aria-label="Browse all marketplace categories">
+        <div className="sd-category-browser-head"><div><strong>Browse categories</strong><small>Explore products from all published Sabi stores.</small></div><button onClick={() => setShowAllCategories(false)} aria-label="Close categories"><X size={18} /></button></div>
+        <label className="sd-category-search"><Search size={16} /><input value={categorySearch} onChange={event => setCategorySearch(event.target.value)} placeholder="Find a category..." /></label>
+        <div className="sd-category-browser-grid">
+          <button className={!category ? "selected" : ""} onClick={() => { setCategory(""); setShowAllCategories(false); }}><span>All products</span><small>{products.length} products</small></button>
+          {filteredCategories.map(item => <button key={item.name} className={category === item.name ? "selected" : ""} onClick={() => { setCategory(item.name); setShowAllCategories(false); document.getElementById("discover-products")?.scrollIntoView({ behavior: "smooth" }); }}><span>{item.name}</span><small>{item.count} {item.count === 1 ? "product" : "products"}</small></button>)}
+          {filteredCategories.length === 0 && <p className="sd-category-no-results">No category matches that search.</p>}
+        </div>
+      </section>}
 
       <section className="sd-hero">
         <div className="sd-hero-content">
@@ -340,7 +382,7 @@ export default function Discover() {
           <button className="sd-refresh" onClick={loadProducts} disabled={loading}><RefreshCw size={15} className={loading ? "sd-spin" : ""} /> Refresh</button>
         </div>
 
-        <div className="sd-categories"><button className={!category ? "selected" : ""} onClick={() => setCategory("")}>All products</button>{categories.map(item => <button key={item} className={category === item ? "selected" : ""} onClick={() => setCategory(item)}>{item}</button>)}</div>
+        {category && <div className="sd-active-category">Showing <strong>{category}</strong><button onClick={() => setCategory("")}>Clear category</button></div>}
         {search && <div className="sd-filter-note"><Search size={14} /> Results for “{search}” <button onClick={() => { setSearch(""); setSearchInput(""); }}>Clear</button></div>}
         {error && <div className="sd-error" role="alert">{error} <button onClick={loadProducts}>Try again</button></div>}
         {loading ? <div className="sd-state"><RefreshCw size={26} className="sd-spin" /><p>Finding products for you...</p></div> : visibleProducts.length === 0 ? (
