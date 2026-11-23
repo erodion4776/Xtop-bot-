@@ -568,6 +568,237 @@ async function createCartOrder(body: Record<string, unknown>) {
   }
 }
 
+
+async function createMarketplaceCheckout(body: Record<string, unknown>) {
+  const items = Array.isArray(body.items) ? body.items : [];
+  const customerName = String(body.customer_name || "").trim();
+  const customerPhone = String(body.customer_phone || "").trim();
+  const customerEmail = String(body.customer_email || "").trim().toLowerCase();
+  const deliveryAddress = String(body.delivery_address || "").trim();
+  if (!items.length || items.length > 30) throw new Error("INVALID_ORDER_DETAILS");
+  if (!customerName || !customerPhone || !customerEmail || !deliveryAddress) throw new Error("CUSTOMER_DETAILS_REQUIRED");
+  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(customerEmail)) throw new Error("INVALID_CUSTOMER_EMAIL");
+
+  const normalizedItems = items.map((item: Record<string, unknown>) => ({
+    product_id: String(item.product_id || ""),
+    quantity: Number(item.quantity),
+  }));
+  if (normalizedItems.some((item: {product_id:string;quantity:number}) =>
+    !item.product_id || !Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 100
+  )) throw new Error("INVALID_ORDER_DETAILS");
+
+  const { data: checkout, error: checkoutError } = await db.rpc("sabi_create_marketplace_checkout", {
+    p_items: normalizedItems,
+    p_customer_name: customerName,
+    p_customer_phone: customerPhone,
+    p_customer_email: customerEmail,
+    p_delivery_address: deliveryAddress,
+    p_notes: body.notes == null ? null : String(body.notes),
+  });
+  if (checkoutError || !checkout?.success) {
+    console.error("Marketplace checkout creation failed:", checkoutError);
+    throw new Error(checkoutError?.message || "ORDER_CREATION_FAILED");
+  }
+
+  const { data: sellerOrders, error: sellerOrdersError } = await db
+    .from("sabi_marketplace_checkout_orders")
+    .select("tenant_id,order_id,merchant_name,item_subtotal,delivery_fee,commission_amount,merchant_payout_amount,subaccount_code")
+    .eq("checkout_id", checkout.checkout_id)
+    .order("created_at", { ascending: true });
+  if (sellerOrdersError || !sellerOrders?.length) throw new Error("MARKETPLACE_CHECKOUT_ORDERS_NOT_FOUND");
+
+  // Notify each seller and run inventory alerts without allowing email failures to block checkout.
+  for (const seller of sellerOrders) {
+    const { data: order } = await db.from("tenant_orders")
+      .select("order_number,customer_name")
+      .eq("id", seller.order_id).eq("tenant_id", seller.tenant_id).maybeSingle();
+    if (order) {
+      await sendNewOrderEmails(db, {
+        tenantId: seller.tenant_id,
+        orderId: seller.order_id,
+        orderNumber: order.order_number,
+        customerName,
+        customerEmail,
+        subtotal: Number(seller.item_subtotal),
+        deliveryFee: Number(seller.delivery_fee),
+        total: Number(seller.item_subtotal) + Number(seller.delivery_fee),
+        paymentMethod: "ONLINE",
+      });
+      await notifyLowStockAfterOrder(seller.tenant_id, seller.order_id);
+    }
+  }
+
+  const subaccounts = sellerOrders.map((seller: Record<string, unknown>) => ({
+    subaccount: String(seller.subaccount_code),
+    share: Math.round(Number(seller.merchant_payout_amount) * 100),
+  }));
+  const allocatedKobo = subaccounts.reduce((sum: number, item: {share:number}) => sum + item.share, 0);
+  const expectedKobo = Math.round(Number(checkout.expected_amount) * 100);
+  if (!subaccounts.length || subaccounts.some((item: {subaccount:string;share:number}) => !item.subaccount || item.share < 0) || allocatedKobo > expectedKobo) {
+    throw new Error("INVALID_MARKETPLACE_SPLIT");
+  }
+
+  const paystackResponse = await fetch("https://api.paystack.co/transaction/initialize", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email: customerEmail,
+      amount: String(expectedKobo),
+      currency: "NGN",
+      reference: checkout.checkout_reference,
+      split: {
+        name: checkout.checkout_reference,
+        type: "flat",
+        currency: "NGN",
+        bearer_type: "account",
+        subaccounts,
+      },
+      callback_url: `https://xtopbot.netlify.app/payment-confirmation.html?reference=${encodeURIComponent(checkout.checkout_reference)}&payment=return`,
+      metadata: {
+        purpose: "SABI_MARKETPLACE_CHECKOUT",
+        checkout_id: checkout.checkout_id,
+        checkout_reference: checkout.checkout_reference,
+        customer_email: customerEmail,
+        seller_count: sellerOrders.length,
+        item_subtotal: checkout.item_subtotal,
+        delivery_total: checkout.delivery_total,
+        commission_total: checkout.commission_total,
+        customer_service_fee: checkout.customer_service_fee,
+        paystack_processing_fee: checkout.paystack_processing_fee,
+        expected_amount: checkout.expected_amount,
+      },
+    }),
+  });
+  const paystack = await paystackResponse.json();
+  if (!paystackResponse.ok || paystack.status !== true || !paystack.data?.authorization_url) {
+    console.error("Marketplace Paystack initialization failed:", paystack);
+    return respond({
+      success: false,
+      order_created: true,
+      checkout_id: checkout.checkout_id,
+      checkout_reference: checkout.checkout_reference,
+      orders: checkout.orders,
+      error: "PAYMENT_INITIALIZATION_FAILED",
+      message: "Your seller orders were created, but Paystack could not start the combined payment. Please contact Sabi support before retrying.",
+    }, 502);
+  }
+
+  return respond({
+    success: true,
+    checkout_id: checkout.checkout_id,
+    checkout_reference: checkout.checkout_reference,
+    seller_count: checkout.seller_count,
+    orders: checkout.orders,
+    item_subtotal: checkout.item_subtotal,
+    delivery_total: checkout.delivery_total,
+    commission_total: checkout.commission_total,
+    customer_service_fee: checkout.customer_service_fee,
+    paystack_processing_fee: checkout.paystack_processing_fee,
+    payment_amount: checkout.expected_amount,
+    currency: "NGN",
+    authorization_url: paystack.data.authorization_url,
+    access_code: paystack.data.access_code,
+    payment_method: "ONLINE",
+  });
+}
+
+async function verifyMarketplaceCheckout(reference: string) {
+  const { data: checkout, error: checkoutError } = await db.from("sabi_marketplace_checkouts")
+    .select("id,reference,customer_email,currency,status,payment_status,expected_amount,item_subtotal,delivery_total,commission_total,customer_service_fee,paystack_processing_fee")
+    .eq("reference", reference).maybeSingle();
+  if (checkoutError || !checkout) throw new Error("PAYMENT_REFERENCE_NOT_FOUND");
+  if (checkout.status === "PAID") {
+    return respond({ success: true, payment_confirmed: true, already_confirmed: true, checkout_id: checkout.id });
+  }
+  if (checkout.status !== "PENDING") throw new Error("PAYMENT_INTENT_FAILED");
+
+  const verificationResponse = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
+    headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` },
+  });
+  const verification = await verificationResponse.json();
+  if (!verificationResponse.ok || verification.status !== true || !verification.data) throw new Error("PAYSTACK_VERIFICATION_FAILED");
+  const transaction = verification.data;
+  if (transaction.status !== "success") {
+    return respond({ success: false, payment_confirmed: false, status: transaction.status || "pending", message: "Payment has not yet been confirmed. You can retry verification." }, 202);
+  }
+  const metadata = transaction.metadata || {};
+  if (
+    transaction.reference !== reference ||
+    transaction.currency !== checkout.currency ||
+    Number(transaction.amount) !== Math.round(Number(checkout.expected_amount) * 100) ||
+    String(transaction.customer?.email || "").trim().toLowerCase() !== checkout.customer_email.toLowerCase() ||
+    metadata.purpose !== "SABI_MARKETPLACE_CHECKOUT" ||
+    metadata.checkout_id !== checkout.id ||
+    metadata.checkout_reference !== reference ||
+    Number(metadata.expected_amount) !== Number(checkout.expected_amount) ||
+    Number(metadata.item_subtotal) !== Number(checkout.item_subtotal) ||
+    Number(metadata.delivery_total) !== Number(checkout.delivery_total) ||
+    Number(metadata.commission_total) !== Number(checkout.commission_total) ||
+    Number(metadata.customer_service_fee) !== Number(checkout.customer_service_fee) ||
+    Number(metadata.paystack_processing_fee) !== Number(checkout.paystack_processing_fee)
+  ) {
+    console.error("Marketplace payment verification mismatch:", reference);
+    throw new Error("PAYMENT_DETAILS_MISMATCH");
+  }
+
+  const { data: confirmation, error: confirmationError } = await db.rpc("sabi_confirm_marketplace_checkout_payment", {
+    p_reference: reference,
+    p_paystack_transaction_id: String(transaction.id),
+    p_paid_amount: Number(checkout.expected_amount),
+    p_currency: checkout.currency,
+  });
+  if (confirmationError || confirmation?.success !== true) {
+    console.error("Marketplace checkout confirmation failed:", confirmationError, confirmation);
+    throw new Error("ORDER_PAYMENT_CONFIRMATION_FAILED");
+  }
+
+  const { data: sellerOrders } = await db.from("sabi_marketplace_checkout_orders")
+    .select("tenant_id,order_id,merchant_name,item_subtotal,delivery_fee")
+    .eq("checkout_id", checkout.id);
+  for (const seller of sellerOrders || []) {
+    const { data: order } = await db.from("tenant_orders").select("order_number,customer_name")
+      .eq("id", seller.order_id).eq("tenant_id", seller.tenant_id).maybeSingle();
+    if (order && checkout.customer_email) {
+      await sendPaymentReceiptEmail(db, {
+        tenantId: seller.tenant_id,
+        orderId: seller.order_id,
+        orderNumber: order.order_number,
+        customerEmail: checkout.customer_email,
+        customerName: order.customer_name || "",
+        amount: Number(seller.item_subtotal) + Number(seller.delivery_fee),
+      });
+    }
+  }
+  return respond({ ...confirmation, checkout_reference: reference });
+}
+
+async function getMarketplacePaymentDetails(reference: string) {
+  const { data: checkout, error } = await db.from("sabi_marketplace_checkouts")
+    .select("id,reference,currency,status,payment_status,expected_amount,item_subtotal,delivery_total,created_at")
+    .eq("reference", reference).maybeSingle();
+  if (error || !checkout) throw new Error("PAYMENT_REFERENCE_NOT_FOUND");
+  const { data: sellers } = await db.from("sabi_marketplace_checkout_orders")
+    .select("order_id,merchant_name,item_subtotal,delivery_fee")
+    .eq("checkout_id", checkout.id);
+  return respond({
+    success: true,
+    payment_confirmed: checkout.payment_status === "PAID",
+    payment_status: checkout.payment_status,
+    amount: Number(checkout.expected_amount),
+    currency: checkout.currency,
+    checkout_reference: checkout.reference,
+    sellers: (sellers || []).map((seller: Record<string, unknown>) => ({
+      order_id: seller.order_id,
+      merchant_name: seller.merchant_name,
+      subtotal: Number(seller.item_subtotal),
+      delivery_fee: Number(seller.delivery_fee),
+    })),
+  });
+}
+
 // AUTHENTICATED MERCHANT PAYMENT INITIALIZATION
 async function initializeMerchantOrder(
   req: Request,
@@ -988,15 +1219,23 @@ Deno.serve(async (req: Request) => {
       return await createCartOrder(body);
     }
 
+    if (action === "create_marketplace_checkout") {
+      return await createMarketplaceCheckout(body);
+    }
+
     if (action === "initialize_merchant") {
       return await initializeMerchantOrder(req, body);
     }
 
     if (action === "payment_details") {
+      const reference = String(body.reference || "").trim();
+      if (reference.startsWith("SABI-MKT-")) return await getMarketplacePaymentDetails(reference);
       return await getPublicPaymentDetails(body);
     }
 
     if (action === "verify") {
+      const reference = String(body.reference || "").trim();
+      if (reference.startsWith("SABI-MKT-")) return await verifyMarketplaceCheckout(reference);
       return await verifyOrderPayment(body);
     }
 
