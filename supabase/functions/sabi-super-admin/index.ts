@@ -298,7 +298,7 @@ serve(async (req: Request) => {
       });
       const waResult = await waResponse.json().catch(() => ({}));
       if (!waResponse.ok) return response({ error: waResult?.error?.message || "WhatsApp could not send the return-to-bot message. The support session remains open." }, 502);
-      const nextContext = isDemo ? { ...(conversation.context_json || {}) } : { sabi_gateway: true };
+      const nextContext: Record<string, any> = isDemo ? { ...(conversation.context_json || {}) } : { sabi_gateway: true };
       delete nextContext.demo_agent_handoff;
       delete nextContext.agent_mode;
       const [{ error: contactUpdateError }, { error: conversationUpdateError }] = await Promise.all([
