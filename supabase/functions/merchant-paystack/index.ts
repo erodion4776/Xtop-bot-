@@ -609,21 +609,27 @@ async function syncSubaccountSettlements(
     // and the settlement ID. This is an official Paystack filter and gives
     // us the actual transactions credited through this subaccount.
     if (transactions.length === 0) {
+      // Query the settlement alone first. Paystack's subaccount filter can
+      // return an empty intersection for subaccount settlement IDs; exact
+      // charge ID/reference matching below still prevents cross-tenant or
+      // unrelated transactions from being applied.
       const fallbackTransactions = await fetchPaystackPages((page) => {
         const txParams = new URLSearchParams({
-          subaccount_code: String(tenant.paystack_subaccount_code),
           settlement: String(settlement.id),
           perPage: String(PAGE_SIZE),
           page: String(page),
         });
         return `/transaction?${txParams.toString()}`;
       });
+      console.log("SABI SETTLEMENT TRANSACTION API FALLBACK CHECK:", {
+        tenant_id: tenantId,
+        settlement_id: String(settlement.id),
+        settlement_status: rawStatus,
+        settlement_date: settlement.settlement_date || null,
+        settlement_total_amount: settlement.total_amount ?? null,
+        transactions_found: fallbackTransactions.length,
+      });
       if (fallbackTransactions.length > 0) {
-        console.log("SABI SETTLEMENT TRANSACTION API FALLBACK MATCH:", {
-          tenant_id: tenantId,
-          settlement_id: String(settlement.id),
-          transactions_found: fallbackTransactions.length,
-        });
         transactions = fallbackTransactions;
       }
     }
