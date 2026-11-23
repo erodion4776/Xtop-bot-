@@ -48,29 +48,72 @@ export async function sendMerchantWelcomeEmail(email: string, ownerName: string,
 }
 
 export async function sendNewOrderEmails(db: any, d: {
-  tenantId: string; orderNumber: string; customerName: string; customerEmail: string;
-  subtotal: number; deliveryFee: number; total: number; paymentMethod: string;
+  tenantId: string; orderId: string; orderNumber: string; customerName: string;
+  customerEmail: string; subtotal: number; deliveryFee: number; total: number;
+  paymentMethod: string;
 }): Promise<void> {
-  const { data: tenant } = await db.from("tenants").select("business_name,name").eq("id", d.tenantId).maybeSingle();
+  const { data: tenant } = await db.from("tenants")
+    .select("business_name,name").eq("id", d.tenantId).maybeSingle();
   const store = tenant?.business_name || tenant?.name || "the store";
-  const money = (n: number) => new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 2 }).format(Number(n || 0));
+  const money = (n: number) => new Intl.NumberFormat("en-NG", {
+    style: "currency", currency: "NGN", maximumFractionDigits: 2,
+  }).format(Number(n || 0));
+
+  const { data: orderDetails } = await db.from("tenant_orders")
+    .select("customer_phone,delivery_address,payment_status")
+    .eq("tenant_id", d.tenantId).eq("id", d.orderId).maybeSingle();
+  const { data: items } = await db.from("tenant_order_items")
+    .select("product_name,quantity,unit_price,line_total")
+    .eq("tenant_id", d.tenantId).eq("order_id", d.orderId)
+    .order("created_at", { ascending: true });
+
   const customerHtml = layout("We received your order " + esc(d.orderNumber),
-    '<p>Hello ' + esc(d.customerName) + ',</p><p>Thank you for shopping with <strong>' + esc(store) + '</strong>. Your order has been received.</p><p>Items subtotal: ' + money(d.subtotal) + '<br>Delivery fee: ' + money(d.deliveryFee) + '<br><strong>Order total: ' + money(d.total) + '</strong></p><p>Payment method: ' + esc(d.paymentMethod) + '. We will update you as your order progresses.</p>',
+    '<p>Hello ' + esc(d.customerName) + ',</p><p>Thank you for shopping with <strong>' +
+    esc(store) + '</strong>. Your order has been received.</p><p>Items subtotal: ' +
+    money(d.subtotal) + '<br>Delivery fee: ' + money(d.deliveryFee) +
+    '<br><strong>Order total: ' + money(d.total) +
+    '</strong></p><p>Payment method: ' + esc(d.paymentMethod) +
+    '. We will update you as your order progresses.</p>',
     "Visit Sabi", SITE);
   await sendSabiEmail(d.customerEmail, "Order received: " + d.orderNumber, customerHtml,
     "Your order " + d.orderNumber + " with " + store + " has been received. Total: " + money(d.total));
 
   const { data: membership } = await db.from("tenant_members").select("user_id")
-    .eq("tenant_id", d.tenantId).eq("role", "OWNER").eq("is_active", true).limit(1).maybeSingle();
+    .eq("tenant_id", d.tenantId).eq("role", "OWNER").eq("is_active", true)
+    .limit(1).maybeSingle();
   if (membership?.user_id) {
     const { data: userData } = await db.auth.admin.getUserById(membership.user_id);
     const merchantEmail = userData?.user?.email;
     if (merchantEmail) {
+      const itemRows = (items || []).map((item: any) =>
+        '<tr><td style="padding:9px 6px;border-bottom:1px solid #e8eee9">' +
+        esc(item.product_name || "Product") + '</td><td align="center" style="padding:9px 6px;border-bottom:1px solid #e8eee9">' +
+        esc(item.quantity) + '</td><td align="right" style="padding:9px 6px;border-bottom:1px solid #e8eee9">' +
+        money(Number(item.unit_price || 0)) + '</td><td align="right" style="padding:9px 6px;border-bottom:1px solid #e8eee9">' +
+        money(Number(item.line_total ?? Number(item.unit_price || 0) * Number(item.quantity || 0))) +
+        '</td></tr>'
+      ).join("");
+      const itemTable = '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0">' +
+        '<thead><tr><th align="left">Product</th><th>Qty</th><th align="right">Unit price</th><th align="right">Amount</th></tr></thead>' +
+        '<tbody>' + (itemRows || '<tr><td colspan="4">Order item details are not available.</td></tr>') + '</tbody></table>';
+      const paymentStatus = String(orderDetails?.payment_status || "PENDING").replace(/_/g, " ");
       const merchantHtml = layout("New order: " + esc(d.orderNumber),
-        '<p>Your store <strong>' + esc(store) + '</strong> has received a new order.</p><p>Customer: ' + esc(d.customerName) + '<br>Customer email: ' + esc(d.customerEmail) + '<br>Order total: <strong>' + money(d.total) + '</strong><br>Payment method: ' + esc(d.paymentMethod) + '</p>',
+        '<p>Your store <strong>' + esc(store) + '</strong> has received a new order.</p>' +
+        '<p><strong>Customer details</strong><br>Name: ' + esc(d.customerName) +
+        '<br>Phone: ' + esc(orderDetails?.customer_phone || "Not provided") +
+        '<br>Email: ' + esc(d.customerEmail) +
+        '<br>Delivery address: ' + esc(orderDetails?.delivery_address || "Not provided") + '</p>' +
+        '<p><strong>Order items</strong></p>' + itemTable +
+        '<p>Items subtotal: ' + money(d.subtotal) + '<br>Delivery fee: ' + money(d.deliveryFee) +
+        '<br><strong>Order total: ' + money(d.total) + '</strong></p>' +
+        '<p>Payment method: ' + esc(d.paymentMethod) + '<br>Payment status: ' + esc(paymentStatus) + '</p>',
         "Open merchant dashboard", DASHBOARD);
       await sendSabiEmail(merchantEmail, "New customer order: " + d.orderNumber, merchantHtml,
-        "New order " + d.orderNumber + " from " + d.customerName + ". Total: " + money(d.total) + ". Dashboard: " + DASHBOARD);
+        "New order " + d.orderNumber + " from " + d.customerName +
+        ". Items: " + (items || []).map((item: any) =>
+          String(item.product_name || "Product") + " x " + String(item.quantity)
+        ).join(", ") + ". Total: " + money(d.total) +
+        ". Payment: " + d.paymentMethod + " (" + paymentStatus + "). Dashboard: " + DASHBOARD);
     }
   }
 }
