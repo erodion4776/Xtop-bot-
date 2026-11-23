@@ -451,3 +451,62 @@ export async function sendMonthlyMerchantSalesReportEmail(d: {
     ". Unpaid order value: " + money(d.pendingValue) + ". Dashboard: " + DASHBOARD;
   return sendSabiEmail(d.email, "Your monthly Sabi sales report: " + d.monthLabel, html, textBody);
 }
+
+
+export async function sendLowStockAlertEmail(db: any, d: {
+  tenantId: string;
+  products: Array<{ name: string; remaining: number; alertType: "LOW_STOCK" | "OUT_OF_STOCK" }>;
+}): Promise<boolean> {
+  if (!d.products.length) return false;
+
+  const { data: membership, error: membershipError } = await db.from("tenant_members")
+    .select("user_id")
+    .eq("tenant_id", d.tenantId)
+    .eq("role", "OWNER")
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+
+  if (membershipError || !membership?.user_id) {
+    console.warn("Low-stock email skipped: active merchant owner not found.", membershipError);
+    return false;
+  }
+
+  const { data: userData, error: userError } = await db.auth.admin.getUserById(membership.user_id);
+  const merchantEmail = userData?.user?.email;
+  if (userError || !merchantEmail) {
+    console.warn("Low-stock email skipped: merchant email unavailable.", userError);
+    return false;
+  }
+
+  const { data: tenant } = await db.from("tenants")
+    .select("business_name,name").eq("id", d.tenantId).maybeSingle();
+  const store = tenant?.business_name || tenant?.name || "your store";
+
+  const rows = d.products.map((p) => {
+    const isOut = p.alertType === "OUT_OF_STOCK" || p.remaining <= 0;
+    return '<tr><td style="padding:10px 8px;border-bottom:1px solid #e8eee9">' +
+      esc(p.name) + '</td><td align="right" style="padding:10px 8px;border-bottom:1px solid #e8eee9"><strong>' +
+      (isOut ? "Out of stock" : esc(p.remaining) + " remaining") +
+      '</strong></td></tr>';
+  }).join("");
+
+  const hasOut = d.products.some((p) => p.alertType === "OUT_OF_STOCK" || p.remaining <= 0);
+  const heading = hasOut ? "Stock needs your attention" : "Your product stock is running low";
+  const html = layout(heading,
+    '<p>Hello,</p><p>This is an inventory alert for <strong>' + esc(store) +
+    '</strong>. Please review the following product stock levels.</p>' +
+    '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0">' +
+    '<thead><tr><th align="left">Product</th><th align="right">Stock status</th></tr></thead><tbody>' +
+    rows + '</tbody></table><p>Update your quantities or restock these products from your Sabi dashboard.</p>',
+    "Manage products", DASHBOARD);
+
+  return sendSabiEmail(
+    merchantEmail,
+    (hasOut ? "Out of stock alert" : "Low stock alert") + " — " + store,
+    html,
+    "Inventory alert for " + store + ": " + d.products.map((p) =>
+      p.name + " (" + (p.remaining <= 0 ? "out of stock" : p.remaining + " remaining") + ")"
+    ).join("; ") + ". Manage products: " + DASHBOARD,
+  );
+}
