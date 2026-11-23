@@ -291,6 +291,7 @@ export async function sendAbandonedCartEmail(d: {
   productPrice?: number | string | null;
   quantity: number;
   checkoutUrl: string;
+  orderNumber?: string | null;
 }): Promise<boolean> {
   const money = new Intl.NumberFormat("en-NG", {
     style: "currency", currency: "NGN", maximumFractionDigits: 2,
@@ -298,20 +299,26 @@ export async function sendAbandonedCartEmail(d: {
   const name = d.customerName || "there";
   const store = d.businessName || "the store";
   const product = d.productName || "the item you viewed";
-  const html = layout("You left something in your cart",
-    '<p>Hello ' + esc(name) + ',</p><p>You recently showed interest in <strong>' +
-    esc(product) + '</strong> at <strong>' + esc(store) +
-    '</strong>. Your checkout is still available if you would like to continue.</p>' +
-    '<p>Quantity: ' + esc(d.quantity) + '<br>Price per item: ' + money +
-    '</p><p>No order has been placed and no payment has been taken.</p>',
-    "Continue shopping", d.checkoutUrl);
+  const hasOrder = Boolean(d.orderNumber);
+  const intro = hasOrder
+    ? '<p>Your order <strong>' + esc(d.orderNumber || "") + '</strong> at <strong>' + esc(store) +
+      '</strong> is awaiting payment. We have not received payment confirmation yet.</p>'
+    : '<p>You recently showed interest in <strong>' + esc(product) + '</strong> at <strong>' +
+      esc(store) + '</strong>. Your checkout is still available if you would like to continue.</p>';
+  const html = layout(hasOrder ? "Your Sabi order is awaiting payment" : "You left something in your cart",
+    '<p>Hello ' + esc(name) + ',</p>' + intro +
+    '<p>Quantity: ' + esc(d.quantity) + '<br>Cart value: ' + money +
+    '</p><p>' + (hasOrder
+      ? 'No payment has been confirmed. If you have already paid, please allow time for verification.'
+      : 'No order has been placed and no payment has been taken.') + '</p>',
+    "Continue checkout", d.checkoutUrl);
   return sendSabiEmail(
     d.email,
-    "Your " + product + " is waiting at " + store,
+    hasOrder ? "Payment pending for order " + d.orderNumber : "Your " + product + " is waiting at " + store,
     html,
-    "Hello " + name + ", you recently viewed " + product + " at " + store +
-      ". Quantity: " + d.quantity + ". Price per item: " + money +
-      ". Continue shopping: " + d.checkoutUrl +
-      ". No order has been placed and no payment has been taken."
+    "Hello " + name + ". " + (hasOrder
+      ? "Order " + d.orderNumber + " at " + store + " is awaiting payment. No payment has been confirmed yet. "
+      : "You recently viewed " + product + " at " + store + ". No order has been placed and no payment has been taken. ") +
+      "Cart value: " + money + ". Continue checkout: " + d.checkoutUrl
   );
 }
