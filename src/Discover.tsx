@@ -68,8 +68,8 @@ export default function Discover() {
     setError("");
     const offset = reset ? 0 : products.length;
     const { data, error: rpcError } = await supabase.rpc(
-      "sabi_get_public_marketplace_products",
-      { p_search: search || null, p_category: category || null, p_limit: PAGE_SIZE, p_offset: offset }
+      "sabi_get_public_marketplace_products_v2",
+      { p_search: search || null, p_category: category || null, p_limit: PAGE_SIZE, p_offset: offset, p_sort: sortBy }
     );
     if (rpcError) {
       setError("We could not load the marketplace right now. Please try again.");
@@ -103,7 +103,7 @@ export default function Discover() {
 
   useEffect(() => {
     loadProducts();
-  }, [category, search]);
+  }, [category, search, sortBy]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setHeroSlide(current => (current + 1) % 6), 5600);
@@ -437,7 +437,7 @@ export default function Discover() {
       </section>
 
       <section className="sd-market" id="discover-products">
-        {bestSellers.length >= 2 && !search && !category && (
+        {bestSellers.length >= 2 && !search && !category && sortBy === "featured" && (
           <div className="sd-best-sellers">
             <div className="sd-section-heading"><div><span className="sd-eyebrow"><Zap size={13} /> POPULAR WITH CUSTOMERS</span><h2>Best sellers</h2><p>Ranked using completed, paid orders.</p></div><span className="sd-live-label">Based on real sales</span></div>
             <div className="sd-product-grid">{bestSellers.map(product => <ProductCard product={product} key={product.product_id} />)}</div>
