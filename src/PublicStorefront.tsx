@@ -172,7 +172,7 @@ export default function PublicStorefront() {
 
   async function shareStore() {
     if (!store) return;
-    const url = `https://discover.sabibyxtop.com.ng/?store=${encodeURIComponent(store.business_slug)}`;
+    const url = `https://discover.sabibyxtop.com.ng/share/store/${encodeURIComponent(store.business_slug)}`;
     try {
       if (navigator.share) {
         await navigator.share({ title: store.business_name, text: `Shop ${store.business_name} on Sabi Discover.`, url });
