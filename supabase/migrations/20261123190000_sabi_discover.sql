@@ -42,6 +42,7 @@ as $$
   where ms.is_published = true
     and p.status = 'ACTIVE'
     and p.is_active = true
+    and p.price is not null
     and p.stock_quantity > 0
     and p.tenant_id is not null
     and t.is_active = true
