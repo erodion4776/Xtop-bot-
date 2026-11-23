@@ -156,7 +156,7 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
 
   async function resumeDemoBot() {
     const chat = supportChats.find((x) => x.contact_id === selectedSupportId);
-    if (!chat || !window.confirm("End live support and return this customer to the Sabi demo bot?")) return;
+    if (!chat || !window.confirm(chat.kind === "DEMO" ? "End live support and return this customer to the Sabi demo bot?" : "End this support session and return this customer to the Sabi menu?")) return;
     setBusy(true); setError(""); setNotice("");
     try {
       await callAdmin("support-resume", { contact_id: chat.contact_id, conversation_id: chat.conversation_id });
