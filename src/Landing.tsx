@@ -108,7 +108,7 @@ export default function Landing() {
           <span>Sabi <small>by XTOP</small></span>
         </a>
         <nav aria-label="Main navigation">
-          <a href="https://discover.sabibyxtop.com.ng">Discover</a>
+          <a href="/discover">Discover</a>
           <a href="#how-it-works">How it works</a>
           <a href="#features">Why Sabi</a>
           <a href="#demo">See the demo</a>
