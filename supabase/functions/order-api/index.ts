@@ -237,6 +237,21 @@ async function createOrder(body: Record<string, unknown>) {
     throw new Error("PAYMENT_INTENT_NOT_FOUND");
   }
 
+  // Convert a matching saved cart into an order so it cannot receive a reminder.
+  const { error: cartCloseError } = await db.from("sabi_abandoned_carts")
+    .update({
+      status: "ORDERED",
+      order_id: String(order.order_id),
+      updated_at: new Date().toISOString()
+    })
+    .eq("tenant_id", intent.tenant_id)
+    .eq("product_id", productId)
+    .eq("customer_email", customerEmail)
+    .eq("status", "ACTIVE");
+  if (cartCloseError) {
+    console.warn("Could not close the abandoned-cart record for this order.", cartCloseError);
+  }
+
   // Best-effort branded emails; order creation must not fail if email delivery is unavailable.
   await sendNewOrderEmails(db, {
     tenantId: intent.tenant_id,
