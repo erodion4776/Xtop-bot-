@@ -632,6 +632,43 @@ async function syncSubaccountSettlements(
       if (fallbackTransactions.length > 0) {
         transactions = fallbackTransactions;
       }
+
+      // If the settlement filter is not populated for subaccount payouts,
+      // list this merchant's transactions for a narrow settlement-date window.
+      // Only accept rows whose own settlement field exactly matches this
+      // settlement ID; this prevents another payout batch being marked settled.
+      if (transactions.length === 0 && settlement.settlement_date) {
+        const settlementDay = new Date(settlement.settlement_date);
+        if (Number.isFinite(settlementDay.getTime())) {
+          const from = new Date(settlementDay);
+          const to = new Date(settlementDay);
+          from.setUTCDate(from.getUTCDate() - 2);
+          to.setUTCDate(to.getUTCDate() + 2);
+          const merchantTransactions = await fetchPaystackPages((page) => {
+            const txParams = new URLSearchParams({
+              subaccount_code: String(tenant.paystack_subaccount_code),
+              from: from.toISOString(),
+              to: to.toISOString(),
+              perPage: String(PAGE_SIZE),
+              page: String(page),
+            });
+            return `/transaction?${txParams.toString()}`;
+          });
+          const exactSettlementTransactions = merchantTransactions.filter(
+            (transaction: any) =>
+              String(transaction.settlement ?? "") === String(settlement.id)
+          );
+          console.log("SABI SUBACCOUNT DATE-WINDOW FALLBACK CHECK:", {
+            tenant_id: tenantId,
+            settlement_id: String(settlement.id),
+            merchant_transactions_found: merchantTransactions.length,
+            exact_settlement_matches: exactSettlementTransactions.length,
+          });
+          if (exactSettlementTransactions.length > 0) {
+            transactions = exactSettlementTransactions;
+          }
+        }
+      }
     }
 
     transactionsChecked += transactions.length;
