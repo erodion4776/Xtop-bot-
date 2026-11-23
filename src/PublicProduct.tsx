@@ -498,6 +498,14 @@ export default function PublicProduct() {
         <span style={styles.powered}>Powered by Sabi</span>
       </header>
 
+      <nav aria-label="Breadcrumb" style={{maxWidth:1200,margin:"18px auto 12px",fontSize:12,color:"#64748b",display:"flex",gap:8,flexWrap:"wrap"}}>
+        <a href="/" style={{color:"#176b4b",textDecoration:"none",fontWeight:600}}>Sabi Discover</a>
+        <span>›</span>
+        <a href={`/?store=${encodeURIComponent(product.business_slug)}`} style={{color:"#176b4b",textDecoration:"none",fontWeight:600}}>{product.business_name}</a>
+        {product.product_category && <><span>›</span><span>{product.product_category}</span></>}
+        <span>›</span><span style={{color:"#334155"}}>{product.product_name}</span>
+      </nav>
+
       <section style={styles.productCard}>
         <div style={styles.imageContainer}>
           {product.product_image_url ? (
@@ -527,6 +535,11 @@ export default function PublicProduct() {
             {money(unitPrice)}
           </h2>
 
+          <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",margin:"8px 0 14px",fontSize:12,color:"#64748b"}}>
+            <span style={{color:"#176b4b",fontWeight:700}}>Sold by {product.business_name}</span>
+            <a href={`/?store=${encodeURIComponent(product.business_slug)}`} style={{color:"#176b4b",textDecoration:"none",fontWeight:700}}>Visit store</a>
+          </div>
+
           <div style={styles.stock}>
             <span
               style={{
@@ -542,10 +555,16 @@ export default function PublicProduct() {
 
           {product.product_description && (
             <div style={styles.description}>
-              <h3>Product description</h3>
+              <h3>Product details</h3>
               <p>{product.product_description}</p>
             </div>
           )}
+
+          <div style={{display:"flex",gap:16,flexWrap:"wrap",marginTop:18,padding:"14px 0",borderTop:"1px solid #edf0f2",borderBottom:"1px solid #edf0f2",fontSize:12,color:"#526b5d"}}>
+            <span>✓ Secure checkout</span>
+            <span>✓ Paystack protected payment</span>
+            <span>✓ Order directly from seller</span>
+          </div>
 
           {paymentChecking && (
             <div style={styles.messageBox}>
@@ -819,6 +838,12 @@ export default function PublicProduct() {
         </div>
       </section>
 
+      <section style={{width:"min(100% - 32px,1200px)",margin:"0 auto 28px",background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,padding:20,boxSizing:"border-box"}}>
+        <h2 style={{fontSize:18,margin:"0 0 12px"}}>About this product</h2>
+        <p style={{fontSize:14,lineHeight:1.7,color:"#526b5d",margin:0}}>{product.product_description || `Buy ${product.product_name} from ${product.business_name} on Sabi Discover.`}</p>
+        <p style={{fontSize:12,color:"#64748b",margin:"12px 0 0"}}>Product information provided by the seller. Contact the merchant for more details.</p>
+      </section>
+
       <footer style={styles.pageFooter}>
         <span>© {new Date().getFullYear()} {product.business_name}</span>
         <span>Store powered by Sabi by XTOP</span>
@@ -830,15 +855,16 @@ export default function PublicProduct() {
 const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: "100vh",
-    background: "#f4f7f6",
-    color: "#17211d",
+    background: "#f4f6f8",
+    color: "#282c34",
     fontFamily: "Arial, sans-serif"
   },
   header: {
     minHeight: 68,
-    padding: "12px 5%",
+    padding: "12px max(5%, calc((100% - 1200px)/2))",
     background: "#fff",
     borderBottom: "1px solid #e5e7eb",
+    boxShadow: "0 2px 8px rgba(0,0,0,.04)",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
@@ -868,22 +894,23 @@ const styles: Record<string, React.CSSProperties> = {
   },
   powered: { color: "#64748b", fontSize: 12 },
   productCard: {
-    width: "min(100% - 32px, 950px)",
-    margin: "35px auto",
+    width: "min(100% - 32px, 1200px)",
+    margin: "0 auto 28px",
     background: "#fff",
-    borderRadius: 18,
+    borderRadius: 10,
     overflow: "hidden",
-    boxShadow: "0 8px 35px rgba(0,0,0,0.06)",
+    border: "1px solid #e5e7eb",
+    boxShadow: "0 3px 14px rgba(0,0,0,.045)",
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))"
+    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)"
   },
-  imageContainer: { minHeight: 300, background: "#f1f5f9" },
+  imageContainer: { minHeight: 440, background: "#fff",padding:24,display:"flex",alignItems:"center",justifyContent:"center",borderRight:"1px solid #edf0f2" },
   productImage: {
     width: "100%",
     height: "100%",
     minHeight: 300,
     maxHeight: 560,
-    objectFit: "cover",
+    objectFit: "contain",
     display: "block"
   },
   noImage: {
@@ -896,7 +923,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#64748b"
   },
   details: {
-    padding: "32px 26px",
+    padding: "28px 30px",
     display: "flex",
     flexDirection: "column",
     alignItems: "flex-start"
@@ -909,11 +936,11 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12
   },
   productName: {
-    fontSize: "clamp(25px, 5vw, 36px)",
+    fontSize: "clamp(24px, 3vw, 32px)",
     lineHeight: 1.2,
     margin: "16px 0 8px"
   },
-  price: { fontSize: 27, margin: "8px 0 15px" },
+  price: { fontSize: 30, margin: "8px 0 15px",fontWeight:800 },
   stock: {
     display: "flex",
     alignItems: "center",
@@ -929,10 +956,13 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#475569"
   },
   checkout: {
-    marginTop: 30,
+    marginTop: 24,
     width: "100%",
-    borderTop: "1px solid #e5e7eb",
-    paddingTop: 22
+    border: "1px solid #e2e8f0",
+    borderRadius: 10,
+    background: "#fbfcfd",
+    padding: 18,
+    boxSizing: "border-box"
   },
   sectionTitle: {
     display: "flex",
@@ -1022,7 +1052,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#92400e"
   },
   orderButton: {
-    minHeight: 50,
+    minHeight: 52,
     padding: "12px 16px",
     border: 0,
     borderRadius: 10,
