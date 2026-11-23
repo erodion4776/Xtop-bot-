@@ -131,6 +131,27 @@ export async function sendPaymentReceiptEmail(db: any, d: {
     "Visit Sabi", SITE);
   await sendSabiEmail(d.customerEmail, "Payment confirmed: " + order, html,
     "Your payment of " + amount + " for order " + order + " with " + store + " has been confirmed.");
+
+  // Notify the merchant as well, using the active tenant OWNER account.
+  const { data: membership } = await db.from("tenant_members").select("user_id")
+    .eq("tenant_id", d.tenantId).eq("role", "OWNER").eq("is_active", true)
+    .limit(1).maybeSingle();
+
+  if (membership?.user_id) {
+    const { data: userData } = await db.auth.admin.getUserById(membership.user_id);
+    const merchantEmail = userData?.user?.email;
+    if (merchantEmail) {
+      const merchantHtml = layout("Payment received for order " + esc(order),
+        '<p>Your store <strong>' + esc(store) + '</strong> has received a confirmed payment.</p>' +
+        '<p>Order: <strong>' + esc(order) + '</strong><br>Amount paid: <strong>' + amount +
+        '</strong><br>Customer: ' + esc(d.customerName || "Customer") + '</p>' +
+        '<p>The payment has been verified and the order payment status has been updated.</p>',
+        "Open merchant dashboard", DASHBOARD);
+      await sendSabiEmail(merchantEmail, "Payment received: " + order, merchantHtml,
+        "Payment received for order " + order + " at " + store + ". Amount: " + amount +
+        ". Customer: " + (d.customerName || "Customer") + ". Dashboard: " + DASHBOARD);
+    }
+  }
 }
 
 
