@@ -252,7 +252,7 @@ export default function App() {
   }
 
   if (isDiscoverPage) {
-    return <Discover />;
+    return isMarketplaceCartPage ? <MarketplaceCart /> : <Discover />;
   }
 
   if (isMarketingPage) {
