@@ -128,7 +128,6 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
       } else if (target === "Platform Controls") {
         const result = await callAdmin("overview");
         setStats(result.data);
-      }
       } else if (target === "Platform Email") {
         const result = await callAdmin("email-campaign-data");
         setEmailCampaigns(result.data?.campaigns || []);
