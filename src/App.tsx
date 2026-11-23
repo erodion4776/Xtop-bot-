@@ -232,7 +232,11 @@ export default function App() {
     return <PublicNewsletter />;
   }
 
-  if (isDiscoverPage) {\n    return <Discover />;\n  }\n\n  if (isMarketingPage) {
+  if (isDiscoverPage) {
+    return <Discover />;
+  }
+
+  if (isMarketingPage) {
     return <Landing />;
   }
 
@@ -716,7 +720,9 @@ function SupportChat({ tenantId }: { tenantId: string }) {
             </div>
             {messages.map((item, index) => (
               <div key={item.id || index} style={{ alignSelf: item.sender_role === "merchant" ? "flex-end" : "flex-start", maxWidth: "92%", background: item.sender_role === "merchant" ? "#dff4e9" : "#fff", border: "1px solid #e5e7eb", borderRadius: item.sender_role === "merchant" ? "14px 4px 14px 14px" : "4px 14px 14px 14px", padding: "10px 12px", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
-                {item.content.replace(/\\s+(?=\\d+\\.\\s)/g, "\\n").split("\\n").map((line, lineIndex, allLines) => (
+                {item.content.replace(/\\s+(?=\\d+\\.\\s)/g, "\
+").split("\
+").map((line, lineIndex, allLines) => (
                   <span key={lineIndex}>
                     {line}
                     {lineIndex < allLines.length - 1 && <br />}
