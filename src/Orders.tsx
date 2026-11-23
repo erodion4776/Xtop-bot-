@@ -502,6 +502,29 @@ export default function Orders({ tenantId }: Props) {
     }
   }
 
+  async function resendDispatchEmail(orderId: string) {
+    setBusyOrder(orderId);
+    setError("");
+    setNotice("");
+    try {
+      const { data, error: invokeError } = await supabase.functions.invoke("order-api", {
+        body: {
+          action: "notify_status",
+          tenant_id: tenantId,
+          order_id: orderId,
+          status: "DISPATCHED"
+        }
+      });
+      if (invokeError) throw new Error(invokeError.message || "Email request failed.");
+      if (!data?.email_sent) throw new Error("Sabi could not send this email. Confirm the customer's checkout email and Resend configuration.");
+      setNotice("Dispatch email sent successfully.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not resend dispatch email.");
+    } finally {
+      setBusyOrder("");
+    }
+  }
+
 
   async function refreshPayoutStatus() {
     if (!tenantId || syncingSettlement) return;
@@ -1159,6 +1182,19 @@ export default function Orders({ tenantId }: Props) {
                       >
                         <RefreshCw size={16} />
                         {isBusy ? "Sending..." : "Resend cancellation email"}
+                      </button>
+                    </div>
+                  )}
+
+                  {status === "DISPATCHED" && (
+                    <div className="order-actions">
+                      <button
+                        className="order-action-primary"
+                        disabled={isBusy}
+                        onClick={() => resendDispatchEmail(order.id)}
+                      >
+                        <RefreshCw size={16} />
+                        {isBusy ? "Sending..." : "Resend dispatch email"}
                       </button>
                     </div>
                   )}
