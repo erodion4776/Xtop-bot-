@@ -27,6 +27,7 @@ import Newsletter from "./Newsletter";
 import PublicProduct from "./PublicProduct";
 import PublicNewsletter from "./PublicNewsletter";
 import Landing from "./Landing";
+import Discover from "./Discover";
 import SuperAdmin from "./SuperAdmin";
 import { supabase } from "./lib/supabase";
 
@@ -57,6 +58,7 @@ export default function App() {
   const query = new URLSearchParams(window.location.search);
   const hostname = window.location.hostname.toLowerCase();
   const isDashboardHost = hostname === "app.sabibyxtop.com.ng";
+  const isDiscoverPage = hostname === "discover.sabibyxtop.com.ng" || window.location.pathname === "/discover";
   const isSuperAdminHost = hostname === "admin.sabibyxtop.com.ng";
   const isConnectPortalHost = hostname === "connect.sabibyxtop.com.ng";
   const isEngrPortalHost = hostname === "engr.sabibyxtop.com.ng";
@@ -79,14 +81,15 @@ export default function App() {
     !isPasswordRecovery &&
     !query.has("session_token") &&
     !isPublicProductPage &&
-    !isPublicNewsletterPage;
+    !isPublicNewsletterPage &&
+    !isDiscoverPage;
 
   const registrationToken = new URLSearchParams(
     window.location.search
   ).get("session_token")?.trim() || "";
 
   useEffect(() => {
-    if (isPublicProductPage || isPublicNewsletterPage || isMarketingPage || isDedicatedPortalHost) return;
+    if (isPublicProductPage || isPublicNewsletterPage || isMarketingPage || isDiscoverPage || isDedicatedPortalHost) return;
 
     let mounted = true;
 
@@ -126,10 +129,10 @@ export default function App() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [isPublicProductPage, isPublicNewsletterPage, isMarketingPage, isDedicatedPortalHost, isPasswordRecovery]);
+  }, [isPublicProductPage, isPublicNewsletterPage, isMarketingPage, isDiscoverPage, isDedicatedPortalHost, isPasswordRecovery]);
 
   useEffect(() => {
-    if (isPublicProductPage || isPublicNewsletterPage || isMarketingPage || isSuperAdminPage || isDedicatedPortalHost || isPasswordRecovery) return;
+    if (isPublicProductPage || isPublicNewsletterPage || isMarketingPage || isDiscoverPage || isSuperAdminPage || isDedicatedPortalHost || isPasswordRecovery) return;
 
     if (!session?.user?.id) {
       setTenantId("");
@@ -228,7 +231,7 @@ export default function App() {
     return <PublicNewsletter />;
   }
 
-  if (isMarketingPage) {
+  if (isDiscoverPage) {\n    return <Discover />;\n  }\n\n  if (isMarketingPage) {
     return <Landing />;
   }
 
