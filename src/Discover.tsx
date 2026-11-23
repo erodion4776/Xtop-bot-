@@ -183,7 +183,6 @@ export default function Discover() {
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   }, [products]);
 
-  const categories = useMemo(() => categoryCounts.map(item => item.name), [categoryCounts]);
   const popularCategories = useMemo(() => categoryCounts.slice(0, 7), [categoryCounts]);
   const filteredCategories = useMemo(() => categoryCounts.filter(item =>
     item.name.toLowerCase().includes(categorySearch.trim().toLowerCase())
@@ -205,7 +204,7 @@ export default function Discover() {
       ["Books & Learning", ["book", "education", "learning", "stationery", "course"]]
     ];
     const match = rules.find(([, words]) => words.some(word => value.includes(word)));
-    return match?.[0] || rawCategory.trim().replace(/\\s+/g, " ").replace(/\\b\\w/g, letter => letter.toUpperCase());
+    return match?.[0] || rawCategory.trim().replace(/\s+/g, " ").replace(/\b\w/g, letter => letter.toUpperCase());
   }
 
   function submitSearch(event: React.FormEvent<HTMLFormElement>) {
