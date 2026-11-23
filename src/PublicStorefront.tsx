@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Search, Share2, ShoppingBag, ShoppingCart, Store, Star, Zap, MessageCircle } from "lucide-react";
+import { ArrowLeft, Search, Share2, ShoppingBag, ShoppingCart, Store, Star, Zap, MessageCircle } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import { addToMarketplaceCart, getMarketplaceCart } from "./marketplaceCart";
 
