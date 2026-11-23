@@ -146,7 +146,8 @@ begin
 
     v_delivery := case when v_tenant.shipping_enabled then coalesce(v_tenant.shipping_fee,0) else 0 end;
     v_commission := case when v_subtotal<1000 then 20 when v_subtotal<=2500 then 70 when v_subtotal<=10000 then 130 else 250 end;
-    v_payout := v_subtotal + v_delivery - v_commission;
+    -- The Sabi commission is charged on top of the seller's product subtotal; the merchant receives the full product subtotal plus delivery.
+    v_payout := v_subtotal + v_delivery;
     if v_payout < 0 then raise exception 'Invalid merchant settlement calculation'; end if;
 
     v_order_id := gen_random_uuid();
