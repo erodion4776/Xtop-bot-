@@ -500,6 +500,125 @@ serve(async (req: Request) => {
       return response({ success: true, is_active: body.is_active, audit_recorded: true });
     }
 
+
+    if (body.action === "email-campaign-data") {
+      const [{ data: owners, error: ownersError }, { count: customerCount, error: customersError }, { data: campaigns, error: campaignsError }] = await Promise.all([
+        sb.from("tenant_members").select("tenant_id,user_id").eq("role", "OWNER").eq("is_active", true).limit(1000),
+        sb.from("sabi_platform_email_subscribers").select("id", { count: "exact", head: true }).eq("status", "SUBSCRIBED"),
+        sb.from("sabi_platform_email_campaigns").select("id,subject,audience,recipient_count,sent_count,failed_count,status,created_at,completed_at").order("created_at", { ascending: false }).limit(30),
+      ]);
+      if (ownersError || customersError || campaignsError) return response({ error: "Could not load platform email campaign data." }, 500);
+      const uniqueOwners = new Map<string, { email: string; name: string }>();
+      for (const owner of owners || []) {
+        const { data: userResult } = await sb.auth.admin.getUserById(owner.user_id);
+        const email = String(userResult?.user?.email || "").trim().toLowerCase();
+        if (email && !uniqueOwners.has(email)) uniqueOwners.set(email, {
+          email, name: String(userResult?.user?.user_metadata?.full_name || userResult?.user?.user_metadata?.name || "Sabi merchant"),
+        });
+      }
+      return response({ data: {
+        merchant_count: uniqueOwners.size, customer_count: customerCount || 0,
+        campaigns: campaigns || [],
+      } });
+    }
+
+    if (body.action === "email-campaign-send") {
+      const audience = String(body.audience || "");
+      const subject = String(body.subject || "").trim();
+      const content = String(body.content || "").trim();
+      if (!["MERCHANTS", "CUSTOMERS", "ALL"].includes(audience)) return response({ error: "Choose a valid email audience." }, 400);
+      if (subject.length < 3 || subject.length > 120 || content.length < 10 || content.length > 12000) {
+        return response({ error: "Enter a subject (3–120 characters) and message (10–12,000 characters)." }, 400);
+      }
+      const apiKey = Deno.env.get("RESEND_API_KEY") || "";
+      if (!apiKey) return response({ error: "The Sabi email service is not configured (RESEND_API_KEY)." }, 500);
+      const recipients: Array<{ email: string; type: "MERCHANT" | "CUSTOMER"; name: string }> = [];
+      if (audience === "MERCHANTS" || audience === "ALL") {
+        const { data: owners, error: ownersError } = await sb.from("tenant_members")
+          .select("tenant_id,user_id").eq("role", "OWNER").eq("is_active", true).limit(1000);
+        if (ownersError) return response({ error: "Could not retrieve merchant email recipients." }, 500);
+        const seen = new Set<string>();
+        for (const owner of owners || []) {
+          const [{ data: userResult }, { data: tenant }] = await Promise.all([
+            sb.auth.admin.getUserById(owner.user_id),
+            sb.from("tenants").select("business_name,name").eq("id", owner.tenant_id).maybeSingle(),
+          ]);
+          const email = String(userResult?.user?.email || "").trim().toLowerCase();
+          if (email && !seen.has(email)) {
+            seen.add(email);
+            recipients.push({ email, type: "MERCHANT", name: String(userResult?.user?.user_metadata?.full_name || tenant?.business_name || tenant?.name || "Sabi merchant") });
+          }
+        }
+      }
+      if (audience === "CUSTOMERS" || audience === "ALL") {
+        const { data: customers, error: customerError } = await sb.from("sabi_platform_email_subscribers")
+          .select("email,full_name").eq("status", "SUBSCRIBED").limit(1000);
+        if (customerError) return response({ error: "Could not retrieve opted-in platform customer emails." }, 500);
+        const seen = new Set(recipients.map((r) => r.email));
+        for (const customer of customers || []) {
+          const email = String(customer.email || "").trim().toLowerCase();
+          if (email && !seen.has(email)) {
+            seen.add(email);
+            recipients.push({ email, type: "CUSTOMER", name: String(customer.full_name || "there") });
+          }
+        }
+      }
+      if (!recipients.length) return response({ error: "There are no eligible recipients in this audience yet. Customers must explicitly subscribe to Sabi platform updates." }, 400);
+      if (recipients.length > 500) return response({ error: "This campaign has more than 500 eligible recipients. Narrow the audience before sending." }, 400);
+
+      const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] || c));
+      const paragraphs = content.split(/\n{2,}/).map((part) => "<p style=\"margin:0 0 14px;line-height:1.7\">" + escapeHtml(part).replace(/\n/g, "<br>") + "</p>").join("");
+      const html = '<!doctype html><html><body style="margin:0;background:#f3f7f4;font-family:Arial,sans-serif;color:#26372d;padding:24px 12px"><table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:auto;background:#fff;border-radius:14px;overflow:hidden"><tr><td align="center" style="background:#145b3b;padding:24px"><img src="https://i.ibb.co/N2b6rJnY/Untitled-design-20261030-044935-0000.png" alt="Sabi by XTOP" width="145" style="display:block;max-width:100%;height:auto"><p style="color:#dceee3;font-size:12px;margin:10px 0 0">Sell smarter. Serve better.</p></td></tr><tr><td style="padding:28px"><h1 style="font-size:22px;color:#183d2b;margin:0 0 20px">' + escapeHtml(subject) + '</h1>' + paragraphs + '<p style="font-size:12px;color:#68776e;margin-top:26px">You are receiving this email as a Sabi merchant or because you subscribed to Sabi platform updates. For help, visit <a href="https://sabibyxtop.com.ng">sabibyxtop.com.ng</a>.</p></td></tr><tr><td style="padding:16px 28px;background:#f7faf8;color:#7b8981;font-size:11px">© ' + new Date().getFullYear() + ' XTOP Retail Technologies · Sabi by XTOP</td></tr></table></body></html>';
+      const plain = content + "\n\nSabi by XTOP · XTOP Retail Technologies\nhttps://sabibyxtop.com.ng";
+      const { data: campaign, error: campaignError } = await sb.from("sabi_platform_email_campaigns").insert({
+        subject, html_content: html, text_content: plain, audience, recipient_count: recipients.length,
+        created_by: authData.user.id, status: "SENDING",
+      }).select("id").single();
+      if (campaignError || !campaign) return response({ error: "Could not create the email campaign record." }, 500);
+      const rows = recipients.map((r) => ({ campaign_id: campaign.id, email: r.email, recipient_type: r.type, recipient_name: r.name }));
+      const { error: rowsError } = await sb.from("sabi_platform_email_campaign_recipients").insert(rows);
+      if (rowsError) {
+        await sb.from("sabi_platform_email_campaigns").update({ status: "FAILED", failed_count: recipients.length, completed_at: new Date().toISOString() }).eq("id", campaign.id);
+        return response({ error: "Could not prepare campaign recipients. No emails were sent." }, 500);
+      }
+
+      let sent = 0;
+      let failed = 0;
+      for (let i = 0; i < recipients.length; i += 10) {
+        const batch = recipients.slice(i, i + 10);
+        const results = await Promise.all(batch.map(async (recipient) => {
+          try {
+            const res = await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
+              body: JSON.stringify({ from: "Sabi by XTOP <noreply@mail.sabibyxtop.com.ng>", to: [recipient.email], subject, html, text: plain }),
+            });
+            const data = await res.json().catch(() => ({}));
+            return { email: recipient.email, ok: res.ok, id: data?.id || null, error: res.ok ? null : String(data?.message || data?.error || "Email provider rejected the message").slice(0, 500) };
+          } catch (e) {
+            return { email: recipient.email, ok: false, id: null, error: String(e).slice(0, 500) };
+          }
+        }));
+        for (const result of results) {
+          if (result.ok) sent++; else failed++;
+          await sb.from("sabi_platform_email_campaign_recipients").update({
+            status: result.ok ? "SENT" : "FAILED", provider_message_id: result.id,
+            error_message: result.error, sent_at: result.ok ? new Date().toISOString() : null,
+          }).eq("campaign_id", campaign.id).eq("email", result.email);
+        }
+      }
+      const status = sent === recipients.length ? "SENT" : sent > 0 ? "PARTIAL" : "FAILED";
+      await sb.from("sabi_platform_email_campaigns").update({
+        sent_count: sent, failed_count: failed, status, completed_at: new Date().toISOString(),
+      }).eq("id", campaign.id);
+      await sb.from("audit_logs").insert({
+        admin_user: authData.user.email || authData.user.id, action: "SABI_PLATFORM_EMAIL_CAMPAIGN_SENT",
+        entity: "email_campaign", entity_id: campaign.id,
+        metadata: { audience, subject, recipient_count: recipients.length, sent_count: sent, failed_count: failed, source: "SABI_SUPER_ADMIN" },
+      });
+      return response({ success: true, campaign_id: campaign.id, recipient_count: recipients.length, sent_count: sent, failed_count: failed, status });
+    }
+
     return response({ error: "Unknown Super Admin action" }, 404);
   } catch (error) {
     console.error("[Sabi Super Admin]", error);
