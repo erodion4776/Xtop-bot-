@@ -272,7 +272,6 @@ async function createOrder(body: Record<string, unknown>) {
     throw new Error("ORDER_CREATION_FAILED");
   }
 
-  await notifyLowStockAfterOrder(String(order.tenant_id || ""), String(order.order_id));
 
   // Metadata is required for the fee and split-settlement calculation.
   const { data: intent, error: intentError } = await db
@@ -287,6 +286,8 @@ async function createOrder(body: Record<string, unknown>) {
     console.error("Payment intent lookup failed:", intentError);
     throw new Error("PAYMENT_INTENT_NOT_FOUND");
   }
+
+  await notifyLowStockAfterOrder(String(intent.tenant_id), String(order.order_id));
 
   // Link the saved cart to this order, but keep it active until payment
   // is confirmed. The reminder worker checks the live order payment status.
