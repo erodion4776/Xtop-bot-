@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Search, ShoppingBag, Store, ArrowRight, RefreshCw, MapPin,
+  Search, ShoppingBag, Store, ArrowRight, RefreshCw,
   ShieldCheck, Package, Sparkles, SlidersHorizontal
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
@@ -35,7 +35,7 @@ export default function Discover() {
     setError("");
     const { data, error: rpcError } = await supabase.rpc(
       "sabi_get_public_marketplace_products",
-      { p_search: search || null, p_category: category || null, p_limit: 100, p_offset: 0 }
+      { p_search: null, p_category: null, p_limit: 100, p_offset: 0 }
     );
     if (rpcError) {
       setError("We could not load the marketplace right now. Please try again.");
@@ -59,7 +59,7 @@ export default function Discover() {
     loadProducts();
   }, [search, category]);
 
-  const categories = useMemo(() => {
+  const visibleProducts = useMemo(() => products.filter(product => {\n    const matchesCategory = !category || (product.product_category || "").toLowerCase() === category.toLowerCase();\n    const term = search.toLowerCase();\n    const matchesSearch = !term || [product.product_name, product.product_description || "", product.product_category || "", product.business_name].some(value => value.toLowerCase().includes(term));\n    return matchesCategory && matchesSearch;\n  }), [products, category, search]);\n\n  const categories = useMemo(() => {
     const values = products.map(p => p.product_category?.trim()).filter(Boolean) as string[];
     return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
   }, [products]);
@@ -126,7 +126,7 @@ export default function Discover() {
 
         {loading ? (
           <div className="sd-state"><RefreshCw size={26} className="sd-spin" /><p>Finding products for you...</p></div>
-        ) : products.length === 0 ? (
+        ) : visibleProducts.length === 0 ? (
           <div className="sd-empty">
             <span><ShoppingBag size={30} /></span>
             <h3>{search || category ? "No matching products yet" : "Sabi Discover is getting ready"}</h3>
@@ -135,7 +135,7 @@ export default function Discover() {
           </div>
         ) : (
           <div className="sd-product-grid">
-            {products.map(product => (
+            {visibleProducts.map(product => (
               <a className="sd-product-card" href={`/?product=${encodeURIComponent(product.product_id)}`} key={product.product_id}>
                 <div className="sd-product-image">
                   {product.product_image_url ? <img src={product.product_image_url} alt={product.product_name} loading="lazy" /> : <div className="sd-no-image"><ShoppingBag size={32} /></div>}
