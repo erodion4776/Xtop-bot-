@@ -677,7 +677,7 @@ export default function Settings({ tenantId }: { tenantId: string }) {
         <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
           <span style={{ padding: "6px 10px", borderRadius: 20, background: marketplacePublished ? "#ecfdf5" : "#f1f5f9", color: marketplacePublished ? "#047857" : "#64748b", fontSize: 11, fontWeight: 700 }}>{marketplaceLoading ? "Checking status..." : marketplacePublished ? "Visible on Discover" : "Not listed publicly"}</span>
           {marketplaceSaving && <small style={{ color: "#64748b" }}>Saving marketplace preference...</small>}
-          <a href="https://discover.sabibyxtop.com.ng" target="_blank" rel="noreferrer" style={{ color: "#0f766e", fontSize: 12, fontWeight: 700 }}>Preview Sabi Discover ↗</a>
+          <a href="https://sabibyxtop.com.ng/discover" target="_blank" rel="noreferrer" style={{ color: "#0f766e", fontSize: 12, fontWeight: 700 }}>Preview Sabi Discover ↗</a>
         </div>
       </div>
 
