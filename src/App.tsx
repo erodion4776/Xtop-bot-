@@ -79,7 +79,7 @@ export default function App() {
   ).get("session_token")?.trim() || "";
 
   useEffect(() => {
-    if (isPublicProductPage || isMarketingPage || isDedicatedPortalHost || isPasswordRecovery) return;
+    if (isPublicProductPage || isMarketingPage || isDedicatedPortalHost) return;
 
     let mounted = true;
 
