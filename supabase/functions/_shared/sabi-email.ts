@@ -155,22 +155,63 @@ export async function sendPaymentReceiptEmail(db: any, d: {
 }
 
 
-export async function sendOrderStatusEmail(db: any, tenantId: string, orderId: string, status: "DISPATCHED" | "COMPLETED"): Promise<boolean> {
-  const { data: order } = await db.from("tenant_orders")
-    .select("order_number,customer_name,customer_email")
+export async function sendOrderStatusEmail(
+  db: any,
+  tenantId: string,
+  orderId: string,
+  status: "DISPATCHED" | "COMPLETED",
+): Promise<boolean> {
+  // Customer email is stored on the tenant contact, not tenant_orders.
+  const { data: order, error: orderError } = await db.from("tenant_orders")
+    .select("order_number,customer_name,contact_id,shipping_required")
     .eq("tenant_id", tenantId).eq("id", orderId).maybeSingle();
-  if (!order?.customer_email) return false;
+
+  if (orderError || !order) {
+    console.error("Order status email: order lookup failed.", orderError);
+    return false;
+  }
+
+  const { data: contact, error: contactError } = await db.from("contacts")
+    .select("email")
+    .eq("tenant_id", tenantId)
+    .eq("id", order.contact_id)
+    .maybeSingle();
+
+  if (contactError || !contact?.email) {
+    console.warn("Order status email skipped: customer email is unavailable.", contactError);
+    return false;
+  }
+
   const { data: tenant } = await db.from("tenants")
     .select("business_name,name").eq("id", tenantId).maybeSingle();
   const store = tenant?.business_name || tenant?.name || "the store";
-  const isReady = status === "DISPATCHED";
-  const title = isReady ? "Your order is on its way" : "Your order is complete";
-  const message = isReady
-    ? "Your order has been dispatched. Please contact the store if you need help with delivery or pickup."
-    : "Your order has been marked as delivered or collected. Thank you for shopping with us.";
+
+  const isCompleted = status === "COMPLETED";
+  const requiresShipping = order.shipping_required === true;
+  const title = isCompleted
+    ? "Your order is complete"
+    : requiresShipping
+      ? "Your order has been dispatched"
+      : "Your order is ready for pickup";
+
+  const message = isCompleted
+    ? (requiresShipping
+      ? "Your order has been marked as delivered. Thank you for shopping with us."
+      : "Your order has been marked as collected. Thank you for shopping with us.")
+    : requiresShipping
+      ? "Good news! Your order has been dispatched and is on its way to you. Please contact the store if you need help with delivery."
+      : "Good news! Your order is ready for pickup. Please contact the store to arrange collection.";
+
   const html = layout(title,
-    '<p>Hello ' + esc(order.customer_name || "there") + ',</p><p>' + esc(message) + '</p><p>Store: <strong>' + esc(store) + '</strong><br>Order: <strong>' + esc(order.order_number) + '</strong></p>',
+    '<p>Hello ' + esc(order.customer_name || "there") + ',</p><p>' + esc(message) +
+    '</p><p>Store: <strong>' + esc(store) + '</strong><br>Order: <strong>' +
+    esc(order.order_number) + '</strong></p>',
     "Visit Sabi", SITE);
-  return sendSabiEmail(order.customer_email, title + ": " + order.order_number, html,
-    message + " Store: " + store + ". Order: " + order.order_number);
+
+  return sendSabiEmail(
+    contact.email,
+    title + ": " + order.order_number,
+    html,
+    message + " Store: " + store + ". Order: " + order.order_number,
+  );
 }
