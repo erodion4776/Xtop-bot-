@@ -57,6 +57,7 @@ Deno.serve(async (req: Request) => {
       productPrice: snapshot.product_price as number | string | null,
       quantity: Number(cart.quantity || 1),
       checkoutUrl: String(cart.checkout_url),
+      orderNumber: snapshot.order_number ? String(snapshot.order_number) : null,
     });
 
     if (success) {
