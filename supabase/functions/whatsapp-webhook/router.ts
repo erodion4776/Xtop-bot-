@@ -793,6 +793,57 @@ async function handleTenantStoreMessage(
           await send(result.message || "I couldn't complete checkout. Your cart is saved; reply *checkout* to try again or *agent* to contact the shop.");
           return;
         }
+        // Track the WhatsApp checkout until Paystack confirms payment.
+        // The cart row is tied to the created order so the reminder worker can
+        // suppress reminders automatically once that order becomes PAID.
+        try {
+          const cartItems = cart.map((item) => ({
+            product_id: item.product_id,
+            name: item.name,
+            unit_price: item.price,
+            quantity: item.quantity,
+          }));
+          const firstProductId = String(cartItems[0]?.product_id || "");
+          if (firstProductId && result.order_id && result.authorization_url) {
+            const { data: existingCart, error: existingCartError } = await supabase
+              .from("sabi_abandoned_carts")
+              .select("id")
+              .eq("tenant_id", account.tenantId)
+              .eq("order_id", String(result.order_id))
+              .maybeSingle();
+            if (existingCartError) safeErrorLog("tenantStore.abandonedCart.lookup", existingCartError);
+            const cartRow = {
+              tenant_id: account.tenantId,
+              product_id: firstProductId,
+              customer_name: checkout.name,
+              customer_email: checkout.email,
+              customer_phone: phone,
+              quantity: cartItems.reduce((sum, item) => sum + item.quantity, 0),
+              cart_snapshot: {
+                business_name: account.businessName,
+                product_name: "your WhatsApp order",
+                product_price: Number(result.subtotal || 0),
+                items: cartItems,
+                source: "WHATSAPP",
+                order_number: result.order_number,
+              },
+              checkout_url: String(result.authorization_url),
+              status: "ACTIVE",
+              order_id: String(result.order_id),
+              last_activity_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              reminder_sent_at: null,
+              reminder_claimed_at: null,
+            };
+            const { error: cartSaveError } = existingCart?.id
+              ? await supabase.from("sabi_abandoned_carts").update(cartRow).eq("id", existingCart.id)
+              : await supabase.from("sabi_abandoned_carts").insert(cartRow);
+            if (cartSaveError) safeErrorLog("tenantStore.abandonedCart.save", cartSaveError);
+          }
+        } catch (cartError) {
+          safeErrorLog("tenantStore.abandonedCart.exception", cartError);
+        }
+
         await save("ORDER_AWAITING_PAYMENT", {
           store_last_order: result.order_number,
           store_last_payment_reference: result.payment_reference,
