@@ -31,7 +31,7 @@ export default function Auth({ onAuthenticated, isPasswordRecovery = false }: Au
     { label: "At least one small letter (a–z)", valid: /[a-z]/.test(password) },
     { label: "At least one CAPITAL letter (A–Z)", valid: /[A-Z]/.test(password) },
     { label: "At least one number (0–9)", valid: /[0-9]/.test(password) },
-    { label: "At least one symbol, such as @, #, $, or !", valid: [...password].some((character) => "!@#$%^&*()_+-=[]{};':\"|<>?,./~".includes(character) || character === "\\" || character === "\`") }
+    { label: "At least one symbol, such as @, #, $, or !", valid: [...password].some((character) => "!@#$%^&*()_+-=[]{};':\"|<>?,./~".includes(character) || character === "\\" || character === "`") }
   ];
   const passwordIsValid = passwordChecks.every((item) => item.valid);
 
