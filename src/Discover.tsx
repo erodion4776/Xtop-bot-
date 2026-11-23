@@ -24,6 +24,7 @@ type MarketplaceProduct = {
   seller_rating: number | string | null;
   seller_review_count: number;
   sold_quantity: number;
+  created_at?: string | null;
 };
 
 const LOGO_URL = "https://i.ibb.co/N2b6rJnY/Untitled-design-20261030-044935-0000.png";
@@ -53,6 +54,7 @@ export default function Discover() {
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, number>>({});
   const [reviewTexts, setReviewTexts] = useState<Record<string, string>>({});
   const [cartCount, setCartCount] = useState(() => getMarketplaceCart().reduce((sum, item) => sum + item.quantity, 0));
+  const [sortBy, setSortBy] = useState<"featured" | "newest" | "price-asc" | "price-desc">("featured");
 
   async function loadProducts() {
     setLoading(true);
@@ -192,9 +194,17 @@ export default function Discover() {
   }), [products, category, search]);
 
   const bestSellers = useMemo(
-    () => products.filter(p => Number(p.sold_quantity || 0) > 0).sort((a, b) => Number(b.sold_quantity || 0) - Number(a.sold_quantity || 0)).slice(0, 4),
+    () => products.filter(p => Number(p.sold_quantity || 0) > 0).sort((a, b) => Number(b.sold_quantity || 0) - Number(a.sold_quantity || 0)).slice(0, 8),
     [products]
   );
+
+  const sortedProducts = useMemo(() => {
+    const items = [...visibleProducts];
+    if (sortBy === "price-asc") return items.sort((a, b) => Number(a.product_price || 0) - Number(b.product_price || 0));
+    if (sortBy === "price-desc") return items.sort((a, b) => Number(b.product_price || 0) - Number(a.product_price || 0));
+    if (sortBy === "newest") return items.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    return items;
+  }, [visibleProducts, sortBy]);
 
   const popularCategories = useMemo(() => categoryCounts.slice(0, 7), [categoryCounts]);
   const filteredCategories = useMemo(() => categoryCounts.filter(item =>
@@ -324,17 +334,15 @@ export default function Discover() {
         <div className="sd-product-image">
           {product.product_image_url ? <img src={product.product_image_url} alt={product.product_name} loading="lazy" /> : <div className="sd-no-image"><ShoppingBag size={32} /></div>}
           {sold > 0 && <span className="sd-product-ribbon"><Zap size={11} /> BEST SELLER</span>}
-          {product.product_category && <span className="sd-product-category">{categoryFor(product.product_category)}</span>}
           <button className="sd-wishlist" type="button" aria-label="Sign in to save favourites" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setAccountMode(session ? "profile" : "login"); if (session) loadReviewableOrders(); setAccountOpen(true); }}><Heart size={17} /></button>
         </div>
         <div className="sd-product-info">
           <small className="sd-store-name"><Store size={12} /> {product.business_name}</small>
-          <h3>{product.product_name}</h3>
+          <h3 title={product.product_name}>{product.product_name}</h3>
           <strong className="sd-price">{money(Number(product.product_price || 0))}</strong>
           <div className="sd-seller-rating">
             {reviews > 0 ? <><span className="sd-stars"><Star size={12} fill="currentColor" /> {rating.toFixed(1)}</span><span>({reviews} seller {reviews === 1 ? "review" : "reviews"})</span></> : <span>New seller · Be the first to review</span>}
           </div>
-          <span className="sd-view-product">View product <ArrowRight size={14} /></span>
           <button className="sd-add-cart" type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); addToMarketplaceCart({ product_id: product.product_id, product_name: product.product_name, product_price: Number(product.product_price || 0), product_image_url: product.product_image_url, business_name: product.business_name, business_slug: product.business_slug, product_stock: Number(product.product_stock || 0) }, 1); }} disabled={Number(product.product_stock || 0) < 1}><ShoppingBag size={14}/> Add to cart</button>
         </div>
       </a>
@@ -362,7 +370,7 @@ export default function Discover() {
       <nav className="sd-category-nav" aria-label="Marketplace categories">
         <button className={!category ? "active" : ""} onClick={() => { setCategory(""); setShowAllCategories(false); document.getElementById("discover-products")?.scrollIntoView({ behavior: "smooth" }); }}>All products</button>
         {popularCategories.map(item => <button key={item.name} className={category === item.name ? "active" : ""} onClick={() => { setCategory(item.name); setShowAllCategories(false); document.getElementById("discover-products")?.scrollIntoView({ behavior: "smooth" }); }}>{item.name}</button>)}
-        <button className={showAllCategories ? "active sd-browse-trigger" : "sd-browse-trigger"} onClick={() => setShowAllCategories(value => !value)}>Browse all categories <span>({categoryCounts.length})</span></button>
+        <button className={showAllCategories ? "active sd-browse-trigger" : "sd-browse-trigger"} onClick={() => setShowAllCategories(value => !value)}>Browse all categories</button>
       </nav>
       {showAllCategories && <section className="sd-category-browser" aria-label="Browse all marketplace categories">
         <div className="sd-category-browser-head"><div><strong>Browse categories</strong><small>Explore products from all published Sabi stores.</small></div><button onClick={() => setShowAllCategories(false)} aria-label="Close categories"><X size={18} /></button></div>
@@ -385,7 +393,7 @@ export default function Discover() {
       </section>
 
       <section className="sd-market" id="discover-products">
-        {bestSellers.length > 0 && !search && !category && (
+        {bestSellers.length >= 2 && !search && !category && (
           <div className="sd-best-sellers">
             <div className="sd-section-heading"><div><span className="sd-eyebrow"><Zap size={13} /> POPULAR WITH CUSTOMERS</span><h2>Best sellers</h2><p>Ranked using completed, paid orders.</p></div><span className="sd-live-label">Based on real sales</span></div>
             <div className="sd-product-grid">{bestSellers.map(product => <ProductCard product={product} key={product.product_id} />)}</div>
@@ -394,7 +402,7 @@ export default function Discover() {
 
         <div className="sd-section-heading sd-all-heading">
           <div><span className="sd-eyebrow">THE SABI MARKETPLACE</span><h2>{search ? "Search results" : category || "Explore all products"}</h2><p>Products from stores that have chosen to publish on Sabi Discover.</p></div>
-          <button className="sd-refresh" onClick={loadProducts} disabled={loading}><RefreshCw size={15} className={loading ? "sd-spin" : ""} /> Refresh</button>
+          <label className="sd-sort-control">Sort by <select value={sortBy} onChange={event => setSortBy(event.target.value as typeof sortBy)}><option value="featured">Featured</option><option value="newest">Newest</option><option value="price-asc">Price: low to high</option><option value="price-desc">Price: high to low</option></select></label>
         </div>
 
         {category && <div className="sd-active-category">Showing <strong>{category}</strong><button onClick={() => setCategory("")}>Clear category</button></div>}
@@ -402,11 +410,26 @@ export default function Discover() {
         {error && <div className="sd-error" role="alert">{error} <button onClick={loadProducts}>Try again</button></div>}
         {loading ? <div className="sd-state"><RefreshCw size={26} className="sd-spin" /><p>Finding products for you...</p></div> : visibleProducts.length === 0 ? (
           <div className="sd-empty"><span><ShoppingBag size={30} /></span><h3>{search || category ? "No matching products yet" : "Sabi Discover is getting ready"}</h3><p>{search || category ? "Try another search or choose a different category." : "As merchants publish their products, their stores and products will appear here."}</p>{(search || category) && <button onClick={() => { setSearch(""); setSearchInput(""); setCategory(""); }}>View all products</button>}</div>
-        ) : <div className="sd-product-grid">{visibleProducts.map(product => <ProductCard product={product} key={product.product_id} />)}</div>}
+        ) : <div className="sd-product-grid">{sortedProducts.map(product => <ProductCard product={product} key={product.product_id} />)}</div>}
       </section>
 
       <section className="sd-merchant-cta"><div><span className="sd-eyebrow">OWN A BUSINESS?</span><h2>Reach more customers with Sabi Discover.</h2><p>Manage your store with Sabi and choose which products you want customers to discover.</p></div><a href="https://app.sabibyxtop.com.ng">Start selling on Sabi <ArrowRight size={17} /></a></section>
-      <footer className="sd-footer"><a href="/" className="sd-footer-brand"><img src={LOGO_URL} alt="" /> Sabi by XTOP</a><span>Discover Nigerian businesses and products.</span><small>© {new Date().getFullYear()} XTOP Retail Technologies</small></footer>
+      <footer className="sd-footer">
+        <div className="sd-footer-top">
+          <div className="sd-footer-about"><a href="/" className="sd-footer-brand"><img src={LOGO_URL} alt="" /> Sabi by XTOP</a><p>Discover Nigerian businesses and products.</p></div>
+          <div className="sd-footer-links"><strong>For buyers</strong><a href="#buyer-protection">Buyer protection</a><a href="#returns-refunds">Returns &amp; refunds</a><a href="#customer-support">Customer support</a></div>
+          <div className="sd-footer-links"><strong>Information</strong><a href="#terms">Terms of service</a><a href="#privacy">Privacy policy</a><a href="#seller-guide">How selling works</a></div>
+        </div>
+        <div className="sd-footer-legal">
+          <details id="buyer-protection"><summary>Buyer protection</summary><p>Shop through Sabi Discover and review the seller's store information before ordering. Keep your order confirmation and payment receipt. If an order has a problem, contact the seller using the details provided with your order.</p></details>
+          <details id="returns-refunds"><summary>Returns &amp; refunds</summary><p>Return eligibility, delivery arrangements and refund handling may vary by seller and product. Contact the seller promptly using the contact details on your order confirmation and keep your proof of purchase.</p></details>
+          <details id="customer-support"><summary>Customer support</summary><p>For an order-specific issue, start with the seller listed on your order confirmation. Sabi support contact details will be published here when the official support channel is confirmed.</p></details>
+          <details id="terms"><summary>Terms of service</summary><p>Sabi Discover helps customers discover products published by independent businesses. Product descriptions, stock, fulfilment and delivery are managed by the respective sellers. Confirm product details and delivery terms with the seller before completing a purchase.</p></details>
+          <details id="privacy"><summary>Privacy policy</summary><p>Customer account details are used to support account access, order-related experiences and any optional email updates you explicitly choose to receive. Marketing consent is optional and can be withdrawn.</p></details>
+          <details id="seller-guide"><summary>How selling works</summary><p>Businesses create a Sabi merchant workspace, add products and publish selected items to Sabi Discover. Customers can browse published products and place orders through the marketplace checkout.</p></details>
+        </div>
+        <div className="sd-footer-bottom"><small>© {new Date().getFullYear()} XTOP Retail Technologies</small><small>Built for Nigerian businesses and shoppers.</small></div>
+      </footer>
 
       {accountOpen && <div className="sd-modal-backdrop" onClick={() => setAccountOpen(false)}>
         <section className="sd-account-modal" role="dialog" aria-modal="true" aria-label="Sabi customer account" onClick={event => event.stopPropagation()}>
