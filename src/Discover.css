@@ -45,3 +45,77 @@
 
 .sd-cart-button{position:relative;display:flex;align-items:center;gap:7px;color:#315b42!important;font-size:12px;font-weight:750;white-space:nowrap;padding:9px 10px;border:1px solid #e1e9e3;border-radius:7px}.sd-cart-button b{position:absolute;top:-7px;right:-7px;min-width:18px;height:18px;padding:0 4px;border-radius:20px;background:#f28b20;color:#fff;font-size:10px;display:grid;place-items:center}.sd-add-cart{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;margin-top:9px;padding:10px 8px;border:0;border-radius:5px;background:#176b4b;color:#fff;font-size:10px;font-weight:800}.sd-add-cart:disabled{opacity:.45;cursor:not-allowed}.sd-product-info .sd-view-product{margin-top:8px}
 @media(max-width:760px){.sd-header{gap:9px;padding:10px 13px;flex-wrap:wrap}.sd-brand img{width:40px;height:40px}.sd-search{order:5;width:100%;max-width:none}.sd-cart-button{margin-left:auto}.sd-account-button small{display:none}.sd-merchant-link{padding:9px 10px;font-size:10px}.sd-cart-button span{display:none}}
+
+
+/* Sabi Discover responsive marketplace polish */
+.sd-search{box-sizing:border-box;min-width:0}
+.sd-search input{flex:1;min-width:0}
+.sd-search button{flex:0 0 auto}
+.sd-product-card{display:flex;flex-direction:column;height:100%}
+.sd-product-info{display:flex;flex:1;flex-direction:column;min-width:0}
+.sd-product-info h3{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-height:2.8em;line-height:1.4}
+.sd-add-cart{margin-top:auto;min-height:38px}
+.sd-sort-control{display:flex;align-items:center;gap:8px;color:#728177;font-size:11px;white-space:nowrap}
+.sd-sort-control select{max-width:190px;padding:9px 30px 9px 10px;border:1px solid #dce8dd;border-radius:6px;background:#fff;color:#285c46;font:inherit;font-weight:700}
+.sd-best-sellers .sd-product-grid{display:flex;gap:12px;overflow-x:auto;padding:2px 2px 10px;scroll-snap-type:x mandatory}
+.sd-best-sellers .sd-product-card{flex:0 0 235px;scroll-snap-align:start}
+.sd-footer{display:block}
+.sd-footer-top{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:28px;padding-bottom:22px}
+.sd-footer-about p{margin-top:9px;color:#839087;font-size:11px}
+.sd-footer-links{display:grid;align-content:start;gap:9px}
+.sd-footer-links strong{color:#315b42;font-size:11px}
+.sd-footer-links a{color:#77867c;font-size:10px}
+.sd-footer-links a:hover{color:#176b4b;text-decoration:underline}
+.sd-footer-legal{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:16px 0;border-top:1px solid #e5eae5}
+.sd-footer-legal details{padding:10px 12px;border:1px solid #e5ebe5;border-radius:6px;background:#fff}
+.sd-footer-legal summary{cursor:pointer;color:#315b42;font-size:10px;font-weight:800}
+.sd-footer-legal p{margin-top:8px;color:#77867c;font-size:10px;line-height:1.65}
+.sd-footer-bottom{display:flex;justify-content:space-between;gap:12px;padding-top:13px;border-top:1px solid #e5eae5;color:#839087;font-size:9px}
+@media(max-width:760px){
+ .sd-header{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;padding:10px 12px;min-height:0}
+ .sd-brand{grid-column:1;grid-row:1}
+ .sd-cart-button{grid-column:2;grid-row:1;margin:0}
+ .sd-account-button{grid-column:3;grid-row:1;margin:0}
+ .sd-merchant-link{display:none}
+ .sd-search{position:static;grid-column:1/-1;grid-row:2;width:100%;max-width:100%;min-width:0;margin:0;box-shadow:none}
+ .sd-search button{padding:10px 14px}
+ .sd-category-nav{padding:8px 12px;gap:3px}
+ .sd-category-nav .sd-browse-trigger{margin-left:0!important}
+ .sd-hero{display:grid;grid-template-columns:1fr;gap:12px;margin:10px 10px 0;padding:22px 17px 17px;min-height:0}
+ .sd-hero h1{font-size:clamp(30px,8vw,37px);margin:9px 0}
+ .sd-hero-content>p{margin:7px 0;font-size:11px;line-height:1.5}
+ .sd-hero-perks{margin-top:10px;gap:8px}
+ .sd-hero-art{min-height:0;margin:0;display:block}
+ .sd-promo-panel{width:100%;min-height:0;padding:13px 15px;display:grid;grid-template-columns:1fr auto;gap:5px 10px;border-radius:9px}
+ .sd-promo-panel>span,.sd-promo-panel strong,.sd-promo-panel small{grid-column:1}
+ .sd-promo-panel strong{font-size:19px;line-height:1.05}
+ .sd-promo-panel small{font-size:9px}
+ .sd-promo-panel svg{grid-column:2;grid-row:1/4;align-self:center;width:34px;height:34px}
+ .sd-promo-tag{right:9px;bottom:auto;top:-8px;padding:6px 8px;font-size:8px;z-index:2}
+ .sd-market{margin:15px 10px 0}
+ .sd-best-sellers{padding:13px 10px}
+ .sd-best-sellers .sd-product-card{flex-basis:158px}
+ .sd-product-image{height:126px}
+ .sd-product-info{padding:8px}
+ .sd-product-info h3{font-size:10px}
+ .sd-add-cart{font-size:9px;padding:9px 6px}
+ .sd-section-heading{gap:10px}
+ .sd-sort-control{font-size:9px;display:grid;gap:4px}
+ .sd-sort-control select{max-width:145px;padding:8px 7px;font-size:9px}
+ .sd-footer{margin:0 12px}
+ .sd-footer-top{grid-template-columns:1fr 1fr;gap:18px}
+ .sd-footer-about{grid-column:1/-1}
+ .sd-footer-legal{grid-template-columns:1fr}
+}
+@media(max-width:380px){
+ .sd-brand img{width:31px;height:31px}
+ .sd-brand strong{font-size:16px}
+ .sd-account-button>span{font-size:9px}
+ .sd-cart-button{padding:8px}
+ .sd-search{gap:6px;padding-left:8px}
+ .sd-search input{font-size:10px}
+ .sd-search button{padding:9px 10px}
+ .sd-hero{padding:19px 14px 14px}
+ .sd-best-sellers .sd-product-card{flex-basis:148px}
+ .sd-footer-bottom{flex-direction:column}
+}
