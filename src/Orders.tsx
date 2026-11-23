@@ -461,7 +461,7 @@ export default function Orders({ tenantId }: Props) {
     const notificationStatus =
       action === "dispatch" ? "DISPATCHED" :
       action === "confirm" ? "COMPLETED" : "CANCELLED";
-    const { error: emailError } = await supabase.functions.invoke("order-api", {
+    const { data: emailResult, error: emailError } = await supabase.functions.invoke("order-api", {
       body: {
         action: "notify_status",
         tenant_id: tenantId,
@@ -469,11 +469,37 @@ export default function Orders({ tenantId }: Props) {
         status: notificationStatus
       }
     });
-    if (emailError) {
-      console.warn("Order updated, but customer email notification could not be sent:", emailError);
+    if (emailError || emailResult?.email_sent === false) {
+      console.warn("Order updated, but customer email notification could not be sent:", emailError || emailResult);
+      setNotice("Order updated, but Sabi could not send the customer email. Check that the customer's checkout email is valid.");
+    } else if (emailResult?.email_sent === true) {
+      setNotice("Order updated. Customer email sent successfully.");
     }
 
     await loadOrders();
+  }
+
+  async function resendCancellationEmail(orderId: string) {
+    setBusyOrder(orderId);
+    setError("");
+    setNotice("");
+    try {
+      const { data, error: invokeError } = await supabase.functions.invoke("order-api", {
+        body: {
+          action: "notify_status",
+          tenant_id: tenantId,
+          order_id: orderId,
+          status: "CANCELLED"
+        }
+      });
+      if (invokeError) throw new Error(invokeError.message || "Email request failed.");
+      if (!data?.email_sent) throw new Error("Sabi could not send this email. Confirm the customer's checkout email and Resend configuration.");
+      setNotice("Cancellation email sent successfully.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not resend cancellation email.");
+    } finally {
+      setBusyOrder("");
+    }
   }
 
 
@@ -1121,6 +1147,19 @@ export default function Orders({ tenantId }: Props) {
                           <p>{order.cancellation_reason}</p>
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {status === "CANCELLED" && (
+                    <div className="order-actions">
+                      <button
+                        className="order-action-danger"
+                        disabled={isBusy}
+                        onClick={() => resendCancellationEmail(order.id)}
+                      >
+                        <RefreshCw size={16} />
+                        {isBusy ? "Sending..." : "Resend cancellation email"}
+                      </button>
                     </div>
                   )}
 
