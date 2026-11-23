@@ -190,7 +190,7 @@ export async function sendOrderStatusEmail(
 ): Promise<boolean> {
   // Customer email is stored on the tenant contact, not tenant_orders.
   const { data: order, error: orderError } = await db.from("tenant_orders")
-    .select("order_number,customer_name,customer_email,contact_id,shipping_required")
+    .select("order_number,customer_name,contact_id,shipping_required")
     .eq("tenant_id", tenantId).eq("id", orderId).maybeSingle();
 
   if (orderError || !order) {
@@ -198,7 +198,18 @@ export async function sendOrderStatusEmail(
     return false;
   }
 
-  let customerEmail = String(order.customer_email || "").trim();
+  // Checkout email is stored on the order's payment intent, not tenant_orders.
+  const { data: paymentIntent, error: paymentIntentError } = await db.from("tenant_order_payment_intents")
+    .select("customer_email")
+    .eq("tenant_id", tenantId)
+    .eq("order_id", orderId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (paymentIntentError) {
+    console.warn("Order status email payment-intent lookup failed.", paymentIntentError);
+  }
+  let customerEmail = String(paymentIntent?.customer_email || "").trim();
   if (!customerEmail && order.contact_id) {
     const { data: contact, error: contactError } = await db.from("contacts")
       .select("email")
