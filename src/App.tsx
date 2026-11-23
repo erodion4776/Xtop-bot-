@@ -150,6 +150,23 @@ export default function App() {
       setRegistering(true);
       setRegistrationError("");
 
+      // Discover customers use a separate customer profile and must not be
+      // silently provisioned as merchants when they visit the merchant app.
+      const { data: customerProfile } = await supabase
+        .from("sabi_discover_customer_profiles")
+        .select("user_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (customerProfile) {
+        registeredUser.current = userId;
+        setRegistrationError("This is a Sabi Discover customer account. Please use discover.sabibyxtop.com.ng to manage your customer profile and shopping activity.");
+        setRegistering(false);
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke(
         "merchant-register",
         {
@@ -289,18 +306,24 @@ export default function App() {
             {registrationError}
           </div>
 
-          <button
-            className="auth-submit"
-            onClick={() => {
-              registeredUser.current = "";
-              setRegistrationError("");
-              setTenantId("");
-              setRegistering(true);
-              setRegistrationRetry((value) => value + 1);
-            }}
-          >
-            Try again
-          </button>
+          {registrationError.includes("Sabi Discover customer account") ? (
+            <a className="auth-submit" href="https://discover.sabibyxtop.com.ng" style={{ display: "block", textAlign: "center", textDecoration: "none" }}>
+              Open Sabi Discover
+            </a>
+          ) : (
+            <button
+              className="auth-submit"
+              onClick={() => {
+                registeredUser.current = "";
+                setRegistrationError("");
+                setTenantId("");
+                setRegistering(true);
+                setRegistrationRetry((value) => value + 1);
+              }}
+            >
+              Try again
+            </button>
+          )}
 
           <button className="forgot-password" onClick={logout}>
             Log out
