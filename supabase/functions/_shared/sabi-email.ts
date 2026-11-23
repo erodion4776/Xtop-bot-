@@ -40,11 +40,24 @@ export async function sendSabiEmail(to: string, subject: string, html: string, t
 }
 
 export async function sendMerchantWelcomeEmail(email: string, ownerName: string, businessName: string): Promise<boolean> {
-  const html = layout("Welcome to Sabi by XTOP!", 
-    '<p>Hello ' + esc(ownerName || "there") + ',</p><p>Your merchant account for <strong>' + esc(businessName || "your business") + '</strong> is ready.</p><p>You can sign in, add your products and prices, and prepare your shop. You do not need to connect a dedicated business WhatsApp number immediately; you can connect it later from your dashboard settings.</p><p>We are happy to have you with us.</p>',
+  const html = layout("Welcome to Sabi by XTOP!",
+    '<p>Hello ' + esc(ownerName || "there") + ',</p>' +
+    '<p>Your Sabi merchant workspace for <strong>' + esc(businessName || "your business") + '</strong> has been created successfully.</p>' +
+    '<p><strong>Here is how to get your shop ready:</strong></p>' +
+    '<ol style="padding-left:22px;line-height:1.8">' +
+    '<li><strong>Sign in</strong> to your Sabi merchant dashboard.</li>' +
+    '<li><strong>Add your products</strong> with clear names, prices, photos and available stock.</li>' +
+    '<li><strong>Set up delivery and payment</strong> options in Settings.</li>' +
+    '<li><strong>Preview your shop</strong> and share your shop link with customers.</li>' +
+    '</ol>' +
+    '<p>You do not need to connect a dedicated business WhatsApp number immediately. You can connect it later from your dashboard settings.</p>' +
+    '<p>Your Sabi workspace is ready to use. There is no subscription or trial activation required.</p>' +
+    '<p>We are glad to support your business.</p>',
     "Open your Sabi dashboard", DASHBOARD);
-  return sendSabiEmail(email, "Welcome to Sabi by XTOP", html,
-    "Welcome to Sabi by XTOP. Your merchant account for " + businessName + " is ready. Sign in: " + DASHBOARD);
+  return sendSabiEmail(email, "Welcome to Sabi by XTOP — your shop is ready", html,
+    "Hello " + (ownerName || "there") + ". Welcome to Sabi by XTOP. Your merchant workspace for " +
+    businessName + " has been created. Sign in at " + DASHBOARD +
+    ". Add products with prices, photos and stock, configure delivery and payment in Settings, preview your shop and share its link. You can connect your dedicated business WhatsApp number later. No subscription or trial activation is required.");
 }
 
 export async function sendNewOrderEmails(db: any, d: {
