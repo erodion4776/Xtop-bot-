@@ -185,3 +185,11 @@
  .lp-footer div a{font-size:10px}
  .lp-footer>small{grid-column:auto}
 }
+
+.lp-trust-strip{max-width:1144px;margin:0 auto;padding:25px 28px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;border-bottom:1px solid #e9efe8}
+.lp-trust-strip>div{display:flex;align-items:flex-start;gap:11px}
+.lp-trust-strip>div>svg{flex:0 0 auto;color:#397b4d}
+.lp-trust-strip span{display:grid;gap:4px}
+.lp-trust-strip strong{font-size:12px;color:#284a36}
+.lp-trust-strip small{font-size:10px;line-height:1.55;color:#77857c}
+@media(max-width:650px){.lp-trust-strip{padding:22px 18px;grid-template-columns:1fr;gap:14px}.lp-trust-strip>div{gap:9px}.lp-trust-strip strong{font-size:11px}.lp-trust-strip small{font-size:10px}}
