@@ -50,8 +50,23 @@ async function geocodeMerchantAddress(address: string, city: string, state: stri
   url.searchParams.set("limit", "1");
   url.searchParams.set("format", "json");
   url.searchParams.set("apiKey", GEOAPIFY_KEY);
-  const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
-  if (!response.ok) throw new Error("ADDRESS_LOOKUP_FAILED");
+  let response: Response;
+  try {
+    response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  } catch (error) {
+    console.error("Geoapify geocoding network failure:", error instanceof Error ? error.name : "UNKNOWN");
+    throw new Error("ADDRESS_LOOKUP_NETWORK_FAILED");
+  }
+  if (!response.ok) {
+    // Log only status metadata; never log the URL, API key, or merchant address.
+    console.error("Geoapify geocoding rejected request:", {
+      status: response.status,
+      requestId: response.headers.get("x-request-id") || response.headers.get("x-correlation-id") || null,
+    });
+    if (response.status === 401 || response.status === 403) throw new Error("GEOAPIFY_KEY_REJECTED");
+    if (response.status === 429) throw new Error("GEOAPIFY_RATE_LIMITED");
+    throw new Error("ADDRESS_LOOKUP_FAILED");
+  }
   const data = await response.json();
   const place = Array.isArray(data.results) ? data.results[0] : null;
   const lat = Number(place?.lat);
@@ -150,7 +165,10 @@ Deno.serve(async (req: Request) => {
       AUTH_REQUIRED: "Please log in again.",
       NOT_AUTHORIZED: "You are not authorized for this merchant workspace.",
       GEOAPIFY_NOT_CONFIGURED: "Sabi's distance service is not configured yet.",
-      ADDRESS_LOOKUP_FAILED: "The address service is temporarily unavailable. Please try again.",
+      ADDRESS_LOOKUP_FAILED: "Geoapify could not complete the address lookup. Please try again shortly.",
+      GEOAPIFY_KEY_REJECTED: "Geoapify rejected the API key. Check that the key is active and has no browser-only referrer restriction.",
+      GEOAPIFY_RATE_LIMITED: "Geoapify's request limit has been reached. Please wait and try again.",
+      ADDRESS_LOOKUP_NETWORK_FAILED: "Sabi could not reach Geoapify. Please try again shortly.",
       ADDRESS_NOT_FOUND: "We could not locate that pickup address in Nigeria. Add a clearer street, area, city and state.",
       PICKUP_ADDRESS_REQUIRED: "Enter the merchant pickup street address, city and state.",
       INVALID_DELIVERY_PRICING: "Enter valid delivery charges and a maximum distance between 1 and 1,000 km.",
@@ -159,7 +177,9 @@ Deno.serve(async (req: Request) => {
       DELIVERY_SETTINGS_SAVE_FAILED: "Unable to save merchant delivery settings.",
     };
     const status = message === "AUTH_REQUIRED" ? 401 : message === "NOT_AUTHORIZED" ? 403 :
-      message === "ADDRESS_LOOKUP_FAILED" || message === "GEOAPIFY_NOT_CONFIGURED" ? 502 : 400;
+      message === "ADDRESS_LOOKUP_FAILED" || message === "GEOAPIFY_NOT_CONFIGURED" ||
+      message === "GEOAPIFY_KEY_REJECTED" || message === "GEOAPIFY_RATE_LIMITED" ||
+      message === "ADDRESS_LOOKUP_NETWORK_FAILED" ? 502 : 400;
     console.error("Sabi delivery settings error:", message);
     return out({ success: false, error: messages[message] || "Delivery settings request failed." }, status);
   }
