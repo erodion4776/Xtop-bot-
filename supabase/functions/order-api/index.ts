@@ -530,19 +530,6 @@ async function createCartOrder(body: Record<string, unknown>) {
         candidateOrder.source !== "WHATSAPP" ||
         candidateOrder.payment_method !== paymentMethod) continue;
 
-    // Never revive an old pending order with a flat-fee snapshot after the
-    // merchant has enabled road-distance pricing.
-    const { data: currentDeliveryPreference, error: preferenceError } = await db
-      .from("tenant_delivery_preferences")
-      .select("pricing_enabled")
-      .eq("tenant_id", candidate.tenant_id)
-      .maybeSingle();
-    if (preferenceError) throw new Error("DELIVERY_SETTINGS_LOOKUP_FAILED");
-    if (currentDeliveryPreference?.pricing_enabled === true &&
-        candidate.metadata?.delivery_calculation !== "GEOAPIFY_ROAD_DISTANCE") {
-      throw new Error("PENDING_ORDER_DELIVERY_REVIEW");
-    }
-
     const { data: savedItems, error: savedItemsError } = await db
       .from("tenant_order_items")
       .select("product_id,quantity")
@@ -555,6 +542,19 @@ async function createCartOrder(body: Record<string, unknown>) {
       .sort()
       .join("|");
     if (savedSignature !== requestedItems) continue;
+
+    // Apply delivery-snapshot protection only to the exact cart being retried.
+    // An unrelated older unpaid cart must never block a new checkout.
+    const { data: currentDeliveryPreference, error: preferenceError } = await db
+      .from("tenant_delivery_preferences")
+      .select("pricing_enabled")
+      .eq("tenant_id", candidate.tenant_id)
+      .maybeSingle();
+    if (preferenceError) throw new Error("DELIVERY_SETTINGS_LOOKUP_FAILED");
+    if (currentDeliveryPreference?.pricing_enabled === true &&
+        candidate.metadata?.delivery_calculation !== "GEOAPIFY_ROAD_DISTANCE") {
+      throw new Error("PENDING_ORDER_DELIVERY_REVIEW");
+    }
 
     order = candidateOrder;
     intent = candidate;
