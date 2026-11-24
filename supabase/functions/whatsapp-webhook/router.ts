@@ -738,11 +738,18 @@ async function handleTenantStoreMessage(
       }
       checkout.address = raw;
       await save("CHECKOUT_PAYMENT", { store_checkout: checkout });
-      const tenantResult = await supabase.from("tenants")
-        .select("pod_enabled,shipping_enabled,shipping_fee")
-        .eq("id", account.tenantId).maybeSingle();
-      const podAvailable = tenantResult.data?.pod_enabled === true &&
-        tenantResult.data?.shipping_enabled === true && Number(tenantResult.data?.shipping_fee || 0) > 0;
+      const [{ data: tenantSettings }, { data: deliverySettings }] = await Promise.all([
+        supabase.from("tenants").select("pod_enabled,shipping_enabled,shipping_fee")
+          .eq("id", account.tenantId).maybeSingle(),
+        supabase.from("tenant_delivery_preferences")
+          .select("pricing_enabled,base_fee,minimum_fee")
+          .eq("tenant_id", account.tenantId).maybeSingle(),
+      ]);
+      const configuredDeliveryAmount = Number(tenantSettings?.shipping_fee || 0) > 0 ||
+        (deliverySettings?.pricing_enabled === true &&
+          (Number(deliverySettings.base_fee || 0) > 0 || Number(deliverySettings.minimum_fee || 0) > 0));
+      const podAvailable = tenantSettings?.pod_enabled === true &&
+        tenantSettings?.shipping_enabled === true && configuredDeliveryAmount;
       await send(`Choose how you want to pay:\n\nReply *ONLINE* to pay for the products and delivery now.${podAvailable ? "\nReply *POD* to pay the delivery fee now and the product balance when your order arrives." : ""}\n\nYour WhatsApp number will be used for order updates.`);
       return;
     }
@@ -853,7 +860,12 @@ async function handleTenantStoreMessage(
         const paymentAmount = Number(result.payment_amount || 0);
         const commission = Number(result.sabi_commission || 0);
         const paystackFee = Number(result.paystack_processing_fee || 0);
-        await send(`✅ *Order created: ${result.order_number}*\n\nProducts: ${money(Number(result.subtotal))}\nDelivery: ${money(Number(result.delivery_fee))}\nSabi commission: ${money(commission)}\nSabi service fee: ${money(Number(result.sabi_service_fee || 0))}\nPaystack processing fee: ${money(paystackFee)}\n*Total payment due: ${money(paymentAmount)}*\n\nComplete your secure Paystack payment here:\n${result.authorization_url}\n\nYour order will be confirmed after Paystack verifies the payment. We will send updates to this WhatsApp number and ${checkout.email}.`);
+        const deliveryMethodLabel = result.delivery_calculation === "GEOAPIFY_ROAD_DISTANCE"
+          ? `Road distance: ${Number(result.delivery_distance_km || 0).toFixed(1)} km`
+          : result.delivery_calculation === "MERCHANT_FLAT_FALLBACK"
+            ? "Merchant flat-fee fallback"
+            : "No delivery charge";
+        await send(`✅ *Order created: ${result.order_number}*\n\nProducts: ${money(Number(result.subtotal))}\nDelivery: ${money(Number(result.delivery_fee))}\nDelivery method: ${deliveryMethodLabel}\nSabi commission: ${money(commission)}\nSabi service fee: ${money(Number(result.sabi_service_fee || 0))}\nPaystack processing fee: ${money(paystackFee)}\n*Total payment due: ${money(paymentAmount)}*\n\nComplete your secure Paystack payment here:\n${result.authorization_url}\n\nYour order will be confirmed after Paystack verifies the payment. We will send updates to this WhatsApp number and ${checkout.email}.`);
       } catch (error) {
         safeErrorLog("tenantStore.checkout", error);
         await send("The checkout service is temporarily unavailable. Your cart is saved. Please try *checkout* again shortly.");
