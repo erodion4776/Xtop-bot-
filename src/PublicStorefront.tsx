@@ -293,7 +293,7 @@ export default function PublicStorefront() {
           <span>{products.length} {products.length === 1 ? "product" : "products"}</span>
           <div style={styles.actionButtons}>
             <button className="sabi-store-follow" onClick={toggleFollow} style={styles.followButton}><Heart size={16} fill={following ? "currentColor" : "none"}/>{following ? "Following" : "Follow store"}</button>
-            {whatsappLink && <a href={whatsappLink} target="_blank" rel="noopener noreferrer" style={styles.chatButton}><MessageCircle size={16}/> Chat on WhatsApp</a>}
+            {whatsappLink && <><a href={whatsappLink} target="_blank" rel="noopener noreferrer" style={styles.chatButton}><MessageCircle size={16}/> Chat on WhatsApp</a><span aria-label="Store WhatsApp number" style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13,fontWeight:600,color:"#176b4b",background:"#ecfdf5",border:"1px solid #bbf7d0",borderRadius:10,padding:"9px 12px",whiteSpace:"nowrap"}}><MessageCircle size={14}/> {whatsappValue}</span></>}
             <button onClick={shareStore} style={{...styles.shareButton, borderColor: "#fff", color: "#176b4b"}}><Share2 size={17}/> Share store</button>
           </div>
         </div>
