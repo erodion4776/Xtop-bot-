@@ -31,15 +31,14 @@ DECLARE
   v_transaction_charge numeric(14,2);
   v_calculation text;
 BEGIN
-  IF COALESCE(current_setting('request.jwt.claim.role', true), '') <> 'service_role' THEN
-    RAISE EXCEPTION 'SERVICE_ROLE_REQUIRED';
-  END IF;
-
   IF p_delivery_fee IS NULL OR p_delivery_fee < 0 OR p_delivery_fee > 100000000 THEN
     RAISE EXCEPTION 'INVALID_DELIVERY_FEE';
   END IF;
-  IF p_delivery_calculation NOT IN ('NO_DELIVERY','MERCHANT_FLAT_FALLBACK','GEOAPIFY_ROAD_DISTANCE') THEN
+  IF p_delivery_calculation IS NULL OR p_delivery_calculation NOT IN ('NO_DELIVERY','MERCHANT_FLAT_FALLBACK','GEOAPIFY_ROAD_DISTANCE') THEN
     RAISE EXCEPTION 'INVALID_DELIVERY_CALCULATION';
+  END IF;
+  IF p_delivery_calculation = 'GEOAPIFY_ROAD_DISTANCE' AND p_delivery_distance_km IS NULL THEN
+    RAISE EXCEPTION 'INVALID_DELIVERY_DISTANCE';
   END IF;
   IF p_delivery_distance_km IS NOT NULL AND (p_delivery_distance_km < 0 OR p_delivery_distance_km > 1000) THEN
     RAISE EXCEPTION 'INVALID_DELIVERY_DISTANCE';
