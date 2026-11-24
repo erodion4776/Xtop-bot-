@@ -421,7 +421,7 @@ async function quoteMerchantWhatsAppDelivery(
       { lat: Number(pref.pickup_lat), lon: Number(pref.pickup_lon) },
       destination,
     );
-    const maxKm = Number(pref.max_delivery_km || 100);
+    const maxKm = pref.max_delivery_km == null ? 100 : Number(pref.max_delivery_km);
     if (!Number.isFinite(maxKm) || maxKm <= 0 || distanceKm > maxKm) {
       if (flatFallback > 0) return { fee: Math.ceil(flatFallback), calculation: "MERCHANT_FLAT_FALLBACK", distanceKm };
       throw new Error("DELIVERY_OUTSIDE_MERCHANT_RANGE");
@@ -436,8 +436,11 @@ async function quoteMerchantWhatsAppDelivery(
     if (!Number.isSafeInteger(fee) || fee < 0 || fee > 100000000) throw new Error("INVALID_DELIVERY_FEE");
     return { fee, calculation: "GEOAPIFY_ROAD_DISTANCE", distanceKm: Math.round(distanceKm * 10) / 10 };
   } catch (error) {
-    if (flatFallback > 0 && error instanceof Error &&
-        ["GEOAPIFY_NOT_CONFIGURED", "GEOAPIFY_GEOCODE_FAILED", "GEOAPIFY_ROUTE_FAILED", "DELIVERY_DESTINATION_NOT_FOUND"].includes(error.message)) {
+    // A valid merchant flat fee is a safe fallback for transient geocoding,
+    // routing, timeout, or provider failures. Invalid merchant pricing is
+    // validated after this block and is never silently hidden by fallback.
+    if (flatFallback > 0) {
+      console.warn("WhatsApp road-distance quote failed; using configured merchant flat fee.", error);
       return { fee: Math.ceil(flatFallback), calculation: "MERCHANT_FLAT_FALLBACK", distanceKm: null };
     }
     throw error;
@@ -580,7 +583,7 @@ async function createCartOrder(body: Record<string, unknown>) {
       throw new Error("ORDER_CREATION_FAILED");
     }
 
-    await notifyLowStockAfterOrder(String(createdOrder.tenant_id || ""), String(createdOrder.order_id));
+    await notifyLowStockAfterOrder(String(createdOrder.tenant_id), String(createdOrder.order_id));
     order = {
       id: createdOrder.order_id,
       tenant_id: createdOrder.tenant_id,
