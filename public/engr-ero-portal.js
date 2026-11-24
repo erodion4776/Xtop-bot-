@@ -13,6 +13,7 @@
   let selectedAnswer = "";
   let timerHandle = null;
   let completingLesson = false;
+  let videoProgressTimer = null;
   let activeCourseCode = localStorage.getItem("engr_ero_course_" + accessToken) || "";
   const portalStageKey = "engr_ero_stage_" + accessToken;
   const simulationProgressKey = "engr_ero_simulation_" + accessToken;
@@ -31,9 +32,10 @@
     statusEl.style.background = error ? "#fde9e7" : "#fff5dd";
     statusEl.style.color = error ? "#8b2520" : "#77510a";
   }
-  async function api(action, data = {}) {
+  async function api(action, data = {}, options = {}) {
     const response = await fetch(API, {
       method: "POST",
+      keepalive: Boolean(options.keepalive),
       headers: { "Content-Type": "application/json", "apikey": ANON },
       body: JSON.stringify({ action, token: accessToken, session_token: sessionToken, device_id: deviceId, ...data })
     });
@@ -100,11 +102,49 @@
           </article>`;
         const courseVideo = document.getElementById("courseVideo");
         const completeButton = document.getElementById("completeLesson");
-        courseVideo.addEventListener("ended", () => {
+        if (videoProgressTimer) { clearInterval(videoProgressTimer); videoProgressTimer = null; }
+        let resumeApplied = false;
+        let lastSavedAt = 0;
+        const savedPosition = Math.max(0, Number(data.video_progress?.position_seconds || 0));
+        async function saveCurrentVideoProgress(keepalive = false) {
+          if (!courseVideo || !Number.isFinite(courseVideo.duration) || courseVideo.duration <= 0) return;
+          const now = Date.now();
+          if (!keepalive && now - lastSavedAt < 3500) return;
+          lastSavedAt = now;
+          try {
+            await api("save_video_progress", {
+              lesson_id: data.lesson.id,
+              position_seconds: Math.max(0, courseVideo.currentTime || 0),
+              duration_seconds: courseVideo.duration
+            }, { keepalive });
+          } catch (error) {
+            if (!keepalive) console.warn("Lecture progress could not be saved yet:", error);
+          }
+        }
+        courseVideo.addEventListener("loadedmetadata", () => {
+          if (resumeApplied) return;
+          resumeApplied = true;
+          if (savedPosition > 3 && savedPosition < courseVideo.duration - 3) {
+            courseVideo.currentTime = savedPosition;
+            const mins = Math.floor(savedPosition / 60);
+            const secs = Math.floor(savedPosition % 60).toString().padStart(2, "0");
+            status("Welcome back. Your lecture is resuming from " + mins + ":" + secs + ".");
+          }
+        });
+        courseVideo.addEventListener("play", () => { saveCurrentVideoProgress(true); });
+        courseVideo.addEventListener("pause", () => { saveCurrentVideoProgress(true); });
+        courseVideo.addEventListener("seeked", () => { saveCurrentVideoProgress(true); });
+        courseVideo.addEventListener("ended", async () => {
+          await saveCurrentVideoProgress(true);
           completeButton.disabled = false;
           completeButton.textContent = data.order < data.total ? "Video completed — continue to next part" : "Complete course videos and return to WhatsApp";
         });
         courseVideo.addEventListener("error", () => status("This video could not be loaded. Refresh the page to request a new secure video link.", true));
+        videoProgressTimer = setInterval(() => saveCurrentVideoProgress(), 8000);
+        window.addEventListener("pagehide", () => saveCurrentVideoProgress(true), { once: true });
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "hidden") saveCurrentVideoProgress(true);
+        });
         completeButton.addEventListener("click", () => completeCurrentLesson(data.lesson.id));
         return;
       }
