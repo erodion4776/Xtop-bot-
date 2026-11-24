@@ -1,13 +1,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const URL = Deno.env.get("SUPABASE_URL") || "";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "";
 const TOKEN = Deno.env.get("SENDBOX_API_TOKEN") || "";
 const ENV = (Deno.env.get("SENDBOX_ENV") || "staging").toLowerCase();
 const WEBHOOK_TOKEN = Deno.env.get("SABI_DELIVERY_WEBHOOK_TOKEN") || "";
 const BASE = ENV === "production" ? "https://live.sendbox.co" : "https://sandbox.staging.sendbox.co";
-const db = createClient(URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -20,7 +20,7 @@ async function merchant(req: Request, tenantId: string) {
   const auth = req.headers.get("Authorization") || "";
   const match = auth.match(/^Bearer\s+(.+)$/i);
   if (!match || !ANON_KEY) throw new Error("AUTH_REQUIRED");
-  const client = createClient(URL, ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { Authorization: `Bearer ${match[1]}` } } });
+  const client = createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { Authorization: `Bearer ${match[1]}` } } });
   const { data, error } = await client.auth.getUser(match[1]);
   if (error || !data.user) throw new Error("AUTH_REQUIRED");
   const { data: member } = await db.from("tenant_members").select("tenant_id")
@@ -50,7 +50,7 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json().catch(() => ({}));
     const url = new URL(req.url);
-    if (body.action === "webhook") {
+    if (url.searchParams.get("action") === "webhook") {
       if (!WEBHOOK_TOKEN || url.searchParams.get("token") !== WEBHOOK_TOKEN) return out({ success: false }, 401);
       const code = clean(body.code || body.tracking_code || body.tracking?.code, 100);
       const status = clean(body.status_code || body.status?.code || body.status, 60).toLowerCase();
@@ -162,7 +162,7 @@ Deno.serve(async (req: Request) => {
       const rates = Array.isArray(saved.rates) ? saved.rates : [];
       const selected = rates.find((r: any) => String(r.id || r.key || "") === rateId && r.is_enabled !== false);
       if (!selected) throw new Error("INVALID_DELIVERY_RATE");
-      const payload = { ...saved.quote_request, selected_rate_id: rateId, selected_rate: selected, callback_url: `${URL}/functions/v1/sabi-delivery?action=webhook&token=${encodeURIComponent(WEBHOOK_TOKEN)}` };
+      const payload = { ...saved.quote_request, selected_rate_id: rateId, selected_rate: selected, callback_url: `${SUPABASE_URL}/functions/v1/sabi-delivery?action=webhook&token=${encodeURIComponent(WEBHOOK_TOKEN)}` };
       const { error: bookingStateError } = await db.from("sabi_delivery_shipments").update({ status: "BOOKING", delivery_fee: Number(selected.fee), provider_payload: { ...saved, selected_rate: selected }, updated_at: new Date().toISOString() }).eq("id", shipment.id);
       if (bookingStateError) throw new Error("SHIPMENT_UPDATE_FAILED");
       try {
