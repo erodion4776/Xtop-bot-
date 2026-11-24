@@ -603,7 +603,7 @@ export default function PublicProduct() {
               <button type="button" onClick={() => setCheckoutOpen(true)} style={{...styles.buyNowButton, background: brandColor}}>
                 <CreditCard size={18} /> Buy now
               </button>
-              {whatsappNumber && <a href={whatsappLink} target="_blank" rel="noopener noreferrer" style={styles.whatsappButton}><MessageCircle size={18} /> Chat on WhatsApp</a>}
+              {whatsappNumber && <a href={whatsappLink} target="_blank" rel="noopener noreferrer" style={styles.whatsappButton}><MessageCircle size={18} /> Chat with this shop's Sabi WhatsApp bot</a>}
               {cartAdded && <a href="/?cart=1" style={styles.viewCartLink}>View cart and checkout</a>}
             </div>
           )}

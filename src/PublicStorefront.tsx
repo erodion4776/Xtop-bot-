@@ -12,6 +12,7 @@ type StorefrontRow = {
   industry: string | null;
   welcome_greeting: string | null;
   contact_phone: string | null;
+  business_whatsapp: string | null;
   product_id: string | null;
   product_name: string | null;
   product_description: string | null;
@@ -76,7 +77,7 @@ export default function PublicStorefront() {
         setLoading(false);
         return;
       }
-      const { data, error: lookupError } = await supabase.rpc("sabi_get_public_storefront_v2", { p_slug: slug });
+      const { data, error: lookupError } = await supabase.rpc("sabi_get_public_storefront_v3", { p_slug: slug });
       if (cancelled) return;
       if (lookupError) {
         setError("We could not load this store right now. Please try again.");
@@ -242,10 +243,11 @@ export default function PublicStorefront() {
   const brandColor = store.brand_color || "#176b4b";
   const rating = Number(store.seller_rating || 0);
   const reviewCount = Number(store.seller_review_count || 0);
-  const whatsappValue = store.contact_phone || "";
-  const whatsappDigits = whatsappValue.replace(/\\D/g, "");
+  const whatsappValue = store.business_whatsapp || "";
+  const whatsappDigits = whatsappValue.replace(/\D/g, "");
   const normalizedWhatsapp = whatsappDigits.startsWith("0") ? `234${whatsappDigits.slice(1)}` : whatsappDigits.startsWith("234") ? whatsappDigits : whatsappDigits.length === 10 ? `234${whatsappDigits}` : whatsappDigits;
-  const whatsappLink = normalizedWhatsapp.length >= 12 ? `https://wa.me/${normalizedWhatsapp}` : "";
+  const whatsappMessage = `Hello ${store.business_name}, I found your shop on Sabi Discover. I would like to ask about your products and place an order.`;
+  const whatsappLink = normalizedWhatsapp.length >= 12 && normalizedWhatsapp.length <= 15 ? `https://wa.me/${normalizedWhatsapp}?text=${encodeURIComponent(whatsappMessage)}` : "";
 
   return (
     <main style={styles.page}>
@@ -293,7 +295,7 @@ export default function PublicStorefront() {
           <span>{products.length} {products.length === 1 ? "product" : "products"}</span>
           <div style={styles.actionButtons}>
             <button className="sabi-store-follow" onClick={toggleFollow} style={styles.followButton}><Heart size={16} fill={following ? "currentColor" : "none"}/>{following ? "Following" : "Follow store"}</button>
-            {whatsappLink && <><a href={whatsappLink} target="_blank" rel="noopener noreferrer" style={styles.chatButton}><MessageCircle size={16}/> Chat on WhatsApp</a><span aria-label="Store WhatsApp number" style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13,fontWeight:600,color:"#176b4b",background:"#ecfdf5",border:"1px solid #bbf7d0",borderRadius:10,padding:"9px 12px",whiteSpace:"nowrap"}}><MessageCircle size={14}/> {whatsappValue}</span></>}
+            {whatsappLink ? <a href={whatsappLink} target="_blank" rel="noopener noreferrer" style={styles.chatButton}><MessageCircle size={16}/> Chat with our Sabi WhatsApp shop</a> : <span style={{fontSize:12,color:"#e0eee5"}}>This shop has not connected its Sabi WhatsApp bot yet.</span>}
             <button onClick={shareStore} style={{...styles.shareButton, borderColor: "#fff", color: "#176b4b"}}><Share2 size={17}/> Share store</button>
           </div>
         </div>

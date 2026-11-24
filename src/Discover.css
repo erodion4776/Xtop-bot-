@@ -189,3 +189,34 @@
 .sd-load-more:hover{background:#edf6ed;border-color:#9fc3a7}
 .sd-load-more:disabled{opacity:.6;cursor:wait}
 .sd-end-of-results{text-align:center;padding:18px 0;color:#87938b;font-size:10px}
+
+/* WhatsApp-first merchant discovery actions */
+.sd-product-card{position:relative}
+.sd-whatsapp-chat{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:36px;margin-top:7px;padding:8px;border:1px solid #cce8d5;border-radius:5px;background:#effaf2;color:#176b4b;font-size:10px;font-weight:850}
+.sd-whatsapp-chat:hover{background:#e1f4e7}
+@media(max-width:760px){.sd-whatsapp-chat{min-height:34px;font-size:9px;padding:7px 5px}}
+
+.sd-whatsapp-promo{max-width:1190px;margin:14px auto 0;padding:13px 17px;display:flex;align-items:center;gap:12px;border:1px solid #cfe7d5;border-radius:8px;background:#eff9f1;color:#176b4b}
+.sd-whatsapp-promo>svg{flex:0 0 auto}
+.sd-whatsapp-promo div{display:grid;gap:3px;min-width:0}
+.sd-whatsapp-promo strong{font-size:12px;font-weight:850}
+.sd-whatsapp-promo span{font-size:11px;line-height:1.45;color:#4e6f59}
+@media(max-width:1240px){.sd-whatsapp-promo{margin-left:22px;margin-right:22px}}
+@media(max-width:760px){.sd-whatsapp-promo{margin:9px 10px 0;padding:10px 11px;gap:9px}.sd-whatsapp-promo>svg{width:19px;height:19px}.sd-whatsapp-promo strong{font-size:10px}.sd-whatsapp-promo span{font-size:9px}}
+
+/* Sabi Discover merchant directory */
+.sd-merchants{max-width:1190px;margin:22px auto 0;padding:20px;background:#fff;border:1px solid #e7ece8;border-radius:9px}
+.sd-merchant-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px}
+.sd-merchant-card{min-width:0;padding:12px;border:1px solid #e7eee8;border-radius:8px;background:#fff}
+.sd-merchant-main{display:flex;align-items:center;gap:10px;min-width:0;color:#20372a;text-decoration:none}
+.sd-merchant-main>img,.sd-merchant-placeholder{width:48px;height:48px;min-width:48px;border-radius:9px;object-fit:cover;background:#edf5ee}
+.sd-merchant-placeholder{display:grid;place-items:center;color:#176b4b}
+.sd-merchant-details{display:grid;gap:4px;min-width:0;flex:1}
+.sd-merchant-details strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.sd-merchant-details small{color:#7a8980;font-size:10px}
+.sd-merchant-details>span{color:#748279;font-size:9px}
+.sd-merchant-main>svg{color:#8a9a8e;flex:0 0 auto}
+.sd-merchant-whatsapp{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:11px;padding:8px;border:1px solid #cce8d5;border-radius:6px;background:#effaf2;color:#176b4b;font-size:10px;font-weight:850;text-decoration:none}
+.sd-merchant-no-whatsapp{display:block;margin-top:11px;color:#89958c;font-size:9px;text-align:center}
+@media(max-width:1240px){.sd-merchants{margin-left:22px;margin-right:22px}}
+@media(max-width:760px){.sd-merchants{margin:14px 10px 0;padding:13px 10px}.sd-merchant-grid{grid-template-columns:1fr;gap:8px}.sd-merchant-card{padding:10px}.sd-merchant-main>img,.sd-merchant-placeholder{width:42px;height:42px;min-width:42px}.sd-merchant-details strong{font-size:11px}.sd-merchant-whatsapp{margin-top:8px;padding:7px}}
