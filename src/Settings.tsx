@@ -88,7 +88,7 @@ export default function Settings({ tenantId }: { tenantId: string }) {
   const [marketplaceSaving, setMarketplaceSaving] = useState(false);
   const [marketplaceError, setMarketplaceError] = useState("");
   const [marketplaceSuccess, setMarketplaceSuccess] = useState("");
-  const [deliverySettings, setDeliverySettings] = useState<any>({ delivery_mode: "MERCHANT", preferred_partner_id: null, pickup_address: "", pickup_state: "", pickup_city: "", pickup_lga: "" });
+  const [deliverySettings, setDeliverySettings] = useState<any>({ delivery_mode: "MERCHANT", preferred_partner_id: null, pickup_address: "", pickup_state: "", pickup_city: "", pickup_lga: "", pickup_phone: "", pickup_email: "" });
   const [deliveryPartners, setDeliveryPartners] = useState<any[]>([]);
   const [deliveryConfigured, setDeliveryConfigured] = useState(false);
   const [deliveryLoading, setDeliveryLoading] = useState(false);
@@ -292,7 +292,7 @@ export default function Settings({ tenantId }: { tenantId: string }) {
 
   async function saveDeliverySettings(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setDeliverySaving(true); setDeliveryError(""); setDeliverySuccess("");
-    if (deliverySettings.delivery_mode === "PARTNER" && (!deliverySettings.preferred_partner_id || !deliverySettings.pickup_address || !deliverySettings.pickup_state || !deliverySettings.pickup_city)) {
+    if (deliverySettings.delivery_mode === "PARTNER" && (!deliverySettings.preferred_partner_id || !deliverySettings.pickup_address || !deliverySettings.pickup_state || !deliverySettings.pickup_city || !deliverySettings.pickup_phone)) {
       setDeliveryError("Select a partner and complete your pickup address, state and city.");
       setDeliverySaving(false); return;
     }
@@ -776,6 +776,10 @@ export default function Settings({ tenantId }: { tenantId: string }) {
             <input value={deliverySettings.pickup_state || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_state:e.target.value}))} style={fieldStyle} placeholder="e.g. Edo" required/>
             <label style={{ display: "block", marginTop: 12 }}><strong>Pickup city</strong></label>
             <input value={deliverySettings.pickup_city || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_city:e.target.value}))} style={fieldStyle} placeholder="e.g. Benin City" required/>
+            <label style={{ display: "block", marginTop: 12 }}><strong>Pickup contact phone</strong></label>
+            <input value={deliverySettings.pickup_phone || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_phone:e.target.value}))} style={fieldStyle} placeholder="Phone number for courier pickup" required/>
+            <label style={{ display: "block", marginTop: 12 }}><strong>Pickup contact email (optional)</strong></label>
+            <input type="email" value={deliverySettings.pickup_email || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_email:e.target.value}))} style={fieldStyle} placeholder="Pickup contact email"/>
             <label style={{ display: "block", marginTop: 12 }}><strong>Local Government Area (optional)</strong></label>
             <input value={deliverySettings.pickup_lga || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_lga:e.target.value}))} style={fieldStyle} placeholder="e.g. Oredo"/>
           </>}
