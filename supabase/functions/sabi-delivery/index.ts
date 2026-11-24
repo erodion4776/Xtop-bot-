@@ -104,7 +104,7 @@ Deno.serve(async (req: Request) => {
       const weight = Number(body.weight_kg);
       const destination = body.destination && typeof body.destination === "object" ? body.destination : null;
       if (!orderId || !Number.isFinite(weight) || weight <= 0 || weight > 1000 || !destination) throw new Error("QUOTE_DETAILS_REQUIRED");
-      const [{ data: pref }, { data: order }, { data: items }] = await Promise.all([
+      const [{ data: pref }, { data: order }, { data: items }, { data: tenant }] = await Promise.all([
         db.from("tenant_delivery_preferences").select("*").eq("tenant_id", tenantId).maybeSingle(),
         db.from("tenant_orders").select("id,tenant_id,order_number,customer_name,customer_phone,delivery_address,subtotal,payment_status,status").eq("tenant_id", tenantId).eq("id", orderId).maybeSingle(),
         db.from("tenant_order_items").select("product_name,quantity,unit_price,line_total").eq("tenant_id", tenantId).eq("order_id", orderId),
@@ -116,7 +116,7 @@ Deno.serve(async (req: Request) => {
       const origin = {
         first_name: "Merchant", last_name: "Pickup", name: "Merchant pickup",
         street: pref.pickup_address, state: pref.pickup_state, city: pref.pickup_city,
-        country: "NG", phone: clean(body.origin_phone, 40), email: clean(body.origin_email, 180) || null,
+        country: "NG", phone: clean(tenant?.contact_phone, 40), email: clean(tenant?.contact_email, 180) || null,
       };
       const dest = {
         first_name: clean(order.customer_name, 100).split(" ")[0] || "Customer",
@@ -182,6 +182,17 @@ Deno.serve(async (req: Request) => {
         await db.from("sabi_delivery_shipments").update({ status: "FAILED", updated_at: new Date().toISOString() }).eq("id", shipment.id);
         throw e;
       }
+    }
+
+    if (body.action === "shipment-status") {
+      const orderId = clean(body.order_id, 80);
+      const { data: shipment, error } = await db.from("sabi_delivery_shipments")
+        .select("status,tracking_number,tracking_url,delivery_fee,quote_expires_at,provider_payload,updated_at")
+        .eq("tenant_id", tenantId).eq("order_id", orderId).maybeSingle();
+      if (error) throw new Error("SHIPMENT_LOOKUP_FAILED");
+      if (!shipment) return out({ success: true, shipment: null });
+      const selected = shipment.provider_payload?.selected_rate || null;
+      return out({ success: true, shipment: { status: shipment.status, tracking_number: shipment.tracking_number, tracking_url: shipment.tracking_url, delivery_fee: Number(shipment.delivery_fee || 0), quote_expires_at: shipment.quote_expires_at, selected_rate: selected, updated_at: shipment.updated_at } });
     }
 
     if (body.action === "track") {
