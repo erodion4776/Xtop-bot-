@@ -87,7 +87,14 @@ export default function Settings({ tenantId }: { tenantId: string }) {
   const [marketplaceLoading, setMarketplaceLoading] = useState(true);
   const [marketplaceSaving, setMarketplaceSaving] = useState(false);
   const [marketplaceError, setMarketplaceError] = useState("");
-  const [marketplaceSuccess, setMarketplaceSuccess] = useState("");\n  const [deliverySettings, setDeliverySettings] = useState<any>({ delivery_mode: "MERCHANT", preferred_partner_id: null, pickup_address: "", pickup_state: "", pickup_city: "", pickup_lga: "" });\n  const [deliveryPartners, setDeliveryPartners] = useState<any[]>([]);\n  const [deliveryConfigured, setDeliveryConfigured] = useState(false);\n  const [deliveryLoading, setDeliveryLoading] = useState(false);\n  const [deliverySaving, setDeliverySaving] = useState(false);\n  const [deliveryError, setDeliveryError] = useState("");\n  const [deliverySuccess, setDeliverySuccess] = useState("");
+  const [marketplaceSuccess, setMarketplaceSuccess] = useState("");
+  const [deliverySettings, setDeliverySettings] = useState<any>({ delivery_mode: "MERCHANT", preferred_partner_id: null, pickup_address: "", pickup_state: "", pickup_city: "", pickup_lga: "" });
+  const [deliveryPartners, setDeliveryPartners] = useState<any[]>([]);
+  const [deliveryConfigured, setDeliveryConfigured] = useState(false);
+  const [deliveryLoading, setDeliveryLoading] = useState(false);
+  const [deliverySaving, setDeliverySaving] = useState(false);
+  const [deliveryError, setDeliveryError] = useState("");
+  const [deliverySuccess, setDeliverySuccess] = useState("");
 
   const card: React.CSSProperties = {
     background: "#fff",
@@ -444,7 +451,8 @@ export default function Settings({ tenantId }: { tenantId: string }) {
 
     loadBusinessProfile();
     loadSettings();
-    loadMarketplaceStatus();\n    loadDeliverySettings();
+    loadMarketplaceStatus();
+    loadDeliverySettings();
     loadWhatsAppStatus();
     loadBanks();
     loadPayoutStatus();
