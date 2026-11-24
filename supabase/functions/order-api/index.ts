@@ -369,6 +369,84 @@ async function createOrder(body: Record<string, unknown>) {
 }
 
 
+
+type MerchantWhatsAppDeliveryQuote = {
+  fee: number;
+  calculation: "MERCHANT_FLAT_FALLBACK" | "GEOAPIFY_ROAD_DISTANCE" | "NO_DELIVERY";
+  distanceKm: number | null;
+};
+
+async function quoteMerchantWhatsAppDelivery(
+  items: { product_id: string; quantity: number }[],
+  deliveryAddress: string,
+): Promise<MerchantWhatsAppDeliveryQuote> {
+  const productIds = [...new Set(items.map(item => item.product_id))];
+  const { data: products, error: productsError } = await db
+    .from("products").select("id,tenant_id").in("id", productIds);
+  if (productsError || !products || products.length !== productIds.length) {
+    throw new Error("INVALID_ORDER_DETAILS");
+  }
+  const tenantIds = [...new Set(products.map((item: any) => String(item.tenant_id)))];
+  if (tenantIds.length !== 1) throw new Error("INVALID_ORDER_DETAILS");
+  const tenantId = tenantIds[0];
+
+  const [{ data: tenant, error: tenantError }, { data: pref, error: prefError }] = await Promise.all([
+    db.from("tenants").select("id,shipping_enabled,shipping_fee").eq("id", tenantId).maybeSingle(),
+    db.from("tenant_delivery_preferences")
+      .select("pickup_lat,pickup_lon,base_fee,per_km_fee,minimum_fee,max_delivery_km,pricing_enabled,location_verified_at")
+      .eq("tenant_id", tenantId).maybeSingle(),
+  ]);
+  if (tenantError || prefError || !tenant) throw new Error("DELIVERY_SETTINGS_LOOKUP_FAILED");
+  if (tenant.shipping_enabled !== true) return { fee: 0, calculation: "NO_DELIVERY", distanceKm: null };
+
+  const flatFallback = Number(tenant.shipping_fee || 0);
+  if (!Number.isFinite(flatFallback) || flatFallback < 0) throw new Error("INVALID_DELIVERY_FEE");
+  if (pref?.pricing_enabled !== true) {
+    if (flatFallback <= 0) throw new Error("MERCHANT_DELIVERY_NOT_CONFIGURED");
+    return { fee: Math.ceil(flatFallback), calculation: "MERCHANT_FLAT_FALLBACK", distanceKm: null };
+  }
+
+  const hasVerifiedPickup = pref.location_verified_at &&
+    pref.pickup_lat != null && pref.pickup_lon != null &&
+    Number.isFinite(Number(pref.pickup_lat)) && Number.isFinite(Number(pref.pickup_lon)) &&
+    Math.abs(Number(pref.pickup_lat)) <= 90 && Math.abs(Number(pref.pickup_lon)) <= 180;
+  if (!hasVerifiedPickup) {
+    if (flatFallback > 0) return { fee: Math.ceil(flatFallback), calculation: "MERCHANT_FLAT_FALLBACK", distanceKm: null };
+    throw new Error("MERCHANT_PICKUP_LOCATION_NOT_READY");
+  }
+
+  try {
+    const destination = await geoapifyGeocode(deliveryAddress);
+    const distanceKm = await geoapifyRoadDistance(
+      { lat: Number(pref.pickup_lat), lon: Number(pref.pickup_lon) },
+      destination,
+    );
+    const maxKm = pref.max_delivery_km == null ? 100 : Number(pref.max_delivery_km);
+    if (!Number.isFinite(maxKm) || maxKm <= 0 || distanceKm > maxKm) {
+      if (flatFallback > 0) return { fee: Math.ceil(flatFallback), calculation: "MERCHANT_FLAT_FALLBACK", distanceKm };
+      throw new Error("DELIVERY_OUTSIDE_MERCHANT_RANGE");
+    }
+    const baseFee = Number(pref.base_fee || 0);
+    const perKmFee = Number(pref.per_km_fee || 0);
+    const minimumFee = Number(pref.minimum_fee || 0);
+    if (![baseFee, perKmFee, minimumFee].every(value => Number.isFinite(value) && value >= 0)) {
+      throw new Error("INVALID_DELIVERY_FEE");
+    }
+    const fee = Math.ceil(Math.max(minimumFee, baseFee + distanceKm * perKmFee));
+    if (!Number.isSafeInteger(fee) || fee < 0 || fee > 100000000) throw new Error("INVALID_DELIVERY_FEE");
+    return { fee, calculation: "GEOAPIFY_ROAD_DISTANCE", distanceKm: Math.round(distanceKm * 10) / 10 };
+  } catch (error) {
+    // A valid merchant flat fee is a safe fallback for transient geocoding,
+    // routing, timeout, or provider failures. Invalid merchant pricing is
+    // validated after this block and is never silently hidden by fallback.
+    if (flatFallback > 0) {
+      console.warn("WhatsApp road-distance quote failed; using configured merchant flat fee.", error);
+      return { fee: Math.ceil(flatFallback), calculation: "MERCHANT_FLAT_FALLBACK", distanceKm: null };
+    }
+    throw error;
+  }
+}
+
 async function createCartOrder(body: Record<string, unknown>) {
   const items = Array.isArray(body.items) ? body.items : [];
   const customerName = String(body.customer_name || "").trim();
@@ -449,6 +527,7 @@ async function createCartOrder(body: Record<string, unknown>) {
   }
 
   if (order && intent) {
+    // An existing pending order keeps its original delivery-fee snapshot on retry.
     // Retire the lost checkout reference before issuing a replacement link.
     await db.from("tenant_order_payment_intents")
       .update({ status: "FAILED" })
@@ -486,7 +565,8 @@ async function createCartOrder(body: Record<string, unknown>) {
     }
     intent = replacementIntent;
   } else {
-    const { data: createdOrder, error: orderError } = await db.rpc("sabi_create_public_cart_order", {
+    const deliveryQuote = await quoteMerchantWhatsAppDelivery(normalizedItems, deliveryAddress);
+    const { data: createdOrder, error: orderError } = await db.rpc("sabi_create_public_cart_order_with_delivery", {
       p_items: normalizedItems,
       p_customer_name: customerName,
       p_customer_phone: customerPhone,
@@ -494,13 +574,16 @@ async function createCartOrder(body: Record<string, unknown>) {
       p_delivery_address: deliveryAddress,
       p_notes: body.notes == null ? null : String(body.notes),
       p_payment_method: paymentMethod,
+      p_delivery_fee: deliveryQuote.fee,
+      p_delivery_calculation: deliveryQuote.calculation,
+      p_delivery_distance_km: deliveryQuote.distanceKm,
     });
     if (orderError || !createdOrder?.success) {
       console.error("WhatsApp cart order creation failed:", orderError);
       throw new Error("ORDER_CREATION_FAILED");
     }
 
-    await notifyLowStockAfterOrder(String(createdOrder.tenant_id || ""), String(createdOrder.order_id));
+    await notifyLowStockAfterOrder(String(createdOrder.tenant_id), String(createdOrder.order_id));
     order = {
       id: createdOrder.order_id,
       tenant_id: createdOrder.tenant_id,
@@ -508,6 +591,8 @@ async function createCartOrder(body: Record<string, unknown>) {
       subtotal: createdOrder.subtotal,
       delivery_fee: createdOrder.delivery_fee,
       total: createdOrder.total,
+      delivery_calculation: createdOrder.delivery_calculation,
+      delivery_distance_km: createdOrder.delivery_distance_km,
     };
     isNewOrder = true;
     const { data: createdIntent, error: intentError } = await db
@@ -552,6 +637,8 @@ async function createCartOrder(body: Record<string, unknown>) {
       paystack_processing_fee: Number(feeSnapshot.paystack_processing_fee),
       currency: intent.currency,
       authorization_url: payment.authorization_url,
+      delivery_calculation: order.delivery_calculation || null,
+      delivery_distance_km: order.delivery_distance_km || null,
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "";
@@ -1559,6 +1646,8 @@ Deno.serve(async (req: Request) => {
         "The delivery address is outside this seller's configured delivery range.",
       MERCHANT_PICKUP_LOCATION_NOT_READY:
         "A seller has not verified its pickup address. Ask the seller to update Delivery Settings.",
+      MERCHANT_DELIVERY_NOT_CONFIGURED:
+        "This shop has not configured a delivery fee. Please contact the shop before placing the order.",
       INVALID_DELIVERY_FEE:
         "The delivery charge returned by the seller is invalid. Please contact support.",
       MARKETPLACE_SELLERS_NOT_FOUND:
