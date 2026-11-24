@@ -163,7 +163,8 @@ Deno.serve(async (req: Request) => {
       const rates = Array.isArray(saved.rates) ? saved.rates : [];
       const selected = rates.find((r: any) => String(r.id || r.key || "") === rateId && r.is_enabled !== false);
       if (!selected) throw new Error("INVALID_DELIVERY_RATE");
-      if (!WEBHOOK_TOKEN) throw new Error("DELIVERY_WEBHOOK_NOT_CONFIGURED");\n      const payload = { ...saved.quote_request, selected_rate_id: rateId, selected_rate: selected, callback_url: `${SUPABASE_URL}/functions/v1/sabi-delivery?action=webhook&token=${encodeURIComponent(WEBHOOK_TOKEN)}` };
+      if (!WEBHOOK_TOKEN) throw new Error("DELIVERY_WEBHOOK_NOT_CONFIGURED");
+      const payload = { ...saved.quote_request, selected_rate_id: rateId, selected_rate: selected, callback_url: `${SUPABASE_URL}/functions/v1/sabi-delivery?action=webhook&token=${encodeURIComponent(WEBHOOK_TOKEN)}` };
       const { error: bookingStateError } = await db.from("sabi_delivery_shipments").update({ status: "BOOKING", delivery_fee: Number(selected.fee), provider_payload: { ...saved, selected_rate: selected }, updated_at: new Date().toISOString() }).eq("id", shipment.id);
       if (bookingStateError) throw new Error("SHIPMENT_UPDATE_FAILED");
       try {
@@ -212,7 +213,8 @@ Deno.serve(async (req: Request) => {
     const message = error instanceof Error ? error.message : "";
     const messages: Record<string,string> = {
       AUTH_REQUIRED: "Please log in again.", NOT_AUTHORIZED: "You are not authorized for this merchant workspace.",
-      SENDBOX_NOT_CONFIGURED: "Sendbox credentials have not been configured by Sabi yet.",\n      DELIVERY_WEBHOOK_NOT_CONFIGURED: "Sabi delivery tracking webhook has not been configured yet.",
+      SENDBOX_NOT_CONFIGURED: "Sendbox credentials have not been configured by Sabi yet.",
+      DELIVERY_WEBHOOK_NOT_CONFIGURED: "Sabi delivery tracking webhook has not been configured yet.",
       SENDBOX_REQUEST_FAILED: "Sendbox could not complete the request. Check the integration account and try again.",
       DELIVERY_PARTNER_REQUIRED: "Select an approved delivery partner.",
       DELIVERY_PARTNER_UNAVAILABLE: "This delivery partner is not currently available.",
