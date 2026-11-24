@@ -125,8 +125,11 @@ export default function Discover() {
 
   useEffect(() => {
     loadProducts();
-    loadMerchants();
   }, [category, search, sortBy]);
+
+  useEffect(() => {
+    loadMerchants();
+  }, [search]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setHeroSlide(current => (current + 1) % 6), 5600);
