@@ -104,14 +104,14 @@ Deno.serve(async (req: Request) => {
       const maxKm = amount(body.max_delivery_km, 100);
       const pricingEnabled = body.pricing_enabled === true;
 
-      if (!address || !city || !state) throw new Error("PICKUP_ADDRESS_REQUIRED");
+      if (pricingEnabled && (!address || !city || !state)) throw new Error("PICKUP_ADDRESS_REQUIRED");
       if ([baseFee, perKmFee, minimumFee].some(v => v < 0 || v > 100000000) ||
           !Number.isFinite(maxKm) || maxKm <= 0 || maxKm > 1000) {
         throw new Error("INVALID_DELIVERY_PRICING");
       }
       if (pricingEnabled && baseFee + perKmFee <= 0) throw new Error("DELIVERY_RATE_REQUIRED");
 
-      const point = await geocodeMerchantAddress(address, city, state);
+      const point = pricingEnabled ? await geocodeMerchantAddress(address, city, state) : null;
       const payload = {
         tenant_id: tenantId,
         delivery_mode: "MERCHANT",
@@ -121,10 +121,10 @@ Deno.serve(async (req: Request) => {
         pickup_city: city,
         pickup_lga: lga || null,
         pickup_phone: phone || null,
-        pickup_lat: point.lat,
-        pickup_lon: point.lon,
-        geocoded_label: point.label,
-        location_verified_at: new Date().toISOString(),
+        pickup_lat: point?.lat ?? null,
+        pickup_lon: point?.lon ?? null,
+        geocoded_label: point?.label ?? null,
+        location_verified_at: point ? new Date().toISOString() : null,
         base_fee: baseFee,
         per_km_fee: perKmFee,
         minimum_fee: minimumFee,
@@ -140,7 +140,7 @@ Deno.serve(async (req: Request) => {
         console.error("Merchant delivery settings save failed:", error);
         throw new Error("DELIVERY_SETTINGS_SAVE_FAILED");
       }
-      return out({ success: true, settings: data, message: "Pickup address verified and delivery pricing saved." });
+      return out({ success: true, settings: data, message: pricingEnabled ? "Pickup address verified and delivery pricing saved." : "Merchant flat-fee delivery settings saved." });
     }
 
     return out({ success: false, error: "Unknown delivery settings action." }, 404);
