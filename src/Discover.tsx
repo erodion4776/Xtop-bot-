@@ -430,11 +430,13 @@ export default function Discover() {
         </div>
       </section>}
 
+      <section className="sd-whatsapp-promo"><MessageCircle size={22}/><div><strong>Every shop has its own Sabi WhatsApp bot.</strong><span>Tap “Chat with shop” on a product to ask questions, check availability and continue shopping directly with the merchant.</span></div></section>
+
       <section className="sd-feature-slider" aria-label="Sabi features">
         <div className="sd-feature-slide" key={heroSlide} onTouchStart={event => { touchStartX.current = event.touches[0]?.clientX ?? null; }} onTouchEnd={event => { const start = touchStartX.current; const end = event.changedTouches[0]?.clientX; touchStartX.current = null; if (start !== null && end !== undefined && Math.abs(end - start) > 45) setHeroSlide(current => (current + (end < start ? 1 : 5)) % 6); }}>
           <div className="sd-feature-copy">
-            <div className="sd-feature-meta"><span className="sd-feature-tag">{["DISCOVER MORE","FOR BUSINESSES","SHOP SMART","EASY SHOPPING","SHOP WITH CONFIDENCE","MERCHANT TOOLS"][heroSlide]}</span><span className="sd-feature-pill">{["Fresh finds daily","Sell on Sabi","Verified rankings","All in one cart","Buyer protection","Store operations"][heroSlide]}</span></div>
-            <h1>{["Find your next favourite.","Run your store & reach more buyers.","Compare sellers & real ratings.","Shop across stores in one cart.","Shop with confidence and clear order records.","Manage products, orders & fulfilment."][heroSlide]}</h1>
+            <div className="sd-feature-meta"><span className="sd-feature-tag">{["DISCOVER MORE","FOR BUSINESSES","SHOP SMART","WHATSAPP SHOPPING","PAYMENT RECORDS","MERCHANT TOOLS"][heroSlide]}</span><span className="sd-feature-pill">{["Fresh finds daily","Sell on Sabi","Verified rankings","Your shop on WhatsApp","Payment verification","Store operations"][heroSlide]}</span></div>
+            <h1>{["Find your next favourite.","Run your store & reach more buyers.","Compare sellers & real ratings.","Chat directly with trusted shops.","Shop with confidence and clear order records.","Manage products, orders & fulfilment."][heroSlide]}</h1>
             <p>{[
               "Search products, categories, and verified Nigerian stores all in one marketplace.",
               "Manage products and stock, run your storefront, and choose which items to publish straight to Sabi Discover. Share product links with customers.",
@@ -446,12 +448,13 @@ export default function Discover() {
             <div className="sd-feature-actions">
               {heroSlide === 0 && <button onClick={() => document.getElementById("discover-products")?.scrollIntoView({ behavior: "smooth" })}>Explore products ↓</button>}
               {heroSlide === 1 && <a href="https://app.sabibyxtop.com.ng">Start selling on Sabi <ArrowRight size={15}/></a>}
+              {heroSlide === 3 && <button onClick={() => document.getElementById("discover-products")?.scrollIntoView({ behavior: "smooth" })}>Find a shop to chat with <ArrowRight size={15}/></button>}
               {heroSlide === 4 && <button onClick={() => document.getElementById("buyer-protection")?.scrollIntoView({ behavior: "smooth" })}>How it works <ArrowRight size={15}/></button>}
               {heroSlide === 5 && <a href="https://app.sabibyxtop.com.ng">Open merchant workspace <ArrowRight size={15}/></a>}
             </div>
           </div>
           <div className="sd-feature-art" aria-hidden="true">
-            <div className="sd-feature-art-icon">{[<ShoppingBag size={48}/>,<Store size={48}/>,<Star size={48}/>,<ShoppingBag size={48}/>,<ShieldCheck size={48}/>,<Truck size={48}/>][heroSlide]}</div>
+            <div className="sd-feature-art-icon">{[<ShoppingBag size={48}/>,<Store size={48}/>,<Star size={48}/>,<MessageCircle size={48}/>,<ShieldCheck size={48}/>,<Truck size={48}/>][heroSlide]}</div>
             <span>SABI <b>BY XTOP</b></span>
             <small>{["Discover Nigerian businesses","Your store, your customers","Shop with more information","Chat with your merchant","Payment and order records","Tools for growing businesses"][heroSlide]}</small>
           </div>
