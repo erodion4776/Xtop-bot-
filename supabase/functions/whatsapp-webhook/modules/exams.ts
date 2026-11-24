@@ -463,11 +463,6 @@ export async function handleActiveExamRecovery(
   return true;
 }
 
-/**
- * Restores the ELA401 post-simulation handoff when Sabi's welcome menu has
- * replaced the conversation context. Only a saved SUBMITTED Experiment 17
- * record and completed lecture progress can unlock the CBT payment step.
- */
 /** Restore a student's saved course context and continue from completed lectures to CBT payment. */
 export async function handleCourseCbtContinuation(
   phone: string, conversationId: string, conv: Conversation
@@ -506,6 +501,11 @@ export async function handleCourseCbtContinuation(
   await startExamEntry(phone, conversationId, learningCtx);
   return true;
 }
+/**
+ * Restores the ELA401 post-simulation handoff when Sabi's welcome menu has
+ * replaced the conversation context. Only a saved Experiment 17 simulation
+ * and completed lecture progress can unlock the CBT payment step.
+ */
 export async function handleEla401CbtContinuation(
   phone: string, conversationId: string, conv: Conversation
 ): Promise<boolean> {
