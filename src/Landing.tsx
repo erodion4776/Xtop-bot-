@@ -2,6 +2,7 @@ import {
   ArrowRight,
   MessageCircle,
   ShoppingBag,
+  Search,
   Smartphone,
   CreditCard,
   Truck,
@@ -114,7 +115,7 @@ export default function Landing() {
           <a href="#demo">See the demo</a>
           <a href="#faq">FAQs</a>
         </nav>
-        <div className="lp-nav-actions"><a className="lp-nav-demo" href={WHATSAPP_DEMO_URL} target="_blank" rel="noreferrer"><MessageCircle size={15} /> Try Sabi</a><a className="lp-nav-cta" href={DASHBOARD_SIGNUP_URL} target="_blank" rel="noreferrer">Register your business <ArrowRight size={16} /></a><a className="lp-nav-login" href="/app">Login</a></div>
+        <div className="lp-nav-actions"><a className="lp-nav-discover" href="https://discover.sabibyxtop.com.ng"><Search size={15} /> Shop</a><a className="lp-nav-demo" href={WHATSAPP_DEMO_URL} target="_blank" rel="noreferrer"><MessageCircle size={15} /> Try Sabi</a><a className="lp-nav-cta" href={DASHBOARD_SIGNUP_URL} target="_blank" rel="noreferrer">Register your business <ArrowRight size={16} /></a><a className="lp-nav-login" href="/app">Login</a></div>
       </header>
 
       <section className="lp-hero">
@@ -128,6 +129,7 @@ export default function Landing() {
             bring those moving parts into one simple WhatsApp-powered shop.
           </p>
           <div className="lp-hero-actions">
+            <a className="lp-button lp-button-discover" href="https://discover.sabibyxtop.com.ng"><ShoppingBag size={18} /> Shop on Sabi Discover <ArrowRight size={18} /></a>
             <a className="lp-button lp-button-primary" href={DASHBOARD_SIGNUP_URL} target="_blank" rel="noreferrer">Register your business <ArrowRight size={18} /></a>
             <a className="lp-button lp-button-whatsapp" href={WHATSAPP_DEMO_URL} target="_blank" rel="noreferrer"><MessageCircle size={17} /> Try Sabi on WhatsApp</a>
             <a className="lp-button lp-button-ghost" href="#demo"><Play size={16} /> Watch the demo video</a>
@@ -157,6 +159,16 @@ export default function Landing() {
       <section className="lp-truth-strip">
         <p><strong>For the trader.</strong> The home business. The growing shop. The seller with customers in five different WhatsApp groups.</p>
         <span>From Lagos to Benin, Abuja to Port Harcourt — business moves through conversations.</span>
+      </section>
+
+      <section className="lp-discover-callout" aria-label="Shop on Sabi Discover">
+        <div className="lp-discover-icon"><ShoppingBag size={25} /></div>
+        <div className="lp-discover-copy">
+          <span>FOR CUSTOMERS · ONE PLACE TO EXPLORE</span>
+          <h2>Discover products and Nigerian businesses on Sabi.</h2>
+          <p>Explore stores, find products and shop from businesses on the Sabi marketplace.</p>
+        </div>
+        <a href="https://discover.sabibyxtop.com.ng" className="lp-discover-cta">Explore Sabi Discover <ArrowRight size={18} /></a>
       </section>
 
       <section className="lp-section lp-pain-section">
@@ -276,7 +288,7 @@ export default function Landing() {
       <footer className="lp-footer">
         <a className="lp-brand" href="/"><img src={LOGO_URL} alt="" /><span>Sabi <small>by XTOP</small></span></a>
         <p>Helping businesses turn conversations into better customer experiences.</p>
-        <div><a href="#features">Why Sabi</a><a href="#demo">Demo</a><a href="#faq">FAQs</a><a href="/app">Merchant login</a></div>
+        <div><a href="https://discover.sabibyxtop.com.ng">Sabi Discover</a><a href="#features">Why Sabi</a><a href="#demo">Demo</a><a href="#faq">FAQs</a><a href="/app">Merchant login</a></div>
         <small>© {new Date().getFullYear()} XTOP Retail Technologies. All rights reserved.</small>
       </footer>
     </main>
