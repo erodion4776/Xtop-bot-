@@ -575,11 +575,15 @@ async function createCartOrder(body: Record<string, unknown>) {
       }
       candidateOrder.delivery_fee = refreshedDelivery.fee;
       candidateOrder.total = refreshedTotal;
-      candidateOrder.delivery_calculation = refreshedDelivery.calculation;
-      candidateOrder.delivery_distance_km = refreshedDelivery.distanceKm;
     }
 
-    order = candidateOrder;
+    order = refreshedDelivery
+      ? {
+          ...candidateOrder,
+          delivery_calculation: refreshedDelivery.calculation,
+          delivery_distance_km: refreshedDelivery.distanceKm,
+        }
+      : candidateOrder;
     intent = refreshedDelivery
       ? {
           ...candidate,
