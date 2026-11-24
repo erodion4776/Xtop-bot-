@@ -370,7 +370,7 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
                     At checkout, Geoapify calculates the road distance from each seller to the customer's address. If route calculation is unavailable, Sabi uses that merchant's existing flat delivery fee when configured. Delivery fees remain excluded from Sabi's sales commission.
                   </div>
                   <div className="sa-delivery-note">
-                    No courier-partner API or Sendbox booking is enabled in this delivery model.
+                    No courier-partner API or booking is enabled in this delivery model.
                   </div>
                 </div>
               )}
