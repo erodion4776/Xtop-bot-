@@ -55,7 +55,8 @@ const pages: { label: Page; icon: any }[] = [
   { label: "Activity Log", icon: Activity },
   { label: "WhatsApp Usage", icon: MessageSquare },
   { label: "Platform Controls", icon: ShieldCheck },
-  { label: "Platform Email", icon: Mail },\n  { label: "Delivery Partners", icon: Truck },
+  { label: "Platform Email", icon: Mail },
+  { label: "Delivery Partners", icon: Truck },
 ];
 
 const money = (value: number) => new Intl.NumberFormat("en-NG", {
@@ -77,7 +78,9 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
   const [supportDraft, setSupportDraft] = useState("");
   const [whatsappUsage, setWhatsappUsage] = useState<WhatsAppUsageRow[]>([]);
   const [usageSettings, setUsageSettings] = useState<any[]>([]);
-  const [emailCampaigns, setEmailCampaigns] = useState<any[]>([]);\n  const [deliveryPartners, setDeliveryPartners] = useState<DeliveryPartner[]>([]);\n  const [partnerDraft, setPartnerDraft] = useState<DeliveryPartner>({ id: "", code: "", name: "", provider_type: "API", integration_status: "NOT_CONNECTED", is_enabled: false, service_states: [], service_cities: [], supports_cod: false, tracking_url_template: "", public_description: "", sort_order: 100 });
+  const [emailCampaigns, setEmailCampaigns] = useState<any[]>([]);
+  const [deliveryPartners, setDeliveryPartners] = useState<DeliveryPartner[]>([]);
+  const [partnerDraft, setPartnerDraft] = useState<DeliveryPartner>({ id: "", code: "", name: "", provider_type: "API", integration_status: "NOT_CONNECTED", is_enabled: false, service_states: [], service_cities: [], supports_cod: false, tracking_url_template: "", public_description: "", sort_order: 100 });
   const [emailAudience, setEmailAudience] = useState<"MERCHANTS" | "CUSTOMERS" | "ALL">("MERCHANTS");
   const [emailSubject, setEmailSubject] = useState("");
   const [emailContent, setEmailContent] = useState("");
@@ -135,7 +138,10 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
       } else if (target === "Platform Controls") {
         const result = await callAdmin("overview");
         setStats(result.data);
-      } else if (target === "Delivery Partners") {\n        const result = await callAdmin("delivery-partners");\n        setDeliveryPartners(result.data || []);\n      } else if (target === "Platform Email") {
+      } else if (target === "Delivery Partners") {
+        const result = await callAdmin("delivery-partners");
+        setDeliveryPartners(result.data || []);
+      } else if (target === "Platform Email") {
         const result = await callAdmin("email-campaign-data");
         setEmailCampaigns(result.data?.campaigns || []);
         setEmailCounts({ merchant_count: result.data?.merchant_count || 0, customer_count: result.data?.customer_count || 0 });
