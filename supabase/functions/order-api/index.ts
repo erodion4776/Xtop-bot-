@@ -676,7 +676,7 @@ async function createMarketplaceCheckout(body: Record<string, unknown>) {
   const deliveryAddress = String(body.delivery_address || "").trim();
   if (!items.length || items.length > 30) throw new Error("INVALID_ORDER_DETAILS");
   if (!customerName || !customerPhone || !customerEmail || !deliveryAddress) throw new Error("CUSTOMER_DETAILS_REQUIRED");
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(customerEmail)) throw new Error("INVALID_CUSTOMER_EMAIL");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) throw new Error("INVALID_CUSTOMER_EMAIL");
 
   const normalizedItems = items.map((item: Record<string, unknown>) => ({
     product_id: String(item.product_id || ""),
