@@ -370,7 +370,7 @@ export default function Discover() {
     const rating = Number(product.seller_rating || 0);
     const reviews = Number(product.seller_review_count || 0);
     const sold = Number(product.sold_quantity || 0);
-    const rawWhatsapp = String(product.business_whatsapp || "").replace(/\\D/g, "");
+    const rawWhatsapp = String(product.business_whatsapp || "").replace(/\D/g, "");
     const whatsappNumber = rawWhatsapp.startsWith("0") ? `234${rawWhatsapp.slice(1)}` : rawWhatsapp.startsWith("234") ? rawWhatsapp : rawWhatsapp.length === 10 ? `234${rawWhatsapp}` : rawWhatsapp;
     const whatsappMessage = `Hello ${product.business_name}, I found your shop on Sabi Discover and I am interested in ${product.product_name}. Please help me check availability and how to order. Product: https://discover.sabibyxtop.com.ng/?product=${encodeURIComponent(product.product_id)}`;
     const whatsappLink = whatsappNumber.length >= 12 && whatsappNumber.length <= 15 ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(whatsappMessage)}` : "";
