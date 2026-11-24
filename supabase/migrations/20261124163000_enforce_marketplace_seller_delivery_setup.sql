@@ -29,7 +29,7 @@ begin
     join public.tenants t on t.id = p.tenant_id
     where t.shipping_enabled is distinct from true
   ) then
-    raise exception 'A seller has not enabled delivery in their Sabi settings. Remove that seller''s products or ask the seller to configure delivery before checkout.';
+    raise exception 'MARKETPLACE_SELLER_DELIVERY_NOT_CONFIGURED';
   end if;
 
   v_result := public.sabi_quote_marketplace_checkout_legacy_20261124(p_items);
@@ -80,7 +80,7 @@ begin
     join public.tenants t on t.id = p.tenant_id
     where t.shipping_enabled is distinct from true
   ) then
-    raise exception 'A seller has not enabled delivery in their Sabi settings. Remove that seller''s products or ask the seller to configure delivery before checkout.';
+    raise exception 'MARKETPLACE_SELLER_DELIVERY_NOT_CONFIGURED';
   end if;
 
   return public.sabi_create_marketplace_checkout_legacy_20261124(
