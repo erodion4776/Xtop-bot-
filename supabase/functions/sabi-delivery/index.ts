@@ -78,7 +78,7 @@ Deno.serve(async (req: Request) => {
         db.from("sabi_delivery_partners").select("id,code,name,service_states,service_cities,integration_status,is_enabled").eq("is_enabled", true).eq("integration_status", "ACTIVE").order("sort_order"),
       ]);
       if (prefError || partnerError) throw new Error("DELIVERY_SETTINGS_LOAD_FAILED");
-      return out({ success: true, settings: pref || { delivery_mode: "MERCHANT", preferred_partner_id: null, pickup_address: "", pickup_state: "", pickup_city: "", pickup_lga: "" }, partners: partners || [], configured: !!TOKEN, environment: ENV });
+      return out({ success: true, settings: pref || { delivery_mode: "MERCHANT", preferred_partner_id: null, pickup_address: "", pickup_state: "", pickup_city: "", pickup_lga: "" }, partners: TOKEN && WEBHOOK_TOKEN ? (partners || []) : [], configured: !!TOKEN && !!WEBHOOK_TOKEN, environment: ENV });
     }
 
     if (body.action === "settings-save") {
