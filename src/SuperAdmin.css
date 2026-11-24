@@ -59,3 +59,16 @@
 .sa-email-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:5px}
 .sa-email-foot>span{font-size:10px;color:#8390a0;overflow-wrap:anywhere}
 @media(max-width:760px){.sa-email-audience-grid{grid-template-columns:1fr}.sa-email-foot{align-items:stretch}.sa-email-foot button{justify-content:center;min-height:42px}}
+
+
+.sa-delivery-note{padding:12px 13px;border:1px solid #dcebe2;background:#f4faf6;color:#4d6d5a;border-radius:9px;font-size:11px;line-height:1.55;margin:14px 0}
+.sa-delivery-form{display:grid;gap:8px;max-width:760px;padding:16px;border:1px solid #e7ecf2;border-radius:11px;margin:14px 0 20px}
+.sa-delivery-form label{font-size:11px;font-weight:750;color:#526174;margin-top:4px}
+.sa-delivery-form input:not([type=checkbox]),.sa-delivery-form select,.sa-delivery-form textarea{box-sizing:border-box;width:100%;min-width:0;padding:10px 11px;border:1px solid #d8e0e8;border-radius:8px;background:#fff;color:#263548;font:inherit;font-size:12px}
+.sa-delivery-form textarea{resize:vertical}
+.sa-delivery-two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.sa-delivery-two>div{display:grid;gap:7px}
+.sa-delivery-checks{display:grid;gap:9px;padding:8px 0}
+.sa-delivery-checks label{display:flex;align-items:center;gap:8px;font-weight:600}
+.sa-delivery-checks input{accent-color:#168052}
+@media(max-width:600px){.sa-delivery-two{grid-template-columns:1fr}}
