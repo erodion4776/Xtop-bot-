@@ -518,7 +518,7 @@ async function createCartOrder(body: Record<string, unknown>) {
   for (const candidate of recentIntents || []) {
     const { data: candidateOrder } = await db
       .from("tenant_orders")
-      .select("id,tenant_id,order_number,status,payment_status,payment_method,source,subtotal,delivery_fee,total")
+      .select("id,tenant_id,order_number,status,payment_status,payment_method,source,subtotal,delivery_fee,total,delivery_calculation")
       .eq("id", candidate.order_id)
       .eq("tenant_id", candidate.tenant_id)
       .eq("customer_phone", customerPhone)
@@ -529,6 +529,19 @@ async function createCartOrder(body: Record<string, unknown>) {
         candidateOrder.payment_status !== "UNPAID" ||
         candidateOrder.source !== "WHATSAPP" ||
         candidateOrder.payment_method !== paymentMethod) continue;
+
+    // Never revive an old pending order with a flat-fee snapshot after the
+    // merchant has enabled road-distance pricing.
+    const { data: currentDeliveryPreference, error: preferenceError } = await db
+      .from("tenant_delivery_preferences")
+      .select("pricing_enabled")
+      .eq("tenant_id", candidate.tenant_id)
+      .maybeSingle();
+    if (preferenceError) throw new Error("DELIVERY_SETTINGS_LOOKUP_FAILED");
+    if (currentDeliveryPreference?.pricing_enabled === true &&
+        candidateOrder.delivery_calculation !== "GEOAPIFY_ROAD_DISTANCE") {
+      throw new Error("PENDING_ORDER_DELIVERY_REVIEW");
+    }
 
     const { data: savedItems, error: savedItemsError } = await db
       .from("tenant_order_items")
@@ -1682,6 +1695,8 @@ Deno.serve(async (req: Request) => {
         "We could not calculate the road route. Please check the address and try again.",
       DELIVERY_QUOTE_UNAVAILABLE:
         "Sabi could not calculate the road-distance delivery charge right now. No delivery fee has been guessed or charged. Please try again shortly or contact the merchant.",
+      PENDING_ORDER_DELIVERY_REVIEW:
+        "A previous unpaid order has an older delivery calculation. To prevent an incorrect charge, please contact the merchant to review that order before trying checkout again.",
       DELIVERY_DESTINATION_NOT_FOUND:
         "We could not locate that delivery address in Nigeria. Add a clearer street, area, city and state.",
       DELIVERY_OUTSIDE_MERCHANT_RANGE:
