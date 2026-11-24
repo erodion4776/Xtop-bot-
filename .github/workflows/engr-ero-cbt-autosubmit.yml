@@ -1,8 +1,8 @@
-name: ENGR ERO CBT Auto-submit
+name: ENGR ERO CBT Auto-submit (manual fallback)
 
+# The production Supabase pg_cron job is the authoritative auto-submit scheduler.
+# This workflow is retained only as an operator-triggered fallback.
 on:
-  schedule:
-    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   submit-expired-exams:
-    name: Submit expired web CBT attempts
+    name: Manually submit expired web CBT attempts
     runs-on: ubuntu-latest
     steps:
       - name: Submit expired attempts
@@ -18,9 +18,10 @@ jobs:
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
           ENGR_ERO_CRON_SECRET: ${{ secrets.ENGR_ERO_CRON_SECRET }}
         run: |
+          set -euo pipefail
           if [ -z "$SUPABASE_PROJECT_ID" ] || [ -z "$ENGR_ERO_CRON_SECRET" ]; then
-            echo "Auto-submit secrets are not configured yet; skipping this scheduled run."
-            exit 0
+            echo "::error::Manual fallback requires SUPABASE_PROJECT_ID and ENGR_ERO_CRON_SECRET GitHub secrets. Production auto-submit continues through Supabase pg_cron."
+            exit 1
           fi
 
           curl --fail-with-body --silent --show-error \
