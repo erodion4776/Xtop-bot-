@@ -1,0 +1,2 @@
+.sa-dropship-form{display:grid;gap:12px}
+@media(max-width:700px){.sa-delivery-two{grid-template-columns:1fr!important}.sa-table-wrap{overflow-x:auto}.sa-table-wrap table{min-width:720px}}
