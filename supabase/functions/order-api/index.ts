@@ -551,13 +551,53 @@ async function createCartOrder(body: Record<string, unknown>) {
       .eq("tenant_id", candidate.tenant_id)
       .maybeSingle();
     if (preferenceError) throw new Error("DELIVERY_SETTINGS_LOOKUP_FAILED");
+
+    let refreshedDelivery: { fee: number; calculation: string; distanceKm: number | null } | null = null;
     if (currentDeliveryPreference?.pricing_enabled === true &&
         candidate.metadata?.delivery_calculation !== "GEOAPIFY_ROAD_DISTANCE") {
-      throw new Error("PENDING_ORDER_DELIVERY_REVIEW");
+      // Re-quote the existing order instead of rejecting the customer's retry.
+      // Updating this order preserves its stock reservation and avoids a second deduction.
+      refreshedDelivery = await quoteMerchantWhatsAppDelivery(normalizedItems, deliveryAddress);
+      const refreshedTotal = Number(candidateOrder.subtotal || 0) + refreshedDelivery.fee;
+      const { error: refreshOrderError } = await db
+        .from("tenant_orders")
+        .update({
+          delivery_fee: refreshedDelivery.fee,
+          total: refreshedTotal,
+        })
+        .eq("tenant_id", candidate.tenant_id)
+        .eq("id", candidate.order_id)
+        .eq("status", "PENDING")
+        .eq("payment_status", "UNPAID");
+      if (refreshOrderError) {
+        console.error("Pending WhatsApp order delivery refresh failed:", refreshOrderError);
+        throw new Error("PENDING_ORDER_DELIVERY_REFRESH_FAILED");
+      }
+      candidateOrder.delivery_fee = refreshedDelivery.fee;
+      candidateOrder.total = refreshedTotal;
     }
 
-    order = candidateOrder;
-    intent = candidate;
+    order = refreshedDelivery
+      ? {
+          ...candidateOrder,
+          delivery_calculation: refreshedDelivery.calculation,
+          delivery_distance_km: refreshedDelivery.distanceKm,
+        }
+      : candidateOrder;
+    intent = refreshedDelivery
+      ? {
+          ...candidate,
+          expected_amount: candidate.payment_type === "POD_DELIVERY"
+            ? refreshedDelivery.fee
+            : Number(candidateOrder.subtotal || 0) + refreshedDelivery.fee,
+          metadata: {
+            ...((candidate.metadata && typeof candidate.metadata === "object") ? candidate.metadata : {}),
+            delivery_calculation: refreshedDelivery.calculation,
+            delivery_distance_km: refreshedDelivery.distanceKm,
+            delivery_fee: refreshedDelivery.fee,
+          },
+        }
+      : candidate;
     previousReference = String(candidate.reference || "");
     break;
   }
