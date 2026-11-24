@@ -809,12 +809,15 @@ async function quoteMarketplaceCheckout(body: Record<string, unknown>, req: Requ
   if (clientIp) {
     requestFingerprint = await sha256Hex(clientIp);
     const since = new Date(Date.now() - 60 * 1000).toISOString();
-    const { count, error: rateError } = await db.from("sabi_marketplace_delivery_quotes")
+    const { count, error: rateError } = await db.from("sabi_delivery_quote_attempts")
       .select("id", { count: "exact", head: true })
       .eq("request_fingerprint", requestFingerprint)
       .gte("created_at", since);
     if (rateError) throw new Error("DELIVERY_RATE_CHECK_FAILED");
     if ((count || 0) >= 25) throw new Error("DELIVERY_QUOTE_RATE_LIMITED");
+    const { error: attemptError } = await db.from("sabi_delivery_quote_attempts")
+      .insert({ request_fingerprint: requestFingerprint });
+    if (attemptError) throw new Error("DELIVERY_RATE_CHECK_FAILED");
   }
 
   const { data: baseQuote, error: baseError } = await db.rpc("sabi_quote_marketplace_checkout", { p_items: normalizedItems });
