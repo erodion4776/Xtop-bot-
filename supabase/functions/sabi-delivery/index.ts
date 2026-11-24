@@ -108,6 +108,7 @@ Deno.serve(async (req: Request) => {
         db.from("tenant_delivery_preferences").select("*").eq("tenant_id", tenantId).maybeSingle(),
         db.from("tenant_orders").select("id,tenant_id,order_number,customer_name,customer_phone,delivery_address,subtotal,payment_status,shipping_payment_status,shipping_payment_required,status").eq("tenant_id", tenantId).eq("id", orderId).maybeSingle(),
         db.from("tenant_order_items").select("product_name,quantity,unit_price,line_total").eq("tenant_id", tenantId).eq("order_id", orderId),
+        db.from("tenants").select("contact_phone,contact_email").eq("id", tenantId).maybeSingle(),
       ]);
       if (!pref || pref.delivery_mode !== "PARTNER" || !pref.preferred_partner_id) throw new Error("PARTNER_NOT_SELECTED");
       if (!order || !items?.length) throw new Error("ORDER_NOT_FOUND");
