@@ -280,9 +280,9 @@ export default function App() {
       <div className="auth-page">
         <div className="auth-card">
           <img
+            className="workspace-loading-logo"
             src={LOGO_URL}
             alt="Sabi by XTOP"
-            style={{ width: 90, height: 90, objectFit: "contain" }}
           />
           <h2>Preparing your workspace</h2>
           <p>Setting up your merchant workspace.</p>
