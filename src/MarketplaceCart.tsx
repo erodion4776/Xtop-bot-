@@ -69,7 +69,7 @@ export default function MarketplaceCart() {
   const sellers = useMemo(() => {
     const grouped = new Map<string, { name: string; items: SabiMarketplaceCartItem[]; subtotal: number }>();
     for (const item of items) {
-      const key = item.business_name || item.business_slug || item.product_id;
+      const key = item.business_slug || item.business_name || item.product_id;
       const group = grouped.get(key) || { name: item.business_name || "Sabi seller", items: [], subtotal: 0 };
       group.items.push(item);
       group.subtotal += Number(item.product_price) * item.quantity;
@@ -146,7 +146,7 @@ export default function MarketplaceCart() {
                       <div className="sabi-cart-item-actions"><strong>{money(Number(item.product_price)*item.quantity)}</strong><button type="button" onClick={() => removeItem(item.product_id)} aria-label="Remove item"><Trash2 size={16}/> Remove</button></div>
                     </div>
                   ))}
-                  <div className="sabi-cart-delivery"><Truck size={15}/><span>Delivery fee set by this seller and included in the final checkout total.</span></div>
+                  <div className="sabi-cart-delivery"><Truck size={15}/><span>This seller’s configured delivery fee is calculated separately. The seller handles dispatch and delivery.</span></div>
                 </section>
               ))}
               <section className="sabi-cart-address">
@@ -168,10 +168,10 @@ export default function MarketplaceCart() {
               <h2>Order summary</h2>
               <div className="sabi-cart-summary-line"><span>Items ({items.reduce((n,item)=>n+item.quantity,0)})</span><strong>{quote ? money(Number(quote.item_subtotal)) : money(subtotal)}</strong></div>
               <div className="sabi-cart-summary-line"><span>Delivery</span><strong>{quote ? money(Number(quote.delivery_total)) : quoteLoading ? "Calculating..." : "—"}</strong></div>
-              {quote?.sellers?.map((seller: any) => <div className="sabi-cart-seller-fee" key={seller.tenant_id}><span>{seller.merchant_name} delivery</span><strong>{money(Number(seller.delivery_fee))}</strong></div>)}
+              {quote?.sellers?.map((seller: any) => <div className="sabi-cart-seller-fee" key={seller.tenant_id}><span>{seller.delivery_label || `${seller.merchant_name} delivery`}</span><strong>{money(Number(seller.delivery_fee))}</strong></div>)}
               {quote && <div className="sabi-cart-summary-line"><span>Sabi marketplace fees</span><strong>{money(Number(quote.marketplace_fee_total))}</strong></div>}
               {quote && <div className="sabi-cart-summary-line"><span>Payment processing</span><strong>{money(Number(quote.paystack_processing_fee))}</strong></div>}
-              <div className="sabi-cart-summary-note">Each seller's delivery fee is calculated separately. Stock and final prices are checked again when you place the order.</div>
+              <div className="sabi-cart-summary-note">Each seller’s configured flat delivery fee is shown separately. These are merchant-set fees, not live courier quotes. Each seller handles dispatch and delivery. Stock and prices are checked again when you place the order.</div>
               <div className="sabi-cart-summary-total"><span>Total payable</span><strong>{quote ? money(Number(quote.expected_amount)) : quoteLoading ? "Calculating..." : "—"}</strong></div>
               <div className="sabi-cart-protection"><ShieldCheck size={18}/><span>Secure Paystack payment. Sabi confirms every seller order after payment verification.</span></div>
               {quoteError && <div className="sabi-cart-error" role="alert">{quoteError}</div>}
