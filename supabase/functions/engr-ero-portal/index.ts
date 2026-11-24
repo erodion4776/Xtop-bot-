@@ -602,10 +602,25 @@ Deno.serve(async (req: Request) => {
         answers.push({ question_id: question.id, selected_option: selected, correct_option: question.correct_answer, is_correct: correct });
         const score = Number(attempt.score || 0) + (correct ? Number(question.marks || 1) : 0);
         const nextIndex = currentIndex + 1;
+        // Compare-and-set the question index so duplicate taps, retrying mobile
+        // networks or two tabs cannot award marks twice for the same question.
         const { data: updated, error: saveError } = await sb.from("exam_attempts").update({
           answers_json: answers, score, current_question_index: nextIndex,
-        }).eq("id", attempt.id).is("submitted_at", null).select("*").single();
+        }).eq("id", attempt.id).eq("current_question_index", currentIndex)
+          .is("submitted_at", null).select("*").maybeSingle();
         if (saveError) throw saveError;
+        if (!updated) {
+          // Another request may have saved this answer first. Return the durable
+          // state rather than treating a harmless duplicate request as a failure.
+          const { data: latest, error: latestError } = await sb.from("exam_attempts")
+            .select("*").eq("id", attempt.id).maybeSingle();
+          if (latestError) throw latestError;
+          if (!latest) return response({ error: "Exam attempt not found." }, 404);
+          if (latest.submitted_at) {
+            return response({ completed: true, score: latest.score, percentage: latest.percentage, pass_status: latest.pass_status });
+          }
+          return response(await currentExamQuestion(session, latest));
+        }
         if (nextIndex >= questions.length) {
           const final = await finishExam(session, updated);
           return response({ completed: true, score: final.score, percentage: final.percentage, pass_status: final.pass_status });
