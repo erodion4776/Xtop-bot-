@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   RefreshCw,
   Package,
+  Truck,
   CheckCircle,
   XCircle,
   ChevronDown,
@@ -1115,7 +1116,6 @@ export default function Orders({ tenantId }: Props) {
                     className="order-details-toggle"
                     onClick={() => {
                       setExpandedOrder(expanded ? "" : order.id);
-                      if (!expanded) void loadShipmentStatus(order.id);
                     }}
                   >
                     {expanded ? "Hide details" : "View order details"}
