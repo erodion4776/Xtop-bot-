@@ -781,7 +781,7 @@ export default function Settings({ tenantId }: { tenantId: string }) {
             <input value={deliverySettings.pickup_lga || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_lga:e.target.value}))} style={fieldStyle} placeholder="e.g. Oredo"/>
           </label>
           <label style={{ display: "flex", alignItems: "flex-start", gap: 10, marginTop: 18 }}>
-            <input type="checkbox" checked={deliverySettings.pricing_enabled === true} onChange={e=>setDeliverySettings((v:any)=>({...v,pricing_enabled:e.target.checked}))}/>
+            <input type="checkbox" checked={deliverySettings.pricing_enabled === true} disabled={!deliveryConfigured} onChange={e=>setDeliverySettings((v:any)=>({...v,pricing_enabled:e.target.checked}))}/>
             <span><strong>Calculate delivery by road distance</strong><small style={{ display: "block", color: "#64748b", marginTop: 4 }}>When enabled, Sabi uses Geoapify driving distance and your rates below. If routing is temporarily unavailable, your existing flat delivery fee is used when it is greater than zero.</small></span>
           </label>
           {deliverySettings.pricing_enabled === true && <>
