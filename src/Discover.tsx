@@ -491,7 +491,7 @@ export default function Discover() {
         <div className="sd-section-heading"><div><span className="sd-eyebrow"><Store size={13}/> MERCHANT DIRECTORY</span><h2>Explore trusted Sabi merchants</h2><p>Visit a shop, compare its reviews and open its connected WhatsApp bot.</p></div><span className="sd-live-label">{merchants.length} {merchants.length === 1 ? "shop" : "shops"}</span></div>
         <div className="sd-merchant-grid">
           {merchants.map(merchant => {
-            const raw = String(merchant.business_whatsapp || "").replace(/\\D/g, "");
+            const raw = String(merchant.business_whatsapp || "").replace(/\D/g, "");
             const number = raw.startsWith("0") ? `234${raw.slice(1)}` : raw.startsWith("234") ? raw : raw.length === 10 ? `234${raw}` : raw;
             const message = `Hello ${merchant.business_name}, I found your shop on Sabi Discover. I would like to ask about your products.`;
             const chat = number.length >= 12 && number.length <= 15 ? `https://wa.me/${number}?text=${encodeURIComponent(message)}` : "";
