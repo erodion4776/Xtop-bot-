@@ -512,7 +512,14 @@ async function processCourseMenuSelection(
   const n = normalise(text);
   const num = extractSelection(text);
 
-  if (n === "cm_lecture" || num === 1 || n.includes("lecture") || n.includes("classroom")) {
+  // CBT intent must be checked before lecture wording. A student saying
+  // "I completed all my lectures; continue to CBT payment" is not asking
+  // to reopen lecture one.
+  if (n === "cm_test" || num === 4 || n.includes("cbt") || n.includes("exam") || n.includes("payment") || n.includes("test")) {
+    await startExamEntry(phone, conv.id, ctx);
+    return;
+  }
+  if (n === "cm_lecture" || n === "lecture" || n === "classroom" || n === "continue lecture" || n === "start lecture" || num === 1) {
     await deliverLesson(phone, conv.id, ctx, ctx.currentLessonOrder || 1);
     return;
   }
@@ -532,10 +539,6 @@ async function processCourseMenuSelection(
   }
   if (n === "cm_progress" || num === 3 || n.includes("progress")) {
     await showStudentProgress(phone, conv.id, ctx);
-    return;
-  }
-  if (n === "cm_test" || num === 4 || n.includes("exam") || n.includes("test")) {
-    await startExamEntry(phone, conv.id, ctx);
     return;
   }
   if (n === "cm_result" || num === 5 || n.includes("results")) {
