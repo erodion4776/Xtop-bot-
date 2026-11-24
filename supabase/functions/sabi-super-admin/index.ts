@@ -141,6 +141,84 @@ serve(async (req: Request) => {
       return response({ success: true, data });
     }
 
+    if (body.action === "dropship-data") {
+      const [supplierResult, productResult, orderResult] = await Promise.all([
+        sb.from("sabi_dropship_suppliers").select("*").order("created_at", { ascending: false }).limit(500),
+        sb.from("sabi_dropship_products").select("*,supplier:sabi_dropship_suppliers(id,supplier_name)").order("created_at", { ascending: false }).limit(1000),
+        sb.from("sabi_dropship_orders").select("id,status,supplier_id,created_at,supplier_order_reference,tracking_number").order("created_at", { ascending: false }).limit(100),
+      ]);
+      if (supplierResult.error || productResult.error || orderResult.error) {
+        console.error("[Sabi Dropshipping load]", supplierResult.error || productResult.error || orderResult.error);
+        return response({ error: "Could not load Sabi dropshipping data." }, 500);
+      }
+      return response({ suppliers: supplierResult.data || [], products: productResult.data || [], orders: orderResult.data || [] });
+    }
+
+    if (body.action === "dropship-supplier-save") {
+      const id = String(body.id || "");
+      const supplierName = String(body.supplier_name || "").trim().slice(0,160);
+      const integrationType = String(body.integration_type || "MANUAL");
+      const apiStatus = String(body.api_status || "NOT_CONNECTED");
+      if (!supplierName || !["MANUAL","API","CSV"].includes(integrationType) || !["NOT_CONNECTED","TESTING","ACTIVE","PAUSED"].includes(apiStatus)) {
+        return response({ error: "Enter a supplier name and valid integration settings." }, 400);
+      }
+      const payload = {
+        supplier_name: supplierName,
+        contact_name: String(body.contact_name || "").trim().slice(0,120) || null,
+        contact_email: String(body.contact_email || "").trim().slice(0,180) || null,
+        contact_phone: String(body.contact_phone || "").trim().slice(0,40) || null,
+        website_url: String(body.website_url || "").trim().slice(0,500) || null,
+        integration_type: integrationType, api_status: apiStatus,
+        api_base_url: String(body.api_base_url || "").trim().slice(0,500) || null,
+        notes: String(body.notes || "").trim().slice(0,3000) || null,
+        is_active: body.is_active !== false, updated_at: new Date().toISOString(),
+      };
+      const query = sb.from("sabi_dropship_suppliers")
+        .upsert(id && /^[0-9a-f-]{36}$/i.test(id) ? { ...payload, id } : payload)
+        .select("*").single();
+      const { data, error } = await query;
+      if (error || !data) {
+        console.error("[Sabi Dropshipping supplier save]", error);
+        return response({ error: "Could not save supplier. Check the details and try again." }, 500);
+      }
+      await sb.from("audit_logs").insert({ admin_user: authData.user.email || authData.user.id, action: "SABI_DROPSHIP_SUPPLIER_SAVED", entity: "dropship_supplier", entity_id: data.id, metadata: { supplier_name: data.supplier_name, integration_type: data.integration_type } });
+      return response({ success: true, data });
+    }
+
+    if (body.action === "dropship-product-save") {
+      const id = String(body.id || "");
+      const supplierId = String(body.supplier_id || "");
+      const productName = String(body.product_name || "").trim().slice(0,200);
+      const supplierCost = Number(body.supplier_cost);
+      const sellingPrice = Number(body.selling_price);
+      const stock = Math.max(0, Math.floor(Number(body.stock_quantity) || 0));
+      if (!/^[0-9a-f-]{36}$/i.test(supplierId) || !productName || !Number.isFinite(supplierCost) || supplierCost < 0 || !Number.isFinite(sellingPrice) || sellingPrice < supplierCost) {
+        return response({ error: "Choose a supplier, enter a product name, and set a selling price equal to or above supplier cost." }, 400);
+      }
+      const payload = {
+        supplier_id: supplierId, supplier_sku: String(body.supplier_sku || "").trim().slice(0,120) || null,
+        product_name: productName, product_description: String(body.product_description || "").trim().slice(0,3000) || null,
+        category: String(body.category || "").trim().slice(0,100) || null,
+        image_url: String(body.image_url || "").trim().slice(0,1000) || null,
+        supplier_cost: supplierCost, selling_price: sellingPrice, stock_quantity: stock,
+        stock_status: stock <= 0 ? "OUT_OF_STOCK" : stock <= 5 ? "LOW_STOCK" : "IN_STOCK",
+        product_status: String(body.product_status || "DRAFT"),
+        publish_to_discover: body.publish_to_discover === true,
+        supplier_product_url: String(body.supplier_product_url || "").trim().slice(0,1000) || null,
+        updated_at: new Date().toISOString(),
+      };
+      if (!["DRAFT","ACTIVE","PAUSED","ARCHIVED"].includes(payload.product_status)) return response({ error: "Invalid product status." }, 400);
+      const { data, error } = await sb.from("sabi_dropship_products")
+        .upsert(id && /^[0-9a-f-]{36}$/i.test(id) ? { ...payload, id } : payload)
+        .select("*,supplier:sabi_dropship_suppliers(id,supplier_name)").single();
+      if (error || !data) {
+        console.error("[Sabi Dropshipping product save]", error);
+        return response({ error: "Could not save product. Check supplier, price and stock details." }, 500);
+      }
+      await sb.from("audit_logs").insert({ admin_user: authData.user.email || authData.user.id, action: "SABI_DROPSHIP_PRODUCT_SAVED", entity: "dropship_product", entity_id: data.id, metadata: { product_name: data.product_name, product_status: data.product_status, publish_to_discover: data.publish_to_discover } });
+      return response({ success: true, data });
+    }
+
     if (body.action === "overview") {
       const merchantQuery = () => sb.from("tenants").select("id", { count: "exact", head: true }).eq("is_system", false);
       const results = await Promise.all([
