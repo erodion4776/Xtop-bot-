@@ -821,7 +821,7 @@ async function quoteMarketplaceCheckout(body: Record<string, unknown>) {
     let routeKm: number | null = null;
     let calculation = "MERCHANT_FLAT_FALLBACK";
 
-    if (pref?.pricing_enabled === true && Number.isFinite(Number(pref.pickup_lat)) && Number.isFinite(Number(pref.pickup_lon))) {
+    if (pref?.pricing_enabled === true && pref.pickup_lat != null && pref.pickup_lon != null && Number.isFinite(Number(pref.pickup_lat)) && Number.isFinite(Number(pref.pickup_lon))) {
       try {
         if (!destination) destination = await geoapifyGeocode(destinationAddress);
         routeKm = await geoapifyRoadDistance(
@@ -1455,6 +1455,36 @@ Deno.serve(async (req: Request) => {
     const messages: Record<string, string> = {
       INVALID_ORDER_DETAILS:
         "Please check the selected product and quantity.",
+      DELIVERY_ADDRESS_REQUIRED:
+        "Enter your complete delivery state, city and street address to calculate delivery.",
+      DELIVERY_QUOTE_REQUIRED:
+        "Your delivery quote is missing. Recalculate delivery before paying.",
+      DELIVERY_QUOTE_EXPIRED:
+        "Your delivery quote has expired or the address changed. Please recalculate delivery.",
+      DELIVERY_QUOTE_CART_MISMATCH:
+        "Your cart changed after delivery was calculated. Please recalculate delivery.",
+      DELIVERY_QUOTE_SELLER_MISSING:
+        "A seller delivery amount is missing. Please recalculate delivery or contact support.",
+      DELIVERY_QUOTE_SAVE_FAILED:
+        "Sabi could not save the delivery calculation. Please try again.",
+      DELIVERY_SETTINGS_LOOKUP_FAILED:
+        "Sabi could not load one seller's delivery settings. Please try again.",
+      GEOAPIFY_NOT_CONFIGURED:
+        "Sabi's road-distance service is not configured. A merchant flat delivery fee may still be available.",
+      GEOAPIFY_GEOCODE_FAILED:
+        "We could not locate the delivery address right now. Check the address and try again.",
+      GEOAPIFY_ROUTE_FAILED:
+        "We could not calculate the road route. Please check the address and try again.",
+      DELIVERY_DESTINATION_NOT_FOUND:
+        "We could not locate that delivery address in Nigeria. Add a clearer street, area, city and state.",
+      DELIVERY_OUTSIDE_MERCHANT_RANGE:
+        "The delivery address is outside this seller's configured delivery range.",
+      MERCHANT_PICKUP_LOCATION_NOT_READY:
+        "A seller has not verified its pickup address. Ask the seller to update Delivery Settings.",
+      INVALID_DELIVERY_FEE:
+        "The delivery charge returned by the seller is invalid. Please contact support.",
+      MARKETPLACE_SELLERS_NOT_FOUND:
+        "The sellers in this cart could not be verified. Please refresh your cart.",
       MARKETPLACE_SELLER_DELIVERY_NOT_CONFIGURED:
         "A seller in your cart has not enabled delivery. Remove that seller’s products or ask the seller to configure delivery before checkout.",
       CUSTOMER_DETAILS_REQUIRED:
@@ -1509,7 +1539,10 @@ Deno.serve(async (req: Request) => {
       message === "MERCHANT_AUTH_REQUIRED" ? 401 :
       message === "MERCHANT_NOT_AUTHORIZED" ? 403 :
       message === "PAYMENT_INITIALIZATION_FAILED" ||
-      message === "PAYSTACK_VERIFICATION_FAILED" ? 502 :
+      message === "PAYSTACK_VERIFICATION_FAILED" ||
+      message === "GEOAPIFY_GEOCODE_FAILED" ||
+      message === "GEOAPIFY_ROUTE_FAILED" ||
+      message === "GEOAPIFY_NOT_CONFIGURED" ? 502 :
       message === "ORDER_PAYMENT_CONFIRMATION_FAILED" ? 503 :
       400;
 
