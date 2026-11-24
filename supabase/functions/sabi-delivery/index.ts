@@ -3,241 +3,164 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "";
-const TOKEN = Deno.env.get("SENDBOX_API_TOKEN") || "";
-const ENV = (Deno.env.get("SENDBOX_ENV") || "staging").toLowerCase();
-const WEBHOOK_TOKEN = Deno.env.get("SABI_DELIVERY_WEBHOOK_TOKEN") || "";
-const BASE = ENV === "production" ? "https://live.sendbox.co" : "https://sandbox.staging.sendbox.co";
-const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+const GEOAPIFY_KEY = Deno.env.get("GEOAPIFY_API_KEY") || "";
+
+const db = createClient(SUPABASE_URL, SERVICE_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
-const out = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
-const clean = (v: unknown, max = 300) => String(v ?? "").trim().slice(0, max);
+const out = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+  status, headers: { ...cors, "Content-Type": "application/json" },
+});
+const clean = (value: unknown, max = 300) => String(value ?? "").trim().slice(0, max);
+const amount = (value: unknown, fallback = 0) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
 
-async function merchant(req: Request, tenantId: string) {
-  const auth = req.headers.get("Authorization") || "";
-  const match = auth.match(/^Bearer\s+(.+)$/i);
-  if (!match || !ANON_KEY) throw new Error("AUTH_REQUIRED");
-  const client = createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { Authorization: `Bearer ${match[1]}` } } });
+async function requireMerchant(req: Request, tenantId: string) {
+  const match = (req.headers.get("Authorization") || "").match(/^Bearer\s+(.+)$/i);
+  if (!match || !ANON_KEY || !SERVICE_KEY) throw new Error("AUTH_REQUIRED");
+  const client = createClient(SUPABASE_URL, ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { Authorization: `Bearer ${match[1]}` } },
+  });
   const { data, error } = await client.auth.getUser(match[1]);
   if (error || !data.user) throw new Error("AUTH_REQUIRED");
-  const { data: member } = await db.from("tenant_members").select("tenant_id")
-    .eq("tenant_id", tenantId).eq("user_id", data.user.id).eq("role", "OWNER").eq("is_active", true).maybeSingle();
-  if (!member) throw new Error("NOT_AUTHORIZED");
-  return data.user;
+  const { data: member, error: memberError } = await db.from("tenant_members")
+    .select("tenant_id")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", data.user.id)
+    .eq("role", "OWNER")
+    .eq("is_active", true)
+    .maybeSingle();
+  if (memberError || !member) throw new Error("NOT_AUTHORIZED");
 }
 
-async function sendbox(path: string, method: string, body?: unknown) {
-  if (!TOKEN) throw new Error("SENDBOX_NOT_CONFIGURED");
-  const response = await fetch(`${BASE}${path}`, {
-    method,
-    headers: { Authorization: TOKEN, "Content-Type": "application/json" },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    console.error("Sendbox request failed", response.status, payload);
-    throw new Error("SENDBOX_REQUEST_FAILED");
+async function geocodeMerchantAddress(address: string, city: string, state: string) {
+  if (!GEOAPIFY_KEY) throw new Error("GEOAPIFY_NOT_CONFIGURED");
+  const query = [address, city, state, "Nigeria"].filter(Boolean).join(", ");
+  const url = new URL("https://api.geoapify.com/v1/geocode/search");
+  url.searchParams.set("text", query);
+  url.searchParams.set("countrycodes", "ng");
+  url.searchParams.set("limit", "1");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("apiKey", GEOAPIFY_KEY);
+  const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  if (!response.ok) throw new Error("ADDRESS_LOOKUP_FAILED");
+  const data = await response.json();
+  const place = Array.isArray(data.results) ? data.results[0] : null;
+  const lat = Number(place?.lat);
+  const lon = Number(place?.lon);
+  if (!place || place.country_code !== "ng" || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+    throw new Error("ADDRESS_NOT_FOUND");
   }
-  return payload;
+  return {
+    lat, lon,
+    label: clean(place.formatted || place.address_line1 || query, 500),
+  };
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return out({ success: false, error: "Method not allowed." }, 405);
+
   try {
     const body = await req.json().catch(() => ({}));
-    const url = new URL(req.url);
-    if (url.searchParams.get("action") === "webhook") {
-      if (!WEBHOOK_TOKEN || url.searchParams.get("token") !== WEBHOOK_TOKEN) return out({ success: false }, 401);
-      const code = clean(body.code || body.tracking_code || body.tracking?.code, 100);
-      const status = clean(body.status_code || body.status?.code || body.status, 60).toLowerCase();
-      if (!code) return out({ success: true, ignored: true });
-      const mapped = status.includes("deliver") ? "DELIVERED" :
-        status.includes("transit") || status.includes("delivery_started") ? "IN_TRANSIT" :
-        status.includes("pickup_completed") ? "PICKED_UP" :
-        status.includes("pickup") ? "PICKED_UP" :
-        status.includes("cancel") ? "CANCELLED" :
-        status.includes("fail") ? "FAILED" : "BOOKED";
-      const { error } = await db.from("sabi_delivery_shipments").update({
-        status: mapped, provider_payload: body, last_webhook_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-      }).eq("tracking_number", code);
-      if (error) return out({ success: false }, 500);
-      return out({ success: true });
-    }
-
     const tenantId = clean(body.tenant_id, 80);
     if (!tenantId) return out({ success: false, error: "Merchant workspace is required." }, 400);
-    await merchant(req, tenantId);
+    await requireMerchant(req, tenantId);
 
     if (body.action === "settings-get") {
-      const [{ data: pref, error: prefError }, { data: partners, error: partnerError }] = await Promise.all([
-        db.from("tenant_delivery_preferences").select("delivery_mode,preferred_partner_id,pickup_address,pickup_state,pickup_city,pickup_lga").eq("tenant_id", tenantId).maybeSingle(),
-        db.from("sabi_delivery_partners").select("id,code,name,service_states,service_cities,integration_status,is_enabled").eq("is_enabled", true).eq("integration_status", "ACTIVE").order("sort_order"),
-      ]);
-      if (prefError || partnerError) throw new Error("DELIVERY_SETTINGS_LOAD_FAILED");
-      return out({ success: true, settings: pref || { delivery_mode: "MERCHANT", preferred_partner_id: null, pickup_address: "", pickup_state: "", pickup_city: "", pickup_lga: "" }, partners: TOKEN && WEBHOOK_TOKEN ? (partners || []) : [], configured: !!TOKEN && !!WEBHOOK_TOKEN, environment: ENV });
+      const { data, error } = await db.from("tenant_delivery_preferences")
+        .select("delivery_mode,pickup_address,pickup_state,pickup_city,pickup_lga,pickup_phone,base_fee,per_km_fee,minimum_fee,max_delivery_km,pricing_enabled,pickup_lat,pickup_lon,geocoded_label,location_verified_at")
+        .eq("tenant_id", tenantId).maybeSingle();
+      if (error) throw new Error("DELIVERY_SETTINGS_LOAD_FAILED");
+      return out({
+        success: true,
+        configured: Boolean(GEOAPIFY_KEY),
+        settings: data || {
+          delivery_mode: "MERCHANT", pickup_address: "", pickup_state: "", pickup_city: "",
+          pickup_lga: "", pickup_phone: "", base_fee: 0, per_km_fee: 0,
+          minimum_fee: 0, max_delivery_km: 100, pricing_enabled: false,
+          pickup_lat: null, pickup_lon: null, geocoded_label: null, location_verified_at: null,
+        },
+      });
     }
 
     if (body.action === "settings-save") {
-      const mode = body.delivery_mode === "PARTNER" ? "PARTNER" : "MERCHANT";
-      const partnerId = clean(body.preferred_partner_id, 80) || null;
-      if (mode === "PARTNER") {
-        if (!partnerId) throw new Error("DELIVERY_PARTNER_REQUIRED");
-        const { data: partner } = await db.from("sabi_delivery_partners").select("id").eq("id", partnerId).eq("is_enabled", true).eq("integration_status", "ACTIVE").maybeSingle();
-        if (!partner) throw new Error("DELIVERY_PARTNER_UNAVAILABLE");
+      const address = clean(body.pickup_address, 500);
+      const city = clean(body.pickup_city, 120);
+      const state = clean(body.pickup_state, 120);
+      const lga = clean(body.pickup_lga, 120);
+      const phone = clean(body.pickup_phone, 40);
+      const baseFee = amount(body.base_fee, -1);
+      const perKmFee = amount(body.per_km_fee, -1);
+      const minimumFee = amount(body.minimum_fee, -1);
+      const maxKm = amount(body.max_delivery_km, 100);
+      const pricingEnabled = body.pricing_enabled === true;
+
+      if (pricingEnabled && (!address || !city || !state)) throw new Error("PICKUP_ADDRESS_REQUIRED");
+      if ([baseFee, perKmFee, minimumFee].some(v => v < 0 || v > 100000000) ||
+          !Number.isFinite(maxKm) || maxKm <= 0 || maxKm > 1000) {
+        throw new Error("INVALID_DELIVERY_PRICING");
       }
+      if (pricingEnabled && baseFee + perKmFee <= 0) throw new Error("DELIVERY_RATE_REQUIRED");
+
+      const point = pricingEnabled ? await geocodeMerchantAddress(address, city, state) : null;
       const payload = {
-        tenant_id: tenantId, delivery_mode: mode, preferred_partner_id: mode === "PARTNER" ? partnerId : null,
-        pickup_address: clean(body.pickup_address, 500), pickup_state: clean(body.pickup_state, 100),
-        pickup_city: clean(body.pickup_city, 100), pickup_lga: clean(body.pickup_lga, 100), pickup_phone: clean(body.pickup_phone, 40), pickup_email: clean(body.pickup_email, 180), updated_at: new Date().toISOString(),
+        tenant_id: tenantId,
+        delivery_mode: "MERCHANT",
+        preferred_partner_id: null,
+        pickup_address: address,
+        pickup_state: state,
+        pickup_city: city,
+        pickup_lga: lga || null,
+        pickup_phone: phone || null,
+        pickup_lat: point?.lat ?? null,
+        pickup_lon: point?.lon ?? null,
+        geocoded_label: point?.label ?? null,
+        location_verified_at: point ? new Date().toISOString() : null,
+        base_fee: baseFee,
+        per_km_fee: perKmFee,
+        minimum_fee: minimumFee,
+        max_delivery_km: maxKm,
+        pricing_enabled: pricingEnabled,
+        updated_at: new Date().toISOString(),
       };
-      const { data, error } = await db.from("tenant_delivery_preferences").upsert(payload, { onConflict: "tenant_id" }).select().single();
-      if (error) throw new Error("DELIVERY_SETTINGS_SAVE_FAILED");
-      return out({ success: true, settings: data });
-    }
-
-    if (body.action === "quote") {
-      const orderId = clean(body.order_id, 80);
-      const weight = Number(body.weight_kg);
-      const destination = body.destination && typeof body.destination === "object" ? body.destination : null;
-      const dimension = body.dimension && typeof body.dimension === "object" ? body.dimension : null;
-      if (!orderId || !Number.isFinite(weight) || weight <= 0 || weight > 1000 || !destination || !dimension ||
-        ![dimension.length, dimension.width, dimension.height].every((value: unknown) => Number.isFinite(Number(value)) && Number(value) > 0)) {
-        throw new Error("QUOTE_DETAILS_REQUIRED");
+      const { data, error } = await db.from("tenant_delivery_preferences")
+        .upsert(payload, { onConflict: "tenant_id" })
+        .select("delivery_mode,pickup_address,pickup_state,pickup_city,pickup_lga,pickup_phone,base_fee,per_km_fee,minimum_fee,max_delivery_km,pricing_enabled,pickup_lat,pickup_lon,geocoded_label,location_verified_at")
+        .single();
+      if (error) {
+        console.error("Merchant delivery settings save failed:", error);
+        throw new Error("DELIVERY_SETTINGS_SAVE_FAILED");
       }
-      const [{ data: pref }, { data: order }, { data: items }, { data: tenant }] = await Promise.all([
-        db.from("tenant_delivery_preferences").select("*").eq("tenant_id", tenantId).maybeSingle(),
-        db.from("tenant_orders").select("id,tenant_id,order_number,customer_name,customer_phone,delivery_address,subtotal,delivery_fee,payment_status,shipping_payment_status,shipping_payment_required,status").eq("tenant_id", tenantId).eq("id", orderId).maybeSingle(),
-        db.from("tenant_order_items").select("product_name,quantity,unit_price,line_total").eq("tenant_id", tenantId).eq("order_id", orderId),
-        db.from("tenants").select("contact_phone,contact_email").eq("id", tenantId).maybeSingle(),
-      ]);
-      if (!pref || pref.delivery_mode !== "PARTNER" || !pref.preferred_partner_id) throw new Error("PARTNER_NOT_SELECTED");
-      if (!order || !items?.length) throw new Error("ORDER_NOT_FOUND");
-      const { data: partner } = await db.from("sabi_delivery_partners").select("id,code,integration_status,is_enabled").eq("id", pref.preferred_partner_id).maybeSingle();
-      if (!partner || !partner.is_enabled || partner.integration_status !== "ACTIVE" || partner.code !== "SENDBOX") throw new Error("DELIVERY_PARTNER_UNAVAILABLE");
-      const origin = {
-        first_name: "Merchant", last_name: "Pickup", name: "Merchant pickup",
-        street: pref.pickup_address, state: pref.pickup_state, city: pref.pickup_city,
-        country: "NG", phone: clean(pref.pickup_phone || tenant?.contact_phone, 40), email: clean(pref.pickup_email || tenant?.contact_email, 180) || null,
-      };
-      const dest = {
-        first_name: clean(order.customer_name, 100).split(" ")[0] || "Customer",
-        last_name: clean(order.customer_name, 100).split(" ").slice(1).join(" ") || "Customer",
-        name: clean(order.customer_name, 100), street: clean(destination.street || order.delivery_address, 500),
-        state: clean(destination.state, 100), city: clean(destination.city, 100), country: "NG",
-        phone: clean(order.customer_phone, 40), email: clean(body.destination_email, 180) || "",
-      };
-      if (!origin.street || !origin.state || !origin.city || !origin.phone || !dest.street || !dest.state || !dest.city || !dest.phone) throw new Error("PICKUP_AND_DESTINATION_REQUIRED");
-      const requestBody = {
-        origin, destination: dest, weight, dimension: { length: Number(dimension.length), width: Number(dimension.width), height: Number(dimension.height) },
-        incoming_option: "pickup", region: "NG", service_type: "local", package_type: "general",
-        total_value: Number(order.subtotal || 0), currency: "NGN", channel_code: "api",
-        pickup_date: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
-        items: items.map((item: any) => ({ name: clean(item.product_name, 160), quantity: Number(item.quantity), value: Number(item.line_total), weight: weight / items.length, description: clean(item.product_name, 160) })),
-        service_code: "nation-wide", customs_option: "recipient",
-      };
-      const result = await sendbox("/shipping/shipment_delivery_quote", "POST", requestBody);
-      const rates = Array.isArray(result.rates) ? result.rates : Array.isArray(result.data?.rates) ? result.data.rates : [];
-      if (!rates.length) throw new Error("NO_DELIVERY_RATES");
-      const { error: saveError } = await db.from("sabi_delivery_shipments").upsert({
-        tenant_id: tenantId, order_id: orderId, partner_id: partner.id, status: "QUOTED",
-        delivery_fee: Number(result.min_quoted_fee || Math.min(...rates.map((r: any) => Number(r.fee) || Infinity))),
-        provider_payload: { quote_request: requestBody, quote_response: result, rates },
-        quote_expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(), updated_at: new Date().toISOString(),
-      }, { onConflict: "tenant_id,order_id" });
-      if (saveError) throw new Error("QUOTE_SAVE_FAILED");
-      return out({ success: true, rates: rates.filter((r: any) => r.is_enabled !== false).map((r: any) => ({ id: String(r.id || r.key || ""), name: clean(r.name || r.courier?.name || r.description, 100), fee: Number(r.fee), currency: "NGN", delivery_eta: clean(r.delivery_eta_string || r.delivery_window || r.sla_description, 160) })).filter((r: any) => r.id && Number.isFinite(r.fee)) });
+      return out({ success: true, settings: data, message: pricingEnabled ? "Pickup address verified and delivery pricing saved." : "Merchant flat-fee delivery settings saved." });
     }
 
-    if (body.action === "book") {
-      const orderId = clean(body.order_id, 80);
-      const rateId = clean(body.rate_id, 100);
-      if (!orderId || !rateId || body.confirm_cost !== true) throw new Error("BOOKING_CONFIRMATION_REQUIRED");
-      const [{ data: order }, { data: shipment }] = await Promise.all([
-        db.from("tenant_orders").select("id,tenant_id,payment_status,status").eq("tenant_id", tenantId).eq("id", orderId).maybeSingle(),
-        db.from("sabi_delivery_shipments").select("*").eq("tenant_id", tenantId).eq("order_id", orderId).maybeSingle(),
-      ]);
-      if (!order || !shipment || shipment.status !== "QUOTED") throw new Error("QUOTE_NOT_FOUND");
-      if ((order.payment_status !== "PAID" && !(order.shipping_payment_required === true && order.shipping_payment_status === "PAID")) || order.status === "CANCELLED") throw new Error("ORDER_NOT_READY_FOR_SHIPMENT");
-      if (!shipment.quote_expires_at || new Date(shipment.quote_expires_at).getTime() <= Date.now()) throw new Error("QUOTE_EXPIRED");
-      const saved = shipment.provider_payload || {};
-      const rates = Array.isArray(saved.rates) ? saved.rates : [];
-      const selected = rates.find((r: any) => String(r.id || r.key || "") === rateId && r.is_enabled !== false);
-      if (!selected) throw new Error("INVALID_DELIVERY_RATE");
-      if (Math.round(Number(order.delivery_fee || 0) * 100) !== Math.round(Number(selected.fee || 0) * 100)) throw new Error("DELIVERY_FEE_MISMATCH");
-      if (!WEBHOOK_TOKEN) throw new Error("DELIVERY_WEBHOOK_NOT_CONFIGURED");
-      const payload = { ...saved.quote_request, selected_rate_id: rateId, selected_rate: selected, callback_url: `${SUPABASE_URL}/functions/v1/sabi-delivery?action=webhook&token=${encodeURIComponent(WEBHOOK_TOKEN)}` };
-      const { error: bookingStateError } = await db.from("sabi_delivery_shipments").update({ status: "BOOKING", delivery_fee: Number(selected.fee), provider_payload: { ...saved, selected_rate: selected }, updated_at: new Date().toISOString() }).eq("id", shipment.id);
-      if (bookingStateError) throw new Error("SHIPMENT_UPDATE_FAILED");
-      try {
-        const created = await sendbox("/shipping/shipments", "POST", payload);
-        const tracking = clean(created.tracking_code || created.code || created.data?.tracking_code, 100);
-        const providerId = clean(created._id || created.id || created.data?._id, 120);
-        const rawStatus = clean(created.status_code || created.status?.code || created.data?.status_code, 60).toLowerCase();
-        const status = rawStatus === "drafted" ? "PENDING" : rawStatus.includes("deliver") ? "DELIVERED" : "BOOKED";
-        const { error: updateError } = await db.from("sabi_delivery_shipments").update({
-          provider_shipment_id: providerId || null, tracking_number: tracking || null,
-          tracking_url: tracking ? `https://sendbox.co/track/${encodeURIComponent(tracking)}` : null,
-          status, provider_payload: { ...saved, booking_response: created, selected_rate: selected }, updated_at: new Date().toISOString(),
-        }).eq("id", shipment.id);
-        if (updateError) throw new Error("SHIPMENT_SAVE_FAILED");
-        return out({ success: true, tracking_number: tracking, status, fee: Number(selected.fee), message: status === "PENDING" ? "Sendbox accepted the shipment as drafted. Check the Sendbox wallet to complete payment." : "Shipment booked with Sendbox." });
-      } catch (e) {
-        await db.from("sabi_delivery_shipments").update({ status: "FAILED", updated_at: new Date().toISOString() }).eq("id", shipment.id);
-        throw e;
-      }
-    }
-
-    if (body.action === "shipment-status") {
-      const orderId = clean(body.order_id, 80);
-      const { data: shipment, error } = await db.from("sabi_delivery_shipments")
-        .select("status,tracking_number,tracking_url,delivery_fee,quote_expires_at,provider_payload,updated_at")
-        .eq("tenant_id", tenantId).eq("order_id", orderId).maybeSingle();
-      if (error) throw new Error("SHIPMENT_LOOKUP_FAILED");
-      if (!shipment) return out({ success: true, shipment: null });
-      const selected = shipment.provider_payload?.selected_rate || null;
-      return out({ success: true, shipment: { status: shipment.status, tracking_number: shipment.tracking_number, tracking_url: shipment.tracking_url, delivery_fee: Number(shipment.delivery_fee || 0), quote_expires_at: shipment.quote_expires_at, selected_rate: selected, updated_at: shipment.updated_at } });
-    }
-
-    if (body.action === "track") {
-      const orderId = clean(body.order_id, 80);
-      const { data: shipment } = await db.from("sabi_delivery_shipments").select("*").eq("tenant_id", tenantId).eq("order_id", orderId).maybeSingle();
-      if (!shipment?.tracking_number) throw new Error("TRACKING_NOT_AVAILABLE");
-      const result = await sendbox("/shipping/tracking", "POST", { code: shipment.tracking_number });
-      const rawStatus = clean(result.status_code || result.status?.code, 60).toLowerCase();
-      const status = rawStatus.includes("deliver") ? "DELIVERED" : rawStatus.includes("transit") || rawStatus.includes("in_delivery") ? "IN_TRANSIT" : rawStatus.includes("pickup") ? "PICKED_UP" : "BOOKED";
-      await db.from("sabi_delivery_shipments").update({ status, provider_payload: { ...(shipment.provider_payload || {}), tracking_response: result }, updated_at: new Date().toISOString() }).eq("id", shipment.id);
-      return out({ success: true, tracking_number: shipment.tracking_number, status, events: result.events || result.tracking_events || [], courier: result.courier?.name || result.selected_courier?.name || "Sendbox delivery partner" });
-    }
-
-    return out({ success: false, error: "Unknown delivery action." }, 404);
+    return out({ success: false, error: "Unknown delivery settings action." }, 404);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    const messages: Record<string,string> = {
-      AUTH_REQUIRED: "Please log in again.", NOT_AUTHORIZED: "You are not authorized for this merchant workspace.",
-      SENDBOX_NOT_CONFIGURED: "Sendbox credentials have not been configured by Sabi yet.",
-      DELIVERY_WEBHOOK_NOT_CONFIGURED: "Sabi delivery tracking webhook has not been configured yet.",
-      SENDBOX_REQUEST_FAILED: "Sendbox could not complete the request. Check the integration account and try again.",
-      DELIVERY_PARTNER_REQUIRED: "Select an approved delivery partner.",
-      DELIVERY_PARTNER_UNAVAILABLE: "This delivery partner is not currently available.",
-      QUOTE_DETAILS_REQUIRED: "Enter the order, parcel weight and destination details.",
-      PICKUP_AND_DESTINATION_REQUIRED: "Complete the merchant pickup address and customer destination city, state, street and phone.",
-      PARTNER_NOT_SELECTED: "Select an approved delivery partner in Delivery Settings first.",
-      ORDER_NOT_FOUND: "Order not found.",
-      NO_DELIVERY_RATES: "Sendbox returned no delivery rates for this route.",
-      QUOTE_SAVE_FAILED: "The delivery quote could not be saved.",
-      BOOKING_CONFIRMATION_REQUIRED: "Confirm the displayed delivery price before booking.",
-      QUOTE_NOT_FOUND: "Get a fresh delivery quote before booking.",
-      ORDER_NOT_READY_FOR_SHIPMENT: "Only paid, active orders can be booked for delivery.",
-      QUOTE_EXPIRED: "This delivery quote has expired. Request a new quote.",
-      INVALID_DELIVERY_RATE: "That delivery option is no longer valid. Request a new quote.",
-      DELIVERY_FEE_MISMATCH: "This courier price does not match the delivery amount already paid by the customer. Do not book it; Sabi checkout pricing must be updated first.",
-      TRACKING_NOT_AVAILABLE: "No tracking number is available for this order.",
+    const messages: Record<string, string> = {
+      AUTH_REQUIRED: "Please log in again.",
+      NOT_AUTHORIZED: "You are not authorized for this merchant workspace.",
+      GEOAPIFY_NOT_CONFIGURED: "Sabi's distance service is not configured yet.",
+      ADDRESS_LOOKUP_FAILED: "The address service is temporarily unavailable. Please try again.",
+      ADDRESS_NOT_FOUND: "We could not locate that pickup address in Nigeria. Add a clearer street, area, city and state.",
+      PICKUP_ADDRESS_REQUIRED: "Enter the merchant pickup street address, city and state.",
+      INVALID_DELIVERY_PRICING: "Enter valid delivery charges and a maximum distance between 1 and 1,000 km.",
+      DELIVERY_RATE_REQUIRED: "Enter a base fee or a per-kilometre fee before enabling distance pricing.",
+      DELIVERY_SETTINGS_LOAD_FAILED: "Unable to load merchant delivery settings.",
+      DELIVERY_SETTINGS_SAVE_FAILED: "Unable to save merchant delivery settings.",
     };
-    const status = message === "AUTH_REQUIRED" ? 401 : message === "NOT_AUTHORIZED" ? 403 : message === "SENDBOX_REQUEST_FAILED" ? 502 : 400;
-    return out({ success: false, error: messages[message] || "Delivery request failed." }, status);
+    const status = message === "AUTH_REQUIRED" ? 401 : message === "NOT_AUTHORIZED" ? 403 :
+      message === "ADDRESS_LOOKUP_FAILED" || message === "GEOAPIFY_NOT_CONFIGURED" ? 502 : 400;
+    console.error("Sabi delivery settings error:", message);
+    return out({ success: false, error: messages[message] || "Delivery settings request failed." }, status);
   }
 });

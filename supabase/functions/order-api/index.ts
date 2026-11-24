@@ -6,6 +6,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const PAYSTACK_SECRET_KEY = Deno.env.get("PAYSTACK_SECRET_KEY")!;
+const GEOAPIFY_KEY = Deno.env.get("GEOAPIFY_API_KEY") || "";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -569,6 +570,104 @@ async function createCartOrder(body: Record<string, unknown>) {
 }
 
 
+async function sha256Hex(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest)).map(x => x.toString(16).padStart(2, "0")).join("");
+}
+
+function marketplaceCartSignature(items: { product_id: string; quantity: number }[]): Promise<string> {
+  const stable = [...items].sort((a, b) => a.product_id.localeCompare(b.product_id))
+    .map(item => `${item.product_id}:${item.quantity}`).join("|");
+  return sha256Hex(stable);
+}
+
+async function geoapifyGeocode(address: string): Promise<{ lat: number; lon: number }> {
+  if (!GEOAPIFY_KEY) throw new Error("GEOAPIFY_NOT_CONFIGURED");
+  const url = new URL("https://api.geoapify.com/v1/geocode/search");
+  url.searchParams.set("text", address);
+  url.searchParams.set("countrycodes", "ng");
+  url.searchParams.set("limit", "1");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("apiKey", GEOAPIFY_KEY);
+  const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  if (!response.ok) throw new Error("GEOAPIFY_GEOCODE_FAILED");
+  const data = await response.json();
+  const place = Array.isArray(data.results) ? data.results[0] : null;
+  const lat = Number(place?.lat), lon = Number(place?.lon);
+  if (!place || place.country_code !== "ng" || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+    throw new Error("DELIVERY_DESTINATION_NOT_FOUND");
+  }
+  return { lat, lon };
+}
+
+async function geoapifyRoadDistance(origin: { lat: number; lon: number }, destination: { lat: number; lon: number }): Promise<number> {
+  const url = new URL("https://api.geoapify.com/v1/routing");
+  url.searchParams.set("waypoints", `${origin.lat},${origin.lon}|${destination.lat},${destination.lon}`);
+  url.searchParams.set("mode", "drive");
+  url.searchParams.set("type", "balanced");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("apiKey", GEOAPIFY_KEY);
+  const response = await fetch(url, { signal: AbortSignal.timeout(12000) });
+  if (!response.ok) throw new Error("GEOAPIFY_ROUTE_FAILED");
+  const data = await response.json();
+  const meters = Number(data?.results?.[0]?.distance);
+  if (!Number.isFinite(meters) || meters <= 0 || meters > 1000000) throw new Error("GEOAPIFY_ROUTE_FAILED");
+  return meters / 1000;
+}
+
+async function geoapifyRoadDistances(
+  origins: { lat: number; lon: number }[],
+  destination: { lat: number; lon: number },
+): Promise<(number | null)[]> {
+  if (!GEOAPIFY_KEY) throw new Error("GEOAPIFY_NOT_CONFIGURED");
+  if (!origins.length || origins.length > 1000) throw new Error("GEOAPIFY_ROUTE_FAILED");
+  const response = await fetch(`https://api.geoapify.com/v1/routematrix?apiKey=${encodeURIComponent(GEOAPIFY_KEY)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      mode: "drive",
+      type: "balanced",
+      units: "metric",
+      sources: origins.map(point => ({ location: [point.lon, point.lat] })),
+      targets: [{ location: [destination.lon, destination.lat] }],
+    }),
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (response.ok) {
+    const data = await response.json();
+    const matrix = data?.sources_to_targets;
+    if (Array.isArray(matrix) && matrix.length === origins.length) {
+      return matrix.map((row: any) => {
+        const meters = Number(row?.[0]?.distance);
+        return Number.isFinite(meters) && meters > 0 && meters <= 1000000 ? meters / 1000 : null;
+      });
+    }
+  }
+
+  // Some Geoapify projects restrict API products individually. If Route Matrix
+  // is not enabled for this key, fall back to the standard Routing API.
+  return await Promise.all(origins.map(async origin => {
+    try {
+      return await geoapifyRoadDistance(origin, destination);
+    } catch {
+      return null;
+    }
+  }));
+}
+
+function marketplaceProcessingFee(itemSubtotal: number, deliveryTotal: number, commissionTotal: number): number {
+  const preFee = itemSubtotal + deliveryTotal + commissionTotal + 50;
+  let fixedKobo = preFee >= 2500 ? 10000 : 0;
+  let processingKobo = Math.ceil(((preFee * 100 * 0.015) + fixedKobo) / 0.985);
+  if (preFee < 2500 && (preFee * 100 + processingKobo) >= 250000) {
+    fixedKobo = 10000;
+    processingKobo = Math.ceil(((preFee * 100 * 0.015) + fixedKobo) / 0.985);
+  }
+  return Math.min(processingKobo, 200000) / 100;
+}
+
 async function createMarketplaceCheckout(body: Record<string, unknown>) {
   const items = Array.isArray(body.items) ? body.items : [];
   const customerName = String(body.customer_name || "").trim();
@@ -587,6 +686,17 @@ async function createMarketplaceCheckout(body: Record<string, unknown>) {
     !item.product_id || !Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 100
   )) throw new Error("INVALID_ORDER_DETAILS");
 
+  const deliveryQuoteId = String(body.delivery_quote_id || "").trim();
+  if (!deliveryQuoteId) throw new Error("DELIVERY_QUOTE_REQUIRED");
+  const signature = await marketplaceCartSignature(normalizedItems);
+  const { data: savedQuote, error: quoteError } = await db.from("sabi_marketplace_delivery_quotes")
+    .select("id,cart_signature,delivery_address,expires_at,used_at")
+    .eq("id", deliveryQuoteId).maybeSingle();
+  if (quoteError || !savedQuote || savedQuote.used_at || new Date(savedQuote.expires_at).getTime() <= Date.now() ||
+      savedQuote.cart_signature !== signature || savedQuote.delivery_address !== deliveryAddress) {
+    throw new Error("DELIVERY_QUOTE_EXPIRED");
+  }
+
   const { data: checkout, error: checkoutError } = await db.rpc("sabi_create_marketplace_checkout", {
     p_items: normalizedItems,
     p_customer_name: customerName,
@@ -594,6 +704,7 @@ async function createMarketplaceCheckout(body: Record<string, unknown>) {
     p_customer_email: customerEmail,
     p_delivery_address: deliveryAddress,
     p_notes: body.notes == null ? null : String(body.notes),
+    p_delivery_quote_id: deliveryQuoteId,
   });
   if (checkoutError || !checkout?.success) {
     console.error("Marketplace checkout creation failed:", checkoutError);
@@ -705,7 +816,7 @@ async function createMarketplaceCheckout(body: Record<string, unknown>) {
   });
 }
 
-async function quoteMarketplaceCheckout(body: Record<string, unknown>) {
+async function quoteMarketplaceCheckout(body: Record<string, unknown>, req: Request) {
   const items = Array.isArray(body.items) ? body.items : [];
   if (!items.length || items.length > 30) throw new Error("INVALID_ORDER_DETAILS");
   const normalizedItems = items.map((item: Record<string, unknown>) => ({
@@ -715,12 +826,156 @@ async function quoteMarketplaceCheckout(body: Record<string, unknown>) {
   if (normalizedItems.some((item: {product_id:string;quantity:number}) =>
     !item.product_id || !Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 100
   )) throw new Error("INVALID_ORDER_DETAILS");
-  const { data, error } = await db.rpc("sabi_quote_marketplace_checkout", { p_items: normalizedItems });
-  if (error || !data?.success) {
-    console.warn("Marketplace checkout quote failed:", error);
-    throw new Error(error?.message || "MARKETPLACE_QUOTE_FAILED");
+
+  const destinationAddress = String(body.delivery_address || "").trim().slice(0, 1000);
+  if (destinationAddress.length < 8) throw new Error("DELIVERY_ADDRESS_REQUIRED");
+
+  const clientIp = req.headers.get("cf-connecting-ip") ||
+    req.headers.get("x-real-ip") ||
+    (req.headers.get("x-forwarded-for") || "").split(",")[0].trim();
+  let requestFingerprint: string | null = null;
+  if (clientIp) {
+    requestFingerprint = await sha256Hex(clientIp);
+    const since = new Date(Date.now() - 60 * 1000).toISOString();
+    const { count, error: rateError } = await db.from("sabi_delivery_quote_attempts")
+      .select("id", { count: "exact", head: true })
+      .eq("request_fingerprint", requestFingerprint)
+      .gte("created_at", since);
+    if (rateError) throw new Error("DELIVERY_RATE_CHECK_FAILED");
+    if ((count || 0) >= 25) throw new Error("DELIVERY_QUOTE_RATE_LIMITED");
+    const { error: attemptError } = await db.from("sabi_delivery_quote_attempts")
+      .insert({ request_fingerprint: requestFingerprint });
+    if (attemptError) throw new Error("DELIVERY_RATE_CHECK_FAILED");
   }
-  return respond(data);
+
+  const { data: baseQuote, error: baseError } = await db.rpc("sabi_quote_marketplace_checkout", { p_items: normalizedItems });
+  if (baseError || !baseQuote?.success) {
+    console.warn("Marketplace checkout quote failed:", baseError);
+    throw new Error(baseError?.message || "MARKETPLACE_QUOTE_FAILED");
+  }
+
+  const sellerIds = (baseQuote.sellers || []).map((seller: any) => String(seller.tenant_id)).filter(Boolean);
+  if (!sellerIds.length) throw new Error("MARKETPLACE_SELLERS_NOT_FOUND");
+  const [{ data: tenants, error: tenantsError }, { data: preferences, error: prefsError }] = await Promise.all([
+    db.from("tenants").select("id,shipping_enabled,shipping_fee").in("id", sellerIds),
+    db.from("tenant_delivery_preferences")
+      .select("tenant_id,pickup_lat,pickup_lon,base_fee,per_km_fee,minimum_fee,max_delivery_km,pricing_enabled")
+      .in("tenant_id", sellerIds),
+  ]);
+  if (tenantsError || prefsError) throw new Error("DELIVERY_SETTINGS_LOOKUP_FAILED");
+
+  const tenantById = new Map((tenants || []).map((row: any) => [String(row.id), row]));
+  const prefByTenant = new Map((preferences || []).map((row: any) => [String(row.tenant_id), row]));
+  const routeSummary: any[] = [];
+  const deliveryFees: any[] = [];
+  const routeCandidates: { seller: any; tenantId: string; tenant: any; pref: any; flatFallback: number }[] = [];
+  for (const seller of (baseQuote.sellers || [])) {
+    const tenantId = String(seller.tenant_id);
+    const tenant: any = tenantById.get(tenantId);
+    const pref: any = prefByTenant.get(tenantId);
+    const flatFallback = Math.max(0, Number(tenant?.shipping_fee ?? seller.delivery_fee ?? 0));
+    if (pref?.pricing_enabled === true && pref.pickup_lat != null && pref.pickup_lon != null &&
+        Number.isFinite(Number(pref.pickup_lat)) && Number.isFinite(Number(pref.pickup_lon))) {
+      routeCandidates.push({ seller, tenantId, tenant, pref, flatFallback });
+    } else if (pref?.pricing_enabled === true && flatFallback <= 0) {
+      throw new Error("MERCHANT_PICKUP_LOCATION_NOT_READY");
+    }
+  }
+
+  let routeDistances: (number | null)[] = [];
+  if (routeCandidates.length) {
+    try {
+      const destination = await geoapifyGeocode(destinationAddress);
+      routeDistances = await geoapifyRoadDistances(
+        routeCandidates.map(item => ({ lat: Number(item.pref.pickup_lat), lon: Number(item.pref.pickup_lon) })),
+        destination
+      );
+    } catch (error) {
+      if (routeCandidates.some(item => item.flatFallback <= 0)) throw error;
+      routeDistances = routeCandidates.map(() => null);
+    }
+  }
+  const routeIndex = new Map(routeCandidates.map((item, index) => [item.tenantId, index]));
+
+  for (const seller of (baseQuote.sellers || [])) {
+    const tenantId = String(seller.tenant_id);
+    const tenant: any = tenantById.get(tenantId);
+    const pref: any = prefByTenant.get(tenantId);
+    const flatFallback = Math.max(0, Number(tenant?.shipping_fee ?? seller.delivery_fee ?? 0));
+    const candidateIndex = routeIndex.get(tenantId);
+    let fee = flatFallback;
+    let routeKm: number | null = null;
+    let calculation = "MERCHANT_FLAT_FALLBACK";
+
+    if (candidateIndex !== undefined) {
+      routeKm = routeDistances[candidateIndex] ?? null;
+      const maxKm = Math.max(1, Number(pref.max_delivery_km || 100));
+      if (routeKm !== null && routeKm <= maxKm) {
+        const baseFee = Math.max(0, Number(pref.base_fee || 0));
+        const perKm = Math.max(0, Number(pref.per_km_fee || 0));
+        const minimum = Math.max(0, Number(pref.minimum_fee || 0));
+        fee = Math.ceil(Math.max(minimum, baseFee + routeKm * perKm));
+        calculation = "GEOAPIFY_ROAD_DISTANCE";
+      } else if (flatFallback <= 0) {
+        throw new Error(routeKm === null ? "GEOAPIFY_ROUTE_FAILED" : "DELIVERY_OUTSIDE_MERCHANT_RANGE");
+      }
+    }
+
+    if (!Number.isFinite(fee) || fee < 0 || fee > 100000000) throw new Error("INVALID_DELIVERY_FEE");
+    deliveryFees.push({ tenant_id: tenantId, delivery_fee: fee });
+    routeSummary.push({
+      tenant_id: tenantId,
+      merchant_name: String(seller.merchant_name || "Merchant"),
+      distance_km: routeKm === null ? null : Math.round(routeKm * 10) / 10,
+      delivery_fee: fee,
+      calculation,
+      label: calculation === "GEOAPIFY_ROAD_DISTANCE" ? "Road-distance delivery" : "Merchant flat-fee fallback",
+    });
+  }
+
+  const cartSignature = await marketplaceCartSignature(normalizedItems);
+  const { data: quoteRow, error: saveError } = await db.from("sabi_marketplace_delivery_quotes")
+    .insert({
+      cart_signature: cartSignature,
+      delivery_address: destinationAddress,
+      delivery_fees: deliveryFees,
+      request_fingerprint: requestFingerprint,
+      route_summary: routeSummary,
+      expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    })
+    .select("id,expires_at")
+    .single();
+  if (saveError || !quoteRow) {
+    console.error("Could not persist marketplace delivery quote:", saveError);
+    throw new Error("DELIVERY_QUOTE_SAVE_FAILED");
+  }
+
+  const deliveryTotal = deliveryFees.reduce((sum, item) => sum + Number(item.delivery_fee), 0);
+  const itemSubtotal = Number(baseQuote.item_subtotal || 0);
+  const commissionTotal = Number(baseQuote.commission_total || 0);
+  const processingFee = marketplaceProcessingFee(itemSubtotal, deliveryTotal, commissionTotal);
+  const serviceFee = Number(baseQuote.customer_service_fee ?? 50);
+  const expectedAmount = itemSubtotal + deliveryTotal + commissionTotal + serviceFee + processingFee;
+  const feeByTenant = new Map(deliveryFees.map(item => [item.tenant_id, item.delivery_fee]));
+  const sellers = (baseQuote.sellers || []).map((seller: any) => ({
+    ...seller,
+    delivery_fee: Number(feeByTenant.get(String(seller.tenant_id)) ?? seller.delivery_fee ?? 0),
+    delivery_type: routeSummary.find(route => route.tenant_id === String(seller.tenant_id))?.calculation || "MERCHANT_FLAT_FALLBACK",
+    delivery_label: routeSummary.find(route => route.tenant_id === String(seller.tenant_id))?.label || "Merchant flat-fee fallback",
+    distance_km: routeSummary.find(route => route.tenant_id === String(seller.tenant_id))?.distance_km ?? null,
+  }));
+
+  return respond({
+    ...baseQuote,
+    quote_id: quoteRow.id,
+    quote_expires_at: quoteRow.expires_at,
+    sellers,
+    delivery_total: deliveryTotal,
+    marketplace_fee_total: commissionTotal + serviceFee,
+    paystack_processing_fee: processingFee,
+    expected_amount: expectedAmount,
+    route_summary: routeSummary,
+  });
 }
 
 async function verifyMarketplaceCheckout(reference: string) {
@@ -1242,7 +1497,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "quote_marketplace_checkout") {
-      return await quoteMarketplaceCheckout(body);
+      return await quoteMarketplaceCheckout(body, req);
     }
 
     if (action === "initialize_merchant") {
@@ -1274,6 +1529,40 @@ Deno.serve(async (req: Request) => {
     const messages: Record<string, string> = {
       INVALID_ORDER_DETAILS:
         "Please check the selected product and quantity.",
+      DELIVERY_ADDRESS_REQUIRED:
+        "Enter your complete delivery state, city and street address to calculate delivery.",
+      DELIVERY_QUOTE_RATE_LIMITED:
+        "Too many delivery calculations were requested. Please wait one minute and try again.",
+      DELIVERY_RATE_CHECK_FAILED:
+        "Sabi could not validate the delivery request. Please try again.",
+      DELIVERY_QUOTE_REQUIRED:
+        "Your delivery quote is missing. Recalculate delivery before paying.",
+      DELIVERY_QUOTE_EXPIRED:
+        "Your delivery quote has expired or the address changed. Please recalculate delivery.",
+      DELIVERY_QUOTE_CART_MISMATCH:
+        "Your cart changed after delivery was calculated. Please recalculate delivery.",
+      DELIVERY_QUOTE_SELLER_MISSING:
+        "A seller delivery amount is missing. Please recalculate delivery or contact support.",
+      DELIVERY_QUOTE_SAVE_FAILED:
+        "Sabi could not save the delivery calculation. Please try again.",
+      DELIVERY_SETTINGS_LOOKUP_FAILED:
+        "Sabi could not load one seller's delivery settings. Please try again.",
+      GEOAPIFY_NOT_CONFIGURED:
+        "Sabi's road-distance service is not configured. A merchant flat delivery fee may still be available.",
+      GEOAPIFY_GEOCODE_FAILED:
+        "We could not locate the delivery address right now. Check the address and try again.",
+      GEOAPIFY_ROUTE_FAILED:
+        "We could not calculate the road route. Please check the address and try again.",
+      DELIVERY_DESTINATION_NOT_FOUND:
+        "We could not locate that delivery address in Nigeria. Add a clearer street, area, city and state.",
+      DELIVERY_OUTSIDE_MERCHANT_RANGE:
+        "The delivery address is outside this seller's configured delivery range.",
+      MERCHANT_PICKUP_LOCATION_NOT_READY:
+        "A seller has not verified its pickup address. Ask the seller to update Delivery Settings.",
+      INVALID_DELIVERY_FEE:
+        "The delivery charge returned by the seller is invalid. Please contact support.",
+      MARKETPLACE_SELLERS_NOT_FOUND:
+        "The sellers in this cart could not be verified. Please refresh your cart.",
       MARKETPLACE_SELLER_DELIVERY_NOT_CONFIGURED:
         "A seller in your cart has not enabled delivery. Remove that seller’s products or ask the seller to configure delivery before checkout.",
       CUSTOMER_DETAILS_REQUIRED:
@@ -1323,12 +1612,16 @@ Deno.serve(async (req: Request) => {
     };
 
     const status =
+      message === "DELIVERY_QUOTE_RATE_LIMITED" ? 429 :
       message === "PAYMENT_REFERENCE_NOT_FOUND" ||
       message === "MERCHANT_ORDER_NOT_FOUND" ? 404 :
       message === "MERCHANT_AUTH_REQUIRED" ? 401 :
       message === "MERCHANT_NOT_AUTHORIZED" ? 403 :
       message === "PAYMENT_INITIALIZATION_FAILED" ||
-      message === "PAYSTACK_VERIFICATION_FAILED" ? 502 :
+      message === "PAYSTACK_VERIFICATION_FAILED" ||
+      message === "GEOAPIFY_GEOCODE_FAILED" ||
+      message === "GEOAPIFY_ROUTE_FAILED" ||
+      message === "GEOAPIFY_NOT_CONFIGURED" ? 502 :
       message === "ORDER_PAYMENT_CONFIRMATION_FAILED" ? 503 :
       400;
 

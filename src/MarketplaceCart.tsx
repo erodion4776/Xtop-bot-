@@ -38,18 +38,22 @@ export default function MarketplaceCart() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!items.length) {
+    const deliveryAddress = [address.trim(), city.trim(), state.trim(), "Nigeria"].filter(Boolean).join(", ");
+    if (!items.length || address.trim().length < 5 || city.trim().length < 2 || state.trim().length < 2) {
       setQuote(null);
       setQuoteError("");
+      setQuoteLoading(false);
       return;
     }
+    setQuote(null);
     async function loadQuote() {
       setQuoteLoading(true);
       setQuoteError("");
       const { data, error: quoteInvokeError } = await supabase.functions.invoke("order-api", {
         body: {
           action: "quote_marketplace_checkout",
-          items: items.map(item => ({ product_id: item.product_id, quantity: item.quantity }))
+          items: items.map(item => ({ product_id: item.product_id, quantity: item.quantity })),
+          delivery_address: deliveryAddress
         }
       });
       if (cancelled) return;
@@ -61,9 +65,9 @@ export default function MarketplaceCart() {
       }
       setQuoteLoading(false);
     }
-    loadQuote();
-    return () => { cancelled = true; };
-  }, [items]);
+    const timer = window.setTimeout(loadQuote, 700);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [items, address, city, state]);
 
   const subtotal = useMemo(() => items.reduce((sum, item) => sum + Number(item.product_price) * item.quantity, 0), [items]);
   const sellers = useMemo(() => {
@@ -107,7 +111,8 @@ export default function MarketplaceCart() {
           customer_phone: phone.trim(),
           customer_email: email.trim().toLowerCase(),
           delivery_address: deliveryAddress,
-          notes: notes.trim() || null
+          notes: notes.trim() || null,
+          delivery_quote_id: quote?.quote_id
         }
       });
       if (invokeError) throw new Error(data?.message || invokeError.message || "We could not create your checkout.");
@@ -168,12 +173,14 @@ export default function MarketplaceCart() {
               <h2>Order summary</h2>
               <div className="sabi-cart-summary-line"><span>Items ({items.reduce((n,item)=>n+item.quantity,0)})</span><strong>{quote ? money(Number(quote.item_subtotal)) : money(subtotal)}</strong></div>
               <div className="sabi-cart-summary-line"><span>Delivery</span><strong>{quote ? money(Number(quote.delivery_total)) : quoteLoading ? "Calculating..." : "—"}</strong></div>
-              {quote?.sellers?.map((seller: any) => <div className="sabi-cart-seller-fee" key={seller.tenant_id}><span>{seller.delivery_label || `${seller.merchant_name} delivery`}</span><strong>{money(Number(seller.delivery_fee))}</strong></div>)}
+              {quote?.sellers?.map((seller: any) => <div className="sabi-cart-seller-fee" key={seller.tenant_id}><span>{seller.delivery_label || `${seller.merchant_name} delivery`}{seller.distance_km != null ? ` · ${seller.distance_km} km road distance` : ""}</span><strong>{money(Number(seller.delivery_fee))}</strong></div>)}
               {quote && <div className="sabi-cart-summary-line"><span>Sabi marketplace fees</span><strong>{money(Number(quote.marketplace_fee_total))}</strong></div>}
               {quote && <div className="sabi-cart-summary-line"><span>Payment processing</span><strong>{money(Number(quote.paystack_processing_fee))}</strong></div>}
-              <div className="sabi-cart-summary-note">Each seller’s configured flat delivery fee is shown separately. These are merchant-set fees, not live courier quotes. Each seller handles dispatch and delivery. Stock and prices are checked again when you place the order.</div>
+              <div className="sabi-cart-summary-note">Delivery is calculated separately for each seller using road distance and the seller’s own pricing. If distance routing is unavailable, a configured flat fee is used. Each seller handles dispatch and delivery.</div>
               <div className="sabi-cart-summary-total"><span>Total payable</span><strong>{quote ? money(Number(quote.expected_amount)) : quoteLoading ? "Calculating..." : "—"}</strong></div>
               <div className="sabi-cart-protection"><ShieldCheck size={18}/><span>Secure Paystack payment. Sabi confirms every seller order after payment verification.</span></div>
+              {!quote && !quoteLoading && !quoteError && <div className="sabi-cart-summary-note">Enter your state, city and street address to calculate delivery for each seller.</div>}
+              {quoteLoading && <div className="sabi-cart-summary-note">Calculating road distance and delivery charges…</div>}
               {quoteError && <div className="sabi-cart-error" role="alert">{quoteError}</div>}
               {error && <div className="sabi-cart-error" role="alert">{error}</div>}
               <button className="sabi-cart-pay" form="sabi-marketplace-checkout" disabled={busy || items.length===0 || quoteLoading || !quote}><CreditCard size={18}/>{busy ? "Preparing secure checkout..." : "Continue to secure payment"}</button>

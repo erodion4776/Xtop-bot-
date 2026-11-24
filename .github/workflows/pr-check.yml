@@ -47,6 +47,8 @@ jobs:
         run: |
           echo "🔍 Type-checking Edge Functions..."
           deno check supabase/functions/whatsapp-webhook/index.ts || true
+          deno check supabase/functions/order-api/index.ts
+          deno check supabase/functions/sabi-delivery/index.ts
           echo "✅ Type check complete"
 
       - name: Strictly type-check ENGR ERO portal functions

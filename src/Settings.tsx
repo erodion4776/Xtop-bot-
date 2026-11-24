@@ -88,8 +88,7 @@ export default function Settings({ tenantId }: { tenantId: string }) {
   const [marketplaceSaving, setMarketplaceSaving] = useState(false);
   const [marketplaceError, setMarketplaceError] = useState("");
   const [marketplaceSuccess, setMarketplaceSuccess] = useState("");
-  const [deliverySettings, setDeliverySettings] = useState<any>({ delivery_mode: "MERCHANT", preferred_partner_id: null, pickup_address: "", pickup_state: "", pickup_city: "", pickup_lga: "", pickup_phone: "", pickup_email: "" });
-  const [deliveryPartners, setDeliveryPartners] = useState<any[]>([]);
+  const [deliverySettings, setDeliverySettings] = useState<any>({ pickup_address: "", pickup_state: "", pickup_city: "", pickup_lga: "", pickup_phone: "", base_fee: 0, per_km_fee: 0, minimum_fee: 0, max_delivery_km: 100, pricing_enabled: false, geocoded_label: null, location_verified_at: null });
   const [deliveryConfigured, setDeliveryConfigured] = useState(false);
   const [deliveryLoading, setDeliveryLoading] = useState(false);
   const [deliverySaving, setDeliverySaving] = useState(false);
@@ -284,23 +283,29 @@ export default function Settings({ tenantId }: { tenantId: string }) {
       setDeliveryError(data?.error || error?.message || "Unable to load delivery settings.");
     } else {
       setDeliverySettings(data.settings || {});
-      setDeliveryPartners(data.partners || []);
       setDeliveryConfigured(data.configured === true);
     }
     setDeliveryLoading(false);
   }
 
   async function saveDeliverySettings(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setDeliverySaving(true); setDeliveryError(""); setDeliverySuccess("");
-    if (deliverySettings.delivery_mode === "PARTNER" && (!deliverySettings.preferred_partner_id || !deliverySettings.pickup_address || !deliverySettings.pickup_state || !deliverySettings.pickup_city || !deliverySettings.pickup_phone)) {
-      setDeliveryError("Select a partner and complete your pickup address, state and city.");
+    event.preventDefault();
+    setDeliverySaving(true); setDeliveryError(""); setDeliverySuccess("");
+    if (deliverySettings.pricing_enabled === true && (!deliverySettings.pickup_address?.trim() || !deliverySettings.pickup_city?.trim() || !deliverySettings.pickup_state?.trim())) {
+      setDeliveryError("Enter your pickup street address, city and state.");
+      setDeliverySaving(false); return;
+    }
+    const pricing = [deliverySettings.base_fee, deliverySettings.per_km_fee, deliverySettings.minimum_fee].map(Number);
+    if (pricing.some(value => !Number.isFinite(value) || value < 0 || value > 100000000) ||
+        !Number.isFinite(Number(deliverySettings.max_delivery_km)) || Number(deliverySettings.max_delivery_km) <= 0) {
+      setDeliveryError("Check your delivery charges and maximum delivery distance.");
       setDeliverySaving(false); return;
     }
     const { data, error } = await supabase.functions.invoke("sabi-delivery", {
       body: { action: "settings-save", tenant_id: tenantId, ...deliverySettings }
     });
     if (error || !data?.success) setDeliveryError(data?.error || error?.message || "Unable to save delivery settings.");
-    else { setDeliverySettings(data.settings); setDeliverySuccess("Delivery preferences saved."); }
+    else { setDeliverySettings(data.settings); setDeliverySuccess(data.message || "Pickup location verified and delivery pricing saved."); }
     setDeliverySaving(false);
   }
 
@@ -753,41 +758,46 @@ export default function Settings({ tenantId }: { tenantId: string }) {
       <form onSubmit={saveDeliverySettings} style={card}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
           <Truck size={24} color="#0f766e" />
-          <div><h2 style={{ margin: 0 }}>Delivery partner</h2><p style={{ color: "#64748b", margin: "5px 0 0" }}>Choose an approved Sabi delivery partner for your shop. Customers will not choose courier companies at checkout.</p></div>
+          <div>
+            <h2 style={{ margin: 0 }}>Merchant delivery calculator</h2>
+            <p style={{ color: "#64748b", margin: "5px 0 0" }}>Choose either merchant flat-fee delivery or road-distance pricing. Road-distance pricing needs a verified pickup address. You remain responsible for dispatch and delivery; Sabi does not provide riders or book couriers.</p>
+          </div>
         </div>
         {deliveryError && <div role="alert" style={{ color: "#b91c1c", background: "#fef2f2", padding: 10, borderRadius: 8, margin: "10px 0" }}>{deliveryError}</div>}
         {deliverySuccess && <div role="status" style={{ color: "#047857", background: "#ecfdf5", padding: 10, borderRadius: 8, margin: "10px 0" }}>{deliverySuccess}</div>}
-        {deliveryLoading ? <p>Loading approved delivery partners...</p> : <>
-          <label style={{ display: "block", marginTop: 14 }}><strong>Delivery arrangement</strong></label>
-          <select value={deliverySettings.delivery_mode || "MERCHANT"} onChange={e=>setDeliverySettings((v:any)=>({...v,delivery_mode:e.target.value,preferred_partner_id:e.target.value==="MERCHANT"?null:v.preferred_partner_id}))} style={fieldStyle}>
-            <option value="MERCHANT">My own delivery arrangement</option>
-            <option value="PARTNER" disabled={deliveryPartners.length===0}>Sabi-approved delivery partner</option>
-          </select>
-          {deliverySettings.delivery_mode === "PARTNER" && <>
-            <label style={{ display: "block", marginTop: 14 }}><strong>Approved delivery partner</strong></label>
-            <select value={deliverySettings.preferred_partner_id || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,preferred_partner_id:e.target.value}))} style={fieldStyle} required>
-              <option value="">Select an available partner</option>
-              {deliveryPartners.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-            <p style={{ color: "#64748b", fontSize: 12 }}>Sabi only displays partners approved and activated by Super Admin that serve your pickup area.</p>
-            <label style={{ display: "block", marginTop: 12 }}><strong>Pickup street address</strong></label>
-            <input value={deliverySettings.pickup_address || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_address:e.target.value}))} style={fieldStyle} placeholder="Shop or warehouse address" required/>
-            <label style={{ display: "block", marginTop: 12 }}><strong>Pickup state</strong></label>
-            <input value={deliverySettings.pickup_state || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_state:e.target.value}))} style={fieldStyle} placeholder="e.g. Edo" required/>
-            <label style={{ display: "block", marginTop: 12 }}><strong>Pickup city</strong></label>
-            <input value={deliverySettings.pickup_city || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_city:e.target.value}))} style={fieldStyle} placeholder="e.g. Benin City" required/>
-            <label style={{ display: "block", marginTop: 12 }}><strong>Pickup contact phone</strong></label>
-            <input value={deliverySettings.pickup_phone || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_phone:e.target.value}))} style={fieldStyle} placeholder="Phone number for courier pickup" required/>
-            <label style={{ display: "block", marginTop: 12 }}><strong>Pickup contact email (optional)</strong></label>
-            <input type="email" value={deliverySettings.pickup_email || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_email:e.target.value}))} style={fieldStyle} placeholder="Pickup contact email"/>
-            <label style={{ display: "block", marginTop: 12 }}><strong>Local Government Area (optional)</strong></label>
+        {deliveryLoading ? <p>Loading delivery settings...</p> : <>
+          <label style={{ display: "block", marginTop: 14 }}><strong>Pickup street address {deliverySettings.pricing_enabled === true ? "(required)" : "(optional)"}</strong>
+            <input value={deliverySettings.pickup_address || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_address:e.target.value}))} style={fieldStyle} placeholder="Shop number, street and area" required={deliverySettings.pricing_enabled === true}/>
+          </label>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 }}>
+            <label style={{ display: "block", marginTop: 12 }}><strong>City / town</strong>
+              <input value={deliverySettings.pickup_city || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_city:e.target.value}))} style={fieldStyle} placeholder="e.g. Benin City" required={deliverySettings.pricing_enabled === true}/>
+            </label>
+            <label style={{ display: "block", marginTop: 12 }}><strong>State</strong>
+              <input value={deliverySettings.pickup_state || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_state:e.target.value}))} style={fieldStyle} placeholder="e.g. Edo" required={deliverySettings.pricing_enabled === true}/>
+            </label>
+          </div>
+          <label style={{ display: "block", marginTop: 12 }}><strong>Local Government Area (optional)</strong>
             <input value={deliverySettings.pickup_lga || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_lga:e.target.value}))} style={fieldStyle} placeholder="e.g. Oredo"/>
+          </label>
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 10, marginTop: 18 }}>
+            <input type="checkbox" checked={deliverySettings.pricing_enabled === true} disabled={!deliveryConfigured} onChange={e=>setDeliverySettings((v:any)=>({...v,pricing_enabled:e.target.checked}))}/>
+            <span><strong>Calculate delivery by road distance</strong><small style={{ display: "block", color: "#64748b", marginTop: 4 }}>When enabled, Sabi uses Geoapify driving distance and your rates below. If routing is temporarily unavailable, your existing flat delivery fee is used when it is greater than zero.</small></span>
+          </label>
+          {deliverySettings.pricing_enabled === true && <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginTop: 12 }}>
+              <label><strong>Base charge (₦)</strong><input type="number" min="0" step="1" value={deliverySettings.base_fee ?? 0} onChange={e=>setDeliverySettings((v:any)=>({...v,base_fee:e.target.value}))} style={fieldStyle}/></label>
+              <label><strong>Charge per km (₦)</strong><input type="number" min="0" step="1" value={deliverySettings.per_km_fee ?? 0} onChange={e=>setDeliverySettings((v:any)=>({...v,per_km_fee:e.target.value}))} style={fieldStyle}/></label>
+              <label><strong>Minimum delivery fee (₦)</strong><input type="number" min="0" step="1" value={deliverySettings.minimum_fee ?? 0} onChange={e=>setDeliverySettings((v:any)=>({...v,minimum_fee:e.target.value}))} style={fieldStyle}/></label>
+              <label><strong>Maximum delivery distance (km)</strong><input type="number" min="1" max="1000" step="1" value={deliverySettings.max_delivery_km ?? 100} onChange={e=>setDeliverySettings((v:any)=>({...v,max_delivery_km:e.target.value}))} style={fieldStyle}/></label>
+            </div>
+            <p style={{ color: "#64748b", fontSize: 12 }}>Delivery fee = the greater of your minimum fee or (base charge + road distance × charge per km). The final amount is rounded up to the next naira.</p>
           </>}
-          {!deliveryConfigured && <small style={{ display: "block", color: "#92400e", background: "#fffbeb", padding: 10, borderRadius: 8, marginTop: 12 }}>Sendbox API credentials have not yet been configured. Live quotes and bookings remain disabled.</small>}
-          {deliveryPartners.length===0 && <small style={{ display: "block", color: "#64748b", marginTop: 10 }}>No delivery partners are active yet. Sabi Super Admin must finish testing and activate Sendbox before merchants can select it.</small>}
+          {deliverySettings.geocoded_label && <small style={{ display: "block", color: "#047857", marginTop: 10 }}> <CheckCircle size={14} style={{ display: "inline", verticalAlign: "middle" }}/> Verified pickup location: {deliverySettings.geocoded_label}</small>}
+          {!deliveryConfigured && <small style={{ display: "block", color: "#92400e", background: "#fffbeb", padding: 10, borderRadius: 8, marginTop: 12 }}>Geoapify is not currently configured. Distance pricing cannot be activated until the API key is available.</small>}
         </>}
         <button type="submit" disabled={deliverySaving || deliveryLoading} style={{ marginTop: 16, padding: "11px 18px", border: 0, borderRadius: 9, background: "#0f766e", color: "#fff", fontWeight: 700 }}>
-          {deliverySaving ? "Saving..." : "Save delivery preference"}
+          {deliverySaving ? "Verifying and saving..." : "Verify pickup address and save"}
         </button>
       </form>
 
