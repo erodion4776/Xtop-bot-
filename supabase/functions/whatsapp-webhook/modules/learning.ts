@@ -947,7 +947,15 @@ async function processLessonNavigation(
   // Legacy practice buttons and old PRACTICE_QUESTION sessions now return
   // to lecture delivery; practice questions are no longer part of lessons.
   if (!lessonId) {
-    await deliverLesson(phone, conv.id, ctx, currentOrder);
+    if (
+      n === "lsn_section_next" || n.startsWith("lsn_next_") ||
+      n.includes("continue lecture") || n.includes("start lecture") || n === "next"
+    ) {
+      await deliverLesson(phone, conv.id, ctx, currentOrder);
+    } else {
+      // A greeting or unrelated sentence must never reopen lecture one.
+      await showCourseMenu(phone, conv.id, ctx);
+    }
     return;
   }
 
@@ -1039,7 +1047,8 @@ async function processLessonNavigation(
     return;
   }
 
-  await deliverLesson(phone, conv.id, ctx, currentOrder);
+  // Unknown text (including greetings) is not a request to restart the classroom.
+  await showCourseMenu(phone, conv.id, ctx);
 }
 
 async function completeAndAdvanceLesson(
