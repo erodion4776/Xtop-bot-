@@ -103,7 +103,11 @@ Deno.serve(async (req: Request) => {
       const orderId = clean(body.order_id, 80);
       const weight = Number(body.weight_kg);
       const destination = body.destination && typeof body.destination === "object" ? body.destination : null;
-      if (!orderId || !Number.isFinite(weight) || weight <= 0 || weight > 1000 || !destination) throw new Error("QUOTE_DETAILS_REQUIRED");
+      const dimension = body.dimension && typeof body.dimension === "object" ? body.dimension : null;
+      if (!orderId || !Number.isFinite(weight) || weight <= 0 || weight > 1000 || !destination || !dimension ||
+        ![dimension.length, dimension.width, dimension.height].every((value: unknown) => Number.isFinite(Number(value)) && Number(value) > 0)) {
+        throw new Error("QUOTE_DETAILS_REQUIRED");
+      }
       const [{ data: pref }, { data: order }, { data: items }, { data: tenant }] = await Promise.all([
         db.from("tenant_delivery_preferences").select("*").eq("tenant_id", tenantId).maybeSingle(),
         db.from("tenant_orders").select("id,tenant_id,order_number,customer_name,customer_phone,delivery_address,subtotal,delivery_fee,payment_status,shipping_payment_status,shipping_payment_required,status").eq("tenant_id", tenantId).eq("id", orderId).maybeSingle(),
