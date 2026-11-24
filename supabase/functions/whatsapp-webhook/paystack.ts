@@ -103,7 +103,7 @@ export async function verifyExamPayment(
         .update({ status: "SUCCESSFUL", updated_at: new Date().toISOString() })
         .eq("reference", reference)
         .eq("amount", expectedAmountNaira)
-        .eq("status", "PENDING")
+        .in("status", ["PENDING", "SUCCESSFUL"])
         .select("id")
         .maybeSingle();
 
