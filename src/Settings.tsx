@@ -291,7 +291,7 @@ export default function Settings({ tenantId }: { tenantId: string }) {
   async function saveDeliverySettings(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setDeliverySaving(true); setDeliveryError(""); setDeliverySuccess("");
-    if (!deliverySettings.pickup_address?.trim() || !deliverySettings.pickup_city?.trim() || !deliverySettings.pickup_state?.trim()) {
+    if (deliverySettings.pricing_enabled === true && (!deliverySettings.pickup_address?.trim() || !deliverySettings.pickup_city?.trim() || !deliverySettings.pickup_state?.trim())) {
       setDeliveryError("Enter your pickup street address, city and state.");
       setDeliverySaving(false); return;
     }
@@ -767,14 +767,14 @@ export default function Settings({ tenantId }: { tenantId: string }) {
         {deliverySuccess && <div role="status" style={{ color: "#047857", background: "#ecfdf5", padding: 10, borderRadius: 8, margin: "10px 0" }}>{deliverySuccess}</div>}
         {deliveryLoading ? <p>Loading delivery settings...</p> : <>
           <label style={{ display: "block", marginTop: 14 }}><strong>Pickup street address</strong>
-            <input value={deliverySettings.pickup_address || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_address:e.target.value}))} style={fieldStyle} placeholder="Shop number, street and area" required/>
+            <input value={deliverySettings.pickup_address || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_address:e.target.value}))} style={fieldStyle} placeholder="Shop number, street and area" required={deliverySettings.pricing_enabled === true}/>
           </label>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 }}>
             <label style={{ display: "block", marginTop: 12 }}><strong>City / town</strong>
-              <input value={deliverySettings.pickup_city || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_city:e.target.value}))} style={fieldStyle} placeholder="e.g. Benin City" required/>
+              <input value={deliverySettings.pickup_city || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_city:e.target.value}))} style={fieldStyle} placeholder="e.g. Benin City" required={deliverySettings.pricing_enabled === true}/>
             </label>
             <label style={{ display: "block", marginTop: 12 }}><strong>State</strong>
-              <input value={deliverySettings.pickup_state || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_state:e.target.value}))} style={fieldStyle} placeholder="e.g. Edo" required/>
+              <input value={deliverySettings.pickup_state || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_state:e.target.value}))} style={fieldStyle} placeholder="e.g. Edo" required={deliverySettings.pricing_enabled === true}/>
             </label>
           </div>
           <label style={{ display: "block", marginTop: 12 }}><strong>Local Government Area (optional)</strong>
