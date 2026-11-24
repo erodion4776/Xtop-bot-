@@ -68,3 +68,4 @@ values
    'Sabi-approved delivery network. Integration is being tested; live merchant booking is not yet enabled.',
    10)
 on conflict (code) do nothing;
+alter table public.tenant_delivery_preferences add column if not exists pickup_phone text; alter table public.tenant_delivery_preferences add column if not exists pickup_email text;
