@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search, ShoppingBag, Store, ArrowRight, RefreshCw, ShieldCheck,
-  Star, UserRound, LogOut, X, Heart, Zap, Truck, Headphones, CircleUserRound, MessageCircle
+  Star, UserRound, LogOut, X, Heart, Zap, Truck, CircleUserRound, MessageCircle
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabase";
