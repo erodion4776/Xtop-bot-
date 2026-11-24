@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Search, Share2, ShoppingBag, ShoppingCart, Store, Star, Zap, MessageCircle, Heart, ChevronRight, BadgeCheck } from "lucide-react";
+import { ArrowLeft, Search, Share2, ShoppingBag, ShoppingCart, Store, Star, Zap, MessageCircle, Heart, ChevronRight } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import { addToMarketplaceCart, getMarketplaceCart } from "./marketplaceCart";
 
@@ -55,6 +55,10 @@ export default function PublicStorefront() {
   const [sortBy, setSortBy] = useState("featured");
   const [following, setFollowing] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
+
+  useEffect(() => {
+    try { setFollowing(localStorage.getItem(`sabi-follow-${slug}`) === "1"); } catch {}
+  }, [slug]);
 
   useEffect(() => {
     const updateCartCount = () => setCartCount(getMarketplaceCart().reduce((sum, item) => sum + Number(item.quantity || 0), 0));
@@ -254,6 +258,7 @@ export default function PublicStorefront() {
           .sabi-store-hero { padding:30px 34px!important; }
           .sabi-store-hero-main { display:flex!important; align-items:center!important; justify-content:space-between!important; gap:24px!important; }
           .sabi-store-feature-grid { grid-template-columns:repeat(4,minmax(0,1fr))!important; }
+          .sabi-store-feature-image img { width:100%;height:100%;object-fit:cover;display:block; }
         }
         @media (max-width: 520px) {
           .sabi-store-layout { padding-left:12px!important; padding-right:12px!important; }
@@ -268,7 +273,7 @@ export default function PublicStorefront() {
       <header className="sabi-store-header sabi-store-layout" style={styles.header}>
         <a href="/" style={styles.brand}><img src={LOGO_URL} alt="Sabi by XTOP"/><span><strong>Sabi</strong><small>DISCOVER</small></span></a>
         <div style={styles.headerRight}>
-          <a href="/" style={styles.back}><ArrowLeft size={15}/> Back to Discover</a>
+          <a href="/" className="sabi-store-back" style={styles.back}><ArrowLeft size={15}/> Back to Discover</a>
           <a href="/?cart=1" aria-label={`Open cart, ${cartCount} items`} style={styles.cartLink}><ShoppingCart size={19}/><span>Cart</span>{cartCount > 0 && <b style={styles.cartBadge}>{cartCount > 99 ? "99+" : cartCount}</b>}</a>
         </div>
       </header>
@@ -303,7 +308,7 @@ export default function PublicStorefront() {
       {products.length > 0 && <section className="sabi-store-layout" style={styles.featuredSection}>
         <div style={styles.sectionHeading}><div><span style={styles.eyebrowDark}>SHOP THE COLLECTION</span><h2 className="sabi-store-section-title" style={styles.featureTitle}>Popular in this store</h2></div><button onClick={() => {setSortBy("popular");document.getElementById("store-products")?.scrollIntoView({behavior:"smooth"});}} style={styles.textAction}>View all <ChevronRight size={16}/></button></div>
         <div className="sabi-store-feature-grid" style={styles.featureGrid}>
-          {[...products].sort((a,b)=>b.sold_quantity-a.sold_quantity).slice(0,4).map(product => <a key={product.product_id} href={`/?product=${encodeURIComponent(product.product_id)}`} style={styles.featureCard}><div style={styles.featureImage}>{product.product_image_url ? <img src={product.product_image_url} alt={product.product_name} loading="lazy"/> : <ShoppingBag size={26}/>}</div><div style={styles.featureInfo}><strong>{product.product_name}</strong><b>{money(product.product_price)}</b></div></a>)}
+          {[...products].sort((a,b)=>b.sold_quantity-a.sold_quantity).slice(0,4).map(product => <a key={product.product_id} href={`/?product=${encodeURIComponent(product.product_id)}`} style={styles.featureCard}><div className="sabi-store-feature-image" style={styles.featureImage}>{product.product_image_url ? <img src={product.product_image_url} alt={product.product_name} loading="lazy"/> : <ShoppingBag size={26}/>}</div><div style={styles.featureInfo}><strong>{product.product_name}</strong><b>{money(product.product_price)}</b></div></a>)}
         </div>
       </section>}
 
@@ -320,7 +325,6 @@ export default function PublicStorefront() {
           {visibleProducts.map(product => <article key={product.product_id} style={styles.productCard}>
             <a href={`/?product=${encodeURIComponent(product.product_id)}`} style={styles.productLink}>
               <div style={styles.productImage}>
-                <button aria-label={favorites.includes(product.product_id) ? "Remove from wishlist" : "Add to wishlist"} onClick={event => {event.preventDefault();toggleFavorite(product.product_id);}} style={styles.favoriteButton}><Heart size={17} fill={favorites.includes(product.product_id) ? "#dc2626" : "none"} color={favorites.includes(product.product_id) ? "#dc2626" : "#334155"}/></button>
                 {product.product_image_url ? <img src={product.product_image_url} alt={product.product_name} loading="lazy" style={styles.productImageElement}/> : <ShoppingBag size={35} color="#94a3b8"/>}
                 {product.sold_quantity > 0 && <span style={styles.bestSeller}><Zap size={11}/> BEST SELLER</span>}
               </div>
@@ -331,6 +335,7 @@ export default function PublicStorefront() {
                 <small style={styles.productRating}>{product.seller_review_count > 0 ? `★ ${product.seller_rating.toFixed(1)} · ${product.seller_review_count} reviews` : "New seller"}</small>
               </div>
             </a>
+            <button aria-label={favorites.includes(product.product_id) ? "Remove from wishlist" : "Add to wishlist"} onClick={() => toggleFavorite(product.product_id)} style={styles.favoriteButton}><Heart size={17} fill={favorites.includes(product.product_id) ? "#dc2626" : "none"} color={favorites.includes(product.product_id) ? "#dc2626" : "#334155"}/></button>
             <button style={{...styles.addButton,background:brandColor}} disabled={product.product_stock < 1} onClick={() => { addToMarketplaceCart({ product_id: product.product_id, product_name: product.product_name, product_price: product.product_price, product_image_url: product.product_image_url, business_name: store.business_name, business_slug: store.business_slug, product_stock: product.product_stock }, 1); setCartMessage(`${product.product_name} added to your cart.`); }}><ShoppingBag size={15}/> Add to cart</button>
           </article>)}
         </div> : <div style={styles.empty}><ShoppingBag size={32}/><h3>{products.length ? "No matching products" : "This store is getting ready"}</h3><p>{products.length ? "Try another product name or category." : "This merchant has not published any available products yet. Check back soon."}</p></div>}
@@ -365,7 +370,6 @@ const styles: Record<string, React.CSSProperties> = {
   actionButtons:{display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"},
   chatButton:{display:"inline-flex",alignItems:"center",gap:7,background:"#fff",border:"1px solid #fff",borderRadius:9,padding:"10px 13px",fontWeight:750,color:"#176b4b",textDecoration:"none",fontSize:13,whiteSpace:"nowrap"},
   followButton:{display:"inline-flex",alignItems:"center",gap:7,background:"rgba(255,255,255,.13)",border:"1px solid rgba(255,255,255,.65)",borderRadius:9,padding:"10px 13px",fontWeight:750,cursor:"pointer",color:"#fff",fontSize:13,whiteSpace:"nowrap"},
-  followButton:{display:"inline-flex",alignItems:"center",gap:7,background:"rgba(255,255,255,.13)",border:"1px solid rgba(255,255,255,.65)",borderRadius:9,padding:"10px 13px",fontWeight:750,cursor:"pointer",color:"#fff",fontSize:13,whiteSpace:"nowrap"},
   shareButton:{display:"inline-flex",alignItems:"center",gap:8,background:"#fff",border:"1px solid",borderRadius:9,padding:"10px 14px",fontWeight:750,cursor:"pointer"},
   status:{color:"#176b4b",fontSize:13,margin:"12px 0 0"},
   categoryNav:{width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"0 auto 26px",display:"flex",gap:8,overflowX:"auto",padding:"2px 0 10px",scrollbarWidth:"thin"},
@@ -381,8 +385,6 @@ const styles: Record<string, React.CSSProperties> = {
   featureImage:{width:62,height:62,flex:"0 0 62px",borderRadius:8,overflow:"hidden",background:"#f2f5f3",display:"grid",placeItems:"center",color:"#94a3b8"},
   featureInfo:{minWidth:0,display:"flex",flexDirection:"column",gap:6,fontSize:12},
   favoriteButton:{position:"absolute",top:8,right:8,zIndex:2,width:34,height:34,border:0,borderRadius:99,background:"rgba(255,255,255,.95)",display:"grid",placeItems:"center",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.12)"},
-  categoryNav:{width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"0 auto 26px",display:"flex",gap:8,overflowX:"auto",padding:"2px 0 10px",scrollbarWidth:"thin"},
-  categoryChip:{flex:"0 0 auto",border:"1px solid #dce7df",borderRadius:99,padding:"9px 15px",background:"#fff",color:"#526b5d",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"},
   categoryChipActive:{background:"#176b4b",borderColor:"#176b4b",color:"#fff"},
   featuredSection:{width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"0 auto 30px",background:"#fff",border:"1px solid #e6ece8",borderRadius:15,padding:"18px"},
   sectionHeading:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginBottom:14},
@@ -401,7 +403,7 @@ const styles: Record<string, React.CSSProperties> = {
   searchInput:{flex:1,minWidth:0,width:"100%",height:"100%",border:0,outline:"none",boxShadow:"none",background:"transparent",fontSize:14,color:"#14231b"},
   filterSelect:{height:44,width:"100%",minWidth:0,maxWidth:"100%",padding:"0 10px",border:"1px solid #dfe7e1",borderRadius:10,background:"#fff",color:"#334155",fontSize:13,boxSizing:"border-box"},
   grid:{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:12,alignItems:"stretch"},
-  productCard:{background:"#fff",borderRadius:14,overflow:"hidden",boxShadow:"0 5px 18px rgba(20,35,27,.05)",display:"flex",flexDirection:"column"},
+  productCard:{position:"relative",background:"#fff",borderRadius:14,overflow:"hidden",boxShadow:"0 5px 18px rgba(20,35,27,.05)",display:"flex",flexDirection:"column"},
   productLink:{textDecoration:"none",color:"inherit",display:"flex",flexDirection:"column",flex:1,minWidth:0},
   productImage:{width:"100%",aspectRatio:"1 / 1",background:"#f0f4f1",display:"grid",placeItems:"center",position:"relative",overflow:"hidden"},
   productImageElement:{display:"block",width:"100%",height:"100%",maxWidth:"100%",maxHeight:"100%",objectFit:"cover",objectPosition:"center"},
