@@ -155,14 +155,6 @@ export default function App() {
       setRegistering(true);
       setRegistrationError("");
 
-      // Discover customers use a separate customer profile and must not be
-      // silently provisioned as merchants when they visit the merchant app.
-      const { data: customerProfile } = await supabase
-        .from("sabi_discover_customer_profiles")
-        .select("user_id")
-        .eq("user_id", userId)
-        .maybeSingle();
-
       if (cancelled) return;
 
       const { data, error } = await supabase.functions.invoke(
