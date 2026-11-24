@@ -73,6 +73,7 @@ declare
   v_processing_fee_kobo numeric(14,0);
   v_processing numeric(14,2);
   v_expected numeric(14,2);
+  v_orders jsonb;
 begin
   if p_delivery_quote_id is null then raise exception 'DELIVERY_QUOTE_REQUIRED'; end if;
   select * into v_quote
@@ -116,7 +117,7 @@ begin
 
     update public.tenant_orders
       set delivery_fee=v_fee,total=subtotal+v_fee,shipping_required=(v_fee>0),
-          shipping_payment_required=false,shipping_payment_status=case when v_fee>0 then 'PAID' else 'NOT_REQUIRED' end,
+          shipping_payment_required=false,shipping_payment_status='NOT_REQUIRED',
           updated_at=now()
       where id=v_seller.order_id and tenant_id=v_seller.tenant_id;
 
@@ -143,19 +144,34 @@ begin
   v_expected:=v_subtotal+v_delivery_total+v_commission+v_service+v_processing;
 
   update public.sabi_marketplace_checkouts set
-    delivery_total=v_delivery_total,customer_service_fee=v_service,
+    item_subtotal=v_subtotal,delivery_total=v_delivery_total,commission_total=v_commission,customer_service_fee=v_service,
     paystack_processing_fee=v_processing,expected_amount=v_expected,
     metadata=coalesce(metadata,'{}'::jsonb)||jsonb_build_object(
       'delivery_quote_id',p_delivery_quote_id,'delivery_calculation','GEOAPIFY_ROAD_DISTANCE'
     ),updated_at=now()
   where id=v_checkout_id;
 
+  select coalesce(jsonb_agg(
+    entry || jsonb_build_object(
+      'subtotal',co.item_subtotal,
+      'delivery_fee',co.delivery_fee,
+      'commission',co.commission_amount,
+      'merchant_payout',co.merchant_payout_amount
+    )
+  ),'[]'::jsonb)
+  into v_orders
+  from jsonb_array_elements(coalesce(v_result->'orders','[]'::jsonb)) entry
+  join public.sabi_marketplace_checkout_orders co
+    on co.checkout_id=v_checkout_id and co.tenant_id=(entry->>'tenant_id')::uuid;
+
   update public.sabi_marketplace_delivery_quotes set used_at=now()
   where id=p_delivery_quote_id and used_at is null;
 
-  return v_result || jsonb_build_object(
-    'delivery_total',v_delivery_total,'paystack_processing_fee',v_processing,
-    'expected_amount',v_expected,'delivery_quote_id',p_delivery_quote_id
+  return jsonb_set(v_result,'{orders}',v_orders,true) || jsonb_build_object(
+    'item_subtotal',v_subtotal,'delivery_total',v_delivery_total,
+    'commission_total',v_commission,'customer_service_fee',v_service,
+    'paystack_processing_fee',v_processing,'expected_amount',v_expected,
+    'delivery_quote_id',p_delivery_quote_id
   );
 end;
 $function$;
