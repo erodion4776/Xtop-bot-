@@ -106,7 +106,7 @@ Deno.serve(async (req: Request) => {
       if (!orderId || !Number.isFinite(weight) || weight <= 0 || weight > 1000 || !destination) throw new Error("QUOTE_DETAILS_REQUIRED");
       const [{ data: pref }, { data: order }, { data: items }, { data: tenant }] = await Promise.all([
         db.from("tenant_delivery_preferences").select("*").eq("tenant_id", tenantId).maybeSingle(),
-        db.from("tenant_orders").select("id,tenant_id,order_number,customer_name,customer_phone,delivery_address,subtotal,payment_status,status").eq("tenant_id", tenantId).eq("id", orderId).maybeSingle(),
+        db.from("tenant_orders").select("id,tenant_id,order_number,customer_name,customer_phone,delivery_address,subtotal,payment_status,shipping_payment_status,shipping_payment_required,status").eq("tenant_id", tenantId).eq("id", orderId).maybeSingle(),
         db.from("tenant_order_items").select("product_name,quantity,unit_price,line_total").eq("tenant_id", tenantId).eq("order_id", orderId),
       ]);
       if (!pref || pref.delivery_mode !== "PARTNER" || !pref.preferred_partner_id) throw new Error("PARTNER_NOT_SELECTED");
@@ -156,13 +156,13 @@ Deno.serve(async (req: Request) => {
         db.from("sabi_delivery_shipments").select("*").eq("tenant_id", tenantId).eq("order_id", orderId).maybeSingle(),
       ]);
       if (!order || !shipment || shipment.status !== "QUOTED") throw new Error("QUOTE_NOT_FOUND");
-      if (order.payment_status !== "PAID" || order.status === "CANCELLED") throw new Error("ORDER_NOT_READY_FOR_SHIPMENT");
+      if ((order.payment_status !== "PAID" && !(order.shipping_payment_required === true && order.shipping_payment_status === "PAID")) || order.status === "CANCELLED") throw new Error("ORDER_NOT_READY_FOR_SHIPMENT");
       if (!shipment.quote_expires_at || new Date(shipment.quote_expires_at).getTime() <= Date.now()) throw new Error("QUOTE_EXPIRED");
       const saved = shipment.provider_payload || {};
       const rates = Array.isArray(saved.rates) ? saved.rates : [];
       const selected = rates.find((r: any) => String(r.id || r.key || "") === rateId && r.is_enabled !== false);
       if (!selected) throw new Error("INVALID_DELIVERY_RATE");
-      const payload = { ...saved.quote_request, selected_rate_id: rateId, selected_rate: selected, callback_url: `${SUPABASE_URL}/functions/v1/sabi-delivery?action=webhook&token=${encodeURIComponent(WEBHOOK_TOKEN)}` };
+      if (!WEBHOOK_TOKEN) throw new Error("DELIVERY_WEBHOOK_NOT_CONFIGURED");\n      const payload = { ...saved.quote_request, selected_rate_id: rateId, selected_rate: selected, callback_url: `${SUPABASE_URL}/functions/v1/sabi-delivery?action=webhook&token=${encodeURIComponent(WEBHOOK_TOKEN)}` };
       const { error: bookingStateError } = await db.from("sabi_delivery_shipments").update({ status: "BOOKING", delivery_fee: Number(selected.fee), provider_payload: { ...saved, selected_rate: selected }, updated_at: new Date().toISOString() }).eq("id", shipment.id);
       if (bookingStateError) throw new Error("SHIPMENT_UPDATE_FAILED");
       try {
@@ -211,7 +211,7 @@ Deno.serve(async (req: Request) => {
     const message = error instanceof Error ? error.message : "";
     const messages: Record<string,string> = {
       AUTH_REQUIRED: "Please log in again.", NOT_AUTHORIZED: "You are not authorized for this merchant workspace.",
-      SENDBOX_NOT_CONFIGURED: "Sendbox credentials have not been configured by Sabi yet.",
+      SENDBOX_NOT_CONFIGURED: "Sendbox credentials have not been configured by Sabi yet.",\n      DELIVERY_WEBHOOK_NOT_CONFIGURED: "Sabi delivery tracking webhook has not been configured yet.",
       SENDBOX_REQUEST_FAILED: "Sendbox could not complete the request. Check the integration account and try again.",
       DELIVERY_PARTNER_REQUIRED: "Select an approved delivery partner.",
       DELIVERY_PARTNER_UNAVAILABLE: "This delivery partner is not currently available.",
