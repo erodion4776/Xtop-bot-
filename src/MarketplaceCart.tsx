@@ -65,8 +65,8 @@ export default function MarketplaceCart() {
       }
       setQuoteLoading(false);
     }
-    loadQuote();
-    return () => { cancelled = true; };
+    const timer = window.setTimeout(loadQuote, 700);
+    return () => { cancelled = true; window.clearTimeout(timer); };
   }, [items, address, city, state]);
 
   const subtotal = useMemo(() => items.reduce((sum, item) => sum + Number(item.product_price) * item.quantity, 0), [items]);
@@ -173,7 +173,7 @@ export default function MarketplaceCart() {
               <h2>Order summary</h2>
               <div className="sabi-cart-summary-line"><span>Items ({items.reduce((n,item)=>n+item.quantity,0)})</span><strong>{quote ? money(Number(quote.item_subtotal)) : money(subtotal)}</strong></div>
               <div className="sabi-cart-summary-line"><span>Delivery</span><strong>{quote ? money(Number(quote.delivery_total)) : quoteLoading ? "Calculating..." : "—"}</strong></div>
-              {quote?.sellers?.map((seller: any) => <div className="sabi-cart-seller-fee" key={seller.tenant_id}><span>{seller.delivery_label || `${seller.merchant_name} delivery`}</span><strong>{money(Number(seller.delivery_fee))}</strong></div>)}
+              {quote?.sellers?.map((seller: any) => <div className="sabi-cart-seller-fee" key={seller.tenant_id}><span>{seller.delivery_label || `${seller.merchant_name} delivery`}{seller.distance_km != null ? ` · ${seller.distance_km} km road distance` : ""}</span><strong>{money(Number(seller.delivery_fee))}</strong></div>)}
               {quote && <div className="sabi-cart-summary-line"><span>Sabi marketplace fees</span><strong>{money(Number(quote.marketplace_fee_total))}</strong></div>}
               {quote && <div className="sabi-cart-summary-line"><span>Payment processing</span><strong>{money(Number(quote.paystack_processing_fee))}</strong></div>}
               <div className="sabi-cart-summary-note">Delivery is calculated separately for each seller using road distance and the seller’s own pricing. If distance routing is unavailable, a configured flat fee is used. Each seller handles dispatch and delivery.</div>
