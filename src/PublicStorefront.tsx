@@ -243,7 +243,7 @@ export default function PublicStorefront() {
 
       <section style={{...styles.storeHero, borderTop: `5px solid ${brandColor}`}}>
         <div style={styles.storeIdentity}>
-          {store.business_logo ? <img src={store.business_logo} alt={store.business_name} style={styles.storeLogo}/> : <div style={{...styles.storeLogoPlaceholder, background: brandColor}}><Store size={34} color="#fff"/></div>}
+          {store.business_logo ? <span style={styles.storeLogoFrame}><img src={store.business_logo} alt={store.business_name} style={styles.storeLogo}/></span> : <div style={{...styles.storeLogoPlaceholder, background: brandColor}}><Store size={34} color="#fff"/></div>}
           <div style={{minWidth:0}}>
             <span style={styles.eyebrow}>OFFICIAL SABI STORE</span>
             <h1>{store.business_name}</h1>
@@ -306,29 +306,29 @@ const styles: Record<string, React.CSSProperties> = {
   brand:{display:"flex",alignItems:"center",gap:9,textDecoration:"none",color:"#14231b"},
   brandImg:{width:42,height:42,objectFit:"contain"},
   back:{display:"inline-flex",alignItems:"center",gap:7,color:"#176b4b",fontWeight:700,textDecoration:"none",fontSize:13},
-  storeHero:{width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"14px auto 26px",background:"#0D3B26",color:"#fff",borderRadius:18,padding:"clamp(16px,3vw,26px)",overflow:"hidden",boxShadow:"0 8px 28px rgba(20,35,27,.08)"},
-  storeIdentity:{display:"flex",alignItems:"center",gap:18},
-  storeLogo:{width:86,height:86,borderRadius:18,objectFit:"contain",background:"#fff"},
+  storeHero:{position:"relative",isolation:"isolate",zIndex:0,width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"14px auto 30px",background:"#0D3B26",color:"#fff",borderRadius:18,padding:"clamp(18px,3vw,26px)",overflow:"hidden",contain:"layout paint",boxShadow:"0 8px 28px rgba(20,35,27,.08)"},
+  storeIdentity:{position:"relative",zIndex:1,display:"flex",alignItems:"center",gap:18,minWidth:0},
+  storeLogoFrame:{width:76,height:76,flex:"0 0 76px",display:"grid",placeItems:"center",overflow:"hidden",borderRadius:15,background:"#fff"},\n  storeLogo:{display:"block",width:"100%",height:"100%",maxWidth:"100%",maxHeight:"100%",borderRadius:15,objectFit:"contain",objectPosition:"center"},
   storeLogoPlaceholder:{width:86,height:86,borderRadius:18,display:"grid",placeItems:"center"},
   eyebrow:{fontSize:10,letterSpacing:1.3,fontWeight:800,color:"#c6e6d2"},
   industry:{margin:"5px 0",color:"#e0eee5",fontSize:13},
   rating:{display:"flex",alignItems:"center",gap:5,color:"#e0eee5",fontSize:12,marginTop:8},
-  storeActions:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginTop:20,paddingTop:16,borderTop:"1px solid rgba(255,255,255,.2)",color:"#e0eee5",fontSize:13},
+  storeActions:{position:"relative",zIndex:1,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginTop:20,paddingTop:16,borderTop:"1px solid rgba(255,255,255,.2)",color:"#e0eee5",fontSize:13},
   actionButtons:{display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"},
   chatButton:{display:"inline-flex",alignItems:"center",gap:7,background:"#fff",border:"1px solid #fff",borderRadius:9,padding:"10px 13px",fontWeight:750,color:"#176b4b",textDecoration:"none",fontSize:13,whiteSpace:"nowrap"},
   shareButton:{display:"inline-flex",alignItems:"center",gap:8,background:"#fff",border:"1px solid",borderRadius:9,padding:"10px 14px",fontWeight:750,cursor:"pointer"},
   status:{color:"#176b4b",fontSize:13,margin:"12px 0 0"},
   catalogue:{width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"0 auto"},
   catalogueHeading:{display:"flex",alignItems:"end",justifyContent:"space-between",gap:18,flexWrap:"wrap",marginBottom:18,paddingTop:8},
-  catalogueTools:{display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"},
-  search:{display:"flex",alignItems:"center",gap:9,background:"#fff",border:"1px solid #dfe7e1",borderRadius:10,padding:"0 12px",height:44,minWidth:250,color:"#718278",boxSizing:"border-box"},
+  catalogueTools:{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",alignItems:"center",gap:9,width:"100%",minWidth:0},
+  search:{gridColumn:"1 / -1",display:"flex",alignItems:"center",gap:9,background:"#fff",border:"1px solid #dfe7e1",borderRadius:10,padding:"0 12px",height:44,width:"100%",minWidth:0,color:"#718278",boxSizing:"border-box"},
   searchInput:{flex:1,minWidth:0,width:"100%",height:"100%",border:0,outline:"none",boxShadow:"none",background:"transparent",fontSize:14,color:"#14231b"},
-  filterSelect:{height:44,minWidth:132,maxWidth:"100%",padding:"0 10px",border:"1px solid #dfe7e1",borderRadius:10,background:"#fff",color:"#334155",fontSize:13},
+  filterSelect:{height:44,width:"100%",minWidth:0,maxWidth:"100%",padding:"0 10px",border:"1px solid #dfe7e1",borderRadius:10,background:"#fff",color:"#334155",fontSize:13,boxSizing:"border-box"},
   grid:{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:12,alignItems:"stretch"},
   productCard:{background:"#fff",borderRadius:14,overflow:"hidden",boxShadow:"0 5px 18px rgba(20,35,27,.05)",display:"flex",flexDirection:"column"},
   productLink:{textDecoration:"none",color:"inherit",display:"flex",flexDirection:"column",flex:1,minWidth:0},
   productImage:{width:"100%",aspectRatio:"1 / 1",background:"#f0f4f1",display:"grid",placeItems:"center",position:"relative",overflow:"hidden"},
-  productImageElement:{display:"block",width:"100%",height:"100%",maxWidth:"100%",maxHeight:"100%",objectFit:"contain",objectPosition:"center"},
+  productImageElement:{display:"block",width:"100%",height:"100%",maxWidth:"100%",maxHeight:"100%",objectFit:"cover",objectPosition:"center"},
   bestSeller:{position:"absolute",left:9,top:9,display:"flex",alignItems:"center",gap:4,background:"#176b4b",color:"#fff",fontSize:9,fontWeight:800,padding:"5px 7px",borderRadius:5},
   productInfo:{padding:"11px 11px 7px",display:"flex",flexDirection:"column",gap:7,flex:1,minWidth:0},
   category:{fontSize:10,color:"#718278",textTransform:"uppercase",letterSpacing:.5},
