@@ -380,13 +380,18 @@ async function quoteMerchantWhatsAppDelivery(
   items: { product_id: string; quantity: number }[],
   deliveryAddress: string,
 ): Promise<MerchantWhatsAppDeliveryQuote> {
-  const productIds = [...new Set(items.map(item => item.product_id))];
+  const productIds = [...new Set(items.map((item) => item.product_id))];
   const { data: products, error: productsError } = await db
-    .from("products").select("id,tenant_id").in("id", productIds);
+    .from("products")
+    .select("id,tenant_id")
+    .in("id", productIds);
+
   if (productsError || !products || products.length !== productIds.length) {
-    throw new Error("INVALID_ORDER_DETAILS");
+    console.error("Delivery quote product lookup failed.", productsError);
+    throw new Error("DELIVERY_SETTINGS_LOOKUP_FAILED");
   }
-  const tenantIds = [...new Set(products.map((item: any) => String(item.tenant_id)))];
+
+  const tenantIds = [...new Set(products.map((item: { tenant_id: string }) => String(item.tenant_id)))];
   if (tenantIds.length !== 1) throw new Error("INVALID_ORDER_DETAILS");
   const tenantId = tenantIds[0];
 
@@ -396,55 +401,73 @@ async function quoteMerchantWhatsAppDelivery(
       .select("pickup_lat,pickup_lon,base_fee,per_km_fee,minimum_fee,max_delivery_km,pricing_enabled,location_verified_at")
       .eq("tenant_id", tenantId).maybeSingle(),
   ]);
-  if (tenantError || prefError || !tenant) throw new Error("DELIVERY_SETTINGS_LOOKUP_FAILED");
-  if (tenant.shipping_enabled !== true) return { fee: 0, calculation: "NO_DELIVERY", distanceKm: null };
 
-  const flatFallback = Number(tenant.shipping_fee || 0);
-  if (!Number.isFinite(flatFallback) || flatFallback < 0) throw new Error("INVALID_DELIVERY_FEE");
+  if (tenantError || prefError || !tenant) {
+    console.error("Delivery settings lookup failed.", { tenantError, prefError });
+    throw new Error("DELIVERY_SETTINGS_LOOKUP_FAILED");
+  }
+
+  if (tenant.shipping_enabled !== true) {
+    return { fee: 0, calculation: "NO_DELIVERY", distanceKm: null };
+  }
+
+  const flatFee = Number(tenant.shipping_fee ?? 0);
+  if (!Number.isFinite(flatFee) || flatFee < 0 || flatFee > 100000000) {
+    throw new Error("INVALID_DELIVERY_FEE");
+  }
+
+  // Flat-fee delivery is used only when the merchant explicitly disables
+  // road-distance pricing. It is never a silent fallback for road mode.
   if (pref?.pricing_enabled !== true) {
-    if (flatFallback <= 0) throw new Error("MERCHANT_DELIVERY_NOT_CONFIGURED");
-    return { fee: Math.ceil(flatFallback), calculation: "MERCHANT_FLAT_FALLBACK", distanceKm: null };
+    if (flatFee <= 0) throw new Error("MERCHANT_DELIVERY_NOT_CONFIGURED");
+    return {
+      fee: Math.ceil(flatFee),
+      calculation: "MERCHANT_FLAT_FALLBACK",
+      distanceKm: null,
+    };
   }
 
-  const hasVerifiedPickup = pref.location_verified_at &&
+  const pickupLat = Number(pref.pickup_lat);
+  const pickupLon = Number(pref.pickup_lon);
+  const hasVerifiedPickup = Boolean(pref.location_verified_at) &&
     pref.pickup_lat != null && pref.pickup_lon != null &&
-    Number.isFinite(Number(pref.pickup_lat)) && Number.isFinite(Number(pref.pickup_lon)) &&
-    Math.abs(Number(pref.pickup_lat)) <= 90 && Math.abs(Number(pref.pickup_lon)) <= 180;
-  if (!hasVerifiedPickup) {
-    if (flatFallback > 0) return { fee: Math.ceil(flatFallback), calculation: "MERCHANT_FLAT_FALLBACK", distanceKm: null };
-    throw new Error("MERCHANT_PICKUP_LOCATION_NOT_READY");
+    Number.isFinite(pickupLat) && Number.isFinite(pickupLon) &&
+    Math.abs(pickupLat) <= 90 && Math.abs(pickupLon) <= 180;
+
+  if (!hasVerifiedPickup) throw new Error("MERCHANT_PICKUP_LOCATION_NOT_READY");
+
+  const baseFee = Number(pref.base_fee ?? 0);
+  const perKmFee = Number(pref.per_km_fee ?? 0);
+  const minimumFee = Number(pref.minimum_fee ?? 0);
+  const maxKm = pref.max_delivery_km == null ? 100 : Number(pref.max_delivery_km);
+
+  if (![baseFee, perKmFee, minimumFee].every((value) => Number.isFinite(value) && value >= 0) ||
+      !Number.isFinite(maxKm) || maxKm <= 0) {
+    throw new Error("INVALID_DELIVERY_FEE");
   }
 
+  let distanceKm: number;
   try {
     const destination = await geoapifyGeocode(deliveryAddress);
-    const distanceKm = await geoapifyRoadDistance(
-      { lat: Number(pref.pickup_lat), lon: Number(pref.pickup_lon) },
-      destination,
-    );
-    const maxKm = pref.max_delivery_km == null ? 100 : Number(pref.max_delivery_km);
-    if (!Number.isFinite(maxKm) || maxKm <= 0 || distanceKm > maxKm) {
-      if (flatFallback > 0) return { fee: Math.ceil(flatFallback), calculation: "MERCHANT_FLAT_FALLBACK", distanceKm };
-      throw new Error("DELIVERY_OUTSIDE_MERCHANT_RANGE");
-    }
-    const baseFee = Number(pref.base_fee || 0);
-    const perKmFee = Number(pref.per_km_fee || 0);
-    const minimumFee = Number(pref.minimum_fee || 0);
-    if (![baseFee, perKmFee, minimumFee].every(value => Number.isFinite(value) && value >= 0)) {
-      throw new Error("INVALID_DELIVERY_FEE");
-    }
-    const fee = Math.ceil(Math.max(minimumFee, baseFee + distanceKm * perKmFee));
-    if (!Number.isSafeInteger(fee) || fee < 0 || fee > 100000000) throw new Error("INVALID_DELIVERY_FEE");
-    return { fee, calculation: "GEOAPIFY_ROAD_DISTANCE", distanceKm: Math.round(distanceKm * 10) / 10 };
+    distanceKm = await geoapifyRoadDistance({ lat: pickupLat, lon: pickupLon }, destination);
   } catch (error) {
-    // A valid merchant flat fee is a safe fallback for transient geocoding,
-    // routing, timeout, or provider failures. Invalid merchant pricing is
-    // validated after this block and is never silently hidden by fallback.
-    if (flatFallback > 0) {
-      console.warn("WhatsApp road-distance quote failed; using configured merchant flat fee.", error);
-      return { fee: Math.ceil(flatFallback), calculation: "MERCHANT_FLAT_FALLBACK", distanceKm: null };
-    }
-    throw error;
+    console.error("Road-distance quote unavailable; checkout safely stopped.", error);
+    throw new Error("DELIVERY_QUOTE_UNAVAILABLE");
   }
+
+  if (!Number.isFinite(distanceKm) || distanceKm <= 0) throw new Error("DELIVERY_QUOTE_UNAVAILABLE");
+  if (distanceKm > maxKm) throw new Error("DELIVERY_OUTSIDE_MERCHANT_RANGE");
+
+  const fee = Math.ceil(Math.max(minimumFee, baseFee + distanceKm * perKmFee));
+  if (!Number.isSafeInteger(fee) || fee < 0 || fee > 100000000) {
+    throw new Error("INVALID_DELIVERY_FEE");
+  }
+
+  return {
+    fee,
+    calculation: "GEOAPIFY_ROAD_DISTANCE",
+    distanceKm: Math.round(distanceKm * 10) / 10,
+  };
 }
 
 async function createCartOrder(body: Record<string, unknown>) {
