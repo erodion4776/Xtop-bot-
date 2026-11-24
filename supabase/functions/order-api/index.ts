@@ -601,20 +601,32 @@ async function geoapifyGeocode(address: string): Promise<{ lat: number; lon: num
   return { lat, lon };
 }
 
-async function geoapifyRoadDistance(origin: { lat: number; lon: number }, destination: { lat: number; lon: number }): Promise<number> {
+async function geoapifyRoadDistances(
+  origins: { lat: number; lon: number }[],
+  destination: { lat: number; lon: number },
+): Promise<(number | null)[]> {
   if (!GEOAPIFY_KEY) throw new Error("GEOAPIFY_NOT_CONFIGURED");
-  const url = new URL("https://api.geoapify.com/v1/routing");
-  url.searchParams.set("waypoints", `${origin.lat},${origin.lon}|${destination.lat},${destination.lon}`);
-  url.searchParams.set("mode", "drive");
-  url.searchParams.set("type", "balanced");
-  url.searchParams.set("format", "json");
-  url.searchParams.set("apiKey", GEOAPIFY_KEY);
-  const response = await fetch(url, { signal: AbortSignal.timeout(12000) });
+  if (!origins.length || origins.length > 1000) throw new Error("GEOAPIFY_ROUTE_FAILED");
+  const response = await fetch(`https://api.geoapify.com/v1/routematrix?apiKey=${encodeURIComponent(GEOAPIFY_KEY)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      mode: "drive",
+      type: "balanced",
+      units: "metric",
+      sources: origins.map(point => ({ location: [point.lon, point.lat] })),
+      targets: [{ location: [destination.lon, destination.lat] }],
+    }),
+    signal: AbortSignal.timeout(15000),
+  });
   if (!response.ok) throw new Error("GEOAPIFY_ROUTE_FAILED");
   const data = await response.json();
-  const meters = Number(data?.results?.[0]?.distance);
-  if (!Number.isFinite(meters) || meters <= 0 || meters > 1000000) throw new Error("GEOAPIFY_ROUTE_FAILED");
-  return meters / 1000;
+  const matrix = data?.sources_to_targets;
+  if (!Array.isArray(matrix) || matrix.length !== origins.length) throw new Error("GEOAPIFY_ROUTE_FAILED");
+  return matrix.map((row: any) => {
+    const meters = Number(row?.[0]?.distance);
+    return Number.isFinite(meters) && meters > 0 && meters <= 1000000 ? meters / 1000 : null;
+  });
 }
 
 function marketplaceProcessingFee(itemSubtotal: number, deliveryTotal: number, commissionTotal: number): number {
@@ -808,44 +820,59 @@ async function quoteMarketplaceCheckout(body: Record<string, unknown>) {
 
   const tenantById = new Map((tenants || []).map((row: any) => [String(row.id), row]));
   const prefByTenant = new Map((preferences || []).map((row: any) => [String(row.tenant_id), row]));
-  let destination: {lat:number;lon:number} | null = null;
   const routeSummary: any[] = [];
   const deliveryFees: any[] = [];
+  const routeCandidates: { seller: any; tenantId: string; tenant: any; pref: any; flatFallback: number }[] = [];
+  for (const seller of (baseQuote.sellers || [])) {
+    const tenantId = String(seller.tenant_id);
+    const tenant: any = tenantById.get(tenantId);
+    const pref: any = prefByTenant.get(tenantId);
+    const flatFallback = Math.max(0, Number(tenant?.shipping_fee ?? seller.delivery_fee ?? 0));
+    if (pref?.pricing_enabled === true && pref.pickup_lat != null && pref.pickup_lon != null &&
+        Number.isFinite(Number(pref.pickup_lat)) && Number.isFinite(Number(pref.pickup_lon))) {
+      routeCandidates.push({ seller, tenantId, tenant, pref, flatFallback });
+    } else if (pref?.pricing_enabled === true && flatFallback <= 0) {
+      throw new Error("MERCHANT_PICKUP_LOCATION_NOT_READY");
+    }
+  }
+
+  let routeDistances: (number | null)[] = [];
+  if (routeCandidates.length) {
+    try {
+      const destination = await geoapifyGeocode(destinationAddress);
+      routeDistances = await geoapifyRoadDistances(
+        routeCandidates.map(item => ({ lat: Number(item.pref.pickup_lat), lon: Number(item.pref.pickup_lon) })),
+        destination
+      );
+    } catch (error) {
+      if (routeCandidates.some(item => item.flatFallback <= 0)) throw error;
+      routeDistances = routeCandidates.map(() => null);
+    }
+  }
+  const routeIndex = new Map(routeCandidates.map((item, index) => [item.tenantId, index]));
 
   for (const seller of (baseQuote.sellers || [])) {
     const tenantId = String(seller.tenant_id);
     const tenant: any = tenantById.get(tenantId);
     const pref: any = prefByTenant.get(tenantId);
     const flatFallback = Math.max(0, Number(tenant?.shipping_fee ?? seller.delivery_fee ?? 0));
+    const candidateIndex = routeIndex.get(tenantId);
     let fee = flatFallback;
     let routeKm: number | null = null;
     let calculation = "MERCHANT_FLAT_FALLBACK";
 
-    if (pref?.pricing_enabled === true && pref.pickup_lat != null && pref.pickup_lon != null && Number.isFinite(Number(pref.pickup_lat)) && Number.isFinite(Number(pref.pickup_lon))) {
-      try {
-        if (!destination) destination = await geoapifyGeocode(destinationAddress);
-        routeKm = await geoapifyRoadDistance(
-          { lat: Number(pref.pickup_lat), lon: Number(pref.pickup_lon) },
-          destination
-        );
-        const maxKm = Math.max(1, Number(pref.max_delivery_km || 100));
-        if (routeKm > maxKm) {
-          if (flatFallback <= 0) throw new Error("DELIVERY_OUTSIDE_MERCHANT_RANGE");
-        } else {
-          const baseFee = Math.max(0, Number(pref.base_fee || 0));
-          const perKm = Math.max(0, Number(pref.per_km_fee || 0));
-          const minimum = Math.max(0, Number(pref.minimum_fee || 0));
-          fee = Math.ceil(Math.max(minimum, baseFee + routeKm * perKm));
-          calculation = "GEOAPIFY_ROAD_DISTANCE";
-        }
-      } catch (error) {
-        if (flatFallback <= 0) throw error;
-        fee = flatFallback;
-        calculation = "MERCHANT_FLAT_FALLBACK";
-        routeKm = null;
+    if (candidateIndex !== undefined) {
+      routeKm = routeDistances[candidateIndex] ?? null;
+      const maxKm = Math.max(1, Number(pref.max_delivery_km || 100));
+      if (routeKm !== null && routeKm <= maxKm) {
+        const baseFee = Math.max(0, Number(pref.base_fee || 0));
+        const perKm = Math.max(0, Number(pref.per_km_fee || 0));
+        const minimum = Math.max(0, Number(pref.minimum_fee || 0));
+        fee = Math.ceil(Math.max(minimum, baseFee + routeKm * perKm));
+        calculation = "GEOAPIFY_ROAD_DISTANCE";
+      } else if (flatFallback <= 0) {
+        throw new Error(routeKm === null ? "GEOAPIFY_ROUTE_FAILED" : "DELIVERY_OUTSIDE_MERCHANT_RANGE");
       }
-    } else if (pref?.pricing_enabled === true && flatFallback <= 0) {
-      throw new Error("MERCHANT_PICKUP_LOCATION_NOT_READY");
     }
 
     if (!Number.isFinite(fee) || fee < 0 || fee > 100000000) throw new Error("INVALID_DELIVERY_FEE");
