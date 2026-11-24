@@ -120,7 +120,12 @@ export default function Orders({ tenantId }: Props) {
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"ONLINE" | "POD">("ONLINE");
-  const [cart, setCart] = useState<CartItem[]>([]);\n  const [deliveryDrafts, setDeliveryDrafts] = useState<Record<string, { city: string; state: string; weight: string }>>({});\n  const [deliveryQuotes, setDeliveryQuotes] = useState<Record<string, any[]>>({});\n  const [deliveryShipments, setDeliveryShipments] = useState<Record<string, any>>({});\n  const [deliveryBusy, setDeliveryBusy] = useState("");\n  const [deliveryMessage, setDeliveryMessage] = useState<Record<string, string>>({});
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [deliveryDrafts, setDeliveryDrafts] = useState<Record<string, { city: string; state: string; weight: string }>>({});
+  const [deliveryQuotes, setDeliveryQuotes] = useState<Record<string, any[]>>({});
+  const [deliveryShipments, setDeliveryShipments] = useState<Record<string, any>>({});
+  const [deliveryBusy, setDeliveryBusy] = useState("");
+  const [deliveryMessage, setDeliveryMessage] = useState<Record<string, string>>({});
 
   const loadOrders = useCallback(async () => {
     if (!tenantId) return;
