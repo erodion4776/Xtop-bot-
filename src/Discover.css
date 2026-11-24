@@ -189,3 +189,9 @@
 .sd-load-more:hover{background:#edf6ed;border-color:#9fc3a7}
 .sd-load-more:disabled{opacity:.6;cursor:wait}
 .sd-end-of-results{text-align:center;padding:18px 0;color:#87938b;font-size:10px}
+
+/* WhatsApp-first merchant discovery actions */
+.sd-product-card{position:relative}
+.sd-whatsapp-chat{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:36px;margin-top:7px;padding:8px;border:1px solid #cce8d5;border-radius:5px;background:#effaf2;color:#176b4b;font-size:10px;font-weight:850}
+.sd-whatsapp-chat:hover{background:#e1f4e7}
+@media(max-width:760px){.sd-whatsapp-chat{min-height:34px;font-size:9px;padding:7px 5px}}
