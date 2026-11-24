@@ -468,6 +468,44 @@ export async function handleActiveExamRecovery(
  * replaced the conversation context. Only a saved SUBMITTED Experiment 17
  * record and completed lecture progress can unlock the CBT payment step.
  */
+/** Restore a student's saved course context and continue from completed lectures to CBT payment. */
+export async function handleCourseCbtContinuation(
+  phone: string, conversationId: string, conv: Conversation
+): Promise<boolean> {
+  const normalizedPhone = String(phone || "").replace(/\\D/g, "");
+  const { data: student, error: studentError } = await supabase.from("students")
+    .select("id").eq("phone", normalizedPhone).maybeSingle();
+  if (studentError || !student) return false;
+
+  const saved = (conv.context_json || {}) as Partial<LearningCtx>;
+  if (saved.studentId && saved.studentId !== student.id) return false;
+  const { data: enrollments, error: enrollmentError } = await supabase.from("student_courses")
+    .select("id,course_id,progress,status").eq("student_id", student.id).eq("status", "ACTIVE");
+  if (enrollmentError || !enrollments?.length) return false;
+  const selected = enrollments.find((item: any) => String(item.course_id) === String(saved.courseId || ""));
+  const enrollment = selected || (enrollments.length === 1 ? enrollments[0] : null);
+  if (!enrollment) return false;
+
+  const { data: course, error: courseError } = await supabase.from("courses")
+    .select("id,course_code,course_name").eq("id", enrollment.course_id).maybeSingle();
+  if (courseError || !course) return false;
+  // ELA401 has an additional Experiment 17 completion gate and is restored
+  // through handleEla401CbtContinuation, which verifies the saved simulation.
+  if (String(course.course_code || "").toUpperCase() === "ELA401") return false;
+
+  const learningCtx: LearningCtx = {
+    ...saved, step: "COURSE_MENU", learningUnlocked: true,
+    studentId: student.id, studentCourseId: enrollment.id,
+    courseId: course.id, courseCode: course.course_code, courseName: course.course_name,
+  };
+  await updateConversation(conversationId, {
+    current_module: "EXAMS", current_state: "ENTRY",
+    context_json: learningCtx as unknown as Record<string, unknown>,
+  });
+  await sendTextMessage(phone, "✅ Your saved " + course.course_code + " course record has been restored. I am checking lecture completion and continuing to CBT payment.");
+  await startExamEntry(phone, conversationId, learningCtx);
+  return true;
+}
 export async function handleEla401CbtContinuation(
   phone: string, conversationId: string, conv: Conversation
 ): Promise<boolean> {
