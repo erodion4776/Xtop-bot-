@@ -760,13 +760,13 @@ export default function Settings({ tenantId }: { tenantId: string }) {
           <Truck size={24} color="#0f766e" />
           <div>
             <h2 style={{ margin: 0 }}>Merchant delivery calculator</h2>
-            <p style={{ color: "#64748b", margin: "5px 0 0" }}>Sabi calculates the road distance from your shop to the customer. You remain responsible for dispatch and delivery; Sabi does not provide riders or book couriers.</p>
+            <p style={{ color: "#64748b", margin: "5px 0 0" }}>Choose either merchant flat-fee delivery or road-distance pricing. Road-distance pricing needs a verified pickup address. You remain responsible for dispatch and delivery; Sabi does not provide riders or book couriers.</p>
           </div>
         </div>
         {deliveryError && <div role="alert" style={{ color: "#b91c1c", background: "#fef2f2", padding: 10, borderRadius: 8, margin: "10px 0" }}>{deliveryError}</div>}
         {deliverySuccess && <div role="status" style={{ color: "#047857", background: "#ecfdf5", padding: 10, borderRadius: 8, margin: "10px 0" }}>{deliverySuccess}</div>}
         {deliveryLoading ? <p>Loading delivery settings...</p> : <>
-          <label style={{ display: "block", marginTop: 14 }}><strong>Pickup street address</strong>
+          <label style={{ display: "block", marginTop: 14 }}><strong>Pickup street address {deliverySettings.pricing_enabled === true ? "(required)" : "(optional)"}</strong>
             <input value={deliverySettings.pickup_address || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_address:e.target.value}))} style={fieldStyle} placeholder="Shop number, street and area" required={deliverySettings.pricing_enabled === true}/>
           </label>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 }}>
