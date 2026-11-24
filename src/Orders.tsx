@@ -121,7 +121,7 @@ export default function Orders({ tenantId }: Props) {
   const [orderNotes, setOrderNotes] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"ONLINE" | "POD">("ONLINE");
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [deliveryDrafts, setDeliveryDrafts] = useState<Record<string, { city: string; state: string; weight: string }>>({});
+  const [deliveryDrafts, setDeliveryDrafts] = useState<Record<string, { city: string; state: string; weight: string; length: string; width: string; height: string }>>({});
   const [deliveryQuotes, setDeliveryQuotes] = useState<Record<string, any[]>>({});
   const [deliveryShipments, setDeliveryShipments] = useState<Record<string, any>>({});
   const [deliveryBusy, setDeliveryBusy] = useState("");
@@ -485,7 +485,7 @@ export default function Orders({ tenantId }: Props) {
   }
 
   function updateDeliveryDraft(orderId: string, field: "city" | "state" | "weight", value: string) {
-    setDeliveryDrafts(current => ({ ...current, [orderId]: { city: current[orderId]?.city || "", state: current[orderId]?.state || "", weight: current[orderId]?.weight || "1", [field]: value } }));
+    setDeliveryDrafts(current => ({ ...current, [orderId]: { city: current[orderId]?.city || "", state: current[orderId]?.state || "", weight: current[orderId]?.weight || "1", length: current[orderId]?.length || "20", width: current[orderId]?.width || "15", height: current[orderId]?.height || "10", [field]: value } }));
   }
 
   async function loadShipmentStatus(orderId: string) {
@@ -494,8 +494,8 @@ export default function Orders({ tenantId }: Props) {
   }
 
   async function getDeliveryQuote(order: Order) {
-    const draft = deliveryDrafts[order.id] || { city: "", state: "", weight: "1" };
-    if (!draft.city.trim() || !draft.state.trim() || !Number.isFinite(Number(draft.weight)) || Number(draft.weight) <= 0) {
+    const draft = deliveryDrafts[order.id] || { city: "", state: "", weight: "1", length: "20", width: "15", height: "10" };
+    if (!draft.city.trim() || !draft.state.trim() || !Number.isFinite(Number(draft.weight)) || Number(draft.weight) <= 0 || ![draft.length,draft.width,draft.height].every(v=>Number.isFinite(Number(v)) && Number(v)>0)) {
       setDeliveryMessage(current => ({ ...current, [order.id]: "Enter the customer's delivery city, state and parcel weight." }));
       return;
     }
@@ -503,7 +503,7 @@ export default function Orders({ tenantId }: Props) {
     try {
       const { data, error } = await supabase.functions.invoke("sabi-delivery", { body: {
         action: "quote", tenant_id: tenantId, order_id: order.id, weight_kg: Number(draft.weight),
-        destination: { street: order.delivery_address || "", city: draft.city.trim(), state: draft.state.trim() }
+        destination: { street: order.delivery_address || "", city: draft.city.trim(), state: draft.state.trim() },\n        dimension: { length: Number(draft.length), width: Number(draft.width), height: Number(draft.height) }
       }});
       if (error || !data?.success) throw new Error(data?.error || error?.message || "Could not get delivery quotes.");
       setDeliveryQuotes(current => ({ ...current, [order.id]: data.rates || [] }));
@@ -1252,7 +1252,7 @@ export default function Orders({ tenantId }: Props) {
                             <label style={{ fontSize: 12 }}>Customer state<input style={fieldStyle} value={deliveryDrafts[order.id]?.state || ""} onChange={e=>updateDeliveryDraft(order.id,"state",e.target.value)} placeholder="e.g. Edo"/></label>
                             <label style={{ fontSize: 12 }}>Parcel weight (kg)<input style={fieldStyle} type="number" min="0.1" step="0.1" value={deliveryDrafts[order.id]?.weight || "1"} onChange={e=>updateDeliveryDraft(order.id,"weight",e.target.value)}/></label>
                           </div>
-                          <button className="order-action-primary" disabled={deliveryBusy===order.id || !paidOrder} onClick={()=>void getDeliveryQuote(order)}><Truck size={15}/> {deliveryBusy===order.id?"Getting quotes...":"Get Sendbox courier quotes"}</button>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 8 }}><label style={{fontSize:12}}>Length (cm)<input style={fieldStyle} type="number" min="1" value={deliveryDrafts[order.id]?.length || "20"} onChange={e=>setDeliveryDrafts(v=>({...v,[order.id]:{city:v[order.id]?.city||"",state:v[order.id]?.state||"",weight:v[order.id]?.weight||"1",length:e.target.value,width:v[order.id]?.width||"15",height:v[order.id]?.height||"10"}}))}/></label><label style={{fontSize:12}}>Width (cm)<input style={fieldStyle} type="number" min="1" value={deliveryDrafts[order.id]?.width || "15"} onChange={e=>setDeliveryDrafts(v=>({...v,[order.id]:{city:v[order.id]?.city||"",state:v[order.id]?.state||"",weight:v[order.id]?.weight||"1",length:v[order.id]?.length||"20",width:e.target.value,height:v[order.id]?.height||"10"}}))}/></label><label style={{fontSize:12}}>Height (cm)<input style={fieldStyle} type="number" min="1" value={deliveryDrafts[order.id]?.height || "10"} onChange={e=>setDeliveryDrafts(v=>({...v,[order.id]:{city:v[order.id]?.city||"",state:v[order.id]?.state||"",weight:v[order.id]?.weight||"1",length:v[order.id]?.length||"20",width:v[order.id]?.width||"15",height:e.target.value}}))}/></label></div>\n                          <button className="order-action-primary" disabled={deliveryBusy===order.id || !paidOrder} onClick={()=>void getDeliveryQuote(order)}><Truck size={15}/> {deliveryBusy===order.id?"Getting quotes...":"Get Sendbox courier quotes"}</button>
                           {!paidOrder && <small style={{ display: "block", color: "#92400e", marginTop: 7 }}>Shipment booking is available only after the customer's payment is confirmed.</small>}
                           {(deliveryQuotes[order.id] || []).map((rate:any)=><div key={rate.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "9px 0", borderTop: "1px solid #e2e8f0" }}><span><strong>{rate.name}</strong><small style={{ display: "block", color: "#64748b" }}>{rate.delivery_eta || "Delivery estimate from Sendbox"}</small></span><span style={{ textAlign: "right" }}><strong>{money(rate.fee)}</strong><button className="order-action-primary" disabled={deliveryBusy===order.id || !paidOrder} onClick={()=>void bookDelivery(order,rate)}>Select & book</button></span></div>)}
                         </>}
