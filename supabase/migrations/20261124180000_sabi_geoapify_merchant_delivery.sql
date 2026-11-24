@@ -30,6 +30,7 @@ create table if not exists public.sabi_marketplace_delivery_quotes (
   cart_signature text not null,
   delivery_address text not null,
   delivery_fees jsonb not null,
+  request_fingerprint text,
   route_summary jsonb not null default '[]'::jsonb,
   expires_at timestamptz not null default (now() + interval '15 minutes'),
   used_at timestamptz,
@@ -37,6 +38,8 @@ create table if not exists public.sabi_marketplace_delivery_quotes (
 );
 create index if not exists sabi_marketplace_delivery_quotes_expiry_idx
   on public.sabi_marketplace_delivery_quotes(expires_at) where used_at is null;
+create index if not exists sabi_marketplace_delivery_quotes_rate_idx
+  on public.sabi_marketplace_delivery_quotes(request_fingerprint,created_at desc) where request_fingerprint is not null;
 alter table public.sabi_marketplace_delivery_quotes enable row level security;
 revoke all on public.sabi_marketplace_delivery_quotes from anon, authenticated;
 grant all on public.sabi_marketplace_delivery_quotes to service_role;
