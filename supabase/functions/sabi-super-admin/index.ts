@@ -49,6 +49,55 @@ serve(async (req: Request) => {
     const body = await readBody(req);
     if (!body || typeof body.action !== "string") return response({ error: "A valid action is required" }, 400);
 
+    if (body.action === "delivery-test-quote") {
+      const token = Deno.env.get("SENDBOX_API_TOKEN") || "";
+      const environment = (Deno.env.get("SENDBOX_ENV") || "staging").toLowerCase();
+      const base = environment === "production" ? "https://live.sendbox.co" : "https://sandbox.staging.sendbox.co";
+      if (!token) return response({ error: "Sendbox API token is not configured in Supabase secrets." }, 400);
+      const pickup = body.pickup || {};
+      const destination = body.destination || {};
+      const weight = Number(body.weight_kg || 1);
+      const dimension = body.dimension || {};
+      if (![pickup.address,pickup.city,pickup.state,pickup.phone,destination.address,destination.city,destination.state,destination.phone].every((v) => String(v || "").trim()) ||
+        !Number.isFinite(weight) || weight <= 0 || ![dimension.length,dimension.width,dimension.height].every((v) => Number.isFinite(Number(v)) && Number(v) > 0)) {
+        return response({ error: "Complete both addresses, phone numbers, parcel weight and all three dimensions." }, 400);
+      }
+      const payload = {
+        origin: { first_name: "Sabi", last_name: "Test", name: "Sabi test pickup", street: String(pickup.address).slice(0,500), state: String(pickup.state), city: String(pickup.city), country: "NG", phone: String(pickup.phone) },
+        destination: { first_name: "Test", last_name: "Recipient", name: "Sabi test recipient", street: String(destination.address).slice(0,500), state: String(destination.state), city: String(destination.city), country: "NG", phone: String(destination.phone) },
+        weight, dimension: { length: Number(dimension.length), width: Number(dimension.width), height: Number(dimension.height) },
+        incoming_option: "pickup", region: "NG", service_type: "local", package_type: "general",
+        total_value: 10000, currency: "NGN", channel_code: "api",
+        pickup_date: new Date(Date.now() + 86400000).toISOString().slice(0,10),
+        items: [{ name: "Sabi test parcel", quantity: 1, value: 10000, weight, description: "Non-commercial integration test" }],
+        service_code: "nation-wide", customs_option: "recipient",
+      };
+      const upstream = await fetch(base + "/shipping/shipment_delivery_quote", { method: "POST", headers: { Authorization: token, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const result = await upstream.json().catch(() => ({}));
+      if (!upstream.ok) {
+        console.error("[Sabi Sendbox test quote]", upstream.status, result);
+        return response({ error: "Sendbox quote test failed. Check staging credentials and the entered route." }, 502);
+      }
+      const rates = Array.isArray(result.rates) ? result.rates : Array.isArray(result.data?.rates) ? result.data.rates : [];
+      return response({ success: true, environment, rates: rates.filter((r: any) => r.is_enabled !== false).map((r: any) => ({ id: String(r.id || r.key || ""), name: String(r.name || r.courier?.name || r.description || "Courier"), fee: Number(r.fee), eta: String(r.delivery_eta_string || r.delivery_window || r.sla_description || "") })).filter((r: any) => r.id && Number.isFinite(r.fee)) });
+    }
+
+    if (body.action === "delivery-test-track") {
+      const token = Deno.env.get("SENDBOX_API_TOKEN") || "";
+      const environment = (Deno.env.get("SENDBOX_ENV") || "staging").toLowerCase();
+      const base = environment === "production" ? "https://live.sendbox.co" : "https://sandbox.staging.sendbox.co";
+      const code = String(body.tracking_code || "").trim().slice(0,100);
+      if (!token) return response({ error: "Sendbox API token is not configured in Supabase secrets." }, 400);
+      if (!code) return response({ error: "Enter a Sendbox tracking code." }, 400);
+      const upstream = await fetch(base + "/shipping/tracking", { method: "POST", headers: { Authorization: token, "Content-Type": "application/json" }, body: JSON.stringify({ code }) });
+      const result = await upstream.json().catch(() => ({}));
+      if (!upstream.ok) {
+        console.error("[Sabi Sendbox test tracking]", upstream.status, result);
+        return response({ error: "Sendbox tracking test failed. Check the tracking code and environment." }, 502);
+      }
+      return response({ success: true, environment, tracking: result });
+    }
+
     if (body.action === "delivery-partners") {
       const { data, error } = await sb.from("sabi_delivery_partners")
         .select("id,code,name,provider_type,integration_status,is_enabled,service_states,service_cities,supports_cod,tracking_url_template,public_description,sort_order,created_at,updated_at")
