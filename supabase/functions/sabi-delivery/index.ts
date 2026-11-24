@@ -92,7 +92,7 @@ Deno.serve(async (req: Request) => {
       const payload = {
         tenant_id: tenantId, delivery_mode: mode, preferred_partner_id: mode === "PARTNER" ? partnerId : null,
         pickup_address: clean(body.pickup_address, 500), pickup_state: clean(body.pickup_state, 100),
-        pickup_city: clean(body.pickup_city, 100), pickup_lga: clean(body.pickup_lga, 100), updated_at: new Date().toISOString(),
+        pickup_city: clean(body.pickup_city, 100), pickup_lga: clean(body.pickup_lga, 100), pickup_phone: clean(body.pickup_phone, 40), pickup_email: clean(body.pickup_email, 180), updated_at: new Date().toISOString(),
       };
       const { data, error } = await db.from("tenant_delivery_preferences").upsert(payload, { onConflict: "tenant_id" }).select().single();
       if (error) throw new Error("DELIVERY_SETTINGS_SAVE_FAILED");
@@ -117,7 +117,7 @@ Deno.serve(async (req: Request) => {
       const origin = {
         first_name: "Merchant", last_name: "Pickup", name: "Merchant pickup",
         street: pref.pickup_address, state: pref.pickup_state, city: pref.pickup_city,
-        country: "NG", phone: clean(tenant?.contact_phone, 40), email: clean(tenant?.contact_email, 180) || null,
+        country: "NG", phone: clean(pref.pickup_phone || tenant?.contact_phone, 40), email: clean(pref.pickup_email || tenant?.contact_email, 180) || null,
       };
       const dest = {
         first_name: clean(order.customer_name, 100).split(" ")[0] || "Customer",
