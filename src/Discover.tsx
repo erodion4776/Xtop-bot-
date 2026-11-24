@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search, ShoppingBag, Store, ArrowRight, RefreshCw, ShieldCheck,
-  Star, UserRound, LogOut, X, Heart, Zap, Truck, Headphones, CircleUserRound
+  Star, UserRound, LogOut, X, Heart, Zap, Truck, Headphones, CircleUserRound, MessageCircle
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabase";
@@ -21,6 +21,7 @@ type MarketplaceProduct = {
   business_name: string;
   business_logo: string | null;
   business_slug: string | null;
+  business_whatsapp: string | null;
   seller_rating: number | string | null;
   seller_review_count: number;
   sold_quantity: number;
@@ -68,7 +69,7 @@ export default function Discover() {
     setError("");
     const offset = reset ? 0 : products.length;
     const { data, error: rpcError } = await supabase.rpc(
-      "sabi_get_public_marketplace_products_v2",
+      "sabi_get_public_marketplace_products_v3",
       { p_search: search || null, p_category: category || null, p_limit: PAGE_SIZE, p_offset: offset, p_sort: sortBy }
     );
     if (rpcError) {
@@ -369,6 +370,10 @@ export default function Discover() {
     const rating = Number(product.seller_rating || 0);
     const reviews = Number(product.seller_review_count || 0);
     const sold = Number(product.sold_quantity || 0);
+    const rawWhatsapp = String(product.business_whatsapp || "").replace(/\\D/g, "");
+    const whatsappNumber = rawWhatsapp.startsWith("0") ? `234${rawWhatsapp.slice(1)}` : rawWhatsapp.startsWith("234") ? rawWhatsapp : rawWhatsapp.length === 10 ? `234${rawWhatsapp}` : rawWhatsapp;
+    const whatsappMessage = `Hello ${product.business_name}, I found your shop on Sabi Discover and I am interested in ${product.product_name}. Please help me check availability and how to order. Product: https://discover.sabibyxtop.com.ng/?product=${encodeURIComponent(product.product_id)}`;
+    const whatsappLink = whatsappNumber.length >= 12 && whatsappNumber.length <= 15 ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(whatsappMessage)}` : "";
     return (
       <a className="sd-product-card" href={`/?product=${encodeURIComponent(product.product_id)}`} key={product.product_id}>
         <div className="sd-product-image">
@@ -385,6 +390,7 @@ export default function Discover() {
               {reviews > 0 ? <><span className="sd-stars"><Star size={12} fill="currentColor" /> {rating.toFixed(1)}</span><span>({reviews} seller {reviews === 1 ? "review" : "reviews"})</span></> : <span>New seller · Be the first to review</span>}
             </div>
             <button className="sd-add-cart" type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); addToMarketplaceCart({ product_id: product.product_id, product_name: product.product_name, product_price: Number(product.product_price || 0), product_image_url: product.product_image_url, business_name: product.business_name, business_slug: product.business_slug, product_stock: Number(product.product_stock || 0) }, 1); }} disabled={Number(product.product_stock || 0) < 1}><ShoppingBag size={14}/> Add to cart</button>
+            {whatsappLink && <button className="sd-whatsapp-chat" type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); window.open(whatsappLink, "_blank", "noopener,noreferrer"); }}><MessageCircle size={14}/> Chat with shop</button>}
           </div>
         </div>
       </a>
@@ -393,7 +399,7 @@ export default function Discover() {
 
   return (
     <main className="sabi-discover">
-      <div className="sd-top-strip"><span>Shop Nigerian businesses in one place</span><span><Truck size={13} /> Delivery arranged by each seller</span><span><Headphones size={13} /> Sabi customer support</span></div>
+      <div className="sd-top-strip"><span>Discover trusted Nigerian merchants</span><span><MessageCircle size={13} /> Chat with each shop on its connected Sabi WhatsApp bot</span><span><ShieldCheck size={13} /> Verified payment records</span></div>
       <header className="sd-header">
         <a href="/" className="sd-brand"><img src={LOGO_URL} alt="Sabi by XTOP" /><span><strong>Sabi</strong><small>DISCOVER</small></span></a>
         <form className="sd-search" onSubmit={submitSearch}>
@@ -428,13 +434,13 @@ export default function Discover() {
         <div className="sd-feature-slide" key={heroSlide} onTouchStart={event => { touchStartX.current = event.touches[0]?.clientX ?? null; }} onTouchEnd={event => { const start = touchStartX.current; const end = event.changedTouches[0]?.clientX; touchStartX.current = null; if (start !== null && end !== undefined && Math.abs(end - start) > 45) setHeroSlide(current => (current + (end < start ? 1 : 5)) % 6); }}>
           <div className="sd-feature-copy">
             <div className="sd-feature-meta"><span className="sd-feature-tag">{["DISCOVER MORE","FOR BUSINESSES","SHOP SMART","EASY SHOPPING","SHOP WITH CONFIDENCE","MERCHANT TOOLS"][heroSlide]}</span><span className="sd-feature-pill">{["Fresh finds daily","Sell on Sabi","Verified rankings","All in one cart","Buyer protection","Store operations"][heroSlide]}</span></div>
-            <h1>{["Find your next favourite.","Run your store & reach more buyers.","Compare sellers & real ratings.","Shop across stores in one cart.","Protected orders & clear returns.","Manage products, orders & fulfilment."][heroSlide]}</h1>
+            <h1>{["Find your next favourite.","Run your store & reach more buyers.","Compare sellers & real ratings.","Shop across stores in one cart.","Shop with confidence and clear order records.","Manage products, orders & fulfilment."][heroSlide]}</h1>
             <p>{[
               "Search products, categories, and verified Nigerian stores all in one marketplace.",
               "Manage products and stock, run your storefront, and choose which items to publish straight to Sabi Discover. Share product links with customers.",
               "Check seller ratings and review counts, compare product options across local businesses, and explore best sellers ranked by completed sales.",
-              "Add products from different Nigerian businesses to one cart, then complete one combined checkout with separate seller orders and delivery arrangements.",
-              "Shop with clear seller information, transparent returns guidance, and dedicated Sabi customer support when you need help.",
+              "Browse products, then open each merchant’s connected Sabi WhatsApp bot to ask questions and continue the conversation.",
+              "Sabi verifies Paystack payment results and records marketplace orders. Sellers arrange delivery and fulfilment; Sabi support can help investigate transaction complaints.",
               "Set delivery fees, enable supported online or pay-on-delivery options, track order statuses, and manage your business payout settings."
             ][heroSlide]}</p>
             <div className="sd-feature-actions">
@@ -447,7 +453,7 @@ export default function Discover() {
           <div className="sd-feature-art" aria-hidden="true">
             <div className="sd-feature-art-icon">{[<ShoppingBag size={48}/>,<Store size={48}/>,<Star size={48}/>,<ShoppingBag size={48}/>,<ShieldCheck size={48}/>,<Truck size={48}/>][heroSlide]}</div>
             <span>SABI <b>BY XTOP</b></span>
-            <small>{["Discover Nigerian businesses","Your store, your customers","Shop with more information","One cart, many sellers","Support when you need it","Tools for growing businesses"][heroSlide]}</small>
+            <small>{["Discover Nigerian businesses","Your store, your customers","Shop with more information","Chat with your merchant","Payment and order records","Tools for growing businesses"][heroSlide]}</small>
           </div>
         </div>
         <div className="sd-feature-controls">
