@@ -9,8 +9,6 @@ import {
   CheckCircle2,
   Play,
   Zap,
-  HeartHandshake,
-  MapPin,
   Menu,
   X
 } from "lucide-react";
@@ -161,6 +159,12 @@ export default function Landing() {
             </article>
           ))}
         </div>
+      </section>
+
+      <section className="lp-trust-strip" aria-label="How Sabi protects the shopping process">
+        <div><CheckCircle2 size={20}/><span><strong>Payment status checks</strong><small>Paystack confirmation is checked before an online payment is treated as successful.</small></span></div>
+        <div><MessageCircle size={20}/><span><strong>WhatsApp Business Platform</strong><small>Connect an eligible business number through Meta's supported connection flow.</small></span></div>
+        <div><Store size={20}/><span><strong>Clear merchant records</strong><small>Keep products, order details and payment references easier to review.</small></span></div>
       </section>
 
       <section className="lp-demo-section" id="demo">
