@@ -244,7 +244,7 @@ export default function PublicStorefront() {
   const rating = Number(store.seller_rating || 0);
   const reviewCount = Number(store.seller_review_count || 0);
   const whatsappValue = store.business_whatsapp || "";
-  const whatsappDigits = whatsappValue.replace(/\\D/g, "");
+  const whatsappDigits = whatsappValue.replace(/\D/g, "");
   const normalizedWhatsapp = whatsappDigits.startsWith("0") ? `234${whatsappDigits.slice(1)}` : whatsappDigits.startsWith("234") ? whatsappDigits : whatsappDigits.length === 10 ? `234${whatsappDigits}` : whatsappDigits;
   const whatsappMessage = `Hello ${store.business_name}, I found your shop on Sabi Discover. I would like to ask about your products and place an order.`;
   const whatsappLink = normalizedWhatsapp.length >= 12 && normalizedWhatsapp.length <= 15 ? `https://wa.me/${normalizedWhatsapp}?text=${encodeURIComponent(whatsappMessage)}` : "";
