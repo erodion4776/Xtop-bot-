@@ -162,7 +162,8 @@ Deno.serve(async (req: Request) => {
       const saved = shipment.provider_payload || {};
       const rates = Array.isArray(saved.rates) ? saved.rates : [];
       const selected = rates.find((r: any) => String(r.id || r.key || "") === rateId && r.is_enabled !== false);
-      if (!selected) throw new Error("INVALID_DELIVERY_RATE");\n      if (Math.round(Number(order.delivery_fee || 0) * 100) !== Math.round(Number(selected.fee || 0) * 100)) throw new Error("DELIVERY_FEE_MISMATCH");
+      if (!selected) throw new Error("INVALID_DELIVERY_RATE");
+      if (Math.round(Number(order.delivery_fee || 0) * 100) !== Math.round(Number(selected.fee || 0) * 100)) throw new Error("DELIVERY_FEE_MISMATCH");
       if (!WEBHOOK_TOKEN) throw new Error("DELIVERY_WEBHOOK_NOT_CONFIGURED");
       const payload = { ...saved.quote_request, selected_rate_id: rateId, selected_rate: selected, callback_url: `${SUPABASE_URL}/functions/v1/sabi-delivery?action=webhook&token=${encodeURIComponent(WEBHOOK_TOKEN)}` };
       const { error: bookingStateError } = await db.from("sabi_delivery_shipments").update({ status: "BOOKING", delivery_fee: Number(selected.fee), provider_payload: { ...saved, selected_rate: selected }, updated_at: new Date().toISOString() }).eq("id", shipment.id);
@@ -228,7 +229,8 @@ Deno.serve(async (req: Request) => {
       QUOTE_NOT_FOUND: "Get a fresh delivery quote before booking.",
       ORDER_NOT_READY_FOR_SHIPMENT: "Only paid, active orders can be booked for delivery.",
       QUOTE_EXPIRED: "This delivery quote has expired. Request a new quote.",
-      INVALID_DELIVERY_RATE: "That delivery option is no longer valid. Request a new quote.",\n      DELIVERY_FEE_MISMATCH: "This courier price does not match the delivery amount already paid by the customer. Do not book it; Sabi checkout pricing must be updated first.",
+      INVALID_DELIVERY_RATE: "That delivery option is no longer valid. Request a new quote.",
+      DELIVERY_FEE_MISMATCH: "This courier price does not match the delivery amount already paid by the customer. Do not book it; Sabi checkout pricing must be updated first.",
       TRACKING_NOT_AVAILABLE: "No tracking number is available for this order.",
     };
     const status = message === "AUTH_REQUIRED" ? 401 : message === "NOT_AUTHORIZED" ? 403 : message === "SENDBOX_REQUEST_FAILED" ? 502 : 400;
