@@ -106,6 +106,10 @@
         let resumeApplied = false;
         let lastSavedAt = 0;
         const savedPosition = Math.max(0, Number(data.video_progress?.position_seconds || 0));
+        if (data.video_progress?.completed_at) {
+          completeButton.disabled = false;
+          completeButton.textContent = data.order < data.total ? "Video already watched — continue to next part" : "Finish course videos and return to WhatsApp";
+        }
         async function saveCurrentVideoProgress(keepalive = false) {
           if (!courseVideo || !Number.isFinite(courseVideo.duration) || courseVideo.duration <= 0) return;
           const now = Date.now();
