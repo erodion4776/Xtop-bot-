@@ -60,3 +60,11 @@ revoke all on public.sabi_delivery_shipments from anon, authenticated;
 grant all on public.sabi_delivery_partners to service_role;
 grant all on public.tenant_delivery_preferences to service_role;
 grant all on public.sabi_delivery_shipments to service_role;
+
+insert into public.sabi_delivery_partners
+  (code, name, provider_type, integration_status, is_enabled, public_description, sort_order)
+values
+  ('SENDBOX', 'Sendbox', 'API', 'TESTING', false,
+   'Sabi-approved delivery network. Integration is being tested; live merchant booking is not yet enabled.',
+   10)
+on conflict (code) do nothing;
