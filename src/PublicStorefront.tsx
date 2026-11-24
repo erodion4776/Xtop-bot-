@@ -258,7 +258,7 @@ export default function PublicStorefront() {
           .sabi-store-hero { padding:30px 34px!important; }
           .sabi-store-hero-main { display:flex!important; align-items:center!important; justify-content:space-between!important; gap:24px!important; }
           .sabi-store-feature-grid { grid-template-columns:repeat(4,minmax(0,1fr))!important; }
-          .sabi-store-feature-image img { width:100%;height:100%;object-fit:cover;display:block; }
+
         }
         @media (max-width: 520px) {
           .sabi-store-layout { padding-left:12px!important; padding-right:12px!important; }
@@ -271,7 +271,7 @@ export default function PublicStorefront() {
         }
       `}</style>
       <header className="sabi-store-header sabi-store-layout" style={styles.header}>
-        <a href="/" style={styles.brand}><img src={LOGO_URL} alt="Sabi by XTOP"/><span><strong>Sabi</strong><small>DISCOVER</small></span></a>
+        <a href="/" style={styles.brand}><img src={LOGO_URL} alt="Sabi by XTOP" style={styles.brandImg}/><span><strong>Sabi</strong><small>DISCOVER</small></span></a>
         <div style={styles.headerRight}>
           <a href="/" className="sabi-store-back" style={styles.back}><ArrowLeft size={15}/> Back to Discover</a>
           <a href="/?cart=1" aria-label={`Open cart, ${cartCount} items`} style={styles.cartLink}><ShoppingCart size={19}/><span>Cart</span>{cartCount > 0 && <b style={styles.cartBadge}>{cartCount > 99 ? "99+" : cartCount}</b>}</a>
@@ -305,10 +305,10 @@ export default function PublicStorefront() {
         {categories.map(item => <button key={item} onClick={() => {setCategory(item); document.getElementById("store-products")?.scrollIntoView({behavior:"smooth",block:"start"});}} style={{...styles.categoryChip, ...(category === item ? styles.categoryChipActive : {})}}>{item === "All" ? "All products" : item}</button>)}
       </nav>
 
-      {products.length > 0 && <section className="sabi-store-layout" style={styles.featuredSection}>
+      {products.length >= 4 && <section className="sabi-store-layout" style={styles.featuredSection}>
         <div style={styles.sectionHeading}><div><span style={styles.eyebrowDark}>SHOP THE COLLECTION</span><h2 className="sabi-store-section-title" style={styles.featureTitle}>Popular in this store</h2></div><button onClick={() => {setSortBy("popular");document.getElementById("store-products")?.scrollIntoView({behavior:"smooth"});}} style={styles.textAction}>View all <ChevronRight size={16}/></button></div>
         <div className="sabi-store-feature-grid" style={styles.featureGrid}>
-          {[...products].sort((a,b)=>b.sold_quantity-a.sold_quantity).slice(0,4).map(product => <a key={product.product_id} href={`/?product=${encodeURIComponent(product.product_id)}`} style={styles.featureCard}><div className="sabi-store-feature-image" style={styles.featureImage}>{product.product_image_url ? <img src={product.product_image_url} alt={product.product_name} loading="lazy"/> : <ShoppingBag size={26}/>}</div><div style={styles.featureInfo}><strong>{product.product_name}</strong><b>{money(product.product_price)}</b></div></a>)}
+          {[...products].sort((a,b)=>b.sold_quantity-a.sold_quantity).slice(0,4).map(product => <a key={product.product_id} href={`/?product=${encodeURIComponent(product.product_id)}`} style={styles.featureCard}><div className="sabi-store-feature-image" style={styles.featureImage}>{product.product_image_url ? <img src={product.product_image_url} alt={product.product_name} loading="lazy" style={styles.featureImageElement}/> : <ShoppingBag size={26}/>}</div><div style={styles.featureInfo}><strong style={styles.featureProductName}>{product.product_name}</strong><b style={styles.featurePrice}>{money(product.product_price)}</b></div></a>)}
         </div>
       </section>}
 
@@ -382,8 +382,11 @@ const styles: Record<string, React.CSSProperties> = {
   textAction:{display:"inline-flex",alignItems:"center",gap:3,border:0,background:"transparent",color:"#176b4b",fontWeight:800,fontSize:12,cursor:"pointer"},
   featureGrid:{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10},
   featureCard:{minWidth:0,display:"flex",alignItems:"center",gap:9,padding:8,border:"1px solid #edf1ee",borderRadius:11,textDecoration:"none",color:"#14231b"},
-  featureImage:{width:62,height:62,flex:"0 0 62px",borderRadius:8,overflow:"hidden",background:"#f2f5f3",display:"grid",placeItems:"center",color:"#94a3b8"},
-  featureInfo:{minWidth:0,display:"flex",flexDirection:"column",gap:6,fontSize:12},
+  featureImage:{width:56,height:56,minWidth:56,minHeight:56,flex:"0 0 56px",borderRadius:8,overflow:"hidden",background:"#f2f5f3",display:"grid",placeItems:"center",color:"#94a3b8"},
+  featureImageElement:{display:"block",width:"100%",height:"100%",maxWidth:"100%",maxHeight:"100%",objectFit:"cover",objectPosition:"center"},
+  featureInfo:{minWidth:0,flex:"1 1 0%",display:"flex",flexDirection:"column",gap:6,fontSize:12,overflow:"hidden"},
+  featureProductName:{display:"block",minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:12},
+  featurePrice:{display:"block",minWidth:0,fontSize:12,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"},
   favoriteButton:{position:"absolute",top:8,right:8,zIndex:2,width:34,height:34,border:0,borderRadius:99,background:"rgba(255,255,255,.95)",display:"grid",placeItems:"center",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.12)"},
   catalogue:{width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"0 auto"},
   catalogueHeading:{display:"flex",alignItems:"end",justifyContent:"space-between",gap:18,flexWrap:"wrap",marginBottom:18,paddingTop:8},
