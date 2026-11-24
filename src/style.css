@@ -2312,3 +2312,30 @@ button {
   font-size: 11px;
   line-height: 1.5;
 }
+
+
+/* Sabi workspace preparation logo */
+.workspace-loading-logo {
+  display: block;
+  width: 76px;
+  height: 76px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  object-fit: cover;
+  overflow: hidden;
+  animation: sabiWorkspaceLogoSpin 2.2s linear infinite;
+  transform-origin: center;
+  will-change: transform;
+}
+
+@keyframes sabiWorkspaceLogoSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-loading-logo {
+    animation: none;
+    will-change: auto;
+  }
+}
