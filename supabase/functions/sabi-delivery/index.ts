@@ -106,7 +106,7 @@ Deno.serve(async (req: Request) => {
       if (!orderId || !Number.isFinite(weight) || weight <= 0 || weight > 1000 || !destination) throw new Error("QUOTE_DETAILS_REQUIRED");
       const [{ data: pref }, { data: order }, { data: items }, { data: tenant }] = await Promise.all([
         db.from("tenant_delivery_preferences").select("*").eq("tenant_id", tenantId).maybeSingle(),
-        db.from("tenant_orders").select("id,tenant_id,order_number,customer_name,customer_phone,delivery_address,subtotal,payment_status,shipping_payment_status,shipping_payment_required,status").eq("tenant_id", tenantId).eq("id", orderId).maybeSingle(),
+        db.from("tenant_orders").select("id,tenant_id,order_number,customer_name,customer_phone,delivery_address,subtotal,delivery_fee,payment_status,shipping_payment_status,shipping_payment_required,status").eq("tenant_id", tenantId).eq("id", orderId).maybeSingle(),
         db.from("tenant_order_items").select("product_name,quantity,unit_price,line_total").eq("tenant_id", tenantId).eq("order_id", orderId),
         db.from("tenants").select("contact_phone,contact_email").eq("id", tenantId).maybeSingle(),
       ]);
@@ -128,7 +128,7 @@ Deno.serve(async (req: Request) => {
       };
       if (!origin.street || !origin.state || !origin.city || !origin.phone || !dest.street || !dest.state || !dest.city || !dest.phone) throw new Error("PICKUP_AND_DESTINATION_REQUIRED");
       const requestBody = {
-        origin, destination: dest, weight, dimension: { length: 1, width: 1, height: 1 },
+        origin, destination: dest, weight, dimension: { length: Number(dimension.length), width: Number(dimension.width), height: Number(dimension.height) },
         incoming_option: "pickup", region: "NG", service_type: "local", package_type: "general",
         total_value: Number(order.subtotal || 0), currency: "NGN", channel_code: "api",
         pickup_date: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
@@ -162,7 +162,7 @@ Deno.serve(async (req: Request) => {
       const saved = shipment.provider_payload || {};
       const rates = Array.isArray(saved.rates) ? saved.rates : [];
       const selected = rates.find((r: any) => String(r.id || r.key || "") === rateId && r.is_enabled !== false);
-      if (!selected) throw new Error("INVALID_DELIVERY_RATE");
+      if (!selected) throw new Error("INVALID_DELIVERY_RATE");\n      if (Math.round(Number(order.delivery_fee || 0) * 100) !== Math.round(Number(selected.fee || 0) * 100)) throw new Error("DELIVERY_FEE_MISMATCH");
       if (!WEBHOOK_TOKEN) throw new Error("DELIVERY_WEBHOOK_NOT_CONFIGURED");
       const payload = { ...saved.quote_request, selected_rate_id: rateId, selected_rate: selected, callback_url: `${SUPABASE_URL}/functions/v1/sabi-delivery?action=webhook&token=${encodeURIComponent(WEBHOOK_TOKEN)}` };
       const { error: bookingStateError } = await db.from("sabi_delivery_shipments").update({ status: "BOOKING", delivery_fee: Number(selected.fee), provider_payload: { ...saved, selected_rate: selected }, updated_at: new Date().toISOString() }).eq("id", shipment.id);
@@ -228,7 +228,7 @@ Deno.serve(async (req: Request) => {
       QUOTE_NOT_FOUND: "Get a fresh delivery quote before booking.",
       ORDER_NOT_READY_FOR_SHIPMENT: "Only paid, active orders can be booked for delivery.",
       QUOTE_EXPIRED: "This delivery quote has expired. Request a new quote.",
-      INVALID_DELIVERY_RATE: "That delivery option is no longer valid. Request a new quote.",
+      INVALID_DELIVERY_RATE: "That delivery option is no longer valid. Request a new quote.",\n      DELIVERY_FEE_MISMATCH: "This courier price does not match the delivery amount already paid by the customer. Do not book it; Sabi checkout pricing must be updated first.",
       TRACKING_NOT_AVAILABLE: "No tracking number is available for this order.",
     };
     const status = message === "AUTH_REQUIRED" ? 401 : message === "NOT_AUTHORIZED" ? 403 : message === "SENDBOX_REQUEST_FAILED" ? 502 : 400;
