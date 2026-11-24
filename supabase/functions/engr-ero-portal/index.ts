@@ -19,7 +19,7 @@ async function sendTextMessage(to: string, body: string): Promise<string | null>
 // All student access is mediated by short-lived, hashed, WhatsApp-verified tokens.\n// The browser receives neither service credentials nor CBT answer keys.\n// Session deadlines are enforced by the database timestamp, never the client clock.
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "https://xtopbot.netlify.app",
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Vary": "Origin",
@@ -199,7 +199,8 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return response({ error: "POST required" }, 405);
   const origin = req.headers.get("Origin") || "";
-  if (origin && origin !== "https://xtopbot.netlify.app") return response({ error: "Origin not allowed" }, 403);
+  const allowedOrigins = new Set(["https://xtopbot.netlify.app", "https://engr.sabibyxtop.com.ng"]);
+  if (origin && !allowedOrigins.has(origin)) return response({ error: "Origin not allowed" }, 403);
   try {
     const body = await req.json();
     const action = String(body.action || "");
