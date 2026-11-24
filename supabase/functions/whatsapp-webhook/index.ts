@@ -475,9 +475,13 @@ Deno.serve(async (req: Request) => {
         phoneNumberId,
       };
 
-      routeMessage(incoming).catch((err) => {
+      // Keep the full WhatsApp workflow alive after acknowledging Meta's webhook.
+      // Without waitUntil, Supabase may early-drop this invocation after the HTTP
+      // response, interrupting downstream order-api/Paystack checkout requests.
+      const routeTask = routeMessage(incoming).catch((err) => {
         console.error("[RouteMessage Error]:", err);
       });
+      EdgeRuntime.waitUntil(routeTask);
 
       return new Response(JSON.stringify({ status: "received" }), {
         status: 200,
