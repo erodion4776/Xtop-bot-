@@ -10,6 +10,18 @@ import { addToMarketplaceCart, getMarketplaceCart } from "./marketplaceCart";
 
 type ReviewableOrder = { order_id: string; order_number: string; business_name: string; ordered_at: string; rating: number | null; review_text: string | null; };
 
+type MarketplaceMerchant = {
+  merchant_id: string;
+  business_name: string;
+  business_slug: string;
+  business_logo: string | null;
+  industry: string | null;
+  seller_rating: number | string | null;
+  seller_review_count: number;
+  product_count: number;
+  business_whatsapp: string | null;
+};
+
 type MarketplaceProduct = {
   product_id: string;
   product_name: string;
@@ -33,6 +45,7 @@ const money = (value: number) => `₦${value.toLocaleString("en-NG", { maximumFr
 
 export default function Discover() {
   const [products, setProducts] = useState<MarketplaceProduct[]>([]);
+  const [merchants, setMerchants] = useState<MarketplaceMerchant[]>([]);
   const [categoryCounts, setCategoryCounts] = useState<{ name: string; count: number }[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -84,6 +97,14 @@ export default function Discover() {
     setLoadingMore(false);
   }
 
+  async function loadMerchants() {
+    const { data, error: merchantError } = await supabase.rpc(
+      "sabi_get_public_marketplace_merchants",
+      { p_search: search || null, p_limit: 12, p_offset: 0 }
+    );
+    if (!merchantError) setMerchants((data || []) as MarketplaceMerchant[]);
+  }
+
   async function loadCategories() {
     const { data, error: categoryError } = await supabase.rpc("sabi_get_public_marketplace_categories");
     if (!categoryError) {
@@ -104,6 +125,7 @@ export default function Discover() {
 
   useEffect(() => {
     loadProducts();
+    loadMerchants();
   }, [category, search, sortBy]);
 
   useEffect(() => {
@@ -464,6 +486,27 @@ export default function Discover() {
           <div className="sd-feature-arrows"><button onClick={() => setHeroSlide(current => (current + 5) % 6)} aria-label="Previous feature"><ArrowRight className="sd-arrow-back" size={16}/></button><button onClick={() => setHeroSlide(current => (current + 1) % 6)} aria-label="Next feature"><ArrowRight size={16}/></button></div>
         </div>
       </section>
+
+      {merchants.length > 0 && <section className="sd-merchants" aria-label="Discover Sabi merchants">
+        <div className="sd-section-heading"><div><span className="sd-eyebrow"><Store size={13}/> MERCHANT DIRECTORY</span><h2>Explore trusted Sabi merchants</h2><p>Visit a shop, compare its reviews and open its connected WhatsApp bot.</p></div><span className="sd-live-label">{merchants.length} {merchants.length === 1 ? "shop" : "shops"}</span></div>
+        <div className="sd-merchant-grid">
+          {merchants.map(merchant => {
+            const raw = String(merchant.business_whatsapp || "").replace(/\\D/g, "");
+            const number = raw.startsWith("0") ? `234${raw.slice(1)}` : raw.startsWith("234") ? raw : raw.length === 10 ? `234${raw}` : raw;
+            const message = `Hello ${merchant.business_name}, I found your shop on Sabi Discover. I would like to ask about your products.`;
+            const chat = number.length >= 12 && number.length <= 15 ? `https://wa.me/${number}?text=${encodeURIComponent(message)}` : "";
+            const rating = Number(merchant.seller_rating || 0);
+            return <article className="sd-merchant-card" key={merchant.merchant_id}>
+              <a className="sd-merchant-main" href={`/?store=${encodeURIComponent(merchant.business_slug)}`}>
+                {merchant.business_logo ? <img src={merchant.business_logo} alt="" loading="lazy"/> : <span className="sd-merchant-placeholder"><Store size={23}/></span>}
+                <span className="sd-merchant-details"><strong>{merchant.business_name}</strong><small>{merchant.industry || "Sabi merchant"}</small><span>{merchant.seller_review_count > 0 ? `★ ${rating.toFixed(1)} · ${merchant.seller_review_count} reviews` : "New shop"} · ${Number(merchant.product_count || 0)} products</span></span>
+                <ArrowRight size={17}/>
+              </a>
+              {chat ? <a className="sd-merchant-whatsapp" href={chat} target="_blank" rel="noopener noreferrer"><MessageCircle size={14}/> Open WhatsApp bot</a> : <span className="sd-merchant-no-whatsapp">WhatsApp bot not connected</span>}
+            </article>;
+          })}
+        </div>
+      </section>}
 
       <section className="sd-market" id="discover-products">
         {bestSellers.length >= 2 && !search && !category && sortBy === "featured" && (
