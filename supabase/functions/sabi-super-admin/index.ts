@@ -49,6 +49,49 @@ serve(async (req: Request) => {
     const body = await readBody(req);
     if (!body || typeof body.action !== "string") return response({ error: "A valid action is required" }, 400);
 
+    if (body.action === "delivery-partners") {
+      const { data, error } = await sb.from("sabi_delivery_partners")
+        .select("id,code,name,provider_type,integration_status,is_enabled,service_states,service_cities,supports_cod,tracking_url_template,public_description,sort_order,created_at,updated_at")
+        .order("sort_order", { ascending: true }).order("name", { ascending: true });
+      if (error) return response({ error: "Could not load approved delivery partners." }, 500);
+      return response({ data: data || [] });
+    }
+
+    if (body.action === "delivery-partner-save") {
+      const id = String(body.id || "");
+      const code = String(body.code || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 40);
+      const name = String(body.name || "").trim().slice(0, 120);
+      const providerType = String(body.provider_type || "API");
+      const integrationStatus = String(body.integration_status || "NOT_CONNECTED");
+      const states = Array.isArray(body.service_states) ? body.service_states.map((v: unknown) => String(v).trim()).filter(Boolean).slice(0, 40) : [];
+      const cities = Array.isArray(body.service_cities) ? body.service_cities.map((v: unknown) => String(v).trim()).filter(Boolean).slice(0, 100) : [];
+      if (!code || !name || !["API","MANUAL"].includes(providerType) || !["NOT_CONNECTED","TESTING","ACTIVE","PAUSED"].includes(integrationStatus)) {
+        return response({ error: "Enter a partner code, name and valid integration settings." }, 400);
+      }
+      const payload = {
+        code, name, provider_type: providerType, integration_status: integrationStatus,
+        is_enabled: body.is_enabled === true, service_states: states, service_cities: cities,
+        supports_cod: body.supports_cod === true,
+        tracking_url_template: String(body.tracking_url_template || "").trim().slice(0, 500) || null,
+        public_description: String(body.public_description || "").trim().slice(0, 500) || null,
+        sort_order: Math.max(0, Math.min(10000, Number(body.sort_order) || 100)),
+        updated_at: new Date().toISOString(),
+      };
+      let query = sb.from("sabi_delivery_partners").upsert(
+        id && /^[0-9a-f-]{36}$/i.test(id) ? { ...payload, id } : payload,
+        { onConflict: "code" }
+      ).select("id,code,name,provider_type,integration_status,is_enabled,service_states,service_cities,supports_cod,tracking_url_template,public_description,sort_order").single();
+      const { data, error } = await query;
+      if (error || !data) return response({ error: "Could not save this delivery partner. Check that its code is unique." }, 500);
+      const { error: auditError } = await sb.from("audit_logs").insert({
+        admin_user: authData.user.email || authData.user.id,
+        action: "SABI_DELIVERY_PARTNER_SAVED", entity: "delivery_partner", entity_id: data.id,
+        metadata: { code: data.code, name: data.name, enabled: data.is_enabled, integration_status: data.integration_status, source: "SABI_SUPER_ADMIN" },
+      });
+      if (auditError) return response({ error: "Partner saved, but its audit record could not be saved. Refresh before making another change." }, 500);
+      return response({ success: true, data });
+    }
+
     if (body.action === "overview") {
       const merchantQuery = () => sb.from("tenants").select("id", { count: "exact", head: true }).eq("is_system", false);
       const results = await Promise.all([
