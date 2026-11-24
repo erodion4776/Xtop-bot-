@@ -87,7 +87,7 @@ export default function Settings({ tenantId }: { tenantId: string }) {
   const [marketplaceLoading, setMarketplaceLoading] = useState(true);
   const [marketplaceSaving, setMarketplaceSaving] = useState(false);
   const [marketplaceError, setMarketplaceError] = useState("");
-  const [marketplaceSuccess, setMarketplaceSuccess] = useState("");
+  const [marketplaceSuccess, setMarketplaceSuccess] = useState("");\n  const [deliverySettings, setDeliverySettings] = useState<any>({ delivery_mode: "MERCHANT", preferred_partner_id: null, pickup_address: "", pickup_state: "", pickup_city: "", pickup_lga: "" });\n  const [deliveryPartners, setDeliveryPartners] = useState<any[]>([]);\n  const [deliveryConfigured, setDeliveryConfigured] = useState(false);\n  const [deliveryLoading, setDeliveryLoading] = useState(false);\n  const [deliverySaving, setDeliverySaving] = useState(false);\n  const [deliveryError, setDeliveryError] = useState("");\n  const [deliverySuccess, setDeliverySuccess] = useState("");
 
   const card: React.CSSProperties = {
     background: "#fff",
@@ -270,6 +270,33 @@ export default function Settings({ tenantId }: { tenantId: string }) {
     setMarketplaceSaving(false);
   }
 
+  async function loadDeliverySettings() {
+    setDeliveryLoading(true); setDeliveryError("");
+    const { data, error } = await supabase.functions.invoke("sabi-delivery", { body: { action: "settings-get", tenant_id: tenantId } });
+    if (error || !data?.success) {
+      setDeliveryError(data?.error || error?.message || "Unable to load delivery settings.");
+    } else {
+      setDeliverySettings(data.settings || {});
+      setDeliveryPartners(data.partners || []);
+      setDeliveryConfigured(data.configured === true);
+    }
+    setDeliveryLoading(false);
+  }
+
+  async function saveDeliverySettings(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setDeliverySaving(true); setDeliveryError(""); setDeliverySuccess("");
+    if (deliverySettings.delivery_mode === "PARTNER" && (!deliverySettings.preferred_partner_id || !deliverySettings.pickup_address || !deliverySettings.pickup_state || !deliverySettings.pickup_city)) {
+      setDeliveryError("Select a partner and complete your pickup address, state and city.");
+      setDeliverySaving(false); return;
+    }
+    const { data, error } = await supabase.functions.invoke("sabi-delivery", {
+      body: { action: "settings-save", tenant_id: tenantId, ...deliverySettings }
+    });
+    if (error || !data?.success) setDeliveryError(data?.error || error?.message || "Unable to save delivery settings.");
+    else { setDeliverySettings(data.settings); setDeliverySuccess("Delivery preferences saved."); }
+    setDeliverySaving(false);
+  }
+
   async function loadSettings() {
     setLoading(true);
     setError("");
@@ -417,7 +444,7 @@ export default function Settings({ tenantId }: { tenantId: string }) {
 
     loadBusinessProfile();
     loadSettings();
-    loadMarketplaceStatus();
+    loadMarketplaceStatus();\n    loadDeliverySettings();
     loadWhatsAppStatus();
     loadBanks();
     loadPayoutStatus();
@@ -714,6 +741,43 @@ export default function Settings({ tenantId }: { tenantId: string }) {
           {success}
         </div>
       )}
+
+      <form onSubmit={saveDeliverySettings} style={card}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+          <Truck size={24} color="#0f766e" />
+          <div><h2 style={{ margin: 0 }}>Delivery partner</h2><p style={{ color: "#64748b", margin: "5px 0 0" }}>Choose an approved Sabi delivery partner for your shop. Customers will not choose courier companies at checkout.</p></div>
+        </div>
+        {deliveryError && <div role="alert" style={{ color: "#b91c1c", background: "#fef2f2", padding: 10, borderRadius: 8, margin: "10px 0" }}>{deliveryError}</div>}
+        {deliverySuccess && <div role="status" style={{ color: "#047857", background: "#ecfdf5", padding: 10, borderRadius: 8, margin: "10px 0" }}>{deliverySuccess}</div>}
+        {deliveryLoading ? <p>Loading approved delivery partners...</p> : <>
+          <label style={{ display: "block", marginTop: 14 }}><strong>Delivery arrangement</strong></label>
+          <select value={deliverySettings.delivery_mode || "MERCHANT"} onChange={e=>setDeliverySettings((v:any)=>({...v,delivery_mode:e.target.value,preferred_partner_id:e.target.value==="MERCHANT"?null:v.preferred_partner_id}))} style={fieldStyle}>
+            <option value="MERCHANT">My own delivery arrangement</option>
+            <option value="PARTNER" disabled={deliveryPartners.length===0}>Sabi-approved delivery partner</option>
+          </select>
+          {deliverySettings.delivery_mode === "PARTNER" && <>
+            <label style={{ display: "block", marginTop: 14 }}><strong>Approved delivery partner</strong></label>
+            <select value={deliverySettings.preferred_partner_id || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,preferred_partner_id:e.target.value}))} style={fieldStyle} required>
+              <option value="">Select an available partner</option>
+              {deliveryPartners.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <p style={{ color: "#64748b", fontSize: 12 }}>Sabi only displays partners approved and activated by Super Admin that serve your pickup area.</p>
+            <label style={{ display: "block", marginTop: 12 }}><strong>Pickup street address</strong></label>
+            <input value={deliverySettings.pickup_address || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_address:e.target.value}))} style={fieldStyle} placeholder="Shop or warehouse address" required/>
+            <label style={{ display: "block", marginTop: 12 }}><strong>Pickup state</strong></label>
+            <input value={deliverySettings.pickup_state || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_state:e.target.value}))} style={fieldStyle} placeholder="e.g. Edo" required/>
+            <label style={{ display: "block", marginTop: 12 }}><strong>Pickup city</strong></label>
+            <input value={deliverySettings.pickup_city || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_city:e.target.value}))} style={fieldStyle} placeholder="e.g. Benin City" required/>
+            <label style={{ display: "block", marginTop: 12 }}><strong>Local Government Area (optional)</strong></label>
+            <input value={deliverySettings.pickup_lga || ""} onChange={e=>setDeliverySettings((v:any)=>({...v,pickup_lga:e.target.value}))} style={fieldStyle} placeholder="e.g. Oredo"/>
+          </>}
+          {!deliveryConfigured && <small style={{ display: "block", color: "#92400e", background: "#fffbeb", padding: 10, borderRadius: 8, marginTop: 12 }}>Sendbox API credentials have not yet been configured. Live quotes and bookings remain disabled.</small>}
+          {deliveryPartners.length===0 && <small style={{ display: "block", color: "#64748b", marginTop: 10 }}>No delivery partners are active yet. Sabi Super Admin must finish testing and activate Sendbox before merchants can select it.</small>}
+        </>}
+        <button type="submit" disabled={deliverySaving || deliveryLoading} style={{ marginTop: 16, padding: "11px 18px", border: 0, borderRadius: 9, background: "#0f766e", color: "#fff", fontWeight: 700 }}>
+          {deliverySaving ? "Saving..." : "Save delivery preference"}
+        </button>
+      </form>
 
       <form onSubmit={saveSettings}>
         <div style={card}>
