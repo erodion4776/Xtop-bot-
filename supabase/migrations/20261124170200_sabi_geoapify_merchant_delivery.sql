@@ -43,6 +43,8 @@ create index if not exists sabi_marketplace_delivery_quotes_rate_idx
 alter table public.sabi_marketplace_delivery_quotes enable row level security;
 revoke all on public.sabi_marketplace_delivery_quotes from anon, authenticated;
 grant all on public.sabi_marketplace_delivery_quotes to service_role;
+create policy "service role only delivery quotes" on public.sabi_marketplace_delivery_quotes
+  for all to service_role using (true) with check (true);
 
 create table if not exists public.sabi_delivery_quote_attempts (
   id uuid primary key default gen_random_uuid(),
@@ -54,6 +56,8 @@ create index if not exists sabi_delivery_quote_attempts_rate_idx
 alter table public.sabi_delivery_quote_attempts enable row level security;
 revoke all on public.sabi_delivery_quote_attempts from anon,authenticated;
 grant all on public.sabi_delivery_quote_attempts to service_role;
+create policy "service role only delivery quote attempts" on public.sabi_delivery_quote_attempts
+  for all to service_role using (true) with check (true);
 
 -- The existing six-argument RPC remains available for the legacy internal path.
 -- Marketplace web checkout uses this quote-bound overload so the exact road-distance
