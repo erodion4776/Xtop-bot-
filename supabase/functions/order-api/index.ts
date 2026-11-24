@@ -588,6 +588,8 @@ async function createCartOrder(body: Record<string, unknown>) {
       subtotal: createdOrder.subtotal,
       delivery_fee: createdOrder.delivery_fee,
       total: createdOrder.total,
+      delivery_calculation: createdOrder.delivery_calculation,
+      delivery_distance_km: createdOrder.delivery_distance_km,
     };
     isNewOrder = true;
     const { data: createdIntent, error: intentError } = await db
