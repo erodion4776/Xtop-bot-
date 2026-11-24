@@ -132,12 +132,18 @@ export async function startExamEntry(
   }
 
   // 1. Fetch CBT Questions
-  const { data: questions } = await supabase
+  const { data: questions, error: questionsError } = await supabase
     .from("course_questions")
     .select("*")
     .eq("course_id", courseId)
     .eq("status", "ACTIVE")
     .order("question_order", { ascending: true });
+
+  if (questionsError) {
+    console.error("[CBT_QUESTIONS_FETCH]", questionsError.message);
+    await sendTextMessage(phone, "⚠️ I could not load the published CBT questions securely just now. No new exam or payment link has been started. Please try again shortly.");
+    return;
+  }
 
   if (!questions || questions.length === 0) {
     await sendTextMessage(phone, `📝 No CBT exam questions have been published for *${courseCode}* yet.`);
@@ -146,12 +152,18 @@ export async function startExamEntry(
   }
 
   // 2. Fetch completed attempts and exclude every question used in prior attempts.
-  const { data: attempts } = await supabase
+  const { data: attempts, error: attemptsError } = await supabase
     .from("exam_attempts")
     .select("id, question_ids, answers_json, submitted_at")
     .eq("student_id", studentId)
     .eq("course_id", courseId)
     .not("submitted_at", "is", null);
+
+  if (attemptsError) {
+    console.error("[CBT_ATTEMPTS_FETCH]", attemptsError.message);
+    await sendTextMessage(phone, "⚠️ I could not safely confirm your previous CBT attempts. To protect your results and attempt limit, I have not opened a new checkout. Please try again shortly.");
+    return;
+  }
 
   const attemptsCount = attempts?.length || 0;
   const previouslyUsed = new Set<string>();
