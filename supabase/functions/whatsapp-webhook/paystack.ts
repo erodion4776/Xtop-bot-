@@ -77,45 +77,86 @@ export async function initializeExamPayment(
   }
 }
 
-/** Verifies both Paystack success and the exact expected CBT fee. */
+/** Verifies Paystack success, NGN currency, exact CBT fee and a matching local record. */
 export async function verifyExamPayment(
   reference: string,
   expectedAmountNaira: number
 ): Promise<boolean> {
-  if (expectedAmountNaira !== 1000) return false;
+  if (!reference || expectedAmountNaira !== 1000) return false;
 
   try {
-    const resp = await fetch(`${PAYSTACK_API_BASE}/transaction/verify/${reference}`, {
+    const resp = await fetch(`${PAYSTACK_API_BASE}/transaction/verify/${encodeURIComponent(reference)}`, {
       method: "GET",
       headers: getHeaders(),
     });
 
+    if (!resp.ok) {
+      safeErrorLog("PaystackVerify:HttpFailure", new Error(`Paystack verification returned HTTP ${resp.status}`));
+      return false;
+    }
+
     const data = await resp.json();
     const expectedKobo = expectedAmountNaira * 100;
-
-    if (
+    const verified = Boolean(
       data.status &&
-      data.data.status === "success" &&
-      Number(data.data.amount) === expectedKobo &&
-      data.data.reference === reference
-    ) {
-      const { data: updatedPayment, error } = await supabase.from("payment_transactions")
-        .update({ status: "SUCCESSFUL", updated_at: new Date().toISOString() })
-        .eq("reference", reference)
-        .eq("amount", expectedAmountNaira)
-        .in("status", ["PENDING", "SUCCESSFUL"])
-        .select("id")
-        .maybeSingle();
+      data.data?.status === "success" &&
+      String(data.data?.currency || "").toUpperCase() === "NGN" &&
+      Number(data.data?.amount) === expectedKobo &&
+      data.data?.reference === reference
+    );
 
-      if (error || !updatedPayment) {
-        safeErrorLog("PaystackVerify:TransactionUpdateFailed", error || new Error("No matching pending CBT payment record found"));
-        return false;
-      }
+    if (!verified) {
+      safeErrorLog("PaystackVerify:AmountMismatch", new Error("Payment unsuccessful or amount, currency or reference mismatch"));
+      return false;
+    }
 
+    // Read by the unique reference first. This avoids treating a harmless
+    // concurrent webhook update as a missing payment and makes the expected
+    // amount/status checks explicit before changing the row.
+    const { data: existing, error: lookupError } = await supabase
+      .from("payment_transactions")
+      .select("id,amount,status")
+      .eq("reference", reference)
+      .maybeSingle();
+
+    if (lookupError || !existing || Number(existing.amount) !== expectedAmountNaira) {
+      safeErrorLog("PaystackVerify:LocalRecordMismatch", lookupError || new Error("No local CBT payment with the expected amount and reference"));
+      return false;
+    }
+
+    if (existing.status === "SUCCESSFUL") return true;
+    if (existing.status !== "PENDING") {
+      safeErrorLog("PaystackVerify:UnexpectedLocalStatus", new Error("The local CBT payment is not pending or successful"));
+      return false;
+    }
+
+    const { data: updated, error: updateError } = await supabase
+      .from("payment_transactions")
+      .update({ status: "SUCCESSFUL", updated_at: new Date().toISOString() })
+      .eq("id", existing.id)
+      .eq("status", "PENDING")
+      .select("id")
+      .maybeSingle();
+
+    if (updateError) {
+      safeErrorLog("PaystackVerify:TransactionUpdateFailed", updateError);
+      return false;
+    }
+    if (updated) return true;
+
+    // A webhook may have changed PENDING to SUCCESSFUL between the read and
+    // update. Re-read once and accept only that exact successful state.
+    const { data: confirmed, error: confirmError } = await supabase
+      .from("payment_transactions")
+      .select("status,amount")
+      .eq("id", existing.id)
+      .maybeSingle();
+
+    if (!confirmError && confirmed?.status === "SUCCESSFUL" && Number(confirmed.amount) === expectedAmountNaira) {
       return true;
     }
 
-    safeErrorLog("PaystackVerify:AmountMismatch", new Error("Payment unsuccessful or amount/reference mismatch"));
+    safeErrorLog("PaystackVerify:TransactionUpdateFailed", confirmError || new Error("Payment row did not reach SUCCESSFUL state"));
     return false;
   } catch (err) {
     safeErrorLog("verifyExamPayment", err);
