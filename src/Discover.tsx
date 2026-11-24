@@ -390,7 +390,7 @@ export default function Discover() {
               {reviews > 0 ? <><span className="sd-stars"><Star size={12} fill="currentColor" /> {rating.toFixed(1)}</span><span>({reviews} seller {reviews === 1 ? "review" : "reviews"})</span></> : <span>New seller · Be the first to review</span>}
             </div>
             <button className="sd-add-cart" type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); addToMarketplaceCart({ product_id: product.product_id, product_name: product.product_name, product_price: Number(product.product_price || 0), product_image_url: product.product_image_url, business_name: product.business_name, business_slug: product.business_slug, product_stock: Number(product.product_stock || 0) }, 1); }} disabled={Number(product.product_stock || 0) < 1}><ShoppingBag size={14}/> Add to cart</button>
-            {whatsappLink && <button className="sd-whatsapp-chat" type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); window.open(whatsappLink, "_blank", "noopener,noreferrer"); }}><MessageCircle size={14}/> Chat with shop</button>}
+            {whatsappLink && <button className="sd-whatsapp-chat" type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); window.open(whatsappLink, "_blank", "noopener,noreferrer"); }}><MessageCircle size={14}/> Open Sabi WhatsApp bot</button>}
           </div>
         </div>
       </a>
@@ -430,7 +430,7 @@ export default function Discover() {
         </div>
       </section>}
 
-      <section className="sd-whatsapp-promo"><MessageCircle size={22}/><div><strong>Every shop has its own Sabi WhatsApp bot.</strong><span>Tap “Chat with shop” on a product to ask questions, check availability and continue shopping directly with the merchant.</span></div></section>
+      <section className="sd-whatsapp-promo"><MessageCircle size={22}/><div><strong>Prefer WhatsApp? Chat with a merchant’s connected Sabi bot.</strong><span>Tap “Chat with shop” on a product to ask questions, check availability and continue shopping directly with the merchant.</span></div></section>
 
       <section className="sd-feature-slider" aria-label="Sabi features">
         <div className="sd-feature-slide" key={heroSlide} onTouchStart={event => { touchStartX.current = event.touches[0]?.clientX ?? null; }} onTouchEnd={event => { const start = touchStartX.current; const end = event.changedTouches[0]?.clientX; touchStartX.current = null; if (start !== null && end !== undefined && Math.abs(end - start) > 45) setHeroSlide(current => (current + (end < start ? 1 : 5)) % 6); }}>
@@ -493,7 +493,7 @@ export default function Discover() {
       <footer className="sd-footer">
         <div className="sd-footer-about"><a href="/" className="sd-footer-brand"><img src={LOGO_URL} alt="" /> Sabi by XTOP</a><p>Discover Nigerian businesses and products.</p></div>
         <div className="sd-footer-legal">
-          <details id="buyer-protection"><summary>Buyer protection</summary><p>Shop through Sabi Discover and review the seller's store information before ordering. Keep your order confirmation and payment receipt. If an order has a problem, contact the seller using the details provided with your order.</p></details>
+          <details id="buyer-protection"><summary>Payment &amp; order protection</summary><p>Sabi verifies Paystack payment results and records marketplace orders and seller details. Keep your order reference and payment receipt. Sabi does not currently hold marketplace payments in escrow; sellers remain responsible for product fulfilment and delivery. Contact Sabi support if a transaction needs investigation.</p></details>
           <details id="returns-refunds"><summary>Returns &amp; refunds</summary><p>Return eligibility, delivery arrangements and refund handling may vary by seller and product. Contact the seller promptly using the contact details on your order confirmation and keep your proof of purchase.</p></details>
           <details id="customer-support"><summary>Customer support</summary><p>Need help with Sabi Discover? Chat with our customer support team on WhatsApp. For order-specific issues, please include your order reference.</p><p><a href="https://wa.me/2348024988555" target="_blank" rel="noopener noreferrer">WhatsApp: +234 802 498 8555</a></p></details>
           <details id="terms"><summary>Terms of service</summary><p>Sabi Discover helps customers discover products published by independent businesses. Product descriptions, stock, fulfilment and delivery are managed by the respective sellers. Confirm product details and delivery terms with the seller before completing a purchase.</p></details>
