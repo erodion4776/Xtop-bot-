@@ -1173,10 +1173,10 @@ export default function Orders({ tenantId }: Props) {
 
                   <button
                     className="order-details-toggle"
-                    onClick={() =>
+                    onClick={() => {
                       setExpandedOrder(expanded ? "" : order.id);
-                      if (!expanded) void loadShipmentStatus(order.id)
-                    }
+                      if (!expanded) void loadShipmentStatus(order.id);
+                    }}
                   >
                     {expanded ? "Hide details" : "View order details"}
                     {expanded ? (
