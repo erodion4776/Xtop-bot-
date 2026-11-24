@@ -560,6 +560,9 @@ function Dashboard({
               <p className="welcome-description">
                 Manage your business and WhatsApp commerce from one place.
               </p>
+              <a href="https://discover.sabibyxtop.com.ng" target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 9, marginTop: 14, padding: "11px 16px", borderRadius: 10, background: "#145c3b", color: "#ffffff", fontWeight: 700, textDecoration: "none" }}>
+                <Store size={18} /> Visit Sabi Discover <span aria-hidden="true">↗</span>
+              </a>
             </div>
 
             <img
