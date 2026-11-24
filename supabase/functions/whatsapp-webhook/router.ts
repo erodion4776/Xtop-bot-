@@ -82,7 +82,7 @@ import {
   showServiceTypeSelector,
 } from "./modules/sales.ts";
 
-import { handleExams, handleExamPaymentRecovery, handleActiveExamRecovery, handleEla401CbtContinuation } from "./modules/exams.ts";
+import { handleExams, handleExamPaymentRecovery, handleActiveExamRecovery, handleEla401CbtContinuation, handleCourseCbtContinuation } from "./modules/exams.ts";
 
 import {
   handleTools,
@@ -1110,13 +1110,16 @@ export async function routeMessage(
 
     // Restore the ELA401 post-simulation handoff if Sabi's welcome menu
     // replaced the learning context before the student requested CBT payment.
-    if (
+    const cbtContinuationRequest =
       interactiveId === "cm_test" ||
       /^(?:4|final cbt exam|take course test)$/i.test(String(text || "").trim()) ||
-      /(?:completed|finished).*(?:experiment\\s*17|plug\\s*assembly).*(?:final\\s*cbt|cbt\\s*payment|continue)/i.test(String(text || "")) ||
-      /(?:final\\s*cbt|cbt\\s*payment).*(?:experiment\\s*17|plug\\s*assembly)/i.test(String(text || ""))
-    ) {
+      /(?:completed|finished)[\s\S]*(?:all[\s]+)?(?:my[\s]+)?lectures?[\s\S]*(?:cbt|exam|payment|continue|proceed)/i.test(String(text || "")) ||
+      /(?:cbt|exam)[\s\S]*(?:payment|continue|proceed)[\s\S]*(?:completed|finished)[\s\S]*lectures?/i.test(String(text || "")) ||
+      /(?:completed|finished).*(?:experiment\s*17|plug\s*assembly).*(?:final\s*cbt|cbt\s*payment|continue)/i.test(String(text || "")) ||
+      /(?:final\s*cbt|cbt\s*payment).*(?:experiment\s*17|plug\s*assembly)/i.test(String(text || ""));
+    if (cbtContinuationRequest) {
       if (await handleEla401CbtContinuation(phone, conversation.id, conversation)) return;
+      if (await handleCourseCbtContinuation(phone, conversation.id, conversation)) return;
     }
 
     // Learning Centre controls belong to the system classroom, not the

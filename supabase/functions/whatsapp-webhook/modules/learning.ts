@@ -512,7 +512,14 @@ async function processCourseMenuSelection(
   const n = normalise(text);
   const num = extractSelection(text);
 
-  if (n === "cm_lecture" || num === 1 || n.includes("lecture") || n.includes("classroom")) {
+  // CBT intent must be checked before lecture wording. A student saying
+  // "I completed all my lectures; continue to CBT payment" is not asking
+  // to reopen lecture one.
+  if (n === "cm_test" || num === 4 || n.includes("cbt") || n.includes("exam") || n.includes("payment") || n.includes("test")) {
+    await startExamEntry(phone, conv.id, ctx);
+    return;
+  }
+  if (n === "cm_lecture" || n === "lecture" || n === "classroom" || n === "continue lecture" || n === "start lecture" || num === 1) {
     await deliverLesson(phone, conv.id, ctx, ctx.currentLessonOrder || 1);
     return;
   }
@@ -532,10 +539,6 @@ async function processCourseMenuSelection(
   }
   if (n === "cm_progress" || num === 3 || n.includes("progress")) {
     await showStudentProgress(phone, conv.id, ctx);
-    return;
-  }
-  if (n === "cm_test" || num === 4 || n.includes("exam") || n.includes("test")) {
-    await startExamEntry(phone, conv.id, ctx);
     return;
   }
   if (n === "cm_result" || num === 5 || n.includes("results")) {
@@ -944,7 +947,15 @@ async function processLessonNavigation(
   // Legacy practice buttons and old PRACTICE_QUESTION sessions now return
   // to lecture delivery; practice questions are no longer part of lessons.
   if (!lessonId) {
-    await deliverLesson(phone, conv.id, ctx, currentOrder);
+    if (
+      n === "lsn_section_next" || n.startsWith("lsn_next_") ||
+      n.includes("continue lecture") || n.includes("start lecture") || n === "next"
+    ) {
+      await deliverLesson(phone, conv.id, ctx, currentOrder);
+    } else {
+      // A greeting or unrelated sentence must never reopen lecture one.
+      await showCourseMenu(phone, conv.id, ctx);
+    }
     return;
   }
 
@@ -1036,7 +1047,8 @@ async function processLessonNavigation(
     return;
   }
 
-  await deliverLesson(phone, conv.id, ctx, currentOrder);
+  // Unknown text (including greetings) is not a request to restart the classroom.
+  await showCourseMenu(phone, conv.id, ctx);
 }
 
 async function completeAndAdvanceLesson(
