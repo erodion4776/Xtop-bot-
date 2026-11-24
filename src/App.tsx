@@ -14,7 +14,8 @@ import {
   Bot,
   Send,
   Headset,
-  Mail
+  Mail,
+  Store
 } from "lucide-react";
 
 import Auth from "./Auth";
@@ -486,6 +487,11 @@ function Dashboard({
               <span>{label}</span>
             </button>
           ))}
+          <a className="nav-item" href="https://discover.sabibyxtop.com.ng" target="_blank" rel="noopener noreferrer" onClick={() => setMobileMenuOpen(false)} style={{ textDecoration: "none" }}>
+            <Store size={19} />
+            <span>Sabi Discover</span>
+            <span style={{ marginLeft: "auto", fontSize: 11 }}>↗</span>
+          </a>
         </nav>
 
         <div className="sidebar-bottom">
@@ -663,6 +669,9 @@ function Dashboard({
                     <ShoppingCart size={18} />
                     View orders
                   </button>
+                  <a href="https://discover.sabibyxtop.com.ng" target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", boxSizing: "border-box", padding: "12px 14px", marginTop: 8, borderRadius: 10, background: "#e8f4ee", color: "#145c3b", fontWeight: 700, textDecoration: "none" }}>
+                    <Store size={18} /> Open Sabi Discover <span style={{ marginLeft: "auto" }}>↗</span>
+                  </a>
                 </div>
               </div>
             </>
