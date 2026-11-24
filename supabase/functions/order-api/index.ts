@@ -978,17 +978,21 @@ async function quoteMarketplaceCheckout(body: Record<string, unknown>, req: Requ
   const prefByTenant = new Map((preferences || []).map((row: any) => [String(row.tenant_id), row]));
   const routeSummary: any[] = [];
   const deliveryFees: any[] = [];
-  const routeCandidates: { seller: any; tenantId: string; tenant: any; pref: any; flatFallback: number }[] = [];
+  const routeCandidates: { seller: any; tenantId: string; tenant: any; pref: any }[] = [];
+
   for (const seller of (baseQuote.sellers || [])) {
     const tenantId = String(seller.tenant_id);
     const tenant: any = tenantById.get(tenantId);
     const pref: any = prefByTenant.get(tenantId);
-    const flatFallback = Math.max(0, Number(tenant?.shipping_fee ?? seller.delivery_fee ?? 0));
-    if (pref?.pricing_enabled === true && pref.pickup_lat != null && pref.pickup_lon != null &&
-        Number.isFinite(Number(pref.pickup_lat)) && Number.isFinite(Number(pref.pickup_lon))) {
-      routeCandidates.push({ seller, tenantId, tenant, pref, flatFallback });
-    } else if (pref?.pricing_enabled === true && flatFallback <= 0) {
-      throw new Error("MERCHANT_PICKUP_LOCATION_NOT_READY");
+    if (pref?.pricing_enabled === true) {
+      const pickupLat = Number(pref.pickup_lat);
+      const pickupLon = Number(pref.pickup_lon);
+      const verified = Boolean(pref.location_verified_at) &&
+        pref.pickup_lat != null && pref.pickup_lon != null &&
+        Number.isFinite(pickupLat) && Number.isFinite(pickupLon) &&
+        Math.abs(pickupLat) <= 90 && Math.abs(pickupLon) <= 180;
+      if (!verified) throw new Error("MERCHANT_PICKUP_LOCATION_NOT_READY");
+      routeCandidates.push({ seller, tenantId, tenant, pref });
     }
   }
 
@@ -997,41 +1001,54 @@ async function quoteMarketplaceCheckout(body: Record<string, unknown>, req: Requ
     try {
       const destination = await geoapifyGeocode(destinationAddress);
       routeDistances = await geoapifyRoadDistances(
-        routeCandidates.map(item => ({ lat: Number(item.pref.pickup_lat), lon: Number(item.pref.pickup_lon) })),
-        destination
+        routeCandidates.map(item => ({
+          lat: Number(item.pref.pickup_lat),
+          lon: Number(item.pref.pickup_lon),
+        })),
+        destination,
       );
     } catch (error) {
-      if (routeCandidates.some(item => item.flatFallback <= 0)) throw error;
-      routeDistances = routeCandidates.map(() => null);
+      console.error("Marketplace road-distance quote unavailable; checkout safely stopped.", error);
+      throw new Error("DELIVERY_QUOTE_UNAVAILABLE");
     }
   }
+
   const routeIndex = new Map(routeCandidates.map((item, index) => [item.tenantId, index]));
 
   for (const seller of (baseQuote.sellers || [])) {
     const tenantId = String(seller.tenant_id);
     const tenant: any = tenantById.get(tenantId);
     const pref: any = prefByTenant.get(tenantId);
-    const flatFallback = Math.max(0, Number(tenant?.shipping_fee ?? seller.delivery_fee ?? 0));
-    const candidateIndex = routeIndex.get(tenantId);
-    let fee = flatFallback;
+    let fee = Math.max(0, Number(tenant?.shipping_fee ?? seller.delivery_fee ?? 0));
     let routeKm: number | null = null;
     let calculation = "MERCHANT_FLAT_FALLBACK";
+    let label = "Merchant flat-fee delivery";
 
-    if (candidateIndex !== undefined) {
+    if (pref?.pricing_enabled === true) {
+      const candidateIndex = routeIndex.get(tenantId);
+      if (candidateIndex === undefined) throw new Error("MERCHANT_PICKUP_LOCATION_NOT_READY");
       routeKm = routeDistances[candidateIndex] ?? null;
-      const maxKm = Math.max(1, Number(pref.max_delivery_km || 100));
-      if (routeKm !== null && routeKm <= maxKm) {
-        const baseFee = Math.max(0, Number(pref.base_fee || 0));
-        const perKm = Math.max(0, Number(pref.per_km_fee || 0));
-        const minimum = Math.max(0, Number(pref.minimum_fee || 0));
-        fee = Math.ceil(Math.max(minimum, baseFee + routeKm * perKm));
-        calculation = "GEOAPIFY_ROAD_DISTANCE";
-      } else if (flatFallback <= 0) {
-        throw new Error(routeKm === null ? "GEOAPIFY_ROUTE_FAILED" : "DELIVERY_OUTSIDE_MERCHANT_RANGE");
+      if (routeKm === null || !Number.isFinite(routeKm) || routeKm <= 0) {
+        throw new Error("DELIVERY_QUOTE_UNAVAILABLE");
       }
+      const maxKm = pref.max_delivery_km == null ? 100 : Number(pref.max_delivery_km);
+      if (!Number.isFinite(maxKm) || maxKm <= 0) throw new Error("INVALID_DELIVERY_FEE");
+      if (routeKm > maxKm) throw new Error("DELIVERY_OUTSIDE_MERCHANT_RANGE");
+
+      const baseFee = Number(pref.base_fee ?? 0);
+      const perKm = Number(pref.per_km_fee ?? 0);
+      const minimum = Number(pref.minimum_fee ?? 0);
+      if (![baseFee, perKm, minimum].every(value => Number.isFinite(value) && value >= 0)) {
+        throw new Error("INVALID_DELIVERY_FEE");
+      }
+      fee = Math.ceil(Math.max(minimum, baseFee + routeKm * perKm));
+      calculation = "GEOAPIFY_ROAD_DISTANCE";
+      label = "Road-distance delivery";
     }
 
-    if (!Number.isFinite(fee) || fee < 0 || fee > 100000000) throw new Error("INVALID_DELIVERY_FEE");
+    if (!Number.isFinite(fee) || fee < 0 || fee > 100000000) {
+      throw new Error("INVALID_DELIVERY_FEE");
+    }
     deliveryFees.push({ tenant_id: tenantId, delivery_fee: fee });
     routeSummary.push({
       tenant_id: tenantId,
@@ -1039,7 +1056,7 @@ async function quoteMarketplaceCheckout(body: Record<string, unknown>, req: Requ
       distance_km: routeKm === null ? null : Math.round(routeKm * 10) / 10,
       delivery_fee: fee,
       calculation,
-      label: calculation === "GEOAPIFY_ROAD_DISTANCE" ? "Road-distance delivery" : "Merchant flat-fee fallback",
+      label,
     });
   }
 
@@ -1663,6 +1680,8 @@ Deno.serve(async (req: Request) => {
         "We could not locate the delivery address right now. Check the address and try again.",
       GEOAPIFY_ROUTE_FAILED:
         "We could not calculate the road route. Please check the address and try again.",
+      DELIVERY_QUOTE_UNAVAILABLE:
+        "Sabi could not calculate the road-distance delivery charge right now. No delivery fee has been guessed or charged. Please try again shortly or contact the merchant.",
       DELIVERY_DESTINATION_NOT_FOUND:
         "We could not locate that delivery address in Nigeria. Add a clearer street, area, city and state.",
       DELIVERY_OUTSIDE_MERCHANT_RANGE:
