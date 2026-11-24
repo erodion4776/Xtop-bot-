@@ -601,6 +601,21 @@ async function geoapifyGeocode(address: string): Promise<{ lat: number; lon: num
   return { lat, lon };
 }
 
+async function geoapifyRoadDistance(origin: { lat: number; lon: number }, destination: { lat: number; lon: number }): Promise<number> {
+  const url = new URL("https://api.geoapify.com/v1/routing");
+  url.searchParams.set("waypoints", `${origin.lat},${origin.lon}|${destination.lat},${destination.lon}`);
+  url.searchParams.set("mode", "drive");
+  url.searchParams.set("type", "balanced");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("apiKey", GEOAPIFY_KEY);
+  const response = await fetch(url, { signal: AbortSignal.timeout(12000) });
+  if (!response.ok) throw new Error("GEOAPIFY_ROUTE_FAILED");
+  const data = await response.json();
+  const meters = Number(data?.results?.[0]?.distance);
+  if (!Number.isFinite(meters) || meters <= 0 || meters > 1000000) throw new Error("GEOAPIFY_ROUTE_FAILED");
+  return meters / 1000;
+}
+
 async function geoapifyRoadDistances(
   origins: { lat: number; lon: number }[],
   destination: { lat: number; lon: number },
@@ -619,14 +634,27 @@ async function geoapifyRoadDistances(
     }),
     signal: AbortSignal.timeout(15000),
   });
-  if (!response.ok) throw new Error("GEOAPIFY_ROUTE_FAILED");
-  const data = await response.json();
-  const matrix = data?.sources_to_targets;
-  if (!Array.isArray(matrix) || matrix.length !== origins.length) throw new Error("GEOAPIFY_ROUTE_FAILED");
-  return matrix.map((row: any) => {
-    const meters = Number(row?.[0]?.distance);
-    return Number.isFinite(meters) && meters > 0 && meters <= 1000000 ? meters / 1000 : null;
-  });
+
+  if (response.ok) {
+    const data = await response.json();
+    const matrix = data?.sources_to_targets;
+    if (Array.isArray(matrix) && matrix.length === origins.length) {
+      return matrix.map((row: any) => {
+        const meters = Number(row?.[0]?.distance);
+        return Number.isFinite(meters) && meters > 0 && meters <= 1000000 ? meters / 1000 : null;
+      });
+    }
+  }
+
+  // Some Geoapify projects restrict API products individually. If Route Matrix
+  // is not enabled for this key, fall back to the standard Routing API.
+  return await Promise.all(origins.map(async origin => {
+    try {
+      return await geoapifyRoadDistance(origin, destination);
+    } catch {
+      return null;
+    }
+  }));
 }
 
 function marketplaceProcessingFee(itemSubtotal: number, deliveryTotal: number, commissionTotal: number): number {
