@@ -81,6 +81,11 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
   const [emailCampaigns, setEmailCampaigns] = useState<any[]>([]);
   const [deliveryPartners, setDeliveryPartners] = useState<DeliveryPartner[]>([]);
   const [partnerDraft, setPartnerDraft] = useState<DeliveryPartner>({ id: "", code: "", name: "", provider_type: "API", integration_status: "NOT_CONNECTED", is_enabled: false, service_states: [], service_cities: [], supports_cod: false, tracking_url_template: "", public_description: "", sort_order: 100 });
+  const [sendboxTest, setSendboxTest] = useState({ pickupAddress: "", pickupCity: "Benin City", pickupState: "Edo", pickupPhone: "", destinationAddress: "", destinationCity: "Benin City", destinationState: "Edo", destinationPhone: "", weight: "1", length: "30", width: "20", height: "15", trackingCode: "" });
+  const [sendboxRates, setSendboxRates] = useState<any[]>([]);
+  const [sendboxEnvironment, setSendboxEnvironment] = useState("");
+  const [sendboxTestResult, setSendboxTestResult] = useState("");
+
   const [emailAudience, setEmailAudience] = useState<"MERCHANTS" | "CUSTOMERS" | "ALL">("MERCHANTS");
   const [emailSubject, setEmailSubject] = useState("");
   const [emailContent, setEmailContent] = useState("");
@@ -189,6 +194,34 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
     finally { setBusy(false); }
   }
 
+
+
+  async function testSendboxQuote() {
+    setBusy(true); setError(""); setNotice(""); setSendboxRates([]); setSendboxTestResult("");
+    try {
+      const result = await callAdmin("delivery-test-quote", {
+        pickup: { address: sendboxTest.pickupAddress, city: sendboxTest.pickupCity, state: sendboxTest.pickupState, phone: sendboxTest.pickupPhone },
+        destination: { address: sendboxTest.destinationAddress, city: sendboxTest.destinationCity, state: sendboxTest.destinationState, phone: sendboxTest.destinationPhone },
+        weight_kg: Number(sendboxTest.weight),
+        dimension: { length: Number(sendboxTest.length), width: Number(sendboxTest.width), height: Number(sendboxTest.height) },
+      });
+      setSendboxRates(result.rates || []);
+      setSendboxEnvironment(result.environment || "staging");
+      setSendboxTestResult((result.rates || []).length ? "Quote test successful. These are live rates returned by Sendbox." : "Sendbox responded, but no courier rates were returned for this route.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Sendbox quote test failed."); }
+    finally { setBusy(false); }
+  }
+
+  async function testSendboxTracking() {
+    if (!sendboxTest.trackingCode.trim()) { setError("Enter a tracking code first."); return; }
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await callAdmin("delivery-test-track", { tracking_code: sendboxTest.trackingCode.trim() });
+      setSendboxEnvironment(result.environment || "staging");
+      setSendboxTestResult("Tracking API responded successfully: " + JSON.stringify(result.tracking));
+    } catch (e) { setError(e instanceof Error ? e.message : "Sendbox tracking test failed."); }
+    finally { setBusy(false); }
+  }
 
   async function saveDeliveryPartner() {
     if (!partnerDraft.code.trim() || !partnerDraft.name.trim()) {
@@ -387,6 +420,29 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
                 <div className="sa-panel">
                   <div className="sa-panel-head"><div><h2>Sabi-approved delivery companies</h2><p>Control which delivery partners merchants can use. Sabi does not operate its own rider fleet.</p></div><span>{deliveryPartners.length} partners</span></div>
                   <div className="sa-delivery-note">Only partners marked Enabled and Integration active should eventually appear to merchants. API credentials will be stored separately as backend secrets—not in this screen or the browser.</div>
+                  <div className="sa-panel" style={{ marginBottom: 18 }}>
+                    <div className="sa-panel-head"><div><h2>Owner-only Sendbox test bench</h2><p>Tests use backend secrets and do not enable Sendbox for merchants. Current environment: {sendboxEnvironment || "Not tested yet"}.</p></div><span className="sa-pill neutral">Merchant visibility stays off</span></div>
+                    <div className="sa-delivery-form">
+                      <strong>Test pickup address</strong>
+                      <label>Street address</label><input value={sendboxTest.pickupAddress} onChange={e=>setSendboxTest(v=>({...v,pickupAddress:e.target.value}))} placeholder="Pickup street address"/>
+                      <div className="sa-delivery-two"><div><label>City</label><input value={sendboxTest.pickupCity} onChange={e=>setSendboxTest(v=>({...v,pickupCity:e.target.value}))}/></div><div><label>State</label><input value={sendboxTest.pickupState} onChange={e=>setSendboxTest(v=>({...v,pickupState:e.target.value}))}/></div></div>
+                      <label>Pickup phone</label><input value={sendboxTest.pickupPhone} onChange={e=>setSendboxTest(v=>({...v,pickupPhone:e.target.value}))} placeholder="Phone number"/>
+                      <strong>Test delivery destination</strong>
+                      <label>Street address</label><input value={sendboxTest.destinationAddress} onChange={e=>setSendboxTest(v=>({...v,destinationAddress:e.target.value}))} placeholder="Recipient street address"/>
+                      <div className="sa-delivery-two"><div><label>City</label><input value={sendboxTest.destinationCity} onChange={e=>setSendboxTest(v=>({...v,destinationCity:e.target.value}))}/></div><div><label>State</label><input value={sendboxTest.destinationState} onChange={e=>setSendboxTest(v=>({...v,destinationState:e.target.value}))}/></div></div>
+                      <label>Recipient phone</label><input value={sendboxTest.destinationPhone} onChange={e=>setSendboxTest(v=>({...v,destinationPhone:e.target.value}))} placeholder="Phone number"/>
+                      <strong>Parcel details</strong>
+                      <div className="sa-delivery-two"><div><label>Weight (kg)</label><input type="number" min="0.1" step="0.1" value={sendboxTest.weight} onChange={e=>setSendboxTest(v=>({...v,weight:e.target.value}))}/></div><div><label>Dimensions (cm): L × W × H</label><div className="sa-delivery-two"><input aria-label="Length cm" type="number" min="1" value={sendboxTest.length} onChange={e=>setSendboxTest(v=>({...v,length:e.target.value}))}/><input aria-label="Width cm" type="number" min="1" value={sendboxTest.width} onChange={e=>setSendboxTest(v=>({...v,width:e.target.value}))}/><input aria-label="Height cm" type="number" min="1" value={sendboxTest.height} onChange={e=>setSendboxTest(v=>({...v,height:e.target.value}))}/></div></div></div>
+                      <button className="sa-action good" disabled={busy} onClick={()=>void testSendboxQuote()}><Truck size={15}/> Test connection & get courier quotes</button>
+                      {sendboxTestResult && <div className="sa-delivery-note">{sendboxTestResult}</div>}
+                      {sendboxRates.length > 0 && <div className="sa-table-wrap"><table><thead><tr><th>Courier</th><th>Price</th><th>Estimated delivery</th></tr></thead><tbody>{sendboxRates.map((rate:any)=><tr key={rate.id}><td>{rate.name}</td><td>{money(rate.fee)}</td><td>{rate.eta || "Not supplied"}</td></tr>)}</tbody></table></div>}
+                      <strong>Test tracking (only after a test shipment exists)</strong>
+                      <label>Sendbox tracking code</label><input value={sendboxTest.trackingCode} onChange={e=>setSendboxTest(v=>({...v,trackingCode:e.target.value}))} placeholder="Tracking code"/>
+                      <button className="sa-action" disabled={busy || !sendboxTest.trackingCode.trim()} onClick={()=>void testSendboxTracking()}><RefreshCw size={15}/> Test tracking lookup</button>
+                      <small>Booking is deliberately not enabled here yet. Sendbox may debit the staging wallet when a shipment is booked; we will add a separately confirmed booking test after quote validation.</small>
+                    </div>
+                  </div>
+
                   <div className="sa-delivery-form">
                     <label>Partner code</label><input value={partnerDraft.code} maxLength={40} placeholder="e.g. GIGL" onChange={e=>setPartnerDraft(v=>({...v,code:e.target.value.toUpperCase()}))}/>
                     <label>Delivery company name</label><input value={partnerDraft.name} maxLength={120} placeholder="Company name" onChange={e=>setPartnerDraft(v=>({...v,name:e.target.value}))}/>
