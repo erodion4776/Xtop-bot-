@@ -7,8 +7,9 @@ import {
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import "./SuperAdmin.css";
+import DropshippingAdmin from "./DropshippingAdmin";
 
-type Page = "Overview" | "Merchants" | "Orders & Payments" | "Live Support" | "Activity Log" | "WhatsApp Usage" | "Platform Controls" | "Platform Email" | "Delivery Partners";
+type Page = "Overview" | "Merchants" | "Orders & Payments" | "Live Support" | "Activity Log" | "WhatsApp Usage" | "Platform Controls" | "Platform Email" | "Delivery Partners" | "Dropshipping";
 type WhatsAppUsageRow = {
   phone_number_id: string; billing_month: string; source_app: string;
   outbound_messages: number; inbound_messages: number; delivered_messages: number;
@@ -57,6 +58,7 @@ const pages: { label: Page; icon: any }[] = [
   { label: "Platform Controls", icon: ShieldCheck },
   { label: "Platform Email", icon: Mail },
   { label: "Delivery Partners", icon: Truck },
+  { label: "Dropshipping", icon: Package },
 ];
 
 const money = (value: number) => new Intl.NumberFormat("en-NG", {
@@ -416,6 +418,7 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
                   <p style={{fontSize:12,opacity:.7,marginTop:12}}>This inbox refreshes when you tap Refresh. Keep this page open while handling the customer. The customer’s automated experience remains paused until you select Return to bot.</p>
                 </div>
               )}
+              {page === "Dropshipping" && <DropshippingAdmin callAdmin={callAdmin} />}
               {page === "Delivery Partners" && (
                 <div className="sa-panel">
                   <div className="sa-panel-head"><div><h2>Sabi-approved delivery companies</h2><p>Control which delivery partners merchants can use. Sabi does not operate its own rider fleet.</p></div><span>{deliveryPartners.length} partners</span></div>
