@@ -511,11 +511,6 @@ export async function handleExamPaymentRecovery(
   phone: string, text: string, contact: Contact, conv: Conversation
 ): Promise<void> {
   const existing = getExamCtx(conv);
-  if (conv.current_module === "EXAMS" && existing.paymentReference) {
-    await handleExams(phone, text, contact, conv);
-    return;
-  }
-
   const normalizedPhone = String(phone || "").replace(/\D/g, "");
   const { data: student, error: studentError } = await supabase
     .from("students")
@@ -528,17 +523,43 @@ export async function handleExamPaymentRecovery(
     return;
   }
 
-  const { data: payment, error: paymentError } = await supabase
-    .from("payment_transactions")
-    .select("reference,amount,status,course_id,created_at")
-    .eq("student_id", student.id)
-    .in("status", ["PENDING", "SUCCESSFUL"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // Prefer the reference in the active conversation only when it still belongs
+  // to this student and is a current ₦1,000 CBT transaction. If the context was
+  // overwritten or contains a stale reference, recover from the durable payment
+  // table instead of repeatedly verifying an orphaned reference.
+  let payment: any = null;
+  if (existing.paymentReference) {
+    const { data: contextualPayment, error: contextualError } = await supabase
+      .from("payment_transactions")
+      .select("reference,amount,status,course_id,created_at")
+      .eq("reference", existing.paymentReference)
+      .eq("student_id", student.id)
+      .eq("amount", 1000)
+      .in("status", ["PENDING", "SUCCESSFUL"])
+      .maybeSingle();
+    if (!contextualError && contextualPayment) payment = contextualPayment;
+  }
 
-  if (paymentError || !payment || Number(payment.amount) !== 1000) {
-    await sendTextMessage(phone, "⚠️ I could not find a valid CBT payment for this WhatsApp number. Please contact the Learning Centre administrator before making another payment.");
+  if (!payment) {
+    const { data: latestPayment, error: paymentError } = await supabase
+      .from("payment_transactions")
+      .select("reference,amount,status,course_id,created_at")
+      .eq("student_id", student.id)
+      .eq("amount", 1000)
+      .in("status", ["PENDING", "SUCCESSFUL"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (paymentError) {
+      safeErrorLog("handleExamPaymentRecovery.paymentLookup", paymentError);
+      await sendTextMessage(phone, "⚠️ I could not check your CBT payment record just now. Please try again shortly. Do not pay again.");
+      return;
+    }
+    payment = latestPayment;
+  }
+
+  if (!payment) {
+    await sendTextMessage(phone, "⚠️ I could not find a valid ₦1,000 CBT payment for this WhatsApp number. Please contact the Learning Centre administrator before making another payment.");
     return;
   }
 
