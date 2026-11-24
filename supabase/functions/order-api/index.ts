@@ -788,7 +788,7 @@ async function createMarketplaceCheckout(body: Record<string, unknown>) {
   });
 }
 
-async function quoteMarketplaceCheckout(body: Record<string, unknown>) {
+async function quoteMarketplaceCheckout(body: Record<string, unknown>, req: Request) {
   const items = Array.isArray(body.items) ? body.items : [];
   if (!items.length || items.length > 30) throw new Error("INVALID_ORDER_DETAILS");
   const normalizedItems = items.map((item: Record<string, unknown>) => ({
@@ -801,6 +801,21 @@ async function quoteMarketplaceCheckout(body: Record<string, unknown>) {
 
   const destinationAddress = String(body.delivery_address || "").trim().slice(0, 1000);
   if (destinationAddress.length < 8) throw new Error("DELIVERY_ADDRESS_REQUIRED");
+
+  const clientIp = req.headers.get("cf-connecting-ip") ||
+    req.headers.get("x-real-ip") ||
+    (req.headers.get("x-forwarded-for") || "").split(",")[0].trim();
+  let requestFingerprint: string | null = null;
+  if (clientIp) {
+    requestFingerprint = await sha256Hex(clientIp);
+    const since = new Date(Date.now() - 60 * 1000).toISOString();
+    const { count, error: rateError } = await db.from("sabi_marketplace_delivery_quotes")
+      .select("id", { count: "exact", head: true })
+      .eq("request_fingerprint", requestFingerprint)
+      .gte("created_at", since);
+    if (rateError) throw new Error("DELIVERY_RATE_CHECK_FAILED");
+    if ((count || 0) >= 25) throw new Error("DELIVERY_QUOTE_RATE_LIMITED");
+  }
 
   const { data: baseQuote, error: baseError } = await db.rpc("sabi_quote_marketplace_checkout", { p_items: normalizedItems });
   if (baseError || !baseQuote?.success) {
@@ -893,6 +908,7 @@ async function quoteMarketplaceCheckout(body: Record<string, unknown>) {
       cart_signature: cartSignature,
       delivery_address: destinationAddress,
       delivery_fees: deliveryFees,
+      request_fingerprint: requestFingerprint,
       route_summary: routeSummary,
       expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
     })
@@ -1450,7 +1466,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "quote_marketplace_checkout") {
-      return await quoteMarketplaceCheckout(body);
+      return await quoteMarketplaceCheckout(body, req);
     }
 
     if (action === "initialize_merchant") {
@@ -1484,6 +1500,10 @@ Deno.serve(async (req: Request) => {
         "Please check the selected product and quantity.",
       DELIVERY_ADDRESS_REQUIRED:
         "Enter your complete delivery state, city and street address to calculate delivery.",
+      DELIVERY_QUOTE_RATE_LIMITED:
+        "Too many delivery calculations were requested. Please wait one minute and try again.",
+      DELIVERY_RATE_CHECK_FAILED:
+        "Sabi could not validate the delivery request. Please try again.",
       DELIVERY_QUOTE_REQUIRED:
         "Your delivery quote is missing. Recalculate delivery before paying.",
       DELIVERY_QUOTE_EXPIRED:
@@ -1561,6 +1581,7 @@ Deno.serve(async (req: Request) => {
     };
 
     const status =
+      message === "DELIVERY_QUOTE_RATE_LIMITED" ? 429 :
       message === "PAYMENT_REFERENCE_NOT_FOUND" ||
       message === "MERCHANT_ORDER_NOT_FOUND" ? 404 :
       message === "MERCHANT_AUTH_REQUIRED" ? 401 :
