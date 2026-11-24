@@ -82,3 +82,25 @@
   .lp-nav-login { display: inline-flex; padding: 9px 7px; font-size: 9px; border-width: 1px; }
   .lp-final-login { width: 100%; margin-top: 0; }
 }
+
+
+/* Main homepage entry points to the customer marketplace */
+.lp-nav-discover{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:11px 13px;border:1px solid #cfe3c9;border-radius:9px;background:#edf6e9;color:#145438!important;font-size:12px;font-weight:850;white-space:nowrap}
+.lp-nav-discover:hover{background:#dff0d8}
+.lp-button-discover{background:#eaf4e4;border:1px solid #cfe3c9;color:#175b3c!important}
+.lp-discover-callout{max-width:1144px;margin:0 auto 38px;padding:24px 27px;display:flex;align-items:center;gap:19px;border:1px solid #dcebd5;border-radius:18px;background:linear-gradient(110deg,#f1f8eb,#fbfdf8);box-shadow:0 12px 32px #173f2e0b}
+.lp-discover-icon{width:55px;height:55px;flex:0 0 55px;display:grid;place-items:center;border-radius:15px;background:#dcefd2;color:#246342}
+.lp-discover-copy{flex:1;min-width:0}
+.lp-discover-copy>span{font-size:9px;font-weight:900;letter-spacing:1.5px;color:#66804e}
+.lp-discover-copy h2{margin:6px 0;font-size:22px;line-height:1.2;color:#17372a}
+.lp-discover-copy p{margin:0;font-size:12px;line-height:1.6;color:#687970}
+.lp-discover-cta{display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:13px 17px;border-radius:10px;background:#176b4b;color:#fff!important;font-size:12px;font-weight:850;white-space:nowrap}
+@media(max-width:650px){
+ .lp-nav-discover{padding:9px 7px;font-size:9px;gap:4px}
+ .lp-nav-discover svg{width:13px;height:13px}
+ .lp-discover-callout{margin:0 15px 28px;padding:19px;display:grid;grid-template-columns:45px 1fr;gap:12px;border-radius:14px}
+ .lp-discover-icon{width:45px;height:45px;flex-basis:45px;border-radius:12px}
+ .lp-discover-copy h2{font-size:18px}
+ .lp-discover-copy p{font-size:11px}
+ .lp-discover-cta{grid-column:1/-1;width:100%;padding:13px}
+}
