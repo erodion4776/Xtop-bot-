@@ -120,7 +120,7 @@ export default function Orders({ tenantId }: Props) {
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"ONLINE" | "POD">("ONLINE");
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartItem[]>([]);\n  const [deliveryDrafts, setDeliveryDrafts] = useState<Record<string, { city: string; state: string; weight: string }>>({});\n  const [deliveryQuotes, setDeliveryQuotes] = useState<Record<string, any[]>>({});\n  const [deliveryShipments, setDeliveryShipments] = useState<Record<string, any>>({});\n  const [deliveryBusy, setDeliveryBusy] = useState("");\n  const [deliveryMessage, setDeliveryMessage] = useState<Record<string, string>>({});
 
   const loadOrders = useCallback(async () => {
     if (!tenantId) return;
@@ -477,6 +477,59 @@ export default function Orders({ tenantId }: Props) {
     }
 
     await loadOrders();
+  }
+
+  function updateDeliveryDraft(orderId: string, field: "city" | "state" | "weight", value: string) {
+    setDeliveryDrafts(current => ({ ...current, [orderId]: { city: current[orderId]?.city || "", state: current[orderId]?.state || "", weight: current[orderId]?.weight || "1", [field]: value } }));
+  }
+
+  async function loadShipmentStatus(orderId: string) {
+    const { data, error } = await supabase.functions.invoke("sabi-delivery", { body: { action: "shipment-status", tenant_id: tenantId, order_id: orderId } });
+    if (!error && data?.success && data.shipment) setDeliveryShipments(current => ({ ...current, [orderId]: data.shipment }));
+  }
+
+  async function getDeliveryQuote(order: Order) {
+    const draft = deliveryDrafts[order.id] || { city: "", state: "", weight: "1" };
+    if (!draft.city.trim() || !draft.state.trim() || !Number.isFinite(Number(draft.weight)) || Number(draft.weight) <= 0) {
+      setDeliveryMessage(current => ({ ...current, [order.id]: "Enter the customer's delivery city, state and parcel weight." }));
+      return;
+    }
+    setDeliveryBusy(order.id); setDeliveryMessage(current => ({ ...current, [order.id]: "" }));
+    try {
+      const { data, error } = await supabase.functions.invoke("sabi-delivery", { body: {
+        action: "quote", tenant_id: tenantId, order_id: order.id, weight_kg: Number(draft.weight),
+        destination: { street: order.delivery_address || "", city: draft.city.trim(), state: draft.state.trim() }
+      }});
+      if (error || !data?.success) throw new Error(data?.error || error?.message || "Could not get delivery quotes.");
+      setDeliveryQuotes(current => ({ ...current, [order.id]: data.rates || [] }));
+      setDeliveryMessage(current => ({ ...current, [order.id]: data.rates?.length ? "Choose the courier that best serves this route." : "No delivery rates were returned." }));
+      await loadShipmentStatus(order.id);
+    } catch (e) { setDeliveryMessage(current => ({ ...current, [order.id]: e instanceof Error ? e.message : "Delivery quote failed." })); }
+    finally { setDeliveryBusy(""); }
+  }
+
+  async function bookDelivery(order: Order, rate: any) {
+    if (!window.confirm(`Book ${rate.name} for ${money(Number(rate.fee))}? Sendbox may debit Sabi's delivery wallet.`)) return;
+    setDeliveryBusy(order.id); setDeliveryMessage(current => ({ ...current, [order.id]: "" }));
+    try {
+      const { data, error } = await supabase.functions.invoke("sabi-delivery", { body: { action: "book", tenant_id: tenantId, order_id: order.id, rate_id: rate.id, confirm_cost: true } });
+      if (error || !data?.success) throw new Error(data?.error || error?.message || "Could not book shipment.");
+      setDeliveryMessage(current => ({ ...current, [order.id]: data.message || "Shipment booking submitted." }));
+      setDeliveryQuotes(current => ({ ...current, [order.id]: [] }));
+      await loadShipmentStatus(order.id);
+    } catch (e) { setDeliveryMessage(current => ({ ...current, [order.id]: e instanceof Error ? e.message : "Shipment booking failed." })); }
+    finally { setDeliveryBusy(""); }
+  }
+
+  async function refreshDeliveryTracking(orderId: string) {
+    setDeliveryBusy(orderId); setDeliveryMessage(current => ({ ...current, [orderId]: "" }));
+    try {
+      const { data, error } = await supabase.functions.invoke("sabi-delivery", { body: { action: "track", tenant_id: tenantId, order_id: orderId } });
+      if (error || !data?.success) throw new Error(data?.error || error?.message || "Could not refresh tracking.");
+      setDeliveryShipments(current => ({ ...current, [orderId]: { ...current[orderId], status: data.status, tracking_number: data.tracking_number, courier: data.courier, events: data.events } }));
+      setDeliveryMessage(current => ({ ...current, [orderId]: "Tracking information refreshed." }));
+    } catch (e) { setDeliveryMessage(current => ({ ...current, [orderId]: e instanceof Error ? e.message : "Tracking refresh failed." })); }
+    finally { setDeliveryBusy(""); }
   }
 
   async function resendCancellationEmail(orderId: string) {
@@ -1180,6 +1233,26 @@ export default function Orders({ tenantId }: Props) {
                         <strong>₦50</strong>
                       </div>
 
+                      <div style={{ marginTop: 18, padding: 14, border: "1px solid #dbe5e0", borderRadius: 10, background: "#f8fbf9" }}>
+                        <strong style={{ display: "flex", alignItems: "center", gap: 8 }}><Truck size={17}/> Sendbox delivery</strong>
+                        <p style={{ color: "#64748b", fontSize: 12, margin: "6px 0 12px" }}>Only available when you selected an active Sabi-approved partner in Settings. Customers do not choose the courier.</p>
+                        {deliveryShipments[order.id]?.tracking_number ? <>
+                          <div className="order-detail-row"><span>Courier tracking</span><strong>{deliveryShipments[order.id].tracking_number}</strong></div>
+                          <div className="order-detail-row"><span>Delivery status</span><strong>{String(deliveryShipments[order.id].status || "").replace(/_/g," ")}</strong></div>
+                          {deliveryShipments[order.id].tracking_url && <a href={deliveryShipments[order.id].tracking_url} target="_blank" rel="noreferrer">Open tracking page</a>}
+                          <button className="order-action-primary" disabled={deliveryBusy===order.id} onClick={()=>void refreshDeliveryTracking(order.id)}><RefreshCw size={15}/> {deliveryBusy===order.id?"Refreshing...":"Refresh tracking"}</button>
+                        </> : <>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 8 }}>
+                            <label style={{ fontSize: 12 }}>Customer city<input style={fieldStyle} value={deliveryDrafts[order.id]?.city || ""} onChange={e=>updateDeliveryDraft(order.id,"city",e.target.value)} placeholder="e.g. Benin City"/></label>
+                            <label style={{ fontSize: 12 }}>Customer state<input style={fieldStyle} value={deliveryDrafts[order.id]?.state || ""} onChange={e=>updateDeliveryDraft(order.id,"state",e.target.value)} placeholder="e.g. Edo"/></label>
+                            <label style={{ fontSize: 12 }}>Parcel weight (kg)<input style={fieldStyle} type="number" min="0.1" step="0.1" value={deliveryDrafts[order.id]?.weight || "1"} onChange={e=>updateDeliveryDraft(order.id,"weight",e.target.value)}/></label>
+                          </div>
+                          <button className="order-action-primary" disabled={deliveryBusy===order.id || !paidOrder} onClick={()=>void getDeliveryQuote(order)}><Truck size={15}/> {deliveryBusy===order.id?"Getting quotes...":"Get Sendbox courier quotes"}</button>
+                          {!paidOrder && <small style={{ display: "block", color: "#92400e", marginTop: 7 }}>Shipment booking is available only after the customer's payment is confirmed.</small>}
+                          {(deliveryQuotes[order.id] || []).map((rate:any)=><div key={rate.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "9px 0", borderTop: "1px solid #e2e8f0" }}><span><strong>{rate.name}</strong><small style={{ display: "block", color: "#64748b" }}>{rate.delivery_eta || "Delivery estimate from Sendbox"}</small></span><span style={{ textAlign: "right" }}><strong>{money(rate.fee)}</strong><button className="order-action-primary" disabled={deliveryBusy===order.id || !paidOrder} onClick={()=>void bookDelivery(order,rate)}>Select & book</button></span></div>)}
+                        </>}
+                        {deliveryMessage[order.id] && <small role="status" style={{ display: "block", marginTop: 8, color: "#475569" }}>{deliveryMessage[order.id]}</small>}
+                      </div>
                       {order.notes && (
                         <div className="order-notes">
                           <strong>Customer note</strong>
