@@ -1274,6 +1274,8 @@ Deno.serve(async (req: Request) => {
     const messages: Record<string, string> = {
       INVALID_ORDER_DETAILS:
         "Please check the selected product and quantity.",
+      MARKETPLACE_SELLER_DELIVERY_NOT_CONFIGURED:
+        "A seller in your cart has not enabled delivery. Remove that seller’s products or ask the seller to configure delivery before checkout.",
       CUSTOMER_DETAILS_REQUIRED:
         "Please complete all required customer details.",
       INVALID_CUSTOMER_EMAIL:
