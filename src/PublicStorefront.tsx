@@ -205,7 +205,17 @@ export default function PublicStorefront() {
     return () => document.getElementById("sabi-store-jsonld")?.remove();
   }, [store, products]);
 
-  function toggleFollow() {\n    const next = !following;\n    setFollowing(next);\n    try { localStorage.setItem(`sabi-follow-${slug}`, next ? "1" : "0"); } catch {}\n  }\n\n  function toggleFavorite(productId: string) {\n    setFavorites(current => current.includes(productId) ? current.filter(id => id !== productId) : [...current, productId]);\n  }\n\n  async function shareStore() {
+  function toggleFollow() {
+    const next = !following;
+    setFollowing(next);
+    try { localStorage.setItem(`sabi-follow-${slug}`, next ? "1" : "0"); } catch {}
+  }
+
+  function toggleFavorite(productId: string) {
+    setFavorites(current => current.includes(productId) ? current.filter(id => id !== productId) : [...current, productId]);
+  }
+
+  async function shareStore() {
     if (!store) return;
     const url = `https://discover.sabibyxtop.com.ng/share/store/${encodeURIComponent(store.business_slug)}`;
     try {
@@ -235,6 +245,26 @@ export default function PublicStorefront() {
 
   return (
     <main style={styles.page}>
+      <style>{`
+        @media (min-width: 760px) {
+          .sabi-store-layout { padding-left:24px!important; padding-right:24px!important; }
+          .sabi-store-grid { grid-template-columns:repeat(4,minmax(0,1fr))!important; gap:18px!important; }
+          .sabi-store-tools { grid-template-columns:minmax(240px,1fr) 180px 180px!important; width:auto!important; min-width:min(620px,100%)!important; }
+          .sabi-store-search { grid-column:auto!important; }
+          .sabi-store-hero { padding:30px 34px!important; }
+          .sabi-store-hero-main { display:flex!important; align-items:center!important; justify-content:space-between!important; gap:24px!important; }
+          .sabi-store-feature-grid { grid-template-columns:repeat(4,minmax(0,1fr))!important; }
+        }
+        @media (max-width: 520px) {
+          .sabi-store-layout { padding-left:12px!important; padding-right:12px!important; }
+          .sabi-store-header { height:62px!important; }
+          .sabi-store-back { display:none!important; }
+          .sabi-store-hero { border-radius:13px!important; margin-top:8px!important; }
+          .sabi-store-hero h1 { font-size:22px!important; line-height:1.2!important; }
+          .sabi-store-section-title { font-size:19px!important; }
+          .sabi-store-card-title { font-size:13px!important; }
+        }
+      `}</style>
       <header className="sabi-store-header sabi-store-layout" style={styles.header}>
         <a href="/" style={styles.brand}><img src={LOGO_URL} alt="Sabi by XTOP"/><span><strong>Sabi</strong><small>DISCOVER</small></span></a>
         <div style={styles.headerRight}>
@@ -243,7 +273,8 @@ export default function PublicStorefront() {
         </div>
       </header>
 
-      <section style={{...styles.storeHero, borderTop: `5px solid ${brandColor}`}}>
+      <section className="sabi-store-hero sabi-store-layout" style={{...styles.storeHero, borderTop: `5px solid ${brandColor}`}}>
+        <div className="sabi-store-hero-main">
         <div style={styles.storeIdentity}>
           {store.business_logo ? <span style={styles.storeLogoFrame}><img src={store.business_logo} alt={store.business_name} style={styles.storeLogo}/></span> : <div style={{...styles.storeLogoPlaceholder, background: brandColor}}><Store size={34} color="#fff"/></div>}
           <div style={{minWidth:0}}>
@@ -256,14 +287,27 @@ export default function PublicStorefront() {
         <div style={styles.storeActions}>
           <span>{products.length} {products.length === 1 ? "product" : "products"}</span>
           <div style={styles.actionButtons}>
+            <button className="sabi-store-follow" onClick={toggleFollow} style={styles.followButton}><Heart size={16} fill={following ? "currentColor" : "none"}/>{following ? "Following" : "Follow store"}</button>
             {whatsappLink && <a href={whatsappLink} target="_blank" rel="noopener noreferrer" style={styles.chatButton}><MessageCircle size={16}/> Chat on WhatsApp</a>}
             <button onClick={shareStore} style={{...styles.shareButton, borderColor: "#fff", color: "#176b4b"}}><Share2 size={17}/> Share store</button>
           </div>
         </div>
+        </div>
         {shareMessage && <p role="status" style={styles.status}>{shareMessage}</p>}
       </section>
 
-      <section style={styles.catalogue}>
+      <nav className="sabi-store-layout" aria-label="Store categories" style={styles.categoryNav}>
+        {categories.map(item => <button key={item} onClick={() => {setCategory(item); document.getElementById("store-products")?.scrollIntoView({behavior:"smooth",block:"start"});}} style={{...styles.categoryChip, ...(category === item ? styles.categoryChipActive : {})}}>{item === "All" ? "All products" : item}</button>)}
+      </nav>
+
+      {products.length > 0 && <section className="sabi-store-layout" style={styles.featuredSection}>
+        <div style={styles.sectionHeading}><div><span style={styles.eyebrowDark}>SHOP THE COLLECTION</span><h2 className="sabi-store-section-title" style={styles.featureTitle}>Popular in this store</h2></div><button onClick={() => {setSortBy("popular");document.getElementById("store-products")?.scrollIntoView({behavior:"smooth"});}} style={styles.textAction}>View all <ChevronRight size={16}/></button></div>
+        <div className="sabi-store-feature-grid" style={styles.featureGrid}>
+          {[...products].sort((a,b)=>b.sold_quantity-a.sold_quantity).slice(0,4).map(product => <a key={product.product_id} href={`/?product=${encodeURIComponent(product.product_id)}`} style={styles.featureCard}><div style={styles.featureImage}>{product.product_image_url ? <img src={product.product_image_url} alt={product.product_name} loading="lazy"/> : <ShoppingBag size={26}/>}</div><div style={styles.featureInfo}><strong>{product.product_name}</strong><b>{money(product.product_price)}</b></div></a>)}
+        </div>
+      </section>}
+
+      <section id="store-products" className="sabi-store-layout" style={styles.catalogue}>
         <div style={styles.catalogueHeading}>
           <div><span style={styles.eyebrow}>SHOP THIS BUSINESS</span><h2 className="sabi-store-section-title">All products from {store.business_name}</h2><p>Browse available products from this Sabi merchant.</p></div>
           <div className="sabi-store-tools" style={styles.catalogueTools}>
@@ -276,6 +320,7 @@ export default function PublicStorefront() {
           {visibleProducts.map(product => <article key={product.product_id} style={styles.productCard}>
             <a href={`/?product=${encodeURIComponent(product.product_id)}`} style={styles.productLink}>
               <div style={styles.productImage}>
+                <button aria-label={favorites.includes(product.product_id) ? "Remove from wishlist" : "Add to wishlist"} onClick={event => {event.preventDefault();toggleFavorite(product.product_id);}} style={styles.favoriteButton}><Heart size={17} fill={favorites.includes(product.product_id) ? "#dc2626" : "none"} color={favorites.includes(product.product_id) ? "#dc2626" : "#334155"}/></button>
                 {product.product_image_url ? <img src={product.product_image_url} alt={product.product_name} loading="lazy" style={styles.productImageElement}/> : <ShoppingBag size={35} color="#94a3b8"/>}
                 {product.sold_quantity > 0 && <span style={styles.bestSeller}><Zap size={11}/> BEST SELLER</span>}
               </div>
@@ -319,9 +364,37 @@ const styles: Record<string, React.CSSProperties> = {
   storeActions:{position:"relative",zIndex:1,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginTop:20,paddingTop:16,borderTop:"1px solid rgba(255,255,255,.2)",color:"#e0eee5",fontSize:13},
   actionButtons:{display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"},
   chatButton:{display:"inline-flex",alignItems:"center",gap:7,background:"#fff",border:"1px solid #fff",borderRadius:9,padding:"10px 13px",fontWeight:750,color:"#176b4b",textDecoration:"none",fontSize:13,whiteSpace:"nowrap"},
-  followButton:{display:"inline-flex",alignItems:"center",gap:7,background:"rgba(255,255,255,.13)",border:"1px solid rgba(255,255,255,.65)",borderRadius:9,padding:"10px 13px",fontWeight:750,cursor:"pointer",color:"#fff",fontSize:13,whiteSpace:"nowrap"},\n  shareButton:{display:"inline-flex",alignItems:"center",gap:8,background:"#fff",border:"1px solid",borderRadius:9,padding:"10px 14px",fontWeight:750,cursor:"pointer"},
+  followButton:{display:"inline-flex",alignItems:"center",gap:7,background:"rgba(255,255,255,.13)",border:"1px solid rgba(255,255,255,.65)",borderRadius:9,padding:"10px 13px",fontWeight:750,cursor:"pointer",color:"#fff",fontSize:13,whiteSpace:"nowrap"},
+  followButton:{display:"inline-flex",alignItems:"center",gap:7,background:"rgba(255,255,255,.13)",border:"1px solid rgba(255,255,255,.65)",borderRadius:9,padding:"10px 13px",fontWeight:750,cursor:"pointer",color:"#fff",fontSize:13,whiteSpace:"nowrap"},
+  shareButton:{display:"inline-flex",alignItems:"center",gap:8,background:"#fff",border:"1px solid",borderRadius:9,padding:"10px 14px",fontWeight:750,cursor:"pointer"},
   status:{color:"#176b4b",fontSize:13,margin:"12px 0 0"},
-  categoryNav:{width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"0 auto 26px",display:"flex",gap:8,overflowX:"auto",padding:"2px 0 10px",scrollbarWidth:"thin"},\n  categoryChip:{flex:"0 0 auto",border:"1px solid #dce7df",borderRadius:99,padding:"9px 15px",background:"#fff",color:"#526b5d",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"},\n  categoryChipActive:{background:"#176b4b",borderColor:"#176b4b",color:"#fff"},\n  featuredSection:{width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"0 auto 30px",background:"#fff",border:"1px solid #e6ece8",borderRadius:15,padding:"18px"},\n  sectionHeading:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginBottom:14},\n  eyebrowDark:{fontSize:10,letterSpacing:1.2,fontWeight:800,color:"#718278"},\n  featureTitle:{fontSize:20,margin:"5px 0 0",color:"#14231b"},\n  textAction:{display:"inline-flex",alignItems:"center",gap:3,border:0,background:"transparent",color:"#176b4b",fontWeight:800,fontSize:12,cursor:"pointer"},\n  featureGrid:{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10},\n  featureCard:{minWidth:0,display:"flex",alignItems:"center",gap:9,padding:8,border:"1px solid #edf1ee",borderRadius:11,textDecoration:"none",color:"#14231b"},\n  featureImage:{width:62,height:62,flex:"0 0 62px",borderRadius:8,overflow:"hidden",background:"#f2f5f3",display:"grid",placeItems:"center",color:"#94a3b8"},\n  featureInfo:{minWidth:0,display:"flex",flexDirection:"column",gap:6,fontSize:12},\n  favoriteButton:{position:"absolute",top:8,right:8,zIndex:2,width:34,height:34,border:0,borderRadius:99,background:"rgba(255,255,255,.95)",display:"grid",placeItems:"center",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.12)"},\n  catalogue:{width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"0 auto"},
+  categoryNav:{width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"0 auto 26px",display:"flex",gap:8,overflowX:"auto",padding:"2px 0 10px",scrollbarWidth:"thin"},
+  categoryChip:{flex:"0 0 auto",border:"1px solid #dce7df",borderRadius:99,padding:"9px 15px",background:"#fff",color:"#526b5d",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"},
+  categoryChipActive:{background:"#176b4b",borderColor:"#176b4b",color:"#fff"},
+  featuredSection:{width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"0 auto 30px",background:"#fff",border:"1px solid #e6ece8",borderRadius:15,padding:"18px"},
+  sectionHeading:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginBottom:14},
+  eyebrowDark:{fontSize:10,letterSpacing:1.2,fontWeight:800,color:"#718278"},
+  featureTitle:{fontSize:20,margin:"5px 0 0",color:"#14231b"},
+  textAction:{display:"inline-flex",alignItems:"center",gap:3,border:0,background:"transparent",color:"#176b4b",fontWeight:800,fontSize:12,cursor:"pointer"},
+  featureGrid:{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10},
+  featureCard:{minWidth:0,display:"flex",alignItems:"center",gap:9,padding:8,border:"1px solid #edf1ee",borderRadius:11,textDecoration:"none",color:"#14231b"},
+  featureImage:{width:62,height:62,flex:"0 0 62px",borderRadius:8,overflow:"hidden",background:"#f2f5f3",display:"grid",placeItems:"center",color:"#94a3b8"},
+  featureInfo:{minWidth:0,display:"flex",flexDirection:"column",gap:6,fontSize:12},
+  favoriteButton:{position:"absolute",top:8,right:8,zIndex:2,width:34,height:34,border:0,borderRadius:99,background:"rgba(255,255,255,.95)",display:"grid",placeItems:"center",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.12)"},
+  categoryNav:{width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"0 auto 26px",display:"flex",gap:8,overflowX:"auto",padding:"2px 0 10px",scrollbarWidth:"thin"},
+  categoryChip:{flex:"0 0 auto",border:"1px solid #dce7df",borderRadius:99,padding:"9px 15px",background:"#fff",color:"#526b5d",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"},
+  categoryChipActive:{background:"#176b4b",borderColor:"#176b4b",color:"#fff"},
+  featuredSection:{width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"0 auto 30px",background:"#fff",border:"1px solid #e6ece8",borderRadius:15,padding:"18px"},
+  sectionHeading:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginBottom:14},
+  eyebrowDark:{fontSize:10,letterSpacing:1.2,fontWeight:800,color:"#718278"},
+  featureTitle:{fontSize:20,margin:"5px 0 0",color:"#14231b"},
+  textAction:{display:"inline-flex",alignItems:"center",gap:3,border:0,background:"transparent",color:"#176b4b",fontWeight:800,fontSize:12,cursor:"pointer"},
+  featureGrid:{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10},
+  featureCard:{minWidth:0,display:"flex",alignItems:"center",gap:9,padding:8,border:"1px solid #edf1ee",borderRadius:11,textDecoration:"none",color:"#14231b"},
+  featureImage:{width:62,height:62,flex:"0 0 62px",borderRadius:8,overflow:"hidden",background:"#f2f5f3",display:"grid",placeItems:"center",color:"#94a3b8"},
+  featureInfo:{minWidth:0,display:"flex",flexDirection:"column",gap:6,fontSize:12},
+  favoriteButton:{position:"absolute",top:8,right:8,zIndex:2,width:34,height:34,border:0,borderRadius:99,background:"rgba(255,255,255,.95)",display:"grid",placeItems:"center",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.12)"},
+  catalogue:{width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"0 auto"},
   catalogueHeading:{display:"flex",alignItems:"end",justifyContent:"space-between",gap:18,flexWrap:"wrap",marginBottom:18,paddingTop:8},
   catalogueTools:{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",alignItems:"center",gap:9,width:"100%",minWidth:0},
   search:{gridColumn:"1 / -1",display:"flex",alignItems:"center",gap:9,background:"#fff",border:"1px solid #dfe7e1",borderRadius:10,padding:"0 12px",height:44,width:"100%",minWidth:0,color:"#718278",boxSizing:"border-box"},
