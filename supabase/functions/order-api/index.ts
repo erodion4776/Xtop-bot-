@@ -518,7 +518,7 @@ async function createCartOrder(body: Record<string, unknown>) {
   for (const candidate of recentIntents || []) {
     const { data: candidateOrder } = await db
       .from("tenant_orders")
-      .select("id,tenant_id,order_number,status,payment_status,payment_method,source,subtotal,delivery_fee,total,delivery_calculation")
+      .select("id,tenant_id,order_number,status,payment_status,payment_method,source,subtotal,delivery_fee,total")
       .eq("id", candidate.order_id)
       .eq("tenant_id", candidate.tenant_id)
       .eq("customer_phone", customerPhone)
@@ -539,7 +539,7 @@ async function createCartOrder(body: Record<string, unknown>) {
       .maybeSingle();
     if (preferenceError) throw new Error("DELIVERY_SETTINGS_LOOKUP_FAILED");
     if (currentDeliveryPreference?.pricing_enabled === true &&
-        candidateOrder.delivery_calculation !== "GEOAPIFY_ROAD_DISTANCE") {
+        candidate.metadata?.delivery_calculation !== "GEOAPIFY_ROAD_DISTANCE") {
       throw new Error("PENDING_ORDER_DELIVERY_REVIEW");
     }
 
