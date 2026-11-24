@@ -3,13 +3,13 @@ import {
   Activity, AlertCircle, BadgeCheck, MessageCircle, Send,
   CheckCircle2, ChevronRight, CircleDollarSign, CreditCard, LayoutDashboard,
   LogOut, Menu, MessageSquare, Package, RefreshCw, Search, ShieldCheck,
-  ShoppingBag, Store, Users, Wallet, X, Ban, PlayCircle, Mail, Truck
+  ShoppingBag, Store, Users, Wallet, X, Ban, PlayCircle, Mail
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import "./SuperAdmin.css";
 import DropshippingAdmin from "./DropshippingAdmin";
 
-type Page = "Overview" | "Merchants" | "Orders & Payments" | "Live Support" | "Activity Log" | "WhatsApp Usage" | "Platform Controls" | "Platform Email" | "Delivery Partners" | "Dropshipping";
+type Page = "Overview" | "Merchants" | "Orders & Payments" | "Live Support" | "Activity Log" | "WhatsApp Usage" | "Platform Controls" | "Platform Email" | "Delivery Model" | "Dropshipping";
 type WhatsAppUsageRow = {
   phone_number_id: string; billing_month: string; source_app: string;
   outbound_messages: number; inbound_messages: number; delivered_messages: number;
@@ -36,13 +36,6 @@ type Order = {
 };
 type DemoSupportMessage = { id: string; direction: string; type: string; text: string; created_at: string };
 type DemoSupportChat = { conversation_id: string; contact_id: string; state: string; kind: "DEMO" | "SABI"; last_message_at: string; contact: { id: string; phone: string; name: string | null }; messages: DemoSupportMessage[] };
-type DeliveryPartner = {
-  id: string; code: string; name: string; provider_type: "API" | "MANUAL";
-  integration_status: "NOT_CONNECTED" | "TESTING" | "ACTIVE" | "PAUSED";
-  is_enabled: boolean; service_states: string[]; service_cities: string[];
-  supports_cod: boolean; tracking_url_template: string | null; public_description: string | null;
-  sort_order: number;
-};
 type ActivityItem = {
   id: string; admin_user: string | null; action: string; entity: string | null;
   entity_id: string | null; metadata: Record<string, unknown> | null; created_at: string;
@@ -57,7 +50,7 @@ const pages: { label: Page; icon: any }[] = [
   { label: "WhatsApp Usage", icon: MessageSquare },
   { label: "Platform Controls", icon: ShieldCheck },
   { label: "Platform Email", icon: Mail },
-  { label: "Delivery Partners", icon: Truck },
+  { label: "Delivery Model", icon: Package },
   { label: "Dropshipping", icon: Package },
 ];
 
@@ -81,12 +74,6 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
   const [whatsappUsage, setWhatsappUsage] = useState<WhatsAppUsageRow[]>([]);
   const [usageSettings, setUsageSettings] = useState<any[]>([]);
   const [emailCampaigns, setEmailCampaigns] = useState<any[]>([]);
-  const [deliveryPartners, setDeliveryPartners] = useState<DeliveryPartner[]>([]);
-  const [partnerDraft, setPartnerDraft] = useState<DeliveryPartner>({ id: "", code: "", name: "", provider_type: "API", integration_status: "NOT_CONNECTED", is_enabled: false, service_states: [], service_cities: [], supports_cod: false, tracking_url_template: "", public_description: "", sort_order: 100 });
-  const [sendboxTest, setSendboxTest] = useState({ pickupAddress: "", pickupCity: "Benin City", pickupState: "Edo", pickupPhone: "", destinationAddress: "", destinationCity: "Benin City", destinationState: "Edo", destinationPhone: "", weight: "1", length: "30", width: "20", height: "15", trackingCode: "" });
-  const [sendboxRates, setSendboxRates] = useState<any[]>([]);
-  const [sendboxEnvironment, setSendboxEnvironment] = useState("");
-  const [sendboxTestResult, setSendboxTestResult] = useState("");
 
   const [emailAudience, setEmailAudience] = useState<"MERCHANTS" | "CUSTOMERS" | "ALL">("MERCHANTS");
   const [emailSubject, setEmailSubject] = useState("");
@@ -145,9 +132,6 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
       } else if (target === "Platform Controls") {
         const result = await callAdmin("overview");
         setStats(result.data);
-      } else if (target === "Delivery Partners") {
-        const result = await callAdmin("delivery-partners");
-        setDeliveryPartners(result.data || []);
       } else if (target === "Platform Email") {
         const result = await callAdmin("email-campaign-data");
         setEmailCampaigns(result.data?.campaigns || []);
@@ -197,52 +181,6 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
   }
 
 
-
-  async function testSendboxQuote() {
-    setBusy(true); setError(""); setNotice(""); setSendboxRates([]); setSendboxTestResult("");
-    try {
-      const result = await callAdmin("delivery-test-quote", {
-        pickup: { address: sendboxTest.pickupAddress, city: sendboxTest.pickupCity, state: sendboxTest.pickupState, phone: sendboxTest.pickupPhone },
-        destination: { address: sendboxTest.destinationAddress, city: sendboxTest.destinationCity, state: sendboxTest.destinationState, phone: sendboxTest.destinationPhone },
-        weight_kg: Number(sendboxTest.weight),
-        dimension: { length: Number(sendboxTest.length), width: Number(sendboxTest.width), height: Number(sendboxTest.height) },
-      });
-      setSendboxRates(result.rates || []);
-      setSendboxEnvironment(result.environment || "staging");
-      setSendboxTestResult((result.rates || []).length ? "Quote test successful. These are live rates returned by Sendbox." : "Sendbox responded, but no courier rates were returned for this route.");
-    } catch (e) { setError(e instanceof Error ? e.message : "Sendbox quote test failed."); }
-    finally { setBusy(false); }
-  }
-
-  async function testSendboxTracking() {
-    if (!sendboxTest.trackingCode.trim()) { setError("Enter a tracking code first."); return; }
-    setBusy(true); setError(""); setNotice("");
-    try {
-      const result = await callAdmin("delivery-test-track", { tracking_code: sendboxTest.trackingCode.trim() });
-      setSendboxEnvironment(result.environment || "staging");
-      setSendboxTestResult("Tracking API responded successfully: " + JSON.stringify(result.tracking));
-    } catch (e) { setError(e instanceof Error ? e.message : "Sendbox tracking test failed."); }
-    finally { setBusy(false); }
-  }
-
-  async function saveDeliveryPartner() {
-    if (!partnerDraft.code.trim() || !partnerDraft.name.trim()) {
-      setError("Enter a partner code and company name.");
-      return;
-    }
-    setBusy(true); setError(""); setNotice("");
-    try {
-      await callAdmin("delivery-partner-save", {
-        ...partnerDraft,
-        service_states: partnerDraft.service_states,
-        service_cities: partnerDraft.service_cities,
-      });
-      setNotice("Delivery partner saved. Merchants will only see it when it is enabled and its integration is active.");
-      setPartnerDraft({ id: "", code: "", name: "", provider_type: "API", integration_status: "NOT_CONNECTED", is_enabled: false, service_states: [], service_cities: [], supports_cod: false, tracking_url_template: "", public_description: "", sort_order: 100 });
-      await loadPage("Delivery Partners");
-    } catch (e) { setError(e instanceof Error ? e.message : "Could not save delivery partner."); }
-    finally { setBusy(false); }
-  }
 
   async function sendPlatformEmail() {
     if (!emailSubject.trim() || emailContent.trim().length < 10) {
@@ -419,51 +357,21 @@ export default function SuperAdmin({ email, onLogout }: { email: string; onLogou
                 </div>
               )}
               {page === "Dropshipping" && <DropshippingAdmin callAdmin={callAdmin} />}
-              {page === "Delivery Partners" && (
+              {page === "Delivery Model" && (
                 <div className="sa-panel">
-                  <div className="sa-panel-head"><div><h2>Sabi-approved delivery companies</h2><p>Control which delivery partners merchants can use. Sabi does not operate its own rider fleet.</p></div><span>{deliveryPartners.length} partners</span></div>
-                  <div className="sa-delivery-note">Only partners marked Enabled and Integration active should eventually appear to merchants. API credentials will be stored separately as backend secrets—not in this screen or the browser.</div>
-                  <div className="sa-panel" style={{ marginBottom: 18 }}>
-                    <div className="sa-panel-head"><div><h2>Owner-only Sendbox test bench</h2><p>Tests use backend secrets and do not enable Sendbox for merchants. Current environment: {sendboxEnvironment || "Not tested yet"}.</p></div><span className="sa-pill neutral">Merchant visibility stays off</span></div>
-                    <div className="sa-delivery-form">
-                      <strong>Test pickup address</strong>
-                      <label>Street address</label><input value={sendboxTest.pickupAddress} onChange={e=>setSendboxTest(v=>({...v,pickupAddress:e.target.value}))} placeholder="Pickup street address"/>
-                      <div className="sa-delivery-two"><div><label>City</label><input value={sendboxTest.pickupCity} onChange={e=>setSendboxTest(v=>({...v,pickupCity:e.target.value}))}/></div><div><label>State</label><input value={sendboxTest.pickupState} onChange={e=>setSendboxTest(v=>({...v,pickupState:e.target.value}))}/></div></div>
-                      <label>Pickup phone</label><input value={sendboxTest.pickupPhone} onChange={e=>setSendboxTest(v=>({...v,pickupPhone:e.target.value}))} placeholder="Phone number"/>
-                      <strong>Test delivery destination</strong>
-                      <label>Street address</label><input value={sendboxTest.destinationAddress} onChange={e=>setSendboxTest(v=>({...v,destinationAddress:e.target.value}))} placeholder="Recipient street address"/>
-                      <div className="sa-delivery-two"><div><label>City</label><input value={sendboxTest.destinationCity} onChange={e=>setSendboxTest(v=>({...v,destinationCity:e.target.value}))}/></div><div><label>State</label><input value={sendboxTest.destinationState} onChange={e=>setSendboxTest(v=>({...v,destinationState:e.target.value}))}/></div></div>
-                      <label>Recipient phone</label><input value={sendboxTest.destinationPhone} onChange={e=>setSendboxTest(v=>({...v,destinationPhone:e.target.value}))} placeholder="Phone number"/>
-                      <strong>Parcel details</strong>
-                      <div className="sa-delivery-two"><div><label>Weight (kg)</label><input type="number" min="0.1" step="0.1" value={sendboxTest.weight} onChange={e=>setSendboxTest(v=>({...v,weight:e.target.value}))}/></div><div><label>Dimensions (cm): L × W × H</label><div className="sa-delivery-two"><input aria-label="Length cm" type="number" min="1" value={sendboxTest.length} onChange={e=>setSendboxTest(v=>({...v,length:e.target.value}))}/><input aria-label="Width cm" type="number" min="1" value={sendboxTest.width} onChange={e=>setSendboxTest(v=>({...v,width:e.target.value}))}/><input aria-label="Height cm" type="number" min="1" value={sendboxTest.height} onChange={e=>setSendboxTest(v=>({...v,height:e.target.value}))}/></div></div></div>
-                      <button className="sa-action good" disabled={busy} onClick={()=>void testSendboxQuote()}><Truck size={15}/> Test connection & get courier quotes</button>
-                      {sendboxTestResult && <div className="sa-delivery-note">{sendboxTestResult}</div>}
-                      {sendboxRates.length > 0 && <div className="sa-table-wrap"><table><thead><tr><th>Courier</th><th>Price</th><th>Estimated delivery</th></tr></thead><tbody>{sendboxRates.map((rate:any)=><tr key={rate.id}><td>{rate.name}</td><td>{money(rate.fee)}</td><td>{rate.eta || "Not supplied"}</td></tr>)}</tbody></table></div>}
-                      <strong>Test tracking (only after a test shipment exists)</strong>
-                      <label>Sendbox tracking code</label><input value={sendboxTest.trackingCode} onChange={e=>setSendboxTest(v=>({...v,trackingCode:e.target.value}))} placeholder="Tracking code"/>
-                      <button className="sa-action" disabled={busy || !sendboxTest.trackingCode.trim()} onClick={()=>void testSendboxTracking()}><RefreshCw size={15}/> Test tracking lookup</button>
-                      <small>Booking is deliberately not enabled here yet. Sendbox may debit the staging wallet when a shipment is booked; we will add a separately confirmed booking test after quote validation.</small>
-                    </div>
+                  <div className="sa-panel-head">
+                    <div><h2>Merchant-managed delivery</h2><p>Sabi calculates delivery charges; each merchant remains responsible for dispatch and delivery.</p></div>
+                    <span className="sa-pill good">Geoapify distance pricing</span>
                   </div>
-
-                  <div className="sa-delivery-form">
-                    <label>Partner code</label><input value={partnerDraft.code} maxLength={40} placeholder="e.g. GIGL" onChange={e=>setPartnerDraft(v=>({...v,code:e.target.value.toUpperCase()}))}/>
-                    <label>Delivery company name</label><input value={partnerDraft.name} maxLength={120} placeholder="Company name" onChange={e=>setPartnerDraft(v=>({...v,name:e.target.value}))}/>
-                    <div className="sa-delivery-two">
-                      <div><label>Integration type</label><select value={partnerDraft.provider_type} onChange={e=>setPartnerDraft(v=>({...v,provider_type:e.target.value as "API"|"MANUAL"}))}><option value="API">API integration</option><option value="MANUAL">Manual arrangement</option></select></div>
-                      <div><label>Integration status</label><select value={partnerDraft.integration_status} onChange={e=>setPartnerDraft(v=>({...v,integration_status:e.target.value as DeliveryPartner["integration_status"]}))}><option value="NOT_CONNECTED">Not connected</option><option value="TESTING">Testing</option><option value="ACTIVE">Active</option><option value="PAUSED">Paused</option></select></div>
-                    </div>
-                    <label>States served (comma-separated)</label><input value={partnerDraft.service_states.join(", ")} placeholder="Edo, Delta, Lagos" onChange={e=>setPartnerDraft(v=>({...v,service_states:e.target.value.split(",").map(x=>x.trim()).filter(Boolean)}))}/>
-                    <label>Cities served (comma-separated)</label><input value={partnerDraft.service_cities.join(", ")} placeholder="Benin City, Asaba, Lagos" onChange={e=>setPartnerDraft(v=>({...v,service_cities:e.target.value.split(",").map(x=>x.trim()).filter(Boolean)}))}/>
-                    <label>Customer-facing description</label><textarea rows={2} maxLength={500} value={partnerDraft.public_description || ""} placeholder="Short description shown to merchants" onChange={e=>setPartnerDraft(v=>({...v,public_description:e.target.value}))}/>
-                    <label>Tracking URL template (optional)</label><input value={partnerDraft.tracking_url_template || ""} placeholder="https://partner.example/track/{tracking_number}" onChange={e=>setPartnerDraft(v=>({...v,tracking_url_template:e.target.value}))}/>
-                    <div className="sa-delivery-checks"><label><input type="checkbox" checked={partnerDraft.supports_cod} onChange={e=>setPartnerDraft(v=>({...v,supports_cod:e.target.checked}))}/> Supports cash on delivery</label><label><input type="checkbox" checked={partnerDraft.is_enabled} onChange={e=>setPartnerDraft(v=>({...v,is_enabled:e.target.checked}))}/> Enable this partner for merchant selection</label></div>
-                    <button className="sa-action good" disabled={busy} onClick={()=>void saveDeliveryPartner()}><Truck size={15}/> Save delivery partner</button>
+                  <div className="sa-delivery-note">
+                    Sabi does not operate a rider fleet, book couriers or choose a delivery company. Merchants configure their pickup address, base charge, per-kilometre rate, minimum fee and maximum delivery distance in their own Settings.
                   </div>
-                  <div className="sa-table-wrap"><table><thead><tr><th>Partner</th><th>Type</th><th>Coverage</th><th>Integration</th><th>Merchant visibility</th><th>COD</th><th>Action</th></tr></thead><tbody>
-                    {deliveryPartners.map(p=><tr key={p.id}><td><strong>{p.name}</strong><small>{p.code}</small></td><td>{p.provider_type}</td><td>{p.service_states.join(", ") || "Coverage not set"}<small>{p.service_cities.join(", ")}</small></td><td><span className={p.integration_status==="ACTIVE"?"sa-pill good":"sa-pill neutral"}>{p.integration_status.replace(/_/g," ")}</span></td><td><span className={p.is_enabled?"sa-pill good":"sa-pill neutral"}>{p.is_enabled?"Enabled":"Hidden"}</span></td><td>{p.supports_cod?"Yes":"No"}</td><td><button className="sa-action good" onClick={()=>setPartnerDraft({...p,tracking_url_template:p.tracking_url_template||"",public_description:p.public_description||""})}>Edit</button></td></tr>)}
-                    {deliveryPartners.length===0 && <tr><td colSpan={7} className="sa-empty">No delivery partners have been configured yet.</td></tr>}
-                  </tbody></table></div>
+                  <div className="sa-delivery-note">
+                    At checkout, Geoapify calculates the road distance from each seller to the customer's address. If route calculation is unavailable, Sabi uses that merchant's existing flat delivery fee when configured. Delivery fees remain excluded from Sabi's sales commission.
+                  </div>
+                  <div className="sa-delivery-note">
+                    No courier-partner API or Sendbox booking is enabled in this delivery model.
+                  </div>
                 </div>
               )}
               {page === "Activity Log" && (
