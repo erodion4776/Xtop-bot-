@@ -294,6 +294,42 @@ Deno.serve(async (req: Request) => {
       return response({ error: "Your access to this course has been blocked by the lecturer." }, 403);
     }
 
+    if (session.purpose === "LESSON" && action === "save_video_progress") {
+      const { data: enrollment, error: enrollmentError } = await sb.from("student_courses")
+        .select("id,status").eq("student_id", session.student_id)
+        .eq("course_id", session.course_id).eq("status", "ACTIVE").maybeSingle();
+      if (enrollmentError || !enrollment) return response({ error: "Your course access is not active." }, 403);
+      const lessons = await loadLessons(session.course_id);
+      const order = Number(session.lesson_order || 1);
+      const lesson = lessons[order - 1];
+      const lessonId = String(body.lesson_id || "");
+      if (!lesson || String(lesson.id) !== lessonId || !lesson.video_url) {
+        return response({ error: "This video is not the current lecture for your account." }, 409);
+      }
+      const duration = Math.max(0, Math.min(86400, Number(body.duration_seconds || 0)));
+      const position = Math.max(0, Math.min(duration || 86400, Number(body.position_seconds || 0)));
+      if (!Number.isFinite(duration) || !Number.isFinite(position) || duration <= 0) {
+        return response({ error: "The video playback position is not valid yet." }, 400);
+      }
+      const percent = Math.max(0, Math.min(100, Number(((position / duration) * 100).toFixed(2))));
+      const now = new Date().toISOString();
+      const { data: saved, error: saveError } = await sb.from("engr_ero_video_progress").upsert({
+        student_id: session.student_id,
+        course_id: session.course_id,
+        lesson_id: lesson.id,
+        position_seconds: position,
+        duration_seconds: duration,
+        progress_percent: percent,
+        last_watched_at: now,
+        updated_at: now,
+        ...(percent >= 98 ? { completed_at: now } : {}),
+      }, { onConflict: "student_id,course_id,lesson_id" })
+        .select("position_seconds,duration_seconds,progress_percent,started_at,last_watched_at,completed_at")
+        .single();
+      if (saveError) throw saveError;
+      return response({ success: true, video_progress: saved });
+    }
+
     if (session.purpose === "LESSON" && action === "save_mtm_simulation") {
       const { data: course, error: courseError } = await sb.from("courses")
         .select("course_code").eq("id", session.course_id).maybeSingle();
@@ -397,6 +433,15 @@ Deno.serve(async (req: Request) => {
         sb.from("engr_ero_lecture_presentations").select("title,html_content").eq("lesson_id", lesson.id).maybeSingle(),
       ]);
       if (sectionError || mediaError || presentationError) throw sectionError || mediaError || presentationError;
+      let videoProgress: any = null;
+      if (lesson.video_url) {
+        const { data: savedProgress, error: progressError } = await sb.from("engr_ero_video_progress")
+          .select("position_seconds,duration_seconds,progress_percent,started_at,last_watched_at,completed_at")
+          .eq("student_id", session.student_id).eq("course_id", session.course_id)
+          .eq("lesson_id", lesson.id).maybeSingle();
+        if (progressError) throw progressError;
+        videoProgress = savedProgress || null;
+      }
       let signedVideoUrl: string | null = null;
       if (lesson.video_url) {
         const { data: signedVideo, error: signedVideoError } = await sb.storage
@@ -418,6 +463,7 @@ Deno.serve(async (req: Request) => {
         sections: sections || [], media: media || [],
         ...(presentation ? { presentation_html: presentation.html_content } : {}),
         completed_count: highWater,
+        video_progress: videoProgress,
       });
     }
 
