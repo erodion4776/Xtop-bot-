@@ -97,7 +97,7 @@ export default function CookieConsent() {
           ) : (
             <>
               <button type="button" className="sabi-cookie-button sabi-cookie-secondary" onClick={() => save(defaults)}>Reject optional</button>
-              <button type="button" className="sabi-cookie-button sabi-cookie-secondary" onClick={() => { setDraft(readConsent() || defaults); setSettings(true); }}>Cookie settings</button>
+              <a href="/cookies" className="sabi-cookie-button sabi-cookie-secondary">Cookie preferences</a>
               <button type="button" className="sabi-cookie-button sabi-cookie-primary" onClick={() => save({ ...defaults, analytics: true, functional: true, marketing: true })}>Accept all</button>
             </>
           )}
