@@ -30,7 +30,11 @@ export default {
       return new Response("Invalid Sabi subdomain.", { status: 404 });
     }
 
-    const upstreamUrl = new URL(incomingUrl.pathname + incomingUrl.search, NETLIFY_ORIGIN);
+    const upstreamUrl = new URL(NETLIFY_ORIGIN);
+    // Assign pathname separately so a path beginning with // cannot replace
+    // the trusted Netlify origin.
+    upstreamUrl.pathname = incomingUrl.pathname;
+    upstreamUrl.search = incomingUrl.search;
     const headers = new Headers(request.headers);
     headers.delete("host");
     headers.set("x-forwarded-host", host);
@@ -44,16 +48,38 @@ export default {
       redirect: "manual"
     });
 
-    const response = await fetch(upstreamRequest);
-    const responseHeaders = new Headers(response.headers);
-    responseHeaders.set("x-sabi-storefront-router", "cloudflare");
+    try {
+      const response = await fetch(upstreamRequest);
+      const responseHeaders = new Headers(response.headers);
+      responseHeaders.set("x-sabi-storefront-router", "cloudflare");
 
-    // Keep Netlify and Supabase redirects intact; the browser remains on the
-    // merchant's hostname for ordinary storefront and product page requests.
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: responseHeaders
-    });
+      // Preserve same-origin Netlify redirects on the requested Sabi hostname.
+      const location = responseHeaders.get("location");
+      if (location) {
+        try {
+          const redirectUrl = new URL(location, NETLIFY_ORIGIN);
+          if (redirectUrl.origin === new URL(NETLIFY_ORIGIN).origin) {
+            responseHeaders.set(
+              "location",
+              `${incomingUrl.origin}${redirectUrl.pathname}${redirectUrl.search}${redirectUrl.hash}`
+            );
+          }
+        } catch {
+          // Leave non-URL Location values unchanged.
+        }
+      }
+
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders
+      });
+    } catch (error) {
+      console.error("Sabi Netlify origin request failed:", error);
+      return new Response("Sabi storefront is temporarily unavailable. Please try again.", {
+        status: 502,
+        headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" }
+      });
+    }
   }
 };
