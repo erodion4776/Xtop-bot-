@@ -835,7 +835,7 @@ export default function PublicProduct() {
             <h2 style={{fontSize:20,margin:"0 0 7px"}}>Customer reviews for {product.business_name}</h2>
             <p style={{margin:0,fontSize:13,color:"#64748b"}}>{sellerReviews.length ? "Based on " + sellerReviews.length + " verified purchase " + (sellerReviews.length===1?"review":"reviews") : "Be among the first customers to review this seller."}</p></div>
           <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexWrap:"wrap",textAlign:"right",minWidth:0}}>
-            <span aria-label={sellerReviews.length ? "Average seller rating" : "No seller reviews yet"} style={{color:"#f59e0b",fontSize:18,letterSpacing:2,lineHeight:1}}>☆☆☆☆☆</span>
+            <span aria-label={sellerReviews.length ? "Average seller rating" : "No seller reviews yet"} style={{color:"#f59e0b",fontSize:18,letterSpacing:2,lineHeight:1}}>{sellerReviews.length ? "★".repeat(Math.round(sellerReviews.reduce((sum,r)=>sum+Number(r.rating),0)/sellerReviews.length)) + "☆".repeat(5-Math.round(sellerReviews.reduce((sum,r)=>sum+Number(r.rating),0)/sellerReviews.length)) : "☆☆☆☆☆"}</span>
             <strong style={{fontSize:14,color:"#176b4b",fontWeight:750}}>{sellerReviews.length ? (sellerReviews.reduce((sum,r)=>sum+Number(r.rating),0)/sellerReviews.length).toFixed(1) : "0.0"}{sellerReviews.length ? "" : " (No reviews yet)"}</strong>
           </div>
         </div>
