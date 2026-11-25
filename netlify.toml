@@ -18,6 +18,11 @@
   status = 200
 
 [[redirects]]
+  from = "/cookies"
+  to = "/cookies.html"
+  status = 200
+
+[[redirects]]
   from = "/terms"
   to = "/terms.html"
   status = 200
