@@ -48,7 +48,7 @@ export default function PublicStorefront() {
     ? hostname.slice(0, -".sabibyxtop.com.ng".length)
     : "";
   const reservedStoreSubdomains = new Set(["www", "app", "discover", "admin", "connect", "engr", "r", "mail", "api", "status", "help", "support", "auth", "assets"]);
-  const slug = new URLSearchParams(window.location.search).get("store") || (reservedStoreSubdomains.has(hostSlug) ? "" : hostSlug);
+  const slug = !reservedStoreSubdomains.has(hostSlug) && hostSlug ? hostSlug : (new URLSearchParams(window.location.search).get("store") || "");
   const [store, setStore] = useState<StorefrontRow | null>(null);
   const [products, setProducts] = useState<StorefrontProduct[]>([]);
   const [search, setSearch] = useState("");
