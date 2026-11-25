@@ -50,6 +50,8 @@ export default function Settings({ tenantId }: { tenantId: string }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [businessName, setBusinessName] = useState("");
+  const [businessSlug, setBusinessSlug] = useState("");
+  const [storeLinkCopied, setStoreLinkCopied] = useState(false);
   const [businessNameLoading, setBusinessNameLoading] = useState(true);
   const [businessNameSaving, setBusinessNameSaving] = useState(false);
   const [businessNameError, setBusinessNameError] = useState("");
@@ -127,6 +129,7 @@ export default function Settings({ tenantId }: { tenantId: string }) {
       setBusinessNameError(data?.error || error?.message || "Unable to load business profile.");
     } else {
       setBusinessName(data?.business_name || "");
+      setBusinessSlug(data?.slug || "");
       setBusinessLogoUrl(data?.logo_url || "");
     }
     setBusinessNameLoading(false);
@@ -151,6 +154,7 @@ export default function Settings({ tenantId }: { tenantId: string }) {
         throw new Error(data?.error || error?.message || "Unable to save business name.");
       }
       setBusinessName(data.business_name || cleanName);
+      setBusinessSlug(data.slug || businessSlug);
       setBusinessNameSuccess("Business name saved. New WhatsApp greetings will use this name.");
     } catch (err) {
       setBusinessNameError(err instanceof Error ? err.message : "Unable to save business name.");
@@ -703,6 +707,32 @@ export default function Settings({ tenantId }: { tenantId: string }) {
           {businessNameSaving ? "Saving..." : "Save business name"}
         </button>
       </form>
+      {businessSlug && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(businessSlug) && (
+        <div style={{ ...card, marginTop: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+            <Building2 size={25} color="#0f766e" />
+            <div>
+              <h2 style={{ margin: 0 }}>Your Sabi store website</h2>
+              <p style={{ color: "#64748b", margin: "5px 0 0" }}>Share this dedicated website with customers. Your products and store details update from your Sabi account.</p>
+            </div>
+          </div>
+          <a href={`https://${businessSlug}.sabibyxtop.com.ng/`} target="_blank" rel="noopener noreferrer" style={{ display: "block", color: "#0f766e", fontWeight: 700, overflowWrap: "anywhere", margin: "10px 0 14px" }}>
+            https://{businessSlug}.sabibyxtop.com.ng
+          </a>
+          <button type="button" onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(`https://${businessSlug}.sabibyxtop.com.ng/`);
+              setStoreLinkCopied(true);
+              window.setTimeout(() => setStoreLinkCopied(false), 2500);
+            } catch {
+              setStoreLinkCopied(false);
+            }
+          }} style={{ padding: "10px 14px", border: 0, borderRadius: 9, background: "#0f766e", color: "#fff", fontWeight: 700 }}>
+            {storeLinkCopied ? "Link copied" : "Copy store website link"}
+          </button>
+          {!marketplacePublished && <small style={{ display: "block", color: "#92400e", marginTop: 10 }}>Your public store must be published in Sabi Discover before customers can open this website.</small>}
+        </div>
+      )}
       <div style={{ ...card, marginTop: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
           <Building2 size={25} color="#0f766e" />
