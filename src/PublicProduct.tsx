@@ -46,6 +46,7 @@ const money = (value: number) =>
 
 export default function PublicProduct() {
   const [product, setProduct] = useState<PublicProductData | null>(null);
+  const [imageError, setImageError] = useState(false);
   const [sellerReviews, setSellerReviews] = useState<{ rating: number; review_text: string | null; created_at: string }[]>([]);
   const [settings, setSettings] = useState<CheckoutSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -132,6 +133,7 @@ export default function PublicProduct() {
       }
 
       setProduct(result as PublicProductData);
+      setImageError(false);
       const { data: reviewData } = await supabase.rpc("sabi_get_public_product_seller_reviews", { p_product_id: productId });
       if (!cancelled) setSellerReviews((reviewData || []) as { rating: number; review_text: string | null; created_at: string }[]);
 
@@ -516,26 +518,27 @@ export default function PublicProduct() {
         </div>
       </header>
 
-      <nav aria-label="Breadcrumb" style={{maxWidth:1200,margin:"18px auto 12px",fontSize:12,color:"#64748b",display:"flex",gap:8,flexWrap:"wrap"}}>
+      <nav aria-label="Breadcrumb" style={{width:"min(100% - 32px,1200px)",boxSizing:"border-box",padding:"0 0",margin:"18px auto 12px",fontSize:12,color:"#64748b",display:"flex",alignItems:"center",gap:4,flexWrap:"wrap",minWidth:0}}>
         <a href="/" style={{color:"#176b4b",textDecoration:"none",fontWeight:600}}>Sabi Discover</a>
         <span>›</span>
         <a href={`/?store=${encodeURIComponent(product.business_slug)}`} style={{color:"#176b4b",textDecoration:"none",fontWeight:600}}>{product.business_name}</a>
         {product.product_category && product.product_category.trim().toLowerCase() !== product.product_name.trim().toLowerCase() && <><span>›</span><span>{product.product_category}</span></>}
-        <span>›</span><span style={{color:"#334155"}}>{product.product_name}</span>
+        <span>›</span><span title={product.product_name} style={{color:"#334155",minWidth:0,maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{product.product_name}</span>
       </nav>
 
       <section style={styles.productCard}>
         <div style={styles.imageContainer}>
-          {product.product_image_url ? (
+          {product.product_image_url && !imageError ? (
             <img
               src={product.product_image_url}
               alt={product.product_name}
               style={styles.productImage}
+              onError={() => setImageError(true)}
             />
           ) : (
             <div style={styles.noImage}>
               <ShoppingBag size={54} color="#94a3b8" />
-              <span>No product image</span>
+              <span>{product.product_image_url ? "Product image unavailable" : "No product image"}</span>
             </div>
           )}
         </div>
@@ -553,7 +556,7 @@ export default function PublicProduct() {
             {money(unitPrice)}
           </h2>
 
-          <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",margin:"8px 0 14px",fontSize:12,color:"#64748b"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",margin:"0 0 12px",fontSize:12,color:"#64748b"}}>
             <span style={{color:"#176b4b",fontWeight:700}}>Sold by {product.business_name}</span>
             <a href={`/?store=${encodeURIComponent(product.business_slug)}`} style={{color:"#176b4b",textDecoration:"none",fontWeight:700}}>Visit store</a>
           </div>
@@ -589,7 +592,7 @@ export default function PublicProduct() {
               <button type="button" onClick={() => setCheckoutOpen(true)} style={{...styles.buyNowButton, background: brandColor}}>
                 <CreditCard size={18} /> Buy now
               </button>
-              {whatsappNumber && <a href={whatsappLink} target="_blank" rel="noopener noreferrer" style={styles.whatsappButton}><MessageCircle size={18} /> Chat with this shop's Sabi WhatsApp bot</a>}
+              {whatsappNumber && <a href={whatsappLink} target="_blank" rel="noopener noreferrer" style={styles.whatsappButton}><MessageCircle size={18} aria-hidden="true" /> <span>Chat with seller on WhatsApp</span></a>}
               {cartAdded && <a href="/?cart=1" style={styles.viewCartLink}>View cart and checkout</a>}
             </div>
           )}
@@ -816,9 +819,7 @@ export default function PublicProduct() {
           </button>
           {shareMessage && <p role="status" style={{ textAlign: "center", color: "#176b4b", fontSize: 12 }}>{shareMessage}</p>}
 
-          <p style={styles.footerText}>
-            Secure product information provided by {product.business_name}.
-          </p>
+
         </div>
       </section>
 
@@ -833,10 +834,12 @@ export default function PublicProduct() {
           <div><p style={{margin:"0 0 5px",fontSize:11,fontWeight:800,letterSpacing:1,color:"#176b4b"}}>SABI SELLER RATINGS</p>
             <h2 style={{fontSize:20,margin:"0 0 7px"}}>Customer reviews for {product.business_name}</h2>
             <p style={{margin:0,fontSize:13,color:"#64748b"}}>{sellerReviews.length ? "Based on " + sellerReviews.length + " verified purchase " + (sellerReviews.length===1?"review":"reviews") : "Be among the first customers to review this seller."}</p></div>
-          <div style={{textAlign:"right"}}><strong style={{fontSize:27,color:"#176b4b"}}>{sellerReviews.length ? (sellerReviews.reduce((sum,r)=>sum+Number(r.rating),0)/sellerReviews.length).toFixed(1) : "—"}</strong>
-            <div style={{color:"#f59e0b",fontSize:17,letterSpacing:2}}>{sellerReviews.length ? "★".repeat(Math.round(sellerReviews.reduce((sum,r)=>sum+Number(r.rating),0)/sellerReviews.length)) : "☆☆☆☆☆"}</div></div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexWrap:"wrap",textAlign:"right",minWidth:0}}>
+            <span aria-label={sellerReviews.length ? "Average seller rating" : "No seller reviews yet"} style={{color:"#f59e0b",fontSize:18,letterSpacing:2,lineHeight:1}}>☆☆☆☆☆</span>
+            <strong style={{fontSize:14,color:"#176b4b",fontWeight:750}}>{sellerReviews.length ? (sellerReviews.reduce((sum,r)=>sum+Number(r.rating),0)/sellerReviews.length).toFixed(1) : "0.0"}{sellerReviews.length ? "" : " (No reviews yet)"}</strong>
+          </div>
         </div>
-        <div style={{display:"grid",gap:12,marginTop:18}}>
+        <div style={{display:"grid",gap:12,marginTop:sellerReviews.length ? 18 : 12}}>
           {sellerReviews.length ? sellerReviews.map((review,index)=><article key={index} style={{borderTop:"1px solid #edf1ee",paddingTop:13}}>
             <div style={{display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"}}><strong style={{fontSize:13,color:"#24372c"}}>Verified Sabi buyer</strong>
               <span style={{color:"#f59e0b",letterSpacing:1}}>{"★".repeat(Number(review.rating))}{"☆".repeat(5-Number(review.rating))}</span>
@@ -917,13 +920,16 @@ const styles: Record<string, React.CSSProperties> = {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))"
   },
-  imageContainer: { minHeight: 320, background: "#fff", padding: 12, display: "flex", alignItems: "center", justifyContent: "center", borderRight: "1px solid #edf0f2" },
+  imageContainer: { width: "100%", aspectRatio: "1 / 1", minHeight: 0, maxHeight: 560, boxSizing: "border-box", overflow: "hidden", borderRadius: 12, background: "#fff", padding: 16, display: "flex", alignItems: "center", justifyContent: "center", borderRight: "1px solid #edf0f2" },
   productImage: {
     width: "100%",
     height: "100%",
-    minHeight: 240,
-    maxHeight: 480,
+    minWidth: 0,
+    minHeight: 0,
+    maxHeight: "100%",
     objectFit: "contain",
+    padding: 16,
+    boxSizing: "border-box",
     display: "block"
   },
   noImage: {
@@ -936,7 +942,9 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#64748b"
   },
   details: {
-    padding: "28px 30px",
+    padding: "24px clamp(16px, 3vw, 30px)",
+    minWidth: 0,
+    boxSizing: "border-box",
     display: "flex",
     flexDirection: "column",
     alignItems: "flex-start"
@@ -953,7 +961,7 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.2,
     margin: "16px 0 8px"
   },
-  price: { fontSize: 30, margin: "8px 0 15px",fontWeight:800 },
+  price: { fontSize: 30, lineHeight: 1.2, margin: "8px 0 12px", fontWeight: 800 },
   stock: {
     display: "flex",
     alignItems: "center",
@@ -1081,9 +1089,9 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer"
   },
   whatsappButton: {
-    marginTop: 18,
+    marginTop: 10,
     minHeight: 48,
-    padding: "0 15px",
+    padding: "12px 16px",
     borderRadius: 10,
     background: "#e8f8ee",
     color: "#15803d",
@@ -1092,11 +1100,16 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     gap: 9,
     width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
     boxSizing: "border-box",
     fontWeight: 700,
     fontSize: 14,
+    lineHeight: 1.35,
+    textAlign: "center",
     textDecoration: "none",
-    whiteSpace: "nowrap"
+    whiteSpace: "normal",
+    overflowWrap: "anywhere"
   },
   paymentTrust: {
     display: "flex",
