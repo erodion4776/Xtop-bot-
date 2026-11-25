@@ -37,7 +37,6 @@ function readConsent(): Consent | null {
 }
 
 export default function CookieConsent() {
-  const [consent, setConsent] = useState<Consent | null>(() => readConsent());
   const [open, setOpen] = useState(() => readConsent() === null);
   const [settings, setSettings] = useState(false);
   const [draft, setDraft] = useState<Consent>(() => readConsent() || defaults);
@@ -59,7 +58,6 @@ export default function CookieConsent() {
     } catch {
       // The banner remains usable if browser storage is unavailable.
     }
-    setConsent(value);
     setDraft(value);
     setSettings(false);
     setOpen(false);
