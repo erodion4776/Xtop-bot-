@@ -83,6 +83,7 @@ export default function App() {
   const isPasswordRecovery = query.get("recovery") === "1";
   const isMarketingPage =
     !isDashboardHost &&
+    !isMerchantStoreHost &&
     !isSuperAdminHost &&
     !isDedicatedPortalHost &&
     window.location.pathname === "/" &&
