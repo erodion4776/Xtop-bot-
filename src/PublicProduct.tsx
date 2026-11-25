@@ -6,7 +6,6 @@ import {
   Package,
   ArrowLeft,
   RefreshCw,
-  Store,
   CreditCard,
   Truck,
   CheckCircle,
