@@ -64,7 +64,9 @@ export default function CookieConsent() {
     window.dispatchEvent(new CustomEvent("sabi:cookie-consent-changed", { detail: value }));
   }
 
-  if (!open) return null;
+  if (!open) return (
+    <button type="button" className="sabi-cookie-reopen" onClick={() => { setDraft(readConsent() || defaults); setSettings(true); setOpen(true); }}>Cookie settings</button>
+  );
 
   return (
     <div className="sabi-cookie-layer">
