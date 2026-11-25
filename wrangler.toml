@@ -1,0 +1,8 @@
+name = "sabi-merchant-storefront-router"
+main = "cloudflare/merchant-storefront-worker.js"
+compatibility_date = "2026-11-25"
+
+# Attach this route only after the wildcard DNS record is proxied through Cloudflare.
+routes = [
+  { pattern = "*.sabibyxtop.com.ng/*", zone_name = "sabibyxtop.com.ng" }
+]
