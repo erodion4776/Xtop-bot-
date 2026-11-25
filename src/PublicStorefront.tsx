@@ -307,7 +307,6 @@ export default function PublicStorefront() {
             {whatsappLink ? <a className="sabi-store-chat" href={whatsappLink} target="_blank" rel="noopener noreferrer" style={styles.chatButton}><MessageCircle size={16} aria-hidden="true"/> <span>Chat on WhatsApp</span></a> : <span style={{fontSize:12,color:"#e0eee5"}}>This shop has not connected its Sabi WhatsApp bot yet.</span>}
           </div>
         </div>
-        </div>
         {shareMessage && <p role="status" style={styles.status}>{shareMessage}</p>}
       </section>
 
