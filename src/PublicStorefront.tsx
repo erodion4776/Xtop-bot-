@@ -323,7 +323,14 @@ export default function PublicStorefront() {
 
       <section id="store-products" className="sabi-store-layout" style={styles.catalogue}>
         <div style={styles.catalogueHeading}>
-          <div><span style={styles.eyebrow}>SHOP THIS BUSINESS</span><h2 className="sabi-store-section-title">All products from {store.business_name}</h2><p>Browse available products from this Sabi merchant.</p></div>
+          <div style={styles.catalogueIntro}>
+            <span style={styles.catalogueEyebrow}>EXPLORE THE CATALOG</span>
+            <div style={styles.catalogueTitleRow}>
+              <h2 className="sabi-store-section-title" style={styles.catalogueTitle}>Shop {store.business_name}</h2>
+              <span style={styles.productCountPill}>{products.length} {products.length === 1 ? "item" : "items"}</span>
+            </div>
+            <p style={styles.catalogueSubtitle}>Handpicked essentials at great prices—search or filter by category to find what you need.</p>
+          </div>
           <div className="sabi-store-tools" style={styles.catalogueTools}>
             <label className="sabi-store-search" style={styles.search}><Search size={17}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search this store" style={styles.searchInput}/></label>
             <select aria-label="Filter by category" value={category} onChange={event => setCategory(event.target.value)} style={styles.filterSelect}>{categories.map(item => <option key={item} value={item}>{item === "All" ? "All categories" : item}</option>)}</select>
@@ -399,6 +406,12 @@ const styles: Record<string, React.CSSProperties> = {
   favoriteButton:{position:"absolute",top:8,right:8,zIndex:10,width:34,height:34,border:0,borderRadius:99,background:"rgba(255,255,255,.92)",display:"grid",placeItems:"center",cursor:"pointer",boxShadow:"0 1px 4px rgba(0,0,0,.10)"},
   catalogue:{width:"100%",maxWidth:1180,boxSizing:"border-box",margin:"0 auto"},
   catalogueHeading:{display:"flex",alignItems:"end",justifyContent:"space-between",gap:18,flexWrap:"wrap",marginBottom:18,paddingTop:8},
+  catalogueIntro:{minWidth:0,flex:"1 1 320px"},
+  catalogueEyebrow:{display:"inline-block",fontSize:12,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",color:"#15803d",marginBottom:5},
+  catalogueTitleRow:{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"},
+  catalogueTitle:{fontSize:20,fontWeight:700,color:"#0f172a",margin:"0"},
+  productCountPill:{display:"inline-flex",alignItems:"center",justifyContent:"center",padding:"5px 10px",borderRadius:999,background:"#ecfdf5",color:"#15803d",fontSize:12,fontWeight:700,whiteSpace:"nowrap",lineHeight:1.2},
+  catalogueSubtitle:{fontSize:14,lineHeight:1.6,color:"#475569",margin:"7px 0 0"},
   catalogueTools:{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",alignItems:"center",gap:9,width:"100%",minWidth:0},
   search:{gridColumn:"1 / -1",display:"flex",alignItems:"center",gap:9,background:"#fff",border:"1px solid #dfe7e1",borderRadius:10,padding:"0 12px",height:44,width:"100%",minWidth:0,color:"#718278",boxSizing:"border-box"},
   searchInput:{flex:1,minWidth:0,width:"100%",height:"100%",border:0,outline:"none",boxShadow:"none",background:"transparent",fontSize:14,color:"#14231b"},
