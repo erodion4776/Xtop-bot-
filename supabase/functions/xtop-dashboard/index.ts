@@ -123,7 +123,7 @@ serve(async (req: Request) => {
     if (action === "merchant-profile" && req.method === "GET") {
       const { data: tenant, error } = await sb
         .from("tenants")
-        .select("business_name,name,logo_url")
+        .select("business_name,name,logo_url,slug")
         .eq("id", merchant.tenantId)
         .maybeSingle();
 
@@ -134,6 +134,7 @@ serve(async (req: Request) => {
       return jsonResponse({
         business_name: tenant.business_name || tenant.name || "",
         logo_url: tenant.logo_url || "",
+        slug: tenant.slug || "",
       });
     }
 
@@ -167,7 +168,7 @@ serve(async (req: Request) => {
         .from("tenants")
         .update(updates)
         .eq("id", merchant.tenantId)
-        .select("business_name,logo_url")
+        .select("business_name,logo_url,slug")
         .maybeSingle();
 
       if (error || !updated) {
@@ -178,6 +179,7 @@ serve(async (req: Request) => {
         success: true,
         business_name: updated.business_name,
         logo_url: updated.logo_url || "",
+        slug: updated.slug || "",
       });
     }
 
