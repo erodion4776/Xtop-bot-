@@ -4,6 +4,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import CookieConsent from "./CookieConsent";
 import "./style.css";
+import "./CookieConsent.css";
 
 ReactDOM.createRoot(
   document.getElementById("root")!
