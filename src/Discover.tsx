@@ -546,7 +546,7 @@ export default function Discover() {
           <details id="privacy"><summary>Privacy policy</summary><p>Customer account details are used to support account access, order-related experiences and any optional email updates you explicitly choose to receive. Marketing consent is optional and can be withdrawn.</p></details>
           <details id="seller-guide"><summary>How selling works</summary><p>Businesses create a Sabi merchant workspace, add products and publish selected items to Sabi Discover. Customers can browse published products and place orders through the marketplace checkout.</p></details>
         </div>
-        <div className="sd-footer-bottom"><small>© {new Date().getFullYear()} XTOP Retail Technologies</small><small>Built for Nigerian businesses and shoppers.</small><span style={{display:"flex",gap:12,flexWrap:"wrap"}}><a href="/cookies">Cookie Policy</a><a href="/privacy">Privacy Policy</a><a href="#cookie-settings" onClick={event => { event.preventDefault(); window.dispatchEvent(new Event("sabi:open-cookie-settings")); }}>Cookie Settings</a></span></div>
+        <div className="sd-footer-bottom"><small>© {new Date().getFullYear()} XTOP Retail Technologies</small><small>Built for Nigerian businesses and shoppers.</small><span style={{display:"flex",gap:12,flexWrap:"wrap"}}><a href="/cookies">Cookie Policy</a><a href="/privacy">Privacy Policy</a></span></div>
       </footer>
 
       {accountOpen && <div className="sd-modal-backdrop" onClick={() => setAccountOpen(false)}>
