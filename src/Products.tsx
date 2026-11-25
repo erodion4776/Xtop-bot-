@@ -1052,7 +1052,7 @@ export default function Products({ tenantId }: { tenantId: string }) {
                     onClick={() => fileInput.current?.click()}
                   >
                     <Upload size={16} />
-                    Choose image
+                    {editingProduct && imagePreview ? "Replace image" : "Choose image"}
                   </button>
 
                   <small>JPG, PNG or WebP · Maximum 5 MB</small>
