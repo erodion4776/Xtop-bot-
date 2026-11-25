@@ -360,6 +360,52 @@ function Dashboard({
     }
   });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [merchantStoreSlug, setMerchantStoreSlug] = useState("");
+  const [merchantStoreName, setMerchantStoreName] = useState("");
+  const [storeLinkCopied, setStoreLinkCopied] = useState(false);
+  const merchantStoreUrl = merchantStoreSlug
+    ? `https://${merchantStoreSlug}.sabibyxtop.com.ng`
+    : "";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMerchantStoreLink() {
+      const { data, error } = await supabase.functions.invoke(
+        "xtop-dashboard?action=merchant-profile",
+        { method: "GET" }
+      );
+
+      if (cancelled) return;
+
+      if (!error && data && !data.error) {
+        setMerchantStoreSlug(
+          typeof data.slug === "string" ? data.slug.trim() : ""
+        );
+        setMerchantStoreName(
+          typeof data.business_name === "string" ? data.business_name : ""
+        );
+      }
+    }
+
+    if (tenantId) loadMerchantStoreLink();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
+
+  async function copyMerchantStoreLink() {
+    if (!merchantStoreUrl) return;
+
+    try {
+      await navigator.clipboard.writeText(merchantStoreUrl);
+      setStoreLinkCopied(true);
+      window.setTimeout(() => setStoreLinkCopied(false), 2200);
+    } catch {
+      window.prompt("Copy your store link:", merchantStoreUrl);
+    }
+  }
 
   // Remember the last page separately for each merchant workspace.
   useEffect(() => {
@@ -555,6 +601,93 @@ function Dashboard({
               src={LOGO_URL}
               alt="Sabi by XTOP"
             />
+          </div>
+
+          <div
+            className="panel"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 16,
+              flexWrap: "wrap",
+              marginBottom: 20,
+              padding: 18,
+              border: "1px solid #cfe5d8",
+              background: "linear-gradient(135deg, #f0faf4, #ffffff)"
+            }}
+          >
+            <div style={{ minWidth: 0, flex: "1 1 240px" }}>
+              <p className="eyebrow" style={{ margin: "0 0 6px", color: "#145c3b" }}>
+                YOUR ONLINE STORE
+              </p>
+              <h2 style={{ margin: "0 0 6px", fontSize: 18 }}>
+                {merchantStoreName || "Your Sabi storefront"}
+              </h2>
+              {merchantStoreUrl ? (
+                <a
+                  href={merchantStoreUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    color: "#145c3b",
+                    fontWeight: 700,
+                    overflowWrap: "anywhere"
+                  }}
+                >
+                  {merchantStoreUrl}
+                </a>
+              ) : (
+                <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>
+                  Your store link is being loaded. Refresh the dashboard if it does not appear.
+                </p>
+              )}
+              <p style={{ margin: "7px 0 0", color: "#64748b", fontSize: 12 }}>
+                Share this link with customers so they can browse your products.
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                disabled={!merchantStoreUrl}
+                onClick={copyMerchantStoreLink}
+                style={{
+                  border: 0,
+                  borderRadius: 9,
+                  padding: "11px 15px",
+                  background: "#145c3b",
+                  color: "#fff",
+                  fontWeight: 700,
+                  cursor: merchantStoreUrl ? "pointer" : "not-allowed",
+                  opacity: merchantStoreUrl ? 1 : 0.55
+                }}
+              >
+                {storeLinkCopied ? "Copied!" : "Copy Store Link"}
+              </button>
+              <a
+                href={merchantStoreUrl || "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-disabled={!merchantStoreUrl}
+                onClick={(event) => {
+                  if (!merchantStoreUrl) event.preventDefault();
+                }}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 7,
+                  border: "1px solid #145c3b",
+                  borderRadius: 9,
+                  padding: "10px 14px",
+                  color: "#145c3b",
+                  fontWeight: 700,
+                  textDecoration: "none",
+                  opacity: merchantStoreUrl ? 1 : 0.55
+                }}
+              >
+                <Store size={17} /> View Store ↗
+              </a>
+            </div>
           </div>
 
           {activePage === "Products" ? (
