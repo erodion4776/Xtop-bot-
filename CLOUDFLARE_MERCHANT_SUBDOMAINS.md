@@ -14,17 +14,17 @@ The Cloudflare Worker proxies requests for subdomains under `sabibyxtop.com.ng` 
 ## Before enabling
 
 1. Confirm `xtopbot.netlify.app` is still the production Netlify deploy target for the Sabi app.
-2. In Cloudflare DNS, create a wildcard record:
+2. In Cloudflare, open **Workers & Pages** and create a Worker named `sabi-merchant-storefront-router`.
+3. Deploy the starter Worker, open **Edit code**, and replace the starter source with the contents of `cloudflare/merchant-storefront-worker.js` in this repository. Save and deploy.
+4. In Cloudflare DNS, create a wildcard record:
    - Type: CNAME
    - Name: `*`
    - Target: `xtopbot.netlify.app`
    - Proxy status: Proxied (orange cloud)
-3. Deploy this Worker from the repository root using Wrangler:
-   `npx wrangler deploy`
-4. Confirm the Worker route is `*.sabibyxtop.com.ng/*`.
-5. Test a real merchant slug, for example `oxlounge.sabibyxtop.com.ng`, plus the existing `app`, `discover`, and `admin` hosts.
+5. Open the Worker **Settings → Domains & Routes → Add → Route** and add `*.sabibyxtop.com.ng/*`.
+6. Test a real merchant slug, plus the existing `app`, `discover`, and `admin` hosts.
 
-Do not add the wildcard DNS record or enable the route until you are ready to activate the Worker. The route covers existing first-level subdomains too; the Worker deliberately proxies those to the same Netlify app so the current hostname-based app routing remains intact.
+The DNS record must be proxied before a Worker Route can receive traffic. Cloudflare documents this requirement for Routes. Do not change existing named DNS records or any MX, SPF, DKIM or DMARC records.
 
 ## Important
 
