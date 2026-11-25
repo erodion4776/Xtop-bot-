@@ -2339,7 +2339,3 @@ button {
     will-change: auto;
   }
 }
-
-
-/* SABI COOKIE CONSENT */
-@import url('./CookieConsent.css');
