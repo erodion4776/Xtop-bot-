@@ -43,7 +43,12 @@ const LOGO_URL = "https://i.ibb.co/N2b6rJnY/Untitled-design-20261030-044935-0000
 const money = (value: number) => `₦${value.toLocaleString("en-NG", { maximumFractionDigits: 2 })}`;
 
 export default function PublicStorefront() {
-  const slug = new URLSearchParams(window.location.search).get("store") || "";
+  const hostname = window.location.hostname.toLowerCase();
+  const hostSlug = hostname.endsWith(".sabibyxtop.com.ng") && hostname.split(".").length === 3
+    ? hostname.slice(0, -".sabibyxtop.com.ng".length)
+    : "";
+  const reservedStoreSubdomains = new Set(["www", "app", "discover", "admin", "connect", "engr", "r", "mail", "api", "status", "help", "support", "auth", "assets"]);
+  const slug = new URLSearchParams(window.location.search).get("store") || (reservedStoreSubdomains.has(hostSlug) ? "" : hostSlug);
   const [store, setStore] = useState<StorefrontRow | null>(null);
   const [products, setProducts] = useState<StorefrontProduct[]>([]);
   const [search, setSearch] = useState("");
@@ -126,7 +131,7 @@ export default function PublicStorefront() {
 
   useEffect(() => {
     if (!store) return;
-    const storeUrl = `https://discover.sabibyxtop.com.ng/?store=${encodeURIComponent(store.business_slug)}`;
+    const storeUrl = `https://${store.business_slug}.sabibyxtop.com.ng/`;
     const industryText = (store.industry || "").replace(/\\s+/g, " ").trim();
     const productNames = products.slice(0, 5).map(product => product.product_name).filter(Boolean);
     const catalogueText = productNames.length
@@ -191,12 +196,12 @@ export default function PublicStorefront() {
             name: product.product_name,
             description: product.product_description || undefined,
             category: product.product_category || undefined,
-            url: `https://discover.sabibyxtop.com.ng/?product=${encodeURIComponent(product.product_id)}`,
+            url: `https://${store.business_slug}.sabibyxtop.com.ng/?product=${encodeURIComponent(product.product_id)}`,
             image: product.product_image_url || undefined,
             brand: { "@type": "Brand", name: store.business_name },
             offers: {
               "@type": "Offer",
-              url: `https://discover.sabibyxtop.com.ng/?product=${encodeURIComponent(product.product_id)}`,
+              url: `https://${store.business_slug}.sabibyxtop.com.ng/?product=${encodeURIComponent(product.product_id)}`,
               priceCurrency: "NGN",
               price: product.product_price.toFixed(2),
               availability: product.product_stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
@@ -222,7 +227,7 @@ export default function PublicStorefront() {
 
   async function shareStore() {
     if (!store) return;
-    const url = `https://discover.sabibyxtop.com.ng/share/store/${encodeURIComponent(store.business_slug)}`;
+    const url = `https://${store.business_slug}.sabibyxtop.com.ng/share/store/${encodeURIComponent(store.business_slug)}`;
     try {
       if (navigator.share) {
         await navigator.share({ title: store.business_name, text: `Shop ${store.business_name} on Sabi Discover.`, url });
@@ -317,7 +322,7 @@ export default function PublicStorefront() {
       {products.length >= 4 && <section className="sabi-store-layout" style={styles.featuredSection}>
         <div style={styles.sectionHeading}><div><span style={styles.eyebrowDark}>SHOP THE COLLECTION</span><h2 className="sabi-store-section-title" style={styles.featureTitle}>Popular in this store</h2></div><button onClick={() => {setSortBy("popular");document.getElementById("store-products")?.scrollIntoView({behavior:"smooth"});}} style={styles.textAction}>View all <ChevronRight size={16}/></button></div>
         <div className="sabi-store-feature-grid" style={styles.featureGrid}>
-          {[...products].sort((a,b)=>b.sold_quantity-a.sold_quantity).slice(0,4).map(product => <a key={product.product_id} href={`/?product=${encodeURIComponent(product.product_id)}`} style={styles.featureCard}><div className="sabi-store-feature-image" style={styles.featureImage}>{product.product_image_url ? <img src={product.product_image_url} alt={product.product_name} loading="lazy" style={styles.featureImageElement}/> : <ShoppingBag size={26}/>}</div><div style={styles.featureInfo}><strong className="sabi-store-feature-title" style={styles.featureProductName}>{product.product_name}</strong><b style={styles.featurePrice}>{money(product.product_price)}</b></div></a>)}
+          {[...products].sort((a,b)=>b.sold_quantity-a.sold_quantity).slice(0,4).map(product => <a key={product.product_id} href={`https://${store.business_slug}.sabibyxtop.com.ng/?product=${encodeURIComponent(product.product_id)}`} style={styles.featureCard}><div className="sabi-store-feature-image" style={styles.featureImage}>{product.product_image_url ? <img src={product.product_image_url} alt={product.product_name} loading="lazy" style={styles.featureImageElement}/> : <ShoppingBag size={26}/>}</div><div style={styles.featureInfo}><strong className="sabi-store-feature-title" style={styles.featureProductName}>{product.product_name}</strong><b style={styles.featurePrice}>{money(product.product_price)}</b></div></a>)}
         </div>
       </section>}
 
@@ -339,7 +344,7 @@ export default function PublicStorefront() {
         </div>
         {visibleProducts.length > 0 ? <div className="sabi-store-grid" style={styles.grid}>
           {visibleProducts.map(product => <article key={product.product_id} style={styles.productCard}>
-            <a href={`/?product=${encodeURIComponent(product.product_id)}`} style={styles.productLink}>
+            <a href={`https://${store.business_slug}.sabibyxtop.com.ng/?product=${encodeURIComponent(product.product_id)}`} style={styles.productLink}>
               <div style={styles.productImage}>
                 {product.product_image_url ? <img src={product.product_image_url} alt={product.product_name} loading="lazy" style={styles.productImageElement}/> : <ShoppingBag size={35} color="#94a3b8"/>}
                 {product.sold_quantity > 0 && <span style={styles.bestSeller}><Zap size={11}/> BEST SELLER</span>}
