@@ -874,7 +874,10 @@ async function handleTenantStoreMessage(
     }
   }
 
-  if (["hi", "hello", "hey", "menu", "start", "shop", "catalogue", "catalog", "products", ""].includes(message)) {
+  // Discover's prefilled customer message is an opening greeting, not a product query.
+  const isDiscoverIntro = /found your shop on sabi discover|would like to ask about your products and place an order/i.test(raw);
+
+  if (isDiscoverIntro || ["hi", "hello", "hey", "menu", "start", "shop", "catalogue", "catalog", "products", ""].includes(message)) {
     if (!products.length) {
       if (account.logoUrl) await send(greeting, account.logoUrl);
       await send("Our product catalogue is being updated. Please contact the business for assistance.");
