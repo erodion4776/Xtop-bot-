@@ -246,7 +246,7 @@ export default function PublicProduct() {
 
   useEffect(() => {
     if (!product) return;
-    const pageUrl = `https://discover.sabibyxtop.com.ng/?product=${encodeURIComponent(product.product_id)}`;
+    const pageUrl = `https://${product.business_slug}.sabibyxtop.com.ng/?product=${encodeURIComponent(product.product_id)}`;
     const productSummary = (product.product_description || "").split(/\r?\n/).filter(line => !/(super\s*admin|paystack.{0,30}debug|debug.{0,30}paystack|internal.{0,20}(test|debug)|test.{0,20}(admin|paystack))/i.test(line)).join(" ").replace(/\s+/g, " ").trim();
     const productPrice = money(Number(product.product_price || 0));
     const stockSummary = Number(product.product_stock || 0) > 0 ? "In stock and available to order." : "Currently out of stock.";
@@ -316,7 +316,7 @@ export default function PublicProduct() {
 
   async function shareProduct() {
     if (!product) return;
-    const url = `https://discover.sabibyxtop.com.ng/share/product/${encodeURIComponent(product.product_id)}`;
+    const url = `https://${product.business_slug}.sabibyxtop.com.ng/share/product/${encodeURIComponent(product.product_id)}`;
     const shareData = {
       title: product.product_name,
       text: `Check out ${product.product_name} from ${product.business_name} on Sabi Discover.`,
@@ -521,7 +521,7 @@ export default function PublicProduct() {
       <nav aria-label="Breadcrumb" style={{width:"min(100% - 32px,1200px)",boxSizing:"border-box",padding:"0 0",margin:"18px auto 12px",fontSize:12,color:"#64748b",display:"flex",alignItems:"center",gap:4,flexWrap:"wrap",minWidth:0}}>
         <a href="/" style={{color:"#176b4b",textDecoration:"none",fontWeight:600}}>Sabi Discover</a>
         <span>›</span>
-        <a href={`/?store=${encodeURIComponent(product.business_slug)}`} style={{color:"#176b4b",textDecoration:"none",fontWeight:600}}>{product.business_name}</a>
+        <a href={`https://${product.business_slug}.sabibyxtop.com.ng/`} style={{color:"#176b4b",textDecoration:"none",fontWeight:600}}>{product.business_name}</a>
         {product.product_category && product.product_category.trim().toLowerCase() !== product.product_name.trim().toLowerCase() && <><span>›</span><span>{product.product_category}</span></>}
         <span>›</span><span title={product.product_name} style={{color:"#334155",minWidth:0,maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{product.product_name}</span>
       </nav>
@@ -558,7 +558,7 @@ export default function PublicProduct() {
 
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",margin:"0 0 12px",fontSize:12,color:"#64748b"}}>
             <span style={{color:"#176b4b",fontWeight:700}}>Sold by {product.business_name}</span>
-            <a href={`/?store=${encodeURIComponent(product.business_slug)}`} style={{color:"#176b4b",textDecoration:"none",fontWeight:700}}>Visit store</a>
+            <a href={`https://${product.business_slug}.sabibyxtop.com.ng/`} style={{color:"#176b4b",textDecoration:"none",fontWeight:700}}>Visit store</a>
           </div>
 
           <div style={styles.stock}>
