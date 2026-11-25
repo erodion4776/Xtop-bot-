@@ -1,0 +1,13 @@
+.sabi-cookie-layer{position:fixed;z-index:99999;left:0;right:0;bottom:0;padding:16px;pointer-events:none}
+.sabi-cookie-banner{pointer-events:auto;max-width:1120px;margin:0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;padding:22px 24px;background:#fff;border:1px solid #dce8e0;border-radius:18px;box-shadow:0 16px 55px rgba(13,42,29,.22);color:#24382d;font-family:inherit}
+.sabi-cookie-copy{min-width:0;max-width:690px}.sabi-cookie-eyebrow{display:block;color:#26734d;font-size:10px;font-weight:800;letter-spacing:1.5px;margin-bottom:7px}
+.sabi-cookie-copy h2{font-size:19px;line-height:1.25;color:#173d2b;margin:0 0 7px}.sabi-cookie-copy p{font-size:12px;line-height:1.6;color:#627168;margin:0 0 8px}
+.sabi-cookie-more a{color:#176b4b;font-weight:700;text-decoration:underline;text-underline-offset:2px}
+.sabi-cookie-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;flex-shrink:0}
+.sabi-cookie-button{min-height:42px;padding:10px 14px;border-radius:9px;font:700 12px/1.2 inherit;cursor:pointer;border:1px solid #d6e2da}
+.sabi-cookie-primary{background:#176b4b;color:#fff;border-color:#176b4b}.sabi-cookie-secondary{background:#fff;color:#244b36}
+.sabi-cookie-text-button{border:0;background:transparent;color:#176b4b;font-size:12px;font-weight:700;padding:10px;cursor:pointer}
+.sabi-cookie-options{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.sabi-cookie-options label{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid #e3ebe5;border-radius:10px;background:#fbfdfb}
+.sabi-cookie-options label span{display:grid;gap:3px}.sabi-cookie-options strong{font-size:12px;color:#274333}.sabi-cookie-options small{font-size:10px;line-height:1.4;color:#718078}.sabi-cookie-options input{width:17px;height:17px;accent-color:#176b4b;flex:0 0 auto}
+@media(max-width:760px){.sabi-cookie-layer{padding:10px}.sabi-cookie-banner{display:block;padding:17px 16px;max-height:min(82vh,620px);overflow-y:auto;border-radius:15px}.sabi-cookie-copy h2{font-size:17px}.sabi-cookie-actions{display:grid;grid-template-columns:1fr 1fr;margin-top:12px}.sabi-cookie-button{width:100%;min-height:44px}.sabi-cookie-actions .sabi-cookie-primary{grid-column:1/-1;grid-row:1}.sabi-cookie-options{grid-template-columns:1fr}}
