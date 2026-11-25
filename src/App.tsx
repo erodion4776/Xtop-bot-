@@ -388,7 +388,19 @@ function Dashboard({
       }
     }
 
-    if (tenantId) loadMerchantStoreLink();
+    if (tenantId) {
+      // XTOP's original platform tenant has the canonical storefront slug "xtop".
+      // Set it immediately so an old cached/profile response cannot keep showing
+      // the retired long slug in the merchant dashboard.
+      if (tenantId === "00000000-0000-0000-0000-000000000001") {
+        setMerchantStoreSlug("xtop");
+        setMerchantStoreName("XTOP Retail Technologies");
+      }
+      loadMerchantStoreLink();
+    } else {
+      setMerchantStoreSlug("");
+      setMerchantStoreName("");
+    }
 
     return () => {
       cancelled = true;
