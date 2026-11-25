@@ -47,6 +47,7 @@ const money = (value: number) =>
 
 export default function PublicProduct() {
   const [product, setProduct] = useState<PublicProductData | null>(null);
+  const [sellerReviews, setSellerReviews] = useState<{ rating: number; review_text: string | null; created_at: string }[]>([]);
   const [settings, setSettings] = useState<CheckoutSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -132,6 +133,8 @@ export default function PublicProduct() {
       }
 
       setProduct(result as PublicProductData);
+      const { data: reviewData } = await supabase.rpc("sabi_get_public_product_seller_reviews", { p_product_id: productId });
+      if (!cancelled) setSellerReviews((reviewData || []) as { rating: number; review_text: string | null; created_at: string }[]);
 
       const { data: checkoutData } = await supabase.rpc(
         "sabi_get_public_checkout_settings",
@@ -500,25 +503,9 @@ export default function PublicProduct() {
   return (
     <main style={styles.page}>
       <header style={styles.header}>
-        <a href={`/?store=${encodeURIComponent(product.business_slug)}`} style={styles.brand}>
-          {product.business_logo ? (
-            <img
-              src={product.business_logo}
-              alt={product.business_name}
-              style={styles.logo}
-            />
-          ) : (
-            <span
-              style={{
-                ...styles.logoPlaceholder,
-                background: brandColor
-              }}
-            >
-              <Store size={22} color="#fff" />
-            </span>
-          )}
-
-          <strong>{product.business_name}</strong>
+        <a href="/" style={styles.brand}>
+          <img src="https://i.ibb.co/N2b6rJnY/Untitled-design-20261030-044935-0000.png" alt="Sabi by XTOP" style={styles.logo} />
+          <span><strong style={{display:"block",fontSize:18,color:"#176b4b"}}>Sabi</strong><small style={{fontSize:9,letterSpacing:1.2,color:"#64748b"}}>DISCOVER</small></span>
         </a>
 
         <div style={styles.headerActions}>
@@ -842,6 +829,24 @@ export default function PublicProduct() {
         <p style={{fontSize:12,color:"#64748b",margin:"12px 0 0"}}>Product information provided by the seller. Contact the merchant for more details.</p>
       </section>
 
+      <section style={{width:"min(100% - 32px,1200px)",margin:"0 auto 28px",background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:20,boxSizing:"border-box"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+          <div><p style={{margin:"0 0 5px",fontSize:11,fontWeight:800,letterSpacing:1,color:"#176b4b"}}>SABI SELLER RATINGS</p>
+            <h2 style={{fontSize:20,margin:"0 0 7px"}}>Customer reviews for {product.business_name}</h2>
+            <p style={{margin:0,fontSize:13,color:"#64748b"}}>{sellerReviews.length ? "Based on " + sellerReviews.length + " verified purchase " + (sellerReviews.length===1?"review":"reviews") : "Be among the first customers to review this seller."}</p></div>
+          <div style={{textAlign:"right"}}><strong style={{fontSize:27,color:"#176b4b"}}>{sellerReviews.length ? (sellerReviews.reduce((sum,r)=>sum+Number(r.rating),0)/sellerReviews.length).toFixed(1) : "—"}</strong>
+            <div style={{color:"#f59e0b",fontSize:17,letterSpacing:2}}>{sellerReviews.length ? "★".repeat(Math.round(sellerReviews.reduce((sum,r)=>sum+Number(r.rating),0)/sellerReviews.length)) : "☆☆☆☆☆"}</div></div>
+        </div>
+        <div style={{display:"grid",gap:12,marginTop:18}}>
+          {sellerReviews.length ? sellerReviews.map((review,index)=><article key={index} style={{borderTop:"1px solid #edf1ee",paddingTop:13}}>
+            <div style={{display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"}}><strong style={{fontSize:13,color:"#24372c"}}>Verified Sabi buyer</strong>
+              <span style={{color:"#f59e0b",letterSpacing:1}}>{"★".repeat(Number(review.rating))}{"☆".repeat(5-Number(review.rating))}</span>
+              <small style={{color:"#94a3b8"}}>{new Date(review.created_at).toLocaleDateString("en-NG",{day:"numeric",month:"short",year:"numeric"})}</small></div>
+            {review.review_text && <p style={{fontSize:13,lineHeight:1.65,color:"#526b5d",margin:"8px 0 0",whiteSpace:"pre-wrap"}}>{review.review_text}</p>}</article>) : <p style={{margin:0,padding:14,background:"#f7faf8",borderRadius:9,fontSize:13,color:"#64748b"}}>No seller reviews yet. Reviews from verified, completed orders will appear here.</p>}
+        </div>
+        <p style={{margin:"16px 0 0",paddingTop:13,borderTop:"1px solid #edf1ee",fontSize:12,lineHeight:1.6,color:"#64748b"}}>Only customers with a paid and completed order can submit a seller rating. Sign in to your Sabi Discover customer account and open your order reviews after delivery.</p>
+        <a href="/" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",marginTop:10,minHeight:40,padding:"0 15px",borderRadius:8,background:"#176b4b",color:"#fff",fontSize:12,fontWeight:800,textDecoration:"none"}}>Go to Sabi Discover</a>
+      </section>
       <footer style={styles.pageFooter}>
         <span>© {new Date().getFullYear()} {product.business_name}</span>
         <span>Store powered by Sabi by XTOP</span>
