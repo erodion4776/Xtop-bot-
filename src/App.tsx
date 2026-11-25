@@ -60,6 +60,11 @@ export default function App() {
 
   const query = new URLSearchParams(window.location.search);
   const hostname = window.location.hostname.toLowerCase();
+  const hostnameParts = hostname.split(".");
+  const subdomain = hostname.endsWith(".sabibyxtop.com.ng") ? hostname.slice(0, -".sabibyxtop.com.ng".length) : "";
+  const reservedStoreSubdomains = new Set(["www", "app", "discover", "admin", "connect", "engr", "r", "mail", "api", "status", "help", "support", "auth", "assets"]);
+  const isMerchantStoreHost = hostnameParts.length === 3 && Boolean(subdomain) && !reservedStoreSubdomains.has(subdomain);
+  const merchantStoreSlug = isMerchantStoreHost ? subdomain : "";
   const isDashboardHost = hostname === "app.sabibyxtop.com.ng";
   const isDiscoverPage = hostname === "discover.sabibyxtop.com.ng" || window.location.pathname === "/discover" || query.get("cart") === "1";
   const isMarketplaceCartPage = isDiscoverPage && query.get("cart") === "1";
@@ -68,7 +73,7 @@ export default function App() {
   const isEngrPortalHost = hostname === "engr.sabibyxtop.com.ng";
   const isDedicatedPortalHost = isConnectPortalHost || isEngrPortalHost;
   const isPublicProductPage = query.has("product");
-  const isPublicStorefrontPage = query.has("store");
+  const isPublicStorefrontPage = query.has("store") || (Boolean(merchantStoreSlug) && !query.has("product") && !query.has("newsletter") && query.get("cart") !== "1");
   const isPublicNewsletterPage = query.has("newsletter");
   // The owner portal is available on its dedicated hostname and on the
   // protected /super-admin path for setup and recovery.
