@@ -1,6 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SITE = "https://discover.sabibyxtop.com.ng";
+const merchantSite = (slugValue: unknown) => {
+  const slug = String(slugValue || "").trim().toLowerCase();
+  return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(slug)
+    ? `https://${slug}.sabibyxtop.com.ng`
+    : SITE;
+};
 const FALLBACK_IMAGE = "https://i.ibb.co/N2b6rJnY/Untitled-design-20261030-044935-0000.png";
 
 function escapeHtml(value: unknown): string {
@@ -66,7 +72,7 @@ Deno.serve(async (req: Request) => {
     const product = Array.isArray(data) ? data[0] : null;
     if (!product) return htmlResponse("This product is unavailable.", 404);
     const productId = String(product.product_id || id);
-    const canonical = `${SITE}/?product=${encodeURIComponent(productId)}`;
+    const canonical = `${merchantSite(product.business_slug)}/?product=${encodeURIComponent(productId)}`;
     const redirect = canonical;
     const price = Number(product.product_price || 0).toLocaleString("en-NG", { maximumFractionDigits: 2 });
     const descriptionText = String(product.product_description || `Available from ${product.business_name || "a Sabi merchant"} on Sabi Discover.`).trim();
@@ -84,7 +90,7 @@ Deno.serve(async (req: Request) => {
   const store = rows[0];
   if (!store) return htmlResponse("This store is unavailable.", 404);
   const slug = String(store.business_slug || id);
-  const canonical = `${SITE}/?store=${encodeURIComponent(slug)}`;
+  const canonical = `${merchantSite(slug)}/`;
   const title = `${store.business_name || "Store"} | Shop on Sabi Discover`;
   const productCount = rows.filter((row: Record<string, unknown>) => row.product_id && row.product_name).length;
   const description = `Shop ${store.business_name || "this Nigerian business"} on Sabi Discover. Browse ${productCount} available products.`;
