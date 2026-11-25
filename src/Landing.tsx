@@ -229,7 +229,7 @@ export default function Landing() {
       <footer className="lp-footer">
         <a className="lp-brand" href="/"><img src={LOGO_URL} alt="" /><span>Sabi <small>by XTOP</small></span></a>
         <p>Helping businesses turn conversations into better customer experiences.</p>
-        <div><a href="https://discover.sabibyxtop.com.ng">Sabi Discover</a><a href="#features">Why Sabi</a><a href="#demo">Demo</a><a href="#faq">FAQs</a><a href="/app">Merchant login</a><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a><a href="/data-deletion">Data deletion</a><a href="https://wa.me/2348024988555?text=SUPPORT" target="_blank" rel="noreferrer">Contact support</a></div>
+        <div><a href="https://discover.sabibyxtop.com.ng">Sabi Discover</a><a href="#features">Why Sabi</a><a href="#demo">Demo</a><a href="#faq">FAQs</a><a href="/app">Merchant login</a><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a><a href="/data-deletion">Data deletion</a><a href="/cookies">Cookie Policy</a><a href="#cookie-settings" onClick={event => { event.preventDefault(); window.dispatchEvent(new Event("sabi:open-cookie-settings")); }}>Cookie Settings</a><a href="https://wa.me/2348024988555?text=SUPPORT" target="_blank" rel="noreferrer">Contact support</a></div>
         <small>© {new Date().getFullYear()} XTOP Retail Technologies. All rights reserved.</small>
       </footer>
     </main>
