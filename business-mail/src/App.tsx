@@ -76,8 +76,10 @@ export default function App() {
       const inboxData = await call({action:"list_inboxes"});
       const found = (inboxData?.inboxes ?? inboxData?.data?.inboxes ?? []).find((x:any)=>address(x.email ?? x.mailbox ?? x.address)===OWNER);
       const actualMailbox = found ? address(found.email ?? found.mailbox ?? found.address) : OWNER;
+      const inboxId = found ? String(found.id ?? found.inbox_id ?? "") : "";
       setMailbox(actualMailbox);
-      const threadData = await call({action:"list_threads",mailbox:actualMailbox,query:{limit:50}});
+      if (!inboxId) throw new Error("Lockally returned the mailbox but no inbox ID. Please run Diagnose.");
+      const threadData = await call({action:"list_threads",mailbox:inboxId,query:{limit:50}});
       setThreads(threadData?.threads ?? threadData?.data?.threads ?? []);
     } catch(e) { setError(e instanceof Error ? e.message : "Unable to load inbox"); }
     finally { if (!quiet) setBusy(false); }
