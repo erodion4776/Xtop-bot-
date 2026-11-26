@@ -24,7 +24,7 @@ async function mailApi(session: Session, payload: AnyRecord) {
     body:JSON.stringify(payload),
   });
   const result = await response.json().catch(()=>({error:"Unexpected server response"}));
-  if (!response.ok) throw new Error(result.error ?? "Mail request failed");
+  if (!response.ok) { const detail = result.providerDetail ? ` — ${result.providerDetail}` : ""; const status = result.providerStatus ? ` (provider HTTP ${result.providerStatus})` : ""; throw new Error(`${result.error ?? "Mail request failed"}${status}${detail}`); }
   return result.data;
 }
 
