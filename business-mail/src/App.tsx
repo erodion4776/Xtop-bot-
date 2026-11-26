@@ -25,7 +25,7 @@ async function mailApi(session: Session, payload: AnyRecord) {
   });
   const result = await response.json().catch(()=>({error:"Unexpected server response"}));
   if (!response.ok) { const detail = result.providerDetail ? ` — ${result.providerDetail}` : ""; const status = result.providerStatus ? ` (provider HTTP ${result.providerStatus})` : ""; throw new Error(`${result.error ?? "Mail request failed"}${status}${detail}`); }
-  return result.data;
+  return result.data ?? result;
 }
 
 export default function App() {
@@ -63,7 +63,7 @@ export default function App() {
 
   const runDiagnostic = async () => {
     setBusy(true); setError(""); setDiagnostic(null);
-    try { setDiagnostic(await call({action:"diagnose_lockally"})); }
+    try { const report = await call({action:"diagnose_lockally"}); setDiagnostic(report ?? {error:"The diagnostic endpoint returned an empty response."}); }
     catch(e) { setError(e instanceof Error ? e.message : "Diagnostic failed"); }
     finally { setBusy(false); }
   };
