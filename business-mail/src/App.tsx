@@ -8,6 +8,9 @@ const apiUrl = import.meta.env.VITE_MAIL_API_URL as string | undefined;
 const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 const OWNER = "ero@sabibyxtop.com.ng";
 const SIGNATURE = "XTOP RETAIL TECHNOLOGIES\nBusiness Mail\nero@sabibyxtop.com.ng\nhttps://sabibyxtop.com.ng";
+const LOGO_URL = "https://raw.githubusercontent.com/erodion4776/Xtop-bot-/main/public/favicon.png_20261113_034814_0000.png";
+const escapeHtml = (value:string) => value.replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch] ?? ch));
+const signatureHtml = (body:string) => `<div style="font-family:Arial,sans-serif;font-size:14px;color:#263238;line-height:1.5;">${escapeHtml(body).replace(/\\n/g,"<br>")}<br><br><table cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tr><td style="padding-right:12px;vertical-align:middle;"><img src="${LOGO_URL}" alt="Sabi by XTOP" width="64" style="display:block;width:64px;height:auto;border:0;"></td><td style="border-left:3px solid #d69e28;padding-left:12px;vertical-align:middle;"><strong style="font-size:14px;color:#172554;">XTOP RETAIL TECHNOLOGIES</strong><br><span style="color:#64748b;">Business Mail</span><br><a href="mailto:ero@sabibyxtop.com.ng" style="color:#1d4ed8;text-decoration:none;">ero@sabibyxtop.com.ng</a><br><a href="https://sabibyxtop.com.ng" style="color:#1d4ed8;text-decoration:none;">sabibyxtop.com.ng</a></td></tr></table></div>`;
 
 type AnyRecord = Record<string, any>;
 type Thread = AnyRecord & { id?: string; thread_id?: string; subject?: string; snippet?: string; from?: any; participants?: any[]; latest_message_at?: string; last_message_at?: string; unread_count?: number };
@@ -124,7 +127,7 @@ export default function App() {
     event.preventDefault(); if(!selected || !replyText.trim()) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      await call({action:"reply",threadId:getId(selected),message:{text:`${replyText.trim()}\n\n${SIGNATURE}`}});
+      await call({action:"reply",threadId:getId(selected),message:{html:signatureHtml(replyText.trim()),text:`${replyText.trim()}\n\n${SIGNATURE}`}});
       setReplyText(""); setNotice("Your reply has been accepted by the mail server.");
       await openThread(selected); await loadInbox(true);
     } catch(e) { setError(e instanceof Error?e.message:"Reply could not be sent"); }
@@ -135,7 +138,7 @@ export default function App() {
     event.preventDefault(); if(!to.trim()||!subject.trim()||!text.trim()) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      await call({action:"send_message",mailbox,message:{to:to.split(",").map(x=>x.trim()).filter(Boolean),subject:subject.trim(),text:`${text.trim()}\n\n${SIGNATURE}`}});
+      await call({action:"send_message",mailbox,message:{to:to.split(",").map(x=>x.trim()).filter(Boolean),subject:subject.trim(),html:signatureHtml(text.trim()),text:`${text.trim()}\n\n${SIGNATURE}`}});
       setNotice("Your email has been accepted by the mail server.");
       setCompose(false); setTo(""); setSubject(""); setText(""); await loadInbox(true);
     } catch(e) { setError(e instanceof Error?e.message:"Email could not be sent"); }
