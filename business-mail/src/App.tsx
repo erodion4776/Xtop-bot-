@@ -108,7 +108,12 @@ export default function App() {
       }
       setBodyMap(bodies);
       const latest=list[list.length-1];
-      if(latest && getId(latest)) await call({action:"mark_read",threadId:id,messageId:getId(latest)});
+      // Mark-as-read is a non-critical provider action. Some Lockally inboxes
+      // may return 404 for this endpoint; do not show that as a conversation error.
+      if(latest && getId(latest)) {
+        try { await call({action:"mark_read",threadId:id,messageId:getId(latest)}); }
+        catch { /* Reading the message must still succeed if marking it read is unavailable. */ }
+      }
       setThreads(prev=>prev.map(t=>getId(t)===id?{...t,unread_count:0}:t));
     } catch(e) { setError(e instanceof Error?e.message:"Unable to open this email"); }
     finally { setBusy(false); }
