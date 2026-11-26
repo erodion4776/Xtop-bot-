@@ -7,6 +7,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undef
 const apiUrl = import.meta.env.VITE_MAIL_API_URL as string | undefined;
 const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 const OWNER = "ero@sabibyxtop.com.ng";
+const SIGNATURE = "XTOP RETAIL TECHNOLOGIES\nBusiness Mail\nero@sabibyxtop.com.ng\nhttps://sabibyxtop.com.ng";
 
 type AnyRecord = Record<string, any>;
 type Thread = AnyRecord & { id?: string; thread_id?: string; subject?: string; snippet?: string; from?: any; participants?: any[]; latest_message_at?: string; last_message_at?: string; unread_count?: number };
@@ -123,7 +124,7 @@ export default function App() {
     event.preventDefault(); if(!selected || !replyText.trim()) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      await call({action:"reply",threadId:getId(selected),message:{text:replyText.trim()}});
+      await call({action:"reply",threadId:getId(selected),message:{text:`${replyText.trim()}\n\n${SIGNATURE}`}});
       setReplyText(""); setNotice("Your reply has been accepted by the mail server.");
       await openThread(selected); await loadInbox(true);
     } catch(e) { setError(e instanceof Error?e.message:"Reply could not be sent"); }
@@ -134,7 +135,7 @@ export default function App() {
     event.preventDefault(); if(!to.trim()||!subject.trim()||!text.trim()) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      await call({action:"send_message",mailbox,message:{to:to.split(",").map(x=>x.trim()).filter(Boolean),subject:subject.trim(),text:text.trim()}});
+      await call({action:"send_message",mailbox,message:{to:to.split(",").map(x=>x.trim()).filter(Boolean),subject:subject.trim(),text:`${text.trim()}\n\n${SIGNATURE}`}});
       setNotice("Your email has been accepted by the mail server.");
       setCompose(false); setTo(""); setSubject(""); setText(""); await loadInbox(true);
     } catch(e) { setError(e instanceof Error?e.message:"Email could not be sent"); }
