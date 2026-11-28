@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bot, Plus, Send, MessageSquare, Sparkles, ChevronLeft } from "lucide-react";
+import { Bot, Plus, Send, MessageSquare, Sparkles } from "lucide-react";
 import { supabase } from "./lib/supabase";
 
 type Conversation = {
