@@ -42,11 +42,12 @@ const SABI_AI_SYSTEM_PROMPT = [
 function cleanHistory(value: unknown): SabiAIHistoryMessage[] {
   if (!Array.isArray(value)) return [];
   return value
-    .filter((item): item is Record<string, unknown> =>
-      !!item && typeof item === "object" &&
-      (item.role === "user" || item.role === "assistant") &&
-      typeof item.content === "string"
-    )
+    .filter((item): item is Record<string, unknown> => {
+      if (!item || typeof item !== "object") return false;
+      const candidate = item as Record<string, unknown>;
+      return (candidate.role === "user" || candidate.role === "assistant") &&
+        typeof candidate.content === "string";
+    })
     .map((item) => ({
       role: item.role as "user" | "assistant",
       content: String(item.content).slice(0, 1800),
