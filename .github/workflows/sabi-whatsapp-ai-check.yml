@@ -2,7 +2,7 @@ name: Sabi WhatsApp AI Check
 
 on:
   push:
-    branches: [feat/sabi-whatsapp-arena-ai]
+    branches: [feat/sabi-whatsapp-arena-ai, feat/sabi-merchant-arena-commerce-ai]
     paths:
       - "supabase/functions/whatsapp-webhook/**"
       - ".github/workflows/sabi-whatsapp-ai-check.yml"
@@ -23,6 +23,8 @@ jobs:
         with:
           deno-version: v2.x
       - name: Check Sabi WhatsApp AI formatting
-        run: deno fmt --check supabase/functions/whatsapp-webhook/sabi-ai-whatsapp.ts
-      - name: Type-check the isolated Sabi AI WhatsApp module
-        run: deno check --node-modules-dir=auto supabase/functions/whatsapp-webhook/sabi-ai-whatsapp.ts
+        run: deno fmt --check supabase/functions/whatsapp-webhook/sabi-ai-whatsapp.ts supabase/functions/whatsapp-webhook/merchant-ai.ts
+      - name: Type-check isolated Arena AI modules
+        run: |
+          deno check --node-modules-dir=auto supabase/functions/whatsapp-webhook/sabi-ai-whatsapp.ts
+          deno check --node-modules-dir=auto supabase/functions/whatsapp-webhook/merchant-ai.ts
