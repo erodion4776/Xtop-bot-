@@ -395,7 +395,7 @@ async function handleTenantStoreMessage(
   let raw = String(incoming.interactiveId || incoming.text || "").trim();
   let message = raw.toLowerCase();
   const savedTextOptions = Array.isArray(context.store_text_options) ? context.store_text_options : [];
-  if (!incoming.interactiveId && /^\\d{1,2}$/.test(message)) {
+  if (!incoming.interactiveId && /^\d{1,2}$/.test(message)) {
     const selected = savedTextOptions[Number(message) - 1];
     if (selected?.id) {
       raw = String(selected.id);
