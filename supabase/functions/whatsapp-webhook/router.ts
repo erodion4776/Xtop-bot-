@@ -905,7 +905,9 @@ async function handleTenantStoreMessage(
   // Discover's prefilled customer message is an opening greeting, not a product query.
   const isDiscoverIntro = /found your shop on sabi discover|would like to ask about your products and place an order/i.test(raw);
 
-  if (isDiscoverIntro || ["hi", "hello", "hey", "menu", "start", "shop", "catalogue", "catalog", "products", ""].includes(message)) {
+  const isCatalogueIntro = /^(?:(?:hi|hello|hey)[,!. ]*)?(?:what products (?:do you have|are available)|show me (?:the )?products|list (?:your )?products|i want to browse products|let me see (?:your )?products)\??$/i.test(raw);
+
+  if (isDiscoverIntro || isCatalogueIntro || ["hi", "hello", "hey", "menu", "start", "shop", "catalogue", "catalog", "products", ""].includes(message)) {
     if (!products.length) {
       if (account.logoUrl) await send(greeting, account.logoUrl);
       await send("Our product catalogue is being updated. Please contact the business for assistance.");
