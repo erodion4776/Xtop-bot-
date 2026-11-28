@@ -754,7 +754,7 @@ async function handleTenantStoreMessage(
   }
 
   // A quantity change sets the cart line to an exact quantity; it does not add more units.
-  const quantityUpdate = message.match(/^set quantity\s+(.+?)\s+x(\\d{1,2})$/i);
+  const quantityUpdate = message.match(/^set quantity\s+(.+?)\s+x(\d{1,2})$/i);
   if (quantityUpdate) {
     const requestedName = quantityUpdate[1].trim().toLowerCase();
     const quantity = Number(quantityUpdate[2]);
