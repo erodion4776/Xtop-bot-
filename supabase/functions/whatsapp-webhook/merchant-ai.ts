@@ -42,7 +42,7 @@ function directCommand(text: string): boolean {
 function safeCommand(value: unknown, products: MerchantProduct[]): string | null {
   if (typeof value !== "string") return null;
   const command = value.trim().replace(/\s+/g, " ").slice(0, 180);
-  if (/^(menu|cart|checkout|track|agent|clear cart)$/i.test(command)) return command.toLowerCase();
+  if (/^(menu|cart|checkout|track|agent|clear cart|confirm cart|edit cart|new order|start new order)$/i.test(command)) return command.toLowerCase();
 
   const search = command.match(/^search\s+(.{2,100})$/i);
   if (search) return `search ${search[1]}`;
@@ -75,7 +75,7 @@ export async function interpretMerchantMessage(input: {
   state: string;
 }): Promise<MerchantAIResult | null> {
   const message = String(input.message || "").trim();
-  if (!message || input.state !== "IDLE" || directCommand(message)) return null;
+  if (!message || !["IDLE", "CHECKOUT_CONFIRM"].includes(input.state) || directCommand(message)) return null;
 
   const apiKey = Deno.env.get("ARENA_API_KEY") || "";
   if (!apiKey) return null;
@@ -99,8 +99,9 @@ export async function interpretMerchantMessage(input: {
     "You are the natural-language shopping assistant for one Sabi by XTOP merchant store.",
     "Interpret the customer's message and return ONLY one JSON object. Never use markdown or prose outside JSON.",
     'Allowed output shapes: {"type":"command","command":"..."} or {"type":"reply","reply":"..."}.',
-    "Allowed commands only: menu, search <terms>, add <exact product name> x<quantity>, cart, checkout, remove <exact cart item name>, clear cart, track, agent, category <name>.",
+    "Allowed commands only: menu, search <terms>, add <exact product name> x<quantity>, cart, checkout, remove <exact cart item name>, clear cart, track, agent, category <name>, confirm cart, edit cart, new order.",
     "Use a command when the customer wants to browse/search/add/remove/view cart/checkout/track/contact a human. Use exact product names from the supplied catalogue for add commands. If a product name is uncertain, use search <customer's words> instead.",
+    "Current shopping flow state: " + input.state + ". If the state is CHECKOUT_CONFIRM, interpret yes/confirm/proceed as confirm cart, requests to change items as edit cart, and requests to restart as new order. Do not treat unrelated text as confirmation.",
     "For questions about products, answer only from the supplied catalogue facts. Never invent products, prices, stock, discounts, delivery fees, return policies, order status, or payment status.",
     "If the requested product is unavailable in the catalogue, use search <terms>. If a business policy or detail is not supplied, say you cannot confirm it and offer the shop's human agent.",
     "Never claim that an order was placed, payment was made, stock reserved, delivery booked, or a refund issued. Commands are merely requests; the Sabi backend will perform and verify them.",
