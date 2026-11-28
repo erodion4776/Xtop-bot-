@@ -56,6 +56,19 @@ function safeCommand(value: unknown, products: MerchantProduct[]): string | null
   const category = command.match(/^category\s+(.{2,70})$/i);
   if (category) return `category ${category[1]}`;
 
+  const quantityUpdate = command.match(/^set quantity\\s+(.{2,100}?)\\s+x(\\d{1,2})$/i);
+  if (quantityUpdate) {
+    const requested = quantityUpdate[1].trim().toLowerCase();
+    const product = products.find((p) =>
+      String(p.name || "").trim().toLowerCase() === requested ||
+      String(p.slug || "").trim().toLowerCase() === requested
+    );
+    if (!product) return null;
+    const quantity = Number(quantityUpdate[2]);
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) return null;
+    return `set quantity ${product.name} x${quantity}`;
+  }
+
   const add = command.match(/^add\s+(.{2,100}?)(?:\s+x(\d{1,2}))?$/i);
   if (add) {
     const requested = add[1].trim().toLowerCase();
@@ -82,6 +95,20 @@ export async function interpretMerchantMessage(input: {
     return null;
   }
 
+  const quantityOnly = message.toLowerCase()
+    .replace(/[.!?]+$/g, "")
+    .trim()
+    .match(/^(?:make it|make that|change it(?: to)?|change that(?: to)?|set it(?: to)?|set that(?: to)?|i want)\\s+(\\d{1,2})(?:\\s+(?:of it|of them|units?|pieces?))?$/i);
+  if (quantityOnly && input.cart.length === 1) {
+    const quantity = Number(quantityOnly[1]);
+    if (Number.isInteger(quantity) && quantity >= 1 && quantity <= 100) {
+      return { type: "command", command: `set quantity ${input.cart[0].name} x${quantity}` };
+    }
+  }
+  if (quantityOnly && input.cart.length > 1) {
+    return { type: "reply", reply: "Which item should I change? Please tell me the product name so I update the right one." };
+  }
+
   const apiKey = Deno.env.get("ARENA_API_KEY") || "";
   if (!apiKey) return null;
   const model = Deno.env.get("ARENA_MODEL") || "gpt-6-luna";
@@ -104,7 +131,8 @@ export async function interpretMerchantMessage(input: {
     "You are the natural-language shopping assistant for one Sabi by XTOP merchant store.",
     "Interpret the customer's message and return ONLY one JSON object. Never use markdown or prose outside JSON.",
     'Allowed output shapes: {"type":"command","command":"..."} or {"type":"reply","reply":"..."}.',
-    "Allowed commands only: menu, search <terms>, add <exact product name> x<quantity>, cart, checkout, remove <exact cart item name>, clear cart, track, agent, category <name>, confirm cart, edit cart, new order.",
+    "Allowed commands only: menu, search <terms>, add <exact product name> x<quantity>, set quantity <exact product name> x<quantity>, cart, checkout, remove <exact cart item name>, clear cart, track, agent, category <name>, confirm cart, edit cart, new order.",
+    "When the customer asks to make an item a specific quantity (for example \"make it 2\" or \"make it 2 of it\"), use set quantity for the item in the current cart. This sets the final quantity; it does not add extra units. If there is exactly one cart item, use that exact name. If there are multiple items and the customer does not identify one, ask which item they mean."
     "Use a command when the customer wants to browse/search/add/remove/view cart/checkout/track/contact a human. Use exact product names from the supplied catalogue for add commands. If a product name is uncertain, use search <customer's words> instead.",
     "Current shopping flow state: " + input.state +
     ". If the state is CHECKOUT_CONFIRM, interpret yes/confirm/proceed as confirm cart, requests to change items as edit cart, and requests to restart as new order. Do not treat unrelated text as confirmation.",
