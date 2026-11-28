@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
       return json({
         error: "Select the merchant workspace you want to use.",
         requires_tenant_selection: true,
-        workspaces: [],
+        workspaces: identity.memberships.map((item) => ({ tenant_id: item.tenant_id, role: item.role })),
       }, 409, origin);
     }
     console.error("Sabi AI identity resolution failed:", code);
