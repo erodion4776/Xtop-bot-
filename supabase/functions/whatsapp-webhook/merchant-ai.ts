@@ -120,7 +120,7 @@ export async function interpretMerchantMessage(input: {
       }),
     });
     if (!response.ok) {
-      console.error("[SABI_MERCHANT_AI] Arena request failed:", response.status, (await response.text()).slice(0, 250));
+      console.error(\n        "[SABI_MERCHANT_AI] Arena request failed:",\n        response.status,\n        (await response.text()).slice(0, 250),\n      );
       return null;
     }
     const result = await response.json();
@@ -138,7 +138,7 @@ export async function interpretMerchantMessage(input: {
     }
     return null;
   } catch (error) {
-    console.error("[SABI_MERCHANT_AI] Intent interpretation failed:", error instanceof Error ? error.message : "unknown error");
+    console.error(\n      "[SABI_MERCHANT_AI] Intent interpretation failed:",\n      error instanceof Error ? error.message : "unknown error",\n    );
     return null;
   }
 }
