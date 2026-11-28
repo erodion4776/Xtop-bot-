@@ -108,7 +108,11 @@ export async function interpretMerchantMessage(input: {
     }
   }
   if (quantityOnly && input.cart.length > 1) {
-    return { type: "reply", reply: "Which item should I change? Please tell me the product name so I update the right one." };
+    return {
+      type: "reply",
+      reply:
+        "Which item should I change? Please tell me the product name so I update the right one.",
+    };
   }
 
   const apiKey = Deno.env.get("ARENA_API_KEY") || "";
