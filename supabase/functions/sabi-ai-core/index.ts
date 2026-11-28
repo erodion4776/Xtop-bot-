@@ -107,10 +107,15 @@ Deno.serve(async (req) => {
     const code = error instanceof Error ? error.message : "UNKNOWN";
     if (code === "TENANT_FORBIDDEN") return json({ error: "You do not have access to that merchant workspace." }, 403, origin);
     if (code === "TENANT_SELECTION_REQUIRED") {
+      const { data: memberships } = await admin
+        .from("tenant_members")
+        .select("tenant_id, role")
+        .eq("user_id", authData.user.id)
+        .eq("is_active", true);
       return json({
         error: "Select the merchant workspace you want to use.",
         requires_tenant_selection: true,
-        workspaces: identity.memberships.map((item) => ({ tenant_id: item.tenant_id, role: item.role })),
+        workspaces: (memberships ?? []).map((item) => ({ tenant_id: item.tenant_id, role: item.role })),
       }, 409, origin);
     }
     console.error("Sabi AI identity resolution failed:", code);
@@ -155,12 +160,15 @@ Deno.serve(async (req) => {
       return json({ conversation, messages: messages ?? [], role: identity.role, tenant_id: tenantId }, 200, origin);
     }
 
-    const { data: conversations, error: historyError } = await admin
+    let historyQuery = admin
       .from("sabi_ai_conversations")
       .select("id, title, role, tenant_id, created_at, updated_at")
       .eq("user_id", authData.user.id)
-      .eq("role", identity.role)
-      .is("tenant_id", tenantId)
+      .eq("role", identity.role);
+    historyQuery = tenantId
+      ? historyQuery.eq("tenant_id", tenantId)
+      : historyQuery.is("tenant_id", null);
+    const { data: conversations, error: historyError } = await historyQuery
       .order("updated_at", { ascending: false })
       .limit(30);
     if (historyError) return json({ error: "Could not load your conversation history." }, 500, origin);
