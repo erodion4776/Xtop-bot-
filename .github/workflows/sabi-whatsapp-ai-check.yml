@@ -25,4 +25,4 @@ jobs:
       - name: Check Sabi WhatsApp AI formatting
         run: deno fmt --check supabase/functions/whatsapp-webhook/sabi-ai-whatsapp.ts
       - name: Type-check WhatsApp webhook and Sabi AI router
-        run: deno check supabase/functions/whatsapp-webhook/index.ts
+        run: deno check --node-modules-dir=auto supabase/functions/whatsapp-webhook/index.ts
