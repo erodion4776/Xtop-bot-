@@ -25,6 +25,7 @@ function directCommand(text: string): boolean {
   return !value ||
     /^(hi|hello|hey|menu|start|shop|catalogue|catalog|products|cart|my cart|view cart|checkout|cancel|cancel checkout|stop|clear cart|online|pod|pay now|pay on delivery|agent|human|talk to human|customer service|speak to an agent)(\b|$)/
       .test(value) ||
+    /^(?:(?:hi|hello|hey)[,!. ]*)?(?:what products (?:do you have|are available)|show me (?:the )?products|list (?:your )?products|i want to browse products|let me see (?:your )?products)\??$/i.test(value) ||
     /^(search|add|remove|category)\s+/i.test(value) ||
     /^(track(?:\s+SABI-\d{8}-[A-Z0-9]+)?)$/i.test(value) ||
     /^store_[a-z0-9_:.-]+$/i.test(value) ||
