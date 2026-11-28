@@ -28,6 +28,7 @@ import Newsletter from "./Newsletter";
 import PublicProduct from "./PublicProduct";
 import PublicStorefront from "./PublicStorefront";
 import PublicNewsletter from "./PublicNewsletter";
+import SabiAI from "./SabiAI";
 import Landing from "./Landing";
 import Discover from "./Discover";
 import MarketplaceCart from "./MarketplaceCart";
@@ -36,6 +37,7 @@ import { supabase } from "./lib/supabase";
 
 const navigation = [
   { label: "Overview", icon: LayoutDashboard },
+  { label: "Sabi AI", icon: Bot },
   { label: "Products", icon: Package },
   { label: "Orders", icon: ShoppingCart },
   { label: "Customer Service", icon: MessageSquare },
@@ -702,7 +704,9 @@ function Dashboard({
             </div>
           </div>
 
-          {activePage === "Products" ? (
+          {activePage === "Sabi AI" ? (
+            <SabiAI tenantId={tenantId} />
+          ) : activePage === "Products" ? (
             <Products tenantId={tenantId} />
           ) : activePage === "Orders" ? (
             <Orders tenantId={tenantId} />
