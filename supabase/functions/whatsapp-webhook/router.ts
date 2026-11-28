@@ -326,17 +326,22 @@ async function handleTenantStoreMessage(
   };
 
 
+  // Text-first shopping: customers can reply with a number or the item/action name.
+  // Save the numbered choices per conversation; no WhatsApp list/reply buttons are required.
   const sendShopList = async (body: string, rows: Array<{id:string;title:string;description?:string}>) => {
-    const id = await sendListMessage(phone, body, "Open shop", [{title:"Shop",rows:rows.slice(0,10)}], account.businessName, "Powered by Sabi by XTOP", credentials);
-    if (id) {
-      await storeMessage(contact.id,"OUTBOUND","interactive",body,id,account.tenantId);
-      await logBotActivity(phone,"OUTBOUND","interactive","TENANT_STORE",body,contact.name||incoming.profileName,"",id,account.tenantId);
-    } else await send("Please type *menu* to continue.");
+    const options = rows.slice(0, 10);
+    await updateConversation(conversation.id, {
+      current_module: "TENANT_STORE",
+      current_state: "IDLE",
+      context_json: { ...context, store_text_options: options.map((row) => ({ id: row.id, title: row.title })) },
+    }, account.tenantId);
+    const menu = options.map((row, index) =>
+      `${index + 1}. *${row.title}*${row.description ? " — " + row.description : ""}`
+    ).join("\n");
+    await send(`${body}\n\n${menu}\n\nReply with the *number* or *name* of your choice. You can also type what you want in your own words.`);
   };
   const sendShopButtons = async (body:string, buttons:Array<{id:string;title:string}>) => {
-    const id=await sendButtonMessage(phone,body,buttons.slice(0,3).map(b=>({type:"reply" as const,reply:{id:b.id,title:b.title}})),account.businessName,"Powered by Sabi by XTOP",credentials);
-    if(id){await storeMessage(contact.id,"OUTBOUND","interactive",body,id,account.tenantId);await logBotActivity(phone,"OUTBOUND","interactive","TENANT_STORE",body,contact.name||incoming.profileName,"",id,account.tenantId);}
-    else await send("Please type *menu* to continue.");
+    await sendShopList(body, buttons);
   };
   const showShopProduct = async (p:any) => {
     const price=productPrice(p), stock=productStock(p);
@@ -380,6 +385,22 @@ async function handleTenantStoreMessage(
 
   let raw = String(incoming.interactiveId || incoming.text || "").trim();
   let message = raw.toLowerCase();
+  const savedTextOptions = Array.isArray(context.store_text_options) ? context.store_text_options : [];
+  if (!incoming.interactiveId && /^\\d{1,2}$/.test(message)) {
+    const selected = savedTextOptions[Number(message) - 1];
+    if (selected?.id) {
+      raw = String(selected.id);
+      message = raw.toLowerCase();
+    }
+  } else if (!incoming.interactiveId && savedTextOptions.length) {
+    const selected = savedTextOptions.find((option: any) =>
+      String(option?.title || "").trim().toLowerCase() === message
+    );
+    if (selected?.id) {
+      raw = String(selected.id);
+      message = raw.toLowerCase();
+    }
+  }
   const products = await getActiveProducts(account.tenantId);
   const greeting = account.welcomeGreeting || `Welcome to *${account.businessName}*.`;
   const context = (conversation.context_json || {}) as Record<string, any>;
@@ -390,7 +411,7 @@ async function handleTenantStoreMessage(
   // Arena understands natural customer language, but it never writes commerce
   // records itself. Its validated command is fed into the existing tenant-
   // scoped product/cart/checkout handlers below.
-  if (!incoming.interactiveId && state === "IDLE" && raw) {
+  if (!incoming.interactiveId && (state === "IDLE" || state === "CHECKOUT_CONFIRM") && raw) {
     const aiIntent = await interpretMerchantMessage({
       message: raw,
       businessName: account.businessName,
@@ -664,7 +685,8 @@ async function handleTenantStoreMessage(
     await beginCheckoutReview();
     return;
   }
-  if (message === "store_confirm_checkout" || message === "confirm cart") {
+  if (message === "store_confirm_checkout" || message === "confirm cart" ||
+      (state === "CHECKOUT_CONFIRM" && /^(yes|yeah|yep|confirm|confirmed|proceed|continue|place order|go ahead|that is correct|that's correct)$/i.test(message))) {
     if (state !== "CHECKOUT_CONFIRM" || !cart.length) {
       await send("Please review your cart first. Reply *cart* and choose *Checkout*.");
       return;
