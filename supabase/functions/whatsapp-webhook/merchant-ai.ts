@@ -25,7 +25,8 @@ function directCommand(text: string): boolean {
   return !value ||
     /^(hi|hello|hey|menu|start|shop|catalogue|catalog|products|cart|my cart|view cart|checkout|cancel|cancel checkout|stop|clear cart|online|pod|pay now|pay on delivery|agent|human|talk to human|customer service|speak to an agent|track)(\b|$)/.test(value) ||
     /^(search|add|remove|category|track)\s+/i.test(value) ||
-    /^(track(?:\\s+SABI-\\d{8}-[A-Z0-9]+)?)$/i.test(value) ||\n    /^store_[a-z0-9_:.-]+$/i.test(value) ||
+    /^(track(?:\s+SABI-\d{8}-[A-Z0-9]+)?)$/i.test(value) ||
+    /^store_[a-z0-9_:.-]+$/i.test(value) ||
     /^sabi-order-[a-z0-9-]+$/i.test(value) ||
     /SABI-\d{8}-[A-Z0-9]+/i.test(value) ||
     /\b(payment\s+(?:has\s+been\s+)?confirmed|i\s+(?:have\s+)?paid|payment\s+(?:was\s+)?successful)\b/i.test(value);
