@@ -1712,6 +1712,15 @@ export async function routeMessage(
     // XTOP system Sabi line reaches this AI fallback; merchant bot accounts
     // returned earlier through their existing tenant-store workflow.
     if (account.isSystem && incoming.type === "text" && text.trim()) {
+      if (!contact.id) {
+        safeErrorLog(
+          "SABI_AI_WHATSAPP.contact",
+          new Error("A contact ID is required for Sabi AI conversation history."),
+        );
+        await showSabiWelcomeMenu(phone, conversation.id);
+        return;
+      }
+
       await handleSabiWhatsAppAI(
         incoming,
         text,
