@@ -40,6 +40,7 @@ import {
 
 import { showSabiWelcomeMenu } from "./modules/sabi-menu.ts";
 import { handleSabiWhatsAppAI } from "./sabi-ai-whatsapp.ts";
+import { interpretMerchantMessage } from "./merchant-ai.ts";
 
 import {
   startMerchantRegistration,
@@ -377,14 +378,40 @@ async function handleTenantStoreMessage(
     );
   };
 
-  const raw = String(incoming.interactiveId || incoming.text || "").trim();
-  const message = raw.toLowerCase();
+  let raw = String(incoming.interactiveId || incoming.text || "").trim();
+  let message = raw.toLowerCase();
   const products = await getActiveProducts(account.tenantId);
   const greeting = account.welcomeGreeting || `Welcome to *${account.businessName}*.`;
   const context = (conversation.context_json || {}) as Record<string, any>;
   let cart: Array<{product_id:string;name:string;price:number;quantity:number}> =
     Array.isArray(context.store_cart) ? context.store_cart : [];
   const state = String(conversation.current_state || "IDLE");
+
+  // Arena understands natural customer language, but it never writes commerce
+  // records itself. Its validated command is fed into the existing tenant-
+  // scoped product/cart/checkout handlers below.
+  if (!incoming.interactiveId && state === "IDLE" && raw) {
+    const aiIntent = await interpretMerchantMessage({
+      message: raw,
+      businessName: account.businessName,
+      products,
+      cart,
+      state,
+    });
+    if (aiIntent?.type === "reply") {
+      await send(aiIntent.reply);
+      await logBotActivity(
+        phone, "OUTBOUND", "text", "SABI_MERCHANT_AI", aiIntent.reply,
+        contact.name || incoming.profileName || "", "", "", account.tenantId,
+      );
+      return;
+    }
+    if (aiIntent?.type === "command") {
+      raw = aiIntent.command;
+      message = raw.toLowerCase();
+      console.log("[SABI_MERCHANT_AI] Interpreted customer request as:", message.split(" ")[0]);
+    }
+  }
 
   // Restore the exact saved order when a prior checkout cleared the cart but
   // the customer later retries ONLINE. Never trust an order number alone:
