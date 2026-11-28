@@ -23,13 +23,15 @@ export type MerchantAIResult =
 function directCommand(text: string): boolean {
   const value = text.trim().toLowerCase();
   return !value ||
-    /^(hi|hello|hey|menu|start|shop|catalogue|catalog|products|cart|my cart|view cart|checkout|cancel|cancel checkout|stop|clear cart|online|pod|pay now|pay on delivery|agent|human|talk to human|customer service|speak to an agent)(\b|$)/.test(value) ||
+    /^(hi|hello|hey|menu|start|shop|catalogue|catalog|products|cart|my cart|view cart|checkout|cancel|cancel checkout|stop|clear cart|online|pod|pay now|pay on delivery|agent|human|talk to human|customer service|speak to an agent)(\b|$)/.
+      .test(value) ||
     /^(search|add|remove|category)\s+/i.test(value) ||
     /^(track(?:\s+SABI-\d{8}-[A-Z0-9]+)?)$/i.test(value) ||
     /^store_[a-z0-9_:.-]+$/i.test(value) ||
     /^sabi-order-[a-z0-9-]+$/i.test(value) ||
     /SABI-\d{8}-[A-Z0-9]+/i.test(value) ||
-    /\b(payment\s+(?:has\s+been\s+)?confirmed|i\s+(?:have\s+)?paid|payment\s+(?:was\s+)?successful)\b/i.test(value);
+    /\b(payment\s+(?:has\s+been\s+)?confirmed|i\s+(?:have\s+)?paid|payment\s+(?:was\s+)?successful)\b/i.
+      .test(value);
 }
 
 function safeCommand(value: unknown, products: MerchantProduct[]): string | null {
@@ -91,7 +93,7 @@ export async function interpretMerchantMessage(input: {
   const system = [
     "You are the natural-language shopping assistant for one Sabi by XTOP merchant store.",
     "Interpret the customer's message and return ONLY one JSON object. Never use markdown or prose outside JSON.",
-    "Allowed output shapes: {\"type\":\"command\",\"command\":\"...\"} or {\"type\":\"reply\",\"reply\":\"...\"}.",
+    'Allowed output shapes: {"type":"command","command":"..."} or {"type":"reply","reply":"..."}.',
     "Allowed commands only: menu, search <terms>, add <exact product name> x<quantity>, cart, checkout, remove <exact cart item name>, clear cart, track, agent, category <name>.",
     "Use a command when the customer wants to browse/search/add/remove/view cart/checkout/track/contact a human. Use exact product names from the supplied catalogue for add commands. If a product name is uncertain, use search <customer's words> instead.",
     "For questions about products, answer only from the supplied catalogue facts. Never invent products, prices, stock, discounts, delivery fees, return policies, order status, or payment status.",
