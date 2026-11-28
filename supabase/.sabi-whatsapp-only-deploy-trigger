@@ -1,3 +1,5 @@
 This marker triggers the dedicated Sabi WhatsApp webhook deployment workflow. It is not an Edge Function and does not change application behaviour.
 
 Text-first Sabi merchant WhatsApp release: ce7b2bf323a97ebef760ec0bc5ea5e55d2093f83
+
+Cart quantity conversation fix: fb3611ba865dbad8f69a595bf5abbdbe1c8d3f67
