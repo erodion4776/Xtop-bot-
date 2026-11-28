@@ -56,7 +56,7 @@ function safeCommand(value: unknown, products: MerchantProduct[]): string | null
   const category = command.match(/^category\s+(.{2,70})$/i);
   if (category) return `category ${category[1]}`;
 
-  const quantityUpdate = command.match(/^set quantity\\s+(.{2,100}?)\\s+x(\\d{1,2})$/i);
+  const quantityUpdate = command.match(/^set quantity\s+(.{2,100}?)\s+x(\\d{1,2})$/i);
   if (quantityUpdate) {
     const requested = quantityUpdate[1].trim().toLowerCase();
     const product = products.find((p) =>
@@ -98,7 +98,7 @@ export async function interpretMerchantMessage(input: {
   const quantityOnly = message.toLowerCase()
     .replace(/[.!?]+$/g, "")
     .trim()
-    .match(/^(?:make it|make that|change it(?: to)?|change that(?: to)?|set it(?: to)?|set that(?: to)?|i want)\\s+(\\d{1,2})(?:\\s+(?:of it|of them|units?|pieces?))?$/i);
+    .match(/^(?:make it|make that|change it(?: to)?|change that(?: to)?|set it(?: to)?|set that(?: to)?|i want)\s+(\\d{1,2})(?:\s+(?:of it|of them|units?|pieces?))?$/i);
   if (quantityOnly && input.cart.length === 1) {
     const quantity = Number(quantityOnly[1]);
     if (Number.isInteger(quantity) && quantity >= 1 && quantity <= 100) {
