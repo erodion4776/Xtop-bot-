@@ -30,7 +30,7 @@ function directCommand(text: string): boolean {
     /^store_[a-z0-9_:.-]+$/i.test(value) ||
     /^sabi-order-[a-z0-9-]+$/i.test(value) ||
     /SABI-\d{8}-[A-Z0-9]+/i.test(value) ||
-    /\b(payment\s+(?:has\s+been\s+)?confirmed|i\s+(?:have\s+)?paid|payment\s+(?:was\s+)?successful)\b/i.
+    /\b(payment\s+(?:has\s+been\s+)?confirmed|i\s+(?:have\s+)?paid|payment\s+(?:was\s+)?successful)\b/i
       .test(value);
 }
 
