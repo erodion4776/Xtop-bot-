@@ -39,6 +39,7 @@ import {
 } from "./utils.ts";
 
 import { showSabiWelcomeMenu } from "./modules/sabi-menu.ts";
+import { handleSabiWhatsAppAI } from "./sabi-ai-whatsapp.ts";
 
 import {
   startMerchantRegistration,
@@ -1411,7 +1412,12 @@ export async function routeMessage(
       interactiveId === "menu_home" ||
       interactiveId === "sabi_home" ||
       lowerText === "menu_home" ||
-      lowerText === "sabi_home"
+      lowerText === "sabi_home" ||
+      lowerText === "menu" ||
+      lowerText === "main menu" ||
+      lowerText === "sabi menu" ||
+      lowerText === "home" ||
+      lowerText === "start"
     ) {
       await showSabiWelcomeMenu(
         phone,
@@ -1699,11 +1705,23 @@ export async function routeMessage(
     }
 
     // ===================================================
-    // SABI + ENGR ERO ONLY
+    // SABI AI WHATSAPP FALLBACK
     // ===================================================
-    // Engr Ero is routed explicitly above. Sabi registration, support,
-    // shop demo and gateway actions are also handled above. Do not expose
-    // the retired XTOP Retail services, products, demos or sales bot here.
+    // All Engr Ero learning, attendance, CBT, exam, vehicle-diagnosis,
+    // admin and support routes have already been handled above. Only the
+    // XTOP system Sabi line reaches this AI fallback; merchant bot accounts
+    // returned earlier through their existing tenant-store workflow.
+    if (account.isSystem && incoming.type === "text" && text.trim()) {
+      await handleSabiWhatsAppAI(
+        incoming,
+        text,
+        contact,
+        conversation,
+      );
+      return;
+    }
+
+    // Unknown interactive actions retain the existing Sabi menu fallback.
     await showSabiWelcomeMenu(
       phone,
       conversation.id,
