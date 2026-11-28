@@ -102,7 +102,7 @@ export default function SabiAIPortal() {
 
   if (checking) return <div className="sabi-ai-auth-page"><div className="sabi-ai-auth-card">Loading Sabi AI…</div></div>;
 
-  if (session) {
+  if (session && mode !== "recovery") {
     return (
       <main className="sabi-ai-portal">
         <header className="sabi-ai-portal-header">
