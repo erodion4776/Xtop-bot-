@@ -1,6 +1,11 @@
 name: Sabi WhatsApp AI Check
 
 on:
+  push:
+    branches: [feat/sabi-whatsapp-arena-ai]
+    paths:
+      - "supabase/functions/whatsapp-webhook/**"
+      - ".github/workflows/sabi-whatsapp-ai-check.yml"
   pull_request:
     branches: [main]
     paths:
