@@ -165,8 +165,8 @@ export async function handleSabiWhatsAppAI(
 
   const nextHistory: SabiAIHistoryMessage[] = [
     ...previousHistory,
-    { role: "user", content: safeMessage },
-    { role: "assistant", content: reply },
+    { role: "user" as const, content: safeMessage },
+    { role: "assistant" as const, content: reply },
   ].slice(-12);
 
   const updated = await updateConversation(
