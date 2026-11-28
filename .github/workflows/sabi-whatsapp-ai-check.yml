@@ -1,0 +1,28 @@
+name: Sabi WhatsApp AI Check
+
+on:
+  push:
+    branches: [feat/sabi-whatsapp-arena-ai]
+    paths:
+      - "supabase/functions/whatsapp-webhook/**"
+      - ".github/workflows/sabi-whatsapp-ai-check.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "supabase/functions/whatsapp-webhook/**"
+      - ".github/workflows/sabi-whatsapp-ai-check.yml"
+
+jobs:
+  check-sabi-whatsapp-ai:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v2.x
+      - name: Check Sabi WhatsApp AI formatting
+        run: deno fmt --check supabase/functions/whatsapp-webhook/sabi-ai-whatsapp.ts
+      - name: Type-check the isolated Sabi AI WhatsApp module
+        run: deno check --node-modules-dir=auto supabase/functions/whatsapp-webhook/sabi-ai-whatsapp.ts

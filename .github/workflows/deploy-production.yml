@@ -17,6 +17,7 @@ env:
 jobs:
   deploy-functions:
     name: Deploy Edge Functions
+    if: ${{ !contains(github.event.head_commit.message || '', '[SABI_WHATSAPP_ONLY]') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -147,6 +148,38 @@ jobs:
           echo "Merchant Paystack API deployment configured."
           echo "Merchant registration deployment checked."
           echo "Sabi dashboard API deployment configured."
+
+  deploy-sabi-whatsapp-only:
+    name: Deploy Sabi WhatsApp webhook only
+    if: ${{ contains(github.event.head_commit.message || '', '[SABI_WHATSAPP_ONLY]') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js for Supabase CLI
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pinned Supabase CLI from npm
+        run: npm install --no-save --no-package-lock supabase@3.0.0
+
+      - name: Link project
+        run: npx --no-install supabase link --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Deploy only the shared WhatsApp webhook
+        run: |
+          npx --no-install supabase functions deploy whatsapp-webhook \
+            --project-ref "$SUPABASE_PROJECT_ID" \
+            --no-verify-jwt \
+            --yes
+
+      - name: Deployment summary
+        run: |
+          echo "Only whatsapp-webhook was deployed."
+          echo "The separate engr-ero-portal function and all other Edge Functions were not deployed."
 
   verify:
     name: Verify Deployment
