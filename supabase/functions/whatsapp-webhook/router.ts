@@ -330,10 +330,18 @@ async function handleTenantStoreMessage(
   // Save the numbered choices per conversation; no WhatsApp list/reply buttons are required.
   const sendShopList = async (body: string, rows: Array<{id:string;title:string;description?:string}>) => {
     const options = rows.slice(0, 10);
+    const { data: latestConversation, error: menuContextError } = await supabase
+      .from("conversations")
+      .select("context_json")
+      .eq("tenant_id", account.tenantId)
+      .eq("id", conversation.id)
+      .maybeSingle();
+    if (menuContextError) safeErrorLog("tenantStore.textMenuContext", menuContextError);
     await updateConversation(conversation.id, {
-      current_module: "TENANT_STORE",
-      current_state: "IDLE",
-      context_json: { ...context, store_text_options: options.map((row) => ({ id: row.id, title: row.title })) },
+      context_json: {
+        ...((latestConversation?.context_json || context) as Record<string, any>),
+        store_text_options: options.map((row) => ({ id: row.id, title: row.title })),
+      },
     }, account.tenantId);
     const menu = options.map((row, index) =>
       `${index + 1}. *${row.title}*${row.description ? " — " + row.description : ""}`
