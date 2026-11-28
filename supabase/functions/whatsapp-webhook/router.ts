@@ -391,6 +391,7 @@ async function handleTenantStoreMessage(
     );
   };
 
+  const context = (conversation.context_json || {}) as Record<string, any>;
   let raw = String(incoming.interactiveId || incoming.text || "").trim();
   let message = raw.toLowerCase();
   const savedTextOptions = Array.isArray(context.store_text_options) ? context.store_text_options : [];
@@ -411,7 +412,6 @@ async function handleTenantStoreMessage(
   }
   const products = await getActiveProducts(account.tenantId);
   const greeting = account.welcomeGreeting || `Welcome to *${account.businessName}*.`;
-  const context = (conversation.context_json || {}) as Record<string, any>;
   let cart: Array<{product_id:string;name:string;price:number;quantity:number}> =
     Array.isArray(context.store_cart) ? context.store_cart : [];
   const state = String(conversation.current_state || "IDLE");
