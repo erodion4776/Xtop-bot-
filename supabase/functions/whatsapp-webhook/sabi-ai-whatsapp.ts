@@ -6,9 +6,9 @@
 
 import {
   Conversation,
-  SYSTEM_TENANT_ID,
   logBotActivity,
   storeMessage,
+  SYSTEM_TENANT_ID,
   updateConversation,
 } from "./database.ts";
 import { IncomingMessage, sendTextMessage } from "./whatsapp.ts";
@@ -65,11 +65,22 @@ export async function handleSabiWhatsAppAI(
   const model = Deno.env.get("ARENA_MODEL") || "gpt-6-luna";
 
   if (!apiKey) {
-    const notice = "Sabi AI is not available at the moment. Please type MENU to use the Sabi options or try again shortly.";
+    const notice =
+      "Sabi AI is not available at the moment. Please type MENU to use the Sabi options or try again shortly.";
     const messageId = await sendTextMessage(incoming.from, notice);
     if (messageId) {
       await storeMessage(contact.id, "OUTBOUND", "text", notice, messageId, SYSTEM_TENANT_ID);
-      await logBotActivity(incoming.from, "OUTBOUND", "text", "SABI_AI", notice, contact.name || "WhatsApp customer", "", messageId, SYSTEM_TENANT_ID);
+      await logBotActivity(
+        incoming.from,
+        "OUTBOUND",
+        "text",
+        "SABI_AI",
+        notice,
+        contact.name || "WhatsApp customer",
+        "",
+        messageId,
+        SYSTEM_TENANT_ID,
+      );
     }
     return;
   }
@@ -99,7 +110,11 @@ export async function handleSabiWhatsAppAI(
 
     if (!response.ok) {
       const providerError = await response.text();
-      console.error("[SABI_AI_WHATSAPP] Arena error:", response.status, providerError.slice(0, 350));
+      console.error(
+        "[SABI_AI_WHATSAPP] Arena error:",
+        response.status,
+        providerError.slice(0, 350),
+      );
       reply = response.status === 429
         ? "I'm receiving many messages right now. Please give me a moment and try again. You can type MENU for the Sabi options."
         : "Sorry, Sabi AI is having a temporary issue. Please try again shortly or type MENU for the Sabi options.";
@@ -109,12 +124,17 @@ export async function handleSabiWhatsAppAI(
       if (typeof content === "string" && content.trim()) {
         reply = content.trim().slice(0, 3500);
       } else {
-        reply = "Sorry, I couldn't prepare a response just now. Please try again or type MENU for the Sabi options.";
+        reply =
+          "Sorry, I couldn't prepare a response just now. Please try again or type MENU for the Sabi options.";
       }
     }
   } catch (error) {
-    console.error("[SABI_AI_WHATSAPP] Request failed:", error instanceof Error ? error.message : "unknown error");
-    reply = "Sorry, Sabi AI is temporarily unavailable. Please try again shortly or type MENU for the Sabi options.";
+    console.error(
+      "[SABI_AI_WHATSAPP] Request failed:",
+      error instanceof Error ? error.message : "unknown error",
+    );
+    reply =
+      "Sorry, Sabi AI is temporarily unavailable. Please try again shortly or type MENU for the Sabi options.";
   }
 
   const whatsappMessageId = await sendTextMessage(incoming.from, reply);
