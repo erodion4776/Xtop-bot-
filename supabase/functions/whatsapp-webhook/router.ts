@@ -753,6 +753,30 @@ async function handleTenantStoreMessage(
     return;
   }
 
+  // A quantity change sets the cart line to an exact quantity; it does not add more units.
+  const quantityUpdate = message.match(/^set quantity\s+(.+?)\s+x(\d{1,2})$/i);
+  if (quantityUpdate) {
+    const requestedName = quantityUpdate[1].trim().toLowerCase();
+    const quantity = Number(quantityUpdate[2]);
+    const item = cart.find((entry) => entry.name.trim().toLowerCase() === requestedName);
+    if (!item) {
+      await send("I couldn't find that item in your cart. Reply *cart* to see the exact product names.");
+      return;
+    }
+    const product = products.find((entry: any) => String(entry.id) === item.product_id);
+    const stock = product ? productStock(product) : null;
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100 || (stock !== null && stock < quantity)) {
+      await send(stock !== null && stock < quantity
+        ? `Only ${stock} unit(s) of *${item.name}* are currently available.`
+        : "Please choose a quantity between 1 and 100.");
+      return;
+    }
+    const next = cart.map((entry) => entry.product_id === item.product_id ? { ...entry, quantity } : entry);
+    await save("IDLE", { store_cart: next });
+    await send(`Updated *${item.name}* to quantity *${quantity}*. Reply *cart* to review or *checkout* when ready.`);
+    return;
+  }
+
   if (message.startsWith("remove ")) {
     const term = message.slice(7).trim();
     const next = cart.filter(item => item.name.toLowerCase() !== term && !item.name.toLowerCase().includes(term));
