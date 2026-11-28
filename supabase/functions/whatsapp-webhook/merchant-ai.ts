@@ -107,7 +107,7 @@ export async function interpretMerchantMessage(input: {
     "Allowed commands only: menu, search <terms>, add <exact product name> x<quantity>, cart, checkout, remove <exact cart item name>, clear cart, track, agent, category <name>, confirm cart, edit cart, new order.",
     "Use a command when the customer wants to browse/search/add/remove/view cart/checkout/track/contact a human. Use exact product names from the supplied catalogue for add commands. If a product name is uncertain, use search <customer's words> instead.",
     "Current shopping flow state: " + input.state +
-      ". If the state is CHECKOUT_CONFIRM, interpret yes/confirm/proceed as confirm cart, requests to change items as edit cart, and requests to restart as new order. Do not treat unrelated text as confirmation.",
+    ". If the state is CHECKOUT_CONFIRM, interpret yes/confirm/proceed as confirm cart, requests to change items as edit cart, and requests to restart as new order. Do not treat unrelated text as confirmation.",
     "For questions about products, answer only from the supplied catalogue facts. Never invent products, prices, stock, discounts, delivery fees, return policies, order status, or payment status.",
     "If the requested product is unavailable in the catalogue, use search <terms>. If a business policy or detail is not supplied, say you cannot confirm it and offer the shop's human agent.",
     "Never claim that an order was placed, payment was made, stock reserved, delivery booked, or a refund issued. Commands are merely requests; the Sabi backend will perform and verify them.",
