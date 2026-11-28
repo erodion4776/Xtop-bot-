@@ -420,6 +420,15 @@ async function handleTenantStoreMessage(
     Array.isArray(context.store_cart) ? context.store_cart : [];
   const state = String(conversation.current_state || "IDLE");
 
+  const save = async (nextState: string, patch: Record<string, unknown> = {}) => {
+    await updateConversation(conversation.id, {
+      current_module: "TENANT_STORE",
+      current_state: nextState,
+      context_json: { ...context, ...patch },
+    }, account.tenantId);
+  };
+
+
   // Catalogue questions are deterministic navigation intents, not product names.
   // Handle common singular/plural natural-language forms before Arena or product lookup.
   const catalogueRequest = message
@@ -616,15 +625,6 @@ async function handleTenantStoreMessage(
     await send(`📦 *Order: ${order.order_number}*\n\n${paymentLine}\nOrder fulfilment: *${order.status}*\nDelivery payment: *${order.shipping_payment_status || "Not applicable"}*${referenceLine}\n\n${nextStep}\n\nReply *track ${order.order_number}* to check again, or *agent* to contact the shop.`);
     return;
   }
-
-  const save = async (nextState: string, patch: Record<string, unknown> = {}) => {
-    await updateConversation(conversation.id, {
-      current_module: "TENANT_STORE",
-      current_state: nextState,
-      context_json: { ...context, ...patch },
-    }, account.tenantId);
-  };
-
 
   const beginCheckoutReview = async () => {
     if (!cart.length) {
