@@ -21,7 +21,10 @@ export type MerchantAIResult =
   | { type: "reply"; reply: string };
 
 function directCommand(text: string): boolean {
-  const value = text.trim().toLowerCase();
+  const value = text.trim().toLowerCase()
+    .replace(/^[\"'“”‘’]+|[\"'“”‘’]+$/g, "")
+    .replace(/[.!?]+$/g, "")
+    .trim();
   return !value ||
     /^(hi|hello|hey|menu|start|shop|catalogue|catalog|products|cart|my cart|view cart|checkout|cancel|cancel checkout|stop|clear cart|online|pod|pay now|pay on delivery|agent|human|talk to human|customer service|speak to an agent)(\b|$)/
       .test(value) ||
