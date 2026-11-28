@@ -306,6 +306,10 @@ async function handleTenantStoreMessage(
   if (!credentials) return;
   const phone = incoming.from;
 
+  const money = (n: number) => `₦${Number(n || 0).toLocaleString("en-NG")}`;
+  const productPrice = (p: any) => Number(p.price ?? 0);
+  const productStock = (p: any) => p.stock_quantity == null ? null : Number(p.stock_quantity);
+
   // Automatic, unobtrusive Sabi attribution on every merchant-bot reply.
   // This runs only for resolved merchant tenants, never the XTOP system bot.
   const send = async (body: string, imageUrl?: string) => {
@@ -621,9 +625,6 @@ async function handleTenantStoreMessage(
     }, account.tenantId);
   };
 
-  const money = (n: number) => `₦${Number(n || 0).toLocaleString("en-NG")}`;
-  const productPrice = (p: any) => Number(p.price ?? 0);
-  const productStock = (p: any) => p.stock_quantity == null ? null : Number(p.stock_quantity);
 
   const beginCheckoutReview = async () => {
     if (!cart.length) {
