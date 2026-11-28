@@ -28,6 +28,8 @@ import Newsletter from "./Newsletter";
 import PublicProduct from "./PublicProduct";
 import PublicStorefront from "./PublicStorefront";
 import PublicNewsletter from "./PublicNewsletter";
+import SabiAI from "./SabiAI";
+import SabiAIPortal from "./SabiAIPortal";
 import Landing from "./Landing";
 import Discover from "./Discover";
 import MarketplaceCart from "./MarketplaceCart";
@@ -36,6 +38,7 @@ import { supabase } from "./lib/supabase";
 
 const navigation = [
   { label: "Overview", icon: LayoutDashboard },
+  { label: "Sabi AI", icon: Bot },
   { label: "Products", icon: Package },
   { label: "Orders", icon: ShoppingCart },
   { label: "Customer Service", icon: MessageSquare },
@@ -81,6 +84,7 @@ export default function App() {
     isSuperAdminHost ||
     window.location.pathname.replace(/\/+$/, "") === "/super-admin";
   const isPasswordRecovery = query.get("recovery") === "1";
+  const isSabiAIPage = query.get("ai") === "1";
   const isMarketingPage =
     !isDashboardHost &&
     !isMerchantStoreHost &&
@@ -88,6 +92,7 @@ export default function App() {
     !isDedicatedPortalHost &&
     window.location.pathname === "/" &&
     !query.has("login") &&
+    !isSabiAIPage &&
     !query.has("signup") &&
     !isPasswordRecovery &&
     !query.has("session_token") &&
@@ -100,7 +105,7 @@ export default function App() {
   ).get("session_token")?.trim() || "";
 
   useEffect(() => {
-    if (isPublicProductPage || isPublicStorefrontPage || isPublicNewsletterPage || isMarketingPage || isDiscoverPage || isDedicatedPortalHost) return;
+    if (isPublicProductPage || isPublicStorefrontPage || isPublicNewsletterPage || isMarketingPage || isDiscoverPage || isDedicatedPortalHost || isSabiAIPage) return;
 
     let mounted = true;
 
@@ -140,10 +145,10 @@ export default function App() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [isPublicProductPage, isPublicStorefrontPage, isPublicNewsletterPage, isMarketingPage, isDiscoverPage, isDedicatedPortalHost, isPasswordRecovery]);
+  }, [isPublicProductPage, isPublicStorefrontPage, isPublicNewsletterPage, isMarketingPage, isDiscoverPage, isDedicatedPortalHost, isPasswordRecovery, isSabiAIPage]);
 
   useEffect(() => {
-    if (isPublicProductPage || isPublicStorefrontPage || isPublicNewsletterPage || isMarketingPage || isDiscoverPage || isSuperAdminPage || isDedicatedPortalHost || isPasswordRecovery) return;
+    if (isPublicProductPage || isPublicStorefrontPage || isPublicNewsletterPage || isMarketingPage || isDiscoverPage || isSuperAdminPage || isDedicatedPortalHost || isPasswordRecovery || isSabiAIPage) return;
 
     if (!session?.user?.id) {
       setTenantId("");
@@ -208,7 +213,8 @@ export default function App() {
     isSuperAdminPage,
     isDedicatedPortalHost,
     registrationToken,
-    isPasswordRecovery
+    isPasswordRecovery,
+    isSabiAIPage
   ]);
 
   async function refreshSession() {
@@ -222,6 +228,10 @@ export default function App() {
     setTenantId("");
     setRegistrationError("");
     registeredUser.current = "";
+  }
+
+  if (isSabiAIPage) {
+    return <SabiAIPortal />;
   }
 
   if (isConnectPortalHost) {
@@ -702,7 +712,9 @@ function Dashboard({
             </div>
           </div>
 
-          {activePage === "Products" ? (
+          {activePage === "Sabi AI" ? (
+            <SabiAI tenantId={tenantId} />
+          ) : activePage === "Products" ? (
             <Products tenantId={tenantId} />
           ) : activePage === "Orders" ? (
             <Orders tenantId={tenantId} />

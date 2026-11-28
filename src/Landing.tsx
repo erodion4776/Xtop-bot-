@@ -83,6 +83,7 @@ export default function Landing() {
           <span>Sabi <small>by XTOP</small></span>
         </a>
         <nav className={mobileMenuOpen ? "lp-nav-menu lp-nav-menu-open" : "lp-nav-menu"} aria-label="Main navigation">
+          <a href="/?ai=1" onClick={() => setMobileMenuOpen(false)}>Sabi AI</a>
           <a href="https://discover.sabibyxtop.com.ng" onClick={() => setMobileMenuOpen(false)}>Shop on Discover</a>
           <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)}>How it works</a>
           <a href="#features" onClick={() => setMobileMenuOpen(false)}>Why Sabi</a>
