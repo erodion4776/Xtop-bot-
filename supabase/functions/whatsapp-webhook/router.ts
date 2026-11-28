@@ -421,9 +421,9 @@ async function handleTenantStoreMessage(
   const catalogueRequest = message
     .replace(/^[\"'“”‘’]+|[\"'“”‘’]+$/g, "")
     .replace(/[.!?]+$/g, "")
-    .replace(/\\s+/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
-  if (/^(?:(?:please\\s+)?(?:show|list)\\s+(?:me\\s+)?(?:the\\s+)?products?|what\\s+products?\\s+(?:do\\s+you\\s+have|are\\s+available)|what\\s+(?:product|items?)\\s+(?:do\\s+you\\s+have|are\\s+available)|which\\s+products?\\s+(?:do\\s+you\\s+have|are\\s+available)|what\\s+can\\s+i\\s+buy|show\\s+me\\s+what\\s+you\\s+have|i\\s+want\\s+to\\s+browse(?:\\s+products?)?|browse\\s+(?:the\\s+)?(?:products?|catalog(?:ue)?))$/i.test(catalogueRequest)) {
+  if (/^(?:(?:please\s+)?(?:show|list)\s+(?:me\s+)?(?:the\s+)?products?|what\s+products?\s+(?:do\s+you\s+have|are\s+available)|what\s+(?:product|items?)\s+(?:do\s+you\s+have|are\s+available)|which\s+products?\s+(?:do\s+you\s+have|are\s+available)|what\s+can\s+i\s+buy|show\s+me\s+what\s+you\s+have|i\s+want\s+to\s+browse(?:\s+products?)?|browse\s+(?:the\s+)?(?:products?|catalog(?:ue)?))$/i.test(catalogueRequest)) {
     await showShopPage(0);
     return;
   }
